@@ -79,4 +79,131 @@
   .glass-surface {
     @apply border border-border/70 bg-surface/95 shadow-[var(--shadow-surface)] backdrop-blur-sm;
   }
+
+  .auth-premium-shell {
+    background:
+      radial-gradient(circle at 20% 15%, rgb(255 255 255 / 0.95), transparent 34%),
+      radial-gradient(circle at 85% 10%, rgb(226 222 216 / 0.8), transparent 30%),
+      linear-gradient(135deg, #f7f4ef 0%, #ece7df 45%, #d8d2c8 100%);
+  }
+
+  .auth-premium-noise {
+    background-image:
+      linear-gradient(rgb(17 17 17 / 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(17 17 17 / 0.025) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+
+  .auth-soft-shape {
+    animation: auth-float 10s ease-in-out infinite alternate;
+  }
+
+  .auth-soft-shape-delayed {
+    animation-delay: 2s;
+  }
+
+  .auth-login-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      120deg,
+      transparent 0%,
+      rgb(255 255 255 / 0.5) 45%,
+      transparent 70%
+    );
+    transform: translateX(-120%);
+    animation: auth-shine 7s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  .auth-floating-panel {
+    animation: auth-card-drift 7s ease-in-out infinite alternate;
+  }
+
+  .auth-floating-panel-delayed {
+    animation-delay: 1.8s;
+  }
+
+  .auth-orbit {
+    animation: auth-orbit 18s linear infinite;
+  }
+
+  .auth-hero-title {
+    font-size: clamp(3.25rem, 5.8vw, 5.1rem);
+  }
+}
+
+@keyframes auth-float {
+  from {
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    transform: translateY(-22px) scale(1.03);
+  }
+}
+
+@keyframes auth-shine {
+  0%,
+  50% {
+    transform: translateX(-120%);
+  }
+
+  80%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes auth-card-drift {
+  from {
+    transform: translateY(0) rotate(-1deg);
+  }
+
+  to {
+    transform: translateY(-18px) rotate(1deg);
+  }
+}
+
+@keyframes auth-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-height: 840px) and (min-width: 1024px) {
+  .auth-hero-title {
+    font-size: clamp(2.7rem, 4.6vw, 4.25rem);
+  }
+
+  .auth-compact-shell {
+    gap: 1.5rem;
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+  }
+
+  .auth-compact-copy {
+    margin-top: 1rem;
+    max-width: 34rem;
+    font-size: 1rem;
+    line-height: 1.75rem;
+  }
+
+  .auth-compact-grid {
+    margin-top: 1.25rem;
+  }
+
+  .auth-compact-card {
+    padding: 1rem;
+  }
+
+  .auth-compact-card p {
+    display: none;
+  }
+
+  .auth-compact-form {
+    max-width: 25.5rem;
+    padding: 1.5rem;
+  }
 }

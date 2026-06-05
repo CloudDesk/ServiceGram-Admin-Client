@@ -1,39 +1,35 @@
+import loginVisual from '../assets/new.png'
 import type { PropsWithChildren } from 'react'
 
 export function AuthLayout({ children }: PropsWithChildren) {
   return (
-    <div className="grid min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.18),_transparent_32%),linear-gradient(135deg,#f8fafc_0%,#e0f2fe_100%)] lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
-      <div className="flex items-center justify-center px-6 py-10 lg:px-10">
-        <div className="w-full max-w-md rounded-[1.5rem] border border-white/50 bg-white/90 p-8 shadow-[var(--shadow-overlay)] backdrop-blur">
-          {children}
-        </div>
-      </div>
-      <div className="hidden border-l border-white/30 bg-[linear-gradient(180deg,rgba(15,23,42,0.05),rgba(15,23,42,0.15))] p-10 lg:flex lg:flex-col lg:justify-between">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-primary">
-            ServiceGram
-          </p>
-          <h1 className="mt-4 max-w-lg text-5xl font-semibold leading-tight text-foreground">
-            Admin operations foundation for Release 1.
+    <div className="auth-premium-shell relative min-h-screen overflow-hidden text-[#111111]">
+      <div className="auth-premium-noise pointer-events-none absolute inset-0 opacity-20" />
+      <div className="auth-soft-shape absolute left-[8%] top-[10%] hidden h-[21.25rem] w-[21.25rem] rounded-full bg-white/50 blur-[28px] shadow-[0_40px_120px_rgba(80,70,60,0.14)] lg:block" />
+      <div className="auth-soft-shape auth-soft-shape-delayed absolute bottom-[12%] right-[8%] hidden h-[17.5rem] w-[17.5rem] rounded-full bg-[#252525]/10 blur-[28px] shadow-[0_40px_120px_rgba(80,70,60,0.14)] lg:block" />
+
+      <div className="auth-compact-shell relative z-10 grid min-h-screen items-center gap-8 px-6 py-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(23rem,27rem)] lg:gap-8 lg:px-10 lg:py-6">
+        <section className="flex max-w-[44rem] flex-col justify-center lg:pl-4">
+          <h1 className="auth-hero-title max-w-[43rem] font-semibold leading-[0.94] tracking-[-0.075em] text-[#151515]">
+            One command center to run your <span className="text-[#756f66]">ROOT operations.</span>
           </h1>
-          <p className="mt-5 max-w-xl text-base leading-7 text-muted">
-            Role-aware navigation, typed mock services, reusable shells, and a
-            backend-ready structure for customers, vendors, orders, finance,
-            content, and platform operations.
-          </p>
-        </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          {['Role-aware shell', 'Mock service layer', 'Reusable data patterns'].map(
-            (item) => (
-              <div
-                className="rounded-surface border border-white/50 bg-white/60 p-4 text-sm font-medium text-foreground shadow-sm"
-                key={item}
-              >
-                {item}
-              </div>
-            ),
-          )}
-        </div>
+
+          <div className="auth-compact-grid mt-8">
+            <div className="overflow-hidden rounded-[1.75rem] border border-white/70 bg-white/45 p-3 backdrop-blur-[28px] shadow-[0_20px_60px_rgba(80,70,60,0.1),inset_0_1px_0_rgba(255,255,255,0.72)]">
+              <img
+                alt="ServiceGram admin preview"
+                className="h-auto w-full rounded-[1.25rem] object-contain"
+                src={loginVisual}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="relative flex items-center justify-center">
+          <div className="auth-compact-form auth-login-card relative w-full max-w-[27rem] overflow-hidden rounded-[2.25rem] border border-white/80 bg-white/60 p-6 shadow-[0_42px_110px_rgba(55,48,40,0.22),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-[36px] sm:p-8">
+            {children}
+          </div>
+        </section>
       </div>
     </div>
   )
