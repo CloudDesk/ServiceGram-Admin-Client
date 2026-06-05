@@ -1,1 +1,1 @@
-export { PageHeader } from './PageHeader'
+export { PageContextHeader, PageHeader } from './PageHeader'

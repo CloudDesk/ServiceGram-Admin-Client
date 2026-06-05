@@ -1,1 +1,1 @@
-export { PageHeader as ModuleHeader } from '../ui/PageHeader'
+export { PageContextHeader as ModuleHeader } from '../ui/PageHeader'

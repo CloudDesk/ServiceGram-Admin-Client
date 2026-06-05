@@ -1,1 +1,11 @@
-export { TableShell } from './Table'
+export {
+  DynamicTable,
+  TableShell,
+} from './Table'
+export type {
+  DynamicTableColumn,
+  DynamicTablePagination,
+  DynamicTableProps,
+  DynamicTableRowAction,
+  DynamicTableSortState,
+} from './Table'

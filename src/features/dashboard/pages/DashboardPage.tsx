@@ -1,36 +1,37 @@
-import type { ColumnDef } from '@tanstack/react-table'
-import { Breadcrumbs } from '../../../components/ui/Breadcrumbs'
-import { PageHeader } from '../../../components/ui/PageHeader'
-import { TableShell } from '../../../components/ui/Table'
-import { Badge } from '../../../components/ui/Badge'
+import { PageContextHeader } from '../../../components/ui/PageHeader'
+import type { DynamicTableColumn } from '../../../components/ui/Table'
+import { DynamicTable } from '../../../components/ui/Table'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import type { ModuleRecord } from '../../../types/common.types'
-import { formatDate } from '../../../utils/formatDate'
 import { DashboardKpiGrid } from '../components/DashboardKpiGrid'
 import { useDashboardData } from '../hooks/useDashboardData'
 
-const columns: ColumnDef<ModuleRecord>[] = [
+const columns: DynamicTableColumn<ModuleRecord>[] = [
   {
-    accessorKey: 'name',
-    header: 'Pending action',
-    cell: (info) => (
+    key: 'name',
+    label: 'Pending action',
+    minWidth: 280,
+    renderCell: (row: ModuleRecord) => (
       <div>
-        <p className="font-medium">{String(info.getValue())}</p>
-        <p className="text-xs text-muted">{info.row.original.subtitle}</p>
+        <p className="font-medium">{row.name}</p>
+        <p className="text-xs text-muted">{row.subtitle}</p>
       </div>
     ),
   },
   {
-    accessorKey: 'status',
-    header: 'Status',
-    cell: (info) => <Badge tone="warning">{String(info.getValue())}</Badge>,
+    key: 'status',
+    label: 'Status',
+    format: 'status',
+    statusTone: 'warning',
+    minWidth: 140,
   },
   {
-    accessorKey: 'updatedAt',
-    header: 'Updated',
-    cell: (info) => formatDate(String(info.getValue()), true),
+    key: 'updatedAt',
+    label: 'Updated',
+    format: 'date',
+    minWidth: 180,
   },
 ]
 
@@ -39,14 +40,7 @@ export function DashboardPage() {
 
   return (
     <PageContainer>
-      <div className="space-y-4">
-        <Breadcrumbs items={[{ label: 'Dashboard' }]} />
-        <PageHeader
-          description="Operational overview with role-aware summaries, progressive loading, and mock-backed widgets ready for API replacement."
-          eyebrow="Overview"
-          title="Dashboard"
-        />
-      </div>
+      <PageContextHeader title="Dashboard" />
 
       {dashboardQuery.isLoading ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -67,10 +61,16 @@ export function DashboardPage() {
       {dashboardQuery.data ? (
         <>
           <DashboardKpiGrid metrics={dashboardQuery.data.metrics} />
-          <TableShell
+          <DynamicTable
+            bodyMaxHeight={420}
             columns={columns}
             data={dashboardQuery.data.pendingActions}
             description="We could not load the pending actions right now. Please refresh and try again."
+            pagination={{
+              page: 1,
+              pageSize: dashboardQuery.data.pendingActions.length || 1,
+              total: dashboardQuery.data.pendingActions.length,
+            }}
             title="Pending Actions"
           />
         </>

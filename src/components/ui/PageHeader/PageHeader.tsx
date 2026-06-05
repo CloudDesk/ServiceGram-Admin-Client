@@ -1,41 +1,59 @@
 import type { ReactNode } from 'react'
-import { Button } from '../Button'
+import type { NavCrumb } from '../../../types/common.types'
+import { Breadcrumbs } from '../Breadcrumbs'
 
 interface PageHeaderProps {
-  eyebrow?: string
+  breadcrumbs?: NavCrumb[]
   title: string
-  description: string
-  actionLabel?: string
-  onAction?: () => void
+  description?: string
   actionNode?: ReactNode
+  utilityNode?: ReactNode
+  statsNode?: ReactNode
+  tabsNode?: ReactNode
+  compact?: boolean
 }
 
-export function PageHeader({
-  actionLabel,
+export function PageContextHeader({
   actionNode,
   description,
-  eyebrow,
-  onAction,
+  breadcrumbs,
+  compact = false,
+  statsNode,
+  tabsNode,
   title,
+  utilityNode,
 }: PageHeaderProps) {
   return (
-    <div className="flex flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-start md:justify-between">
-      <div className="space-y-2">
-        {eyebrow ? (
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-            {eyebrow}
-          </p>
-        ) : null}
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+    <div className="space-y-3">
+      {breadcrumbs?.length ? <Breadcrumbs items={breadcrumbs} /> : null}
+
+      <div className="space-y-1.5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <h1
+            className={
+              compact
+                ? 'text-[1.2rem] font-semibold tracking-[-0.03em] text-foreground'
+                : 'text-[1.55rem] font-semibold tracking-[-0.04em] text-foreground'
+            }
+          >
             {title}
           </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-            {description}
-          </p>
+          {actionNode || utilityNode ? (
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              {utilityNode}
+              {actionNode}
+            </div>
+          ) : null}
         </div>
+        {description ? (
+          <p className="max-w-3xl text-sm leading-6 text-muted">{description}</p>
+        ) : null}
       </div>
-      {actionNode ?? (actionLabel && onAction ? <Button onClick={onAction}>{actionLabel}</Button> : null)}
+
+      {statsNode ? <div>{statsNode}</div> : null}
+      {tabsNode ? <div>{tabsNode}</div> : null}
     </div>
   )
 }
+
+export const PageHeader = PageContextHeader

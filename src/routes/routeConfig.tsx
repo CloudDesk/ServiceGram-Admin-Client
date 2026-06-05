@@ -1,4 +1,5 @@
 import type { RouteObject } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { mockCustomers } from '../mock/db/customers.mock'
 import { mockOrders } from '../mock/db/orders.mock'
 import { mockPayments } from '../mock/db/payments.mock'
@@ -18,6 +19,7 @@ import { ModuleLayout } from '../layouts/ModuleLayout'
 import { ProtectedRoute } from './ProtectedRoute'
 import { PublicRoute } from './PublicRoute'
 import { ModulePageFactory, RecordDetailPage } from './RouteScaffolds'
+import { Button } from '../components/ui/Button'
 
 const [primaryUser] = mockUsers
 const [primaryCustomer] = mockCustomers
@@ -64,6 +66,11 @@ export const appRoutes: RouteObject[] = [
                 path: routePaths.adminUsers,
                 element: (
                   <ModulePageFactory
+                    actionNode={
+                      <Link to={`${routePaths.adminUsers}/new`}>
+                        <Button size="sm">Add User</Button>
+                      </Link>
+                    }
                     description="Typed admin user management shell with permissions, session visibility, and audit-ready actions."
                     records={mockUsers.map((user) => ({
                       id: user.id,
@@ -72,7 +79,7 @@ export const appRoutes: RouteObject[] = [
                       subtitle: user.email,
                       updatedAt: '2026-06-05T07:20:00.000Z',
                     }))}
-                    title="Admin Users"
+                    title="Users"
                   />
                 ),
               },
@@ -80,10 +87,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.adminUsers}/new`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Admin Users', href: routePaths.adminUsers },
-                      { label: 'Create Admin User' },
-                    ]}
                     description="Foundation form route for creating a new admin user."
                     record={{
                       id: 'FORM',
@@ -100,10 +103,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.adminUsers}/:adminUserId`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Admin Users', href: routePaths.adminUsers },
-                      { label: 'Admin User Detail' },
-                    ]}
                     description="Detail shell for profile, role and access, login history, session history, and audit activity."
                     record={{
                       id: primaryUser.id,
@@ -130,10 +129,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.customers}/:customerId`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Customers', href: routePaths.customers },
-                      { label: 'Customer Detail' },
-                    ]}
                     description="Detail shell with overview, orders, payments, notes, and activity tabs ready for backend integration."
                     record={primaryCustomer}
                     title="Customer Detail"
@@ -154,10 +149,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.vendors}/:vendorId`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Vendors', href: routePaths.vendors },
-                      { label: 'Vendor Detail' },
-                    ]}
                     description="Detail shell for profile, services, orders, documents, payments, notes, and activity."
                     record={primaryVendor}
                     title="Vendor Detail"
@@ -178,10 +169,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.vendorOnboarding}/:vendorId`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Vendor Onboarding', href: routePaths.vendorOnboarding },
-                      { label: 'Onboarding Detail' },
-                    ]}
                     description="Detail shell for stage review, document verification, and approval decisions."
                     record={secondaryVendor}
                     title="Onboarding Detail"
@@ -202,10 +189,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.orders}/:orderId`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Orders', href: routePaths.orders },
-                      { label: 'Order Detail' },
-                    ]}
                     description="Detail shell for customer, vendor, payment, notes, action history, and manual logistics."
                     record={primaryOrder}
                     title="Order Detail"
@@ -226,10 +209,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.orders}/:orderId/logistics`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Orders', href: routePaths.orders },
-                      { label: 'Manual Logistics Detail' },
-                    ]}
                     description="Route placeholder for order-specific logistics actions, proof uploads, and exception handling."
                     record={primaryOrder}
                     title="Manual Logistics Detail"
@@ -250,10 +229,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.payments}/:paymentId`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Payments', href: routePaths.payments },
-                      { label: 'Payment Detail' },
-                    ]}
                     description="Detail shell for payment context, status, references, and refund actions."
                     record={primaryPayment}
                     title="Payment Detail"
@@ -274,10 +249,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.payouts}/:payoutId`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Payouts', href: routePaths.payouts },
-                      { label: 'Payout Detail' },
-                    ]}
                     description="Detail shell for bank verification, deductions, references, and payout decisions."
                     record={primaryPayout}
                     title="Payout Detail"
@@ -298,10 +269,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.reels}/:reelId`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Reels', href: routePaths.reels },
-                      { label: 'Reel Detail' },
-                    ]}
                     description="Detail shell for video review, moderation history, and approval actions."
                     record={primaryReel}
                     title="Reel Detail"
@@ -312,6 +279,11 @@ export const appRoutes: RouteObject[] = [
                 path: routePaths.notifications,
                 element: (
                   <ModulePageFactory
+                    actionNode={
+                      <Link to={`${routePaths.notifications}/new`}>
+                        <Button size="sm">New Notification</Button>
+                      </Link>
+                    }
                     description="Notification center foundation for drafts, previews, scheduling, and audience targeting."
                     records={[
                       {
@@ -330,10 +302,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.notifications}/new`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Notifications', href: routePaths.notifications },
-                      { label: 'Create Notification' },
-                    ]}
                     description="Composer shell for title, body, audience, schedule, preview, and confirmation."
                     record={{
                       id: 'DRAFT',
@@ -350,10 +318,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.notifications}/:notificationId`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Notifications', href: routePaths.notifications },
-                      { label: 'Notification Detail' },
-                    ]}
                     description="Detail shell for campaign status, audience summary, and send history."
                     record={{
                       id: 'NTF-001',
@@ -388,10 +352,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.content}/:contentId`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Content', href: routePaths.content },
-                      { label: 'Content Editor' },
-                    ]}
                     description="Editor shell for draft, preview, publish, archive, and rollback flows."
                     record={{
                       id: 'CNT-101',
@@ -426,10 +386,6 @@ export const appRoutes: RouteObject[] = [
                 path: `${routePaths.reports}/:reportKey`,
                 element: (
                   <RecordDetailPage
-                    crumbs={[
-                      { label: 'Reports', href: routePaths.reports },
-                      { label: 'Report Detail' },
-                    ]}
                     description="Report detail shell with filters, export, retry, and long-running job placeholders."
                     record={{
                       id: 'RPT-OPS-01',

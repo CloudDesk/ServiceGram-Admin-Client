@@ -1,76 +1,74 @@
-import type { ColumnDef } from '@tanstack/react-table'
-import { Badge } from '../components/ui/Badge'
-import { TableShell } from '../components/ui/Table'
+import type { ReactNode } from 'react'
+import { PageContextHeader } from '../components/ui/PageHeader'
+import type { DynamicTableColumn } from '../components/ui/Table'
+import { DynamicTable } from '../components/ui/Table'
 import { ModuleScaffoldPage } from '../components/layout/ModuleScaffoldPage'
 import { PageContainer } from '../components/layout/PageContainer'
-import { Breadcrumbs } from '../components/ui/Breadcrumbs'
-import { PageHeader } from '../components/ui/PageHeader'
 import type { ModuleRecord } from '../types/common.types'
-import { formatDate } from '../utils/formatDate'
 
 export function ModulePageFactory({
+  actionNode,
   title,
-  description,
+  description: _description,
   records,
 }: {
+  actionNode?: ReactNode
   title: string
-  description: string
+  description?: string
   records: ModuleRecord[]
 }) {
   return (
     <ModuleScaffoldPage
-      crumbs={[{ label: title }]}
-      description={description}
-      metrics={[
-        { label: 'Records loaded', value: String(records.length) },
-        { label: 'Loading state', value: 'Ready' },
-        { label: 'Error state', value: 'Ready' },
-        { label: 'Backend mode', value: 'Mock' },
-      ]}
+      actionNode={actionNode}
       records={records}
       title={title}
     />
   )
 }
 
-const detailColumns: ColumnDef<ModuleRecord>[] = [
+const detailColumns: DynamicTableColumn<ModuleRecord>[] = [
   {
-    accessorKey: 'subtitle',
-    header: 'Context',
+    key: 'subtitle',
+    label: 'Context',
+    minWidth: 220,
   },
   {
-    accessorKey: 'status',
-    header: 'Status',
-    cell: (info) => <Badge tone="info">{String(info.getValue())}</Badge>,
+    key: 'status',
+    label: 'Status',
+    format: 'status',
+    statusTone: 'info',
+    minWidth: 140,
   },
   {
-    accessorKey: 'updatedAt',
-    header: 'Updated',
-    cell: (info) => formatDate(String(info.getValue()), true),
+    key: 'updatedAt',
+    label: 'Updated',
+    format: 'date',
+    minWidth: 180,
   },
 ]
 
 export function RecordDetailPage({
-  crumbs,
-  description,
+  description: _description,
   record,
   title,
 }: {
-  crumbs: { label: string; href?: string }[]
-  description: string
+  description?: string
   record: ModuleRecord
   title: string
 }) {
   return (
     <PageContainer>
-      <div className="space-y-4">
-        <Breadcrumbs items={crumbs} />
-        <PageHeader description={description} eyebrow="Detail" title={title} />
-      </div>
-      <TableShell
+      <PageContextHeader compact title={title} />
+      <DynamicTable
+        bodyMaxHeight={320}
         columns={detailColumns}
         data={[record]}
         description={`We could not load ${title.toLowerCase()} right now. Please refresh and try again.`}
+        pagination={{
+          page: 1,
+          pageSize: 1,
+          total: 1,
+        }}
         title={title}
       />
     </PageContainer>
