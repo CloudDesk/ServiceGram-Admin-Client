@@ -1,0 +1,205 @@
+
+<style>
+  .theme-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1.25rem; margin-bottom: 1rem; cursor: pointer; transition: border-color 0.15s; }
+  .theme-card:hover { border-color: var(--color-border-secondary); }
+  .swatch-row { display: flex; gap: 6px; margin: 12px 0 14px; }
+  .swatch { height: 36px; border-radius: 6px; flex: 1; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; margin-right: 6px; }
+  .mini-ui { border-radius: 10px; overflow: hidden; border: 0.5px solid var(--color-border-tertiary); margin-top: 14px; }
+  .mini-bar { height: 28px; display: flex; align-items: center; padding: 0 10px; gap: 6px; font-size: 11px; font-weight: 500; color: #fff; }
+  .mini-body { display: flex; height: 60px; }
+  .mini-sidebar { width: 48px; height: 60px; }
+  .mini-content { flex: 1; padding: 8px; display: flex; gap: 6px; align-items: flex-start; }
+  .mini-block { border-radius: 4px; height: 20px; }
+  .theme-label { font-size: 15px; font-weight: 500; color: var(--color-text-primary); }
+  .theme-sub { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+  .badge-row { margin-top: 10px; }
+  .section-title { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-tertiary); margin: 1.5rem 0 0.75rem; }
+</style>
+
+<h2 class="sr-only">Admin portal theme palette suggestions — 4 premium color themes with mini UI previews</h2>
+
+<p style="font-size:13px; color:var(--color-text-secondary); margin:0 0 1.25rem;">4 premium themes — each with a sidebar, appbar, and content surface palette.</p>
+
+<!-- Theme 1: Slate Midnight -->
+<div class="theme-card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+    <div>
+      <div class="theme-label">Slate Midnight</div>
+      <div class="theme-sub">Dark charcoal sidebar · warm white content · steel blue accents</div>
+    </div>
+    <div>
+      <span class="tag" style="background:#EEF2F7;color:#2C3A52;">Most popular</span>
+    </div>
+  </div>
+  <div class="swatch-row">
+    <div class="swatch" style="background:#1C2333;" title="Sidebar"></div>
+    <div class="swatch" style="background:#252E42;" title="Sidebar hover"></div>
+    <div class="swatch" style="background:#1E2A3A;" title="Appbar"></div>
+    <div class="swatch" style="background:#3B82F6;" title="Accent"></div>
+    <div class="swatch" style="background:#F4F6FA;" title="Content bg"></div>
+    <div class="swatch" style="background:#FFFFFF;" title="Card"></div>
+  </div>
+  <div style="display:flex; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--color-text-secondary);">
+    <span>Sidebar <b style="color:#1C2333">■</b> #1C2333</span>·
+    <span>Appbar <b style="color:#1E2A3A">■</b> #1E2A3A</span>·
+    <span>Accent <b style="color:#3B82F6">■</b> #3B82F6</span>·
+    <span>Page bg <b style="color:#8899AA">■</b> #F4F6FA</span>
+  </div>
+  <div class="mini-ui">
+    <div class="mini-bar" style="background:#1E2A3A;">
+      <div style="width:8px;height:8px;border-radius:50%;background:#3B82F6;"></div>
+      <span style="opacity:0.8;">Portal</span>
+      <div style="flex:1;"></div>
+      <div style="width:18px;height:6px;border-radius:3px;background:rgba(255,255,255,0.2);"></div>
+      <div style="width:18px;height:6px;border-radius:3px;background:rgba(255,255,255,0.2);"></div>
+    </div>
+    <div class="mini-body">
+      <div class="mini-sidebar" style="background:#1C2333; display:flex;flex-direction:column;gap:5px;padding:8px 6px;">
+        <div style="height:4px;border-radius:2px;background:#3B82F6;"></div>
+        <div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.15);"></div>
+        <div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.15);"></div>
+        <div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.15);"></div>
+      </div>
+      <div class="mini-content" style="background:#F4F6FA;">
+        <div class="mini-block" style="background:#fff;width:45%;border:0.5px solid #E2E8F0;"></div>
+        <div class="mini-block" style="background:#fff;width:35%;border:0.5px solid #E2E8F0;"></div>
+        <div class="mini-block" style="background:#3B82F6;width:14%;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Theme 2: Frost -->
+<div class="theme-card">
+  <div>
+    <div class="theme-label">Frost</div>
+    <div class="theme-sub">Icy off-white sidebar · pure white content · indigo accents</div>
+  </div>
+  <div class="swatch-row">
+    <div class="swatch" style="background:#EEF1F8;"></div>
+    <div class="swatch" style="background:#E0E5F2;"></div>
+    <div class="swatch" style="background:#FFFFFF;"></div>
+    <div class="swatch" style="background:#5B5EF5;"></div>
+    <div class="swatch" style="background:#F8F9FC;"></div>
+    <div class="swatch" style="background:#FFFFFF; border:0.5px solid #E2E8F0;"></div>
+  </div>
+  <div style="display:flex; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--color-text-secondary);">
+    <span>Sidebar <b style="color:#B0B8D0">■</b> #EEF1F8</span>·
+    <span>Appbar <b style="color:#B0B8D0">■</b> #FFFFFF</span>·
+    <span>Accent <b style="color:#5B5EF5">■</b> #5B5EF5</span>·
+    <span>Page bg <b style="color:#B0B8D0">■</b> #F8F9FC</span>
+  </div>
+  <div class="mini-ui">
+    <div class="mini-bar" style="background:#fff; border-bottom:0.5px solid #E2E8F0;">
+      <div style="width:8px;height:8px;border-radius:50%;background:#5B5EF5;"></div>
+      <span style="color:#1a1a2e; opacity:0.7;">Portal</span>
+      <div style="flex:1;"></div>
+      <div style="width:18px;height:6px;border-radius:3px;background:#E2E8F0;"></div>
+      <div style="width:18px;height:6px;border-radius:3px;background:#E2E8F0;"></div>
+    </div>
+    <div class="mini-body">
+      <div class="mini-sidebar" style="background:#EEF1F8; display:flex;flex-direction:column;gap:5px;padding:8px 6px; border-right:0.5px solid #E0E5F2;">
+        <div style="height:4px;border-radius:2px;background:#5B5EF5;"></div>
+        <div style="height:4px;border-radius:2px;background:#D0D5E8;"></div>
+        <div style="height:4px;border-radius:2px;background:#D0D5E8;"></div>
+        <div style="height:4px;border-radius:2px;background:#D0D5E8;"></div>
+      </div>
+      <div class="mini-content" style="background:#F8F9FC;">
+        <div class="mini-block" style="background:#fff;width:45%;border:0.5px solid #E2E8F0;"></div>
+        <div class="mini-block" style="background:#fff;width:35%;border:0.5px solid #E2E8F0;"></div>
+        <div class="mini-block" style="background:#5B5EF5;width:14%;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Theme 3: Obsidian -->
+<div class="theme-card">
+  <div>
+    <div class="theme-label">Obsidian</div>
+    <div class="theme-sub">Near-black sidebar · dark grey content · teal accents</div>
+  </div>
+  <div class="swatch-row">
+    <div class="swatch" style="background:#0F1117;"></div>
+    <div class="swatch" style="background:#171B26;"></div>
+    <div class="swatch" style="background:#1A1F2E;"></div>
+    <div class="swatch" style="background:#0FA97A;"></div>
+    <div class="swatch" style="background:#141820;"></div>
+    <div class="swatch" style="background:#1F2535; border:0.5px solid #2A3045;"></div>
+  </div>
+  <div style="display:flex; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--color-text-secondary);">
+    <span>Sidebar <b style="color:#555">■</b> #0F1117</span>·
+    <span>Appbar <b style="color:#555">■</b> #1A1F2E</span>·
+    <span>Accent <b style="color:#0FA97A">■</b> #0FA97A</span>·
+    <span>Page bg <b style="color:#555">■</b> #141820</span>
+  </div>
+  <div class="mini-ui">
+    <div class="mini-bar" style="background:#1A1F2E; border-bottom:0.5px solid #2A3045;">
+      <div style="width:8px;height:8px;border-radius:50%;background:#0FA97A;"></div>
+      <span style="color:rgba(255,255,255,0.6);">Portal</span>
+      <div style="flex:1;"></div>
+      <div style="width:18px;height:6px;border-radius:3px;background:rgba(255,255,255,0.1);"></div>
+      <div style="width:18px;height:6px;border-radius:3px;background:rgba(255,255,255,0.1);"></div>
+    </div>
+    <div class="mini-body">
+      <div class="mini-sidebar" style="background:#0F1117; display:flex;flex-direction:column;gap:5px;padding:8px 6px; border-right:0.5px solid #2A3045;">
+        <div style="height:4px;border-radius:2px;background:#0FA97A;"></div>
+        <div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.1);"></div>
+        <div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.1);"></div>
+        <div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.1);"></div>
+      </div>
+      <div class="mini-content" style="background:#141820;">
+        <div class="mini-block" style="background:#1F2535;width:45%;border:0.5px solid #2A3045;"></div>
+        <div class="mini-block" style="background:#1F2535;width:35%;border:0.5px solid #2A3045;"></div>
+        <div class="mini-block" style="background:#0FA97A;width:14%;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Theme 4: Stone & Amber -->
+<div class="theme-card">
+  <div>
+    <div class="theme-label">Stone & Amber</div>
+    <div class="theme-sub">Warm stone sidebar · cream content · amber accents — most Apple-like</div>
+  </div>
+  <div class="swatch-row">
+    <div class="swatch" style="background:#242220;"></div>
+    <div class="swatch" style="background:#2E2C2A;"></div>
+    <div class="swatch" style="background:#1E1C1A;"></div>
+    <div class="swatch" style="background:#E8A020;"></div>
+    <div class="swatch" style="background:#F6F4F1;"></div>
+    <div class="swatch" style="background:#FFFFFF; border:0.5px solid #E8E4DF;"></div>
+  </div>
+  <div style="display:flex; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--color-text-secondary);">
+    <span>Sidebar <b style="color:#888">■</b> #242220</span>·
+    <span>Appbar <b style="color:#888">■</b> #1E1C1A</span>·
+    <span>Accent <b style="color:#E8A020">■</b> #E8A020</span>·
+    <span>Page bg <b style="color:#C0BAB2">■</b> #F6F4F1</span>
+  </div>
+  <div class="mini-ui">
+    <div class="mini-bar" style="background:#1E1C1A;">
+      <div style="width:8px;height:8px;border-radius:50%;background:#E8A020;"></div>
+      <span style="color:rgba(255,255,255,0.65);">Portal</span>
+      <div style="flex:1;"></div>
+      <div style="width:18px;height:6px;border-radius:3px;background:rgba(255,255,255,0.12);"></div>
+      <div style="width:18px;height:6px;border-radius:3px;background:rgba(255,255,255,0.12);"></div>
+    </div>
+    <div class="mini-body">
+      <div class="mini-sidebar" style="background:#242220; display:flex;flex-direction:column;gap:5px;padding:8px 6px; border-right:0.5px solid #3A3835;">
+        <div style="height:4px;border-radius:2px;background:#E8A020;"></div>
+        <div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.12);"></div>
+        <div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.12);"></div>
+        <div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.12);"></div>
+      </div>
+      <div class="mini-content" style="background:#F6F4F1;">
+        <div class="mini-block" style="background:#fff;width:45%;border:0.5px solid #E8E4DF;"></div>
+        <div class="mini-block" style="background:#fff;width:35%;border:0.5px solid #E8E4DF;"></div>
+        <div class="mini-block" style="background:#E8A020;width:14%;border-radius:4px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p style="font-size:12px;color:var(--color-text-tertiary);margin:1rem 0 0;">Click any theme above to explore its full token set, or ask for a full-screen mockup of a specific theme.</p>
