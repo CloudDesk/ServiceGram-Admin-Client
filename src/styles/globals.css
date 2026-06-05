@@ -130,7 +130,21 @@
   }
 
   .auth-hero-title {
-    font-size: clamp(3.25rem, 5.8vw, 5.1rem);
+    font-size: clamp(3.25rem, 4.6vw, 4.875rem);
+  }
+
+  .auth-login-hero {
+    max-width: 58.75rem;
+  }
+
+  .auth-hero-visual-card {
+    width: min(100%, 56.25rem);
+    height: clamp(29rem, 53vh, 35rem);
+  }
+
+  .auth-hero-visual {
+    transform: scale(1.08);
+    transform-origin: center;
   }
 }
 
@@ -174,13 +188,11 @@
 
 @media (max-height: 840px) and (min-width: 1024px) {
   .auth-hero-title {
-    font-size: clamp(2.7rem, 4.6vw, 4.25rem);
+    font-size: clamp(3rem, 4.35vw, 4.375rem);
   }
 
   .auth-compact-shell {
-    gap: 1.5rem;
-    padding-top: 1.25rem;
-    padding-bottom: 1.25rem;
+    gap: 3rem;
   }
 
   .auth-compact-copy {
@@ -191,7 +203,7 @@
   }
 
   .auth-compact-grid {
-    margin-top: 1.25rem;
+    margin-top: 1.625rem;
   }
 
   .auth-compact-card {
@@ -203,7 +215,62 @@
   }
 
   .auth-compact-form {
-    max-width: 25.5rem;
+    max-width: 30rem;
     padding: 1.5rem;
+  }
+
+  .auth-hero-visual-card {
+    width: min(100%, 53.125rem);
+    height: clamp(27rem, 51vh, 31.25rem);
+  }
+}
+
+@media (min-width: 1024px) {
+  .auth-compact-shell {
+    align-items: center;
+  }
+
+  .auth-compact-grid {
+    display: flex;
+    min-height: 0;
+    align-items: center;
+  }
+}
+
+@media (min-width: 1280px) and (min-height: 900px) {
+  .auth-hero-visual-card {
+    height: clamp(31rem, 56vh, 38rem);
+  }
+}
+
+@media (min-width: 1601px) {
+  .auth-compact-shell {
+    grid-template-columns: minmax(0, 1fr) 32.5rem;
+    column-gap: 3.5rem;
+  }
+}
+
+@media (max-width: 1600px) and (min-width: 1024px) {
+  .auth-compact-shell {
+    max-width: 92.5rem;
+    grid-template-columns: minmax(45rem, 1fr) 31.25rem;
+    column-gap: 3rem;
+  }
+
+  .auth-login-hero {
+    max-width: 55rem;
+  }
+
+  .auth-hero-title {
+    font-size: clamp(3.125rem, 4.4vw, 4.375rem);
+  }
+
+  .auth-hero-visual-card {
+    width: min(100%, 53.125rem);
+    height: clamp(28rem, 52vh, 32rem);
+  }
+
+  .auth-compact-form {
+    max-width: 31.25rem;
   }
 }

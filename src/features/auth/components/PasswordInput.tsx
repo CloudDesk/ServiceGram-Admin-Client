@@ -36,7 +36,7 @@ export function PasswordInput({
       />
       <button
         aria-label={isVisible ? 'Hide password' : 'Show password'}
-        className="absolute right-4 top-1/2 -translate-y-1/2 text-[#7f786f] transition hover:text-[#111111]"
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-muted transition hover:text-foreground"
         onClick={() => setIsVisible((value) => !value)}
         type="button"
       >
