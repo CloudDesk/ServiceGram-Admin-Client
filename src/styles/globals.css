@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+
+  --color-background: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-muted: #eff6ff;
+  --color-border: #d9e2ec;
+  --color-foreground: #0f172a;
+  --color-muted: #64748b;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #e2e8f0;
+  --color-secondary-hover: #cbd5e1;
+  --color-secondary-foreground: #0f172a;
+  --color-success: #16a34a;
+  --color-warning: #f59e0b;
+  --color-danger: #dc2626;
+  --color-info: #0284c7;
+  --color-sidebar: #0f172a;
+  --color-sidebar-accent: #1e293b;
+  --color-sidebar-foreground: #e2e8f0;
+  --color-overlay: rgb(15 23 42 / 0.55);
+  --color-ring: #2563eb;
+
+  --spacing-shell-x: 1.5rem;
+  --spacing-shell-y: 1.25rem;
+  --spacing-sidebar: 16rem;
+  --spacing-topbar: 4.25rem;
+  --radius-control: 0.75rem;
+  --radius-surface: 0.875rem;
+  --shadow-surface: 0 12px 28px rgb(15 23 42 / 0.08);
+  --shadow-overlay: 0 20px 50px rgb(15 23 42 / 0.24);
+}
+
+@layer base {
+  :root {
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  * {
+    @apply box-border;
+  }
+
+  html,
+  body,
+  #root {
+    @apply min-h-screen;
+  }
+
+  body {
+    @apply m-0 bg-background font-sans text-foreground antialiased;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  a {
+    @apply text-inherit no-underline;
+  }
+}
+
+@layer components {
+  .app-shell-grid {
+    @apply grid min-h-screen grid-cols-1 bg-background lg:grid-cols-[16rem_minmax(0,1fr)];
+  }
+
+  .page-scroll-region {
+    @apply h-[calc(100vh-var(--spacing-topbar))] overflow-y-auto;
+  }
+
+  .glass-surface {
+    @apply border border-border/70 bg-surface/95 shadow-[var(--shadow-surface)] backdrop-blur-sm;
+  }
+}
