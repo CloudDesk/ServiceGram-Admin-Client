@@ -1,14 +1,15 @@
-import type { PropsWithChildren } from 'react'
-import { cn } from '../../../utils/cn'
+import type { PropsWithChildren } from "react";
+import { cn } from "../../../utils/cn";
 
 interface CardProps extends PropsWithChildren {
-  className?: string
+  className?: string;
 }
 
 export function Card({ children, className }: CardProps) {
   return (
-    <section className={cn('glass-surface rounded-surface', className)}>
+    <section className={cn("premium-content-card", className)}>
+      {" "}
       {children}
     </section>
-  )
+  );
 }

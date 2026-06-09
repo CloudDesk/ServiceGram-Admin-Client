@@ -1,30 +1,32 @@
-import type { CSSProperties } from 'react'
-import { Outlet } from 'react-router-dom'
-import { Sidebar } from '../components/layout/Sidebar'
-import { MobileSidebar } from '../components/layout/MobileSidebar'
-import { Topbar } from '../components/layout/Topbar'
-import { useUiStore } from '../store/uiStore'
+import type { CSSProperties } from "react";
+import { Outlet } from "react-router-dom";
+import { Sidebar } from "../components/layout/Sidebar";
+import { MobileSidebar } from "../components/layout/MobileSidebar";
+import { Topbar } from "../components/layout/Topbar";
+import { useUiStore } from "../store/uiStore";
 
 export function AdminLayout() {
-  const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed)
+  const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
 
   return (
     <div
-      className="app-shell-grid"
+      className="app-shell-grid premium-page-surface"
       style={
         {
-          '--desktop-sidebar-width': sidebarCollapsed ? '5.5rem' : '18rem',
+          "--desktop-sidebar-width": sidebarCollapsed ? "5.5rem" : "18rem",
         } as CSSProperties
       }
     >
       <Sidebar />
       <MobileSidebar />
-      <div className="min-w-0">
+
+      <div className="app-main-shell min-w-0">
         <Topbar />
-        <main className="page-scroll-region">
+
+        <main className="page-scroll-region premium-page-surface">
           <Outlet />
         </main>
       </div>
     </div>
-  )
+  );
 }

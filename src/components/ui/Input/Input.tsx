@@ -1,19 +1,20 @@
-import type { InputHTMLAttributes } from 'react'
-import { cn } from '../../../utils/cn'
+import type { InputHTMLAttributes } from "react";
+import { cn } from "../../../utils/cn";
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  hasError?: boolean
+  hasError?: boolean;
 }
 
 export function Input({ className, hasError = false, ...props }: InputProps) {
   return (
     <input
       className={cn(
-        'min-h-11 w-full rounded-control border bg-surface px-3 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/25',
-        hasError ? 'border-danger' : 'border-border',
+        "form-input",
+        hasError &&
+          "border-[color:var(--adaptive-danger-text)] focus-visible:border-[color:var(--adaptive-danger-text)] focus-visible:ring-[color:var(--adaptive-danger-bg)]",
         className,
       )}
       {...props}
     />
-  )
+  );
 }

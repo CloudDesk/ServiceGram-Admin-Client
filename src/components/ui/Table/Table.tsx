@@ -226,7 +226,7 @@ function DynamicRowActionMenu<T>({
       </Button>
       {open ? (
         <div
-          className="absolute right-0 top-[calc(100%+0.375rem)] z-30 min-w-[11rem] overflow-hidden rounded-[1rem] border border-border bg-white p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.14)]"
+          className="premium-common-surface absolute right-0 top-[calc(100%+0.375rem)] z-30 min-w-[11rem] overflow-hidden rounded-[1rem] p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.14)]"
           onClick={(event) => event.stopPropagation()}
         >
           {actions.map((action) => (
@@ -267,7 +267,7 @@ function DefaultPagination({
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 border-t border-border bg-white px-4 py-3 text-sm text-muted sm:flex-row sm:items-center sm:justify-between',
+        'premium-table-footer flex flex-col gap-3 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between',
         stickyFooter && 'sticky bottom-0 z-10',
       )}
     >
@@ -279,7 +279,7 @@ function DefaultPagination({
           <label className="flex items-center gap-2">
             <span>Rows</span>
             <select
-              className="rounded-control border border-border bg-white px-2 py-1 text-foreground outline-none focus:border-foreground/20"
+              className="rounded-control border border-border bg-surface px-2 py-1 text-foreground outline-none focus:border-foreground/20"
               value={pageSize}
               onChange={(event) => onPageSizeChange(Number(event.target.value))}
             >
@@ -439,8 +439,8 @@ export function DynamicTable<T>({
 
   if (loading) {
     return (
-      <Card className={cn('overflow-hidden', className)}>
-        {toolbar ? <div className="border-b border-border bg-white px-4 py-3">{toolbar}</div> : null}
+      <Card className={cn('premium-table-card overflow-hidden', className)}>
+        {toolbar ? <div className="premium-table-toolbar px-4 py-3">{toolbar}</div> : null}
         <div className="space-y-3 p-4">
           <Skeleton className="h-11 w-full" />
           {Array.from({ length: 6 }).map((_, index) => (
@@ -454,8 +454,8 @@ export function DynamicTable<T>({
 
   if (error) {
     return (
-      <Card className={cn('overflow-hidden', className)}>
-        {toolbar ? <div className="border-b border-border bg-white px-4 py-3">{toolbar}</div> : null}
+      <Card className={cn('premium-table-card overflow-hidden', className)}>
+        {toolbar ? <div className="premium-table-toolbar px-4 py-3">{toolbar}</div> : null}
         <ErrorState
           description={errorDescription}
           onRetry={onRetry}
@@ -468,8 +468,8 @@ export function DynamicTable<T>({
 
   if (computedData.length === 0) {
     return (
-      <Card className={cn('overflow-hidden', className)}>
-        {toolbar ? <div className="border-b border-border bg-white px-4 py-3">{toolbar}</div> : null}
+      <Card className={cn('premium-table-card overflow-hidden', className)}>
+        {toolbar ? <div className="premium-table-toolbar px-4 py-3">{toolbar}</div> : null}
         <EmptyState description={emptyDescription} title={emptyTitle} />
         {footerNode}
       </Card>
@@ -477,14 +477,14 @@ export function DynamicTable<T>({
   }
 
   return (
-    <Card className={cn('overflow-hidden', className)}>
-      {toolbar ? <div className="border-b border-border bg-white px-4 py-3">{toolbar}</div> : null}
+    <Card className={cn('premium-table-card overflow-hidden', className)}>
+      {toolbar ? <div className="premium-table-toolbar px-4 py-3">{toolbar}</div> : null}
       <div className="overflow-x-auto">
         <div className="overflow-auto" style={tableBodyStyle}>
           <table className="min-w-full border-separate border-spacing-0">
             <thead
               className={cn(
-                'bg-[#f7f9fc] text-left text-[0.7rem] uppercase tracking-[0.08em] text-muted',
+                'premium-table-head text-left text-[0.7rem] uppercase tracking-[0.08em]',
                 stickyHeader && 'sticky top-0 z-10',
               )}
             >
@@ -500,7 +500,7 @@ export function DynamicTable<T>({
                   return (
                     <th
                       className={cn(
-                        'border-b border-border bg-[#f7f9fc] px-4 py-3 font-semibold',
+                        'px-4 py-3 font-semibold',
                         alignClass,
                         column.headerClassName,
                       )}
@@ -551,13 +551,13 @@ export function DynamicTable<T>({
                   )
                 })}
                 {rowActions ? (
-                  <th className="sticky right-0 z-10 border-b border-border bg-[#f7f9fc] px-4 py-3 text-right font-semibold">
+                  <th className="premium-table-head sticky right-0 z-10 px-4 py-3 text-right font-semibold">
                     {actionColumnLabel}
                   </th>
                 ) : null}
               </tr>
             </thead>
-            <tbody className="bg-white">
+            <tbody className="premium-table-body">
               {computedData.map((row, rowIndex) => {
                 const rowId = getRowId?.(row, rowIndex) ?? String(rowIndex)
                 const actions = resolvedActions[rowIndex] ?? []
@@ -590,7 +590,7 @@ export function DynamicTable<T>({
                       return (
                         <td
                           className={cn(
-                            'border-b border-border px-4 py-3.5 align-top text-sm text-foreground',
+                            'premium-table-cell px-4 py-3.5 align-top text-sm',
                             alignClass,
                             column.className,
                           )}
@@ -604,7 +604,7 @@ export function DynamicTable<T>({
                       )
                     })}
                     {rowActions ? (
-                      <td className="sticky right-0 border-b border-border bg-white px-4 py-3.5 text-right align-top group-hover:bg-surface-muted/70">
+                      <td className="premium-table-cell sticky right-0 px-4 py-3.5 text-right align-top group-hover:bg-surface-muted/70">
                         <div
                           className="flex items-center justify-end gap-1"
                           onClick={(event) => event.stopPropagation()}
@@ -665,7 +665,7 @@ export function TableShell<T extends object>({
 
   if (isLoading) {
     return (
-      <Card className="overflow-hidden">
+      <Card className="premium-table-card overflow-hidden">
         <div className="space-y-4 p-4">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-full" />
@@ -690,10 +690,10 @@ export function TableShell<T extends object>({
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="premium-table-card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="min-w-full border-collapse">
-          <thead className="bg-surface-muted text-left text-xs uppercase tracking-wide text-muted">
+          <thead className="premium-table-head text-left text-xs uppercase tracking-wide">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
@@ -713,7 +713,7 @@ export function TableShell<T extends object>({
             {table.getRowModel().rows.map((row) => (
               <tr className="border-t border-border" key={row.id}>
                 {row.getVisibleCells().map((cell) => (
-                  <td className="px-4 py-3 text-sm text-foreground" key={cell.id}>
+                  <td className="premium-table-cell px-4 py-3 text-sm" key={cell.id}>
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
