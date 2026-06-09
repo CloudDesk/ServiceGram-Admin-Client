@@ -241,11 +241,13 @@
   }
 
   .premium-page-surface {
-    background: var(--adaptive-canvas);
+  background:
+  radial-gradient(circle at top left, rgb(255 255 255 / 0.9), transparent 28%),
+  linear-gradient(180deg, #f7f7f9 0%, #f3f3f6 100%);
   }
 
   .page-content {
-    @apply w-full px-4 py-5 sm:px-6 lg:px-8;
+    @apply w-full px-4 py-7 sm:px-6 lg:px-10;
   }
 
   /* =========================
@@ -264,9 +266,10 @@
   .premium-content-card,
   .card {
     border: 1px solid var(--adaptive-border);
-    border-radius: 1rem;
+    border-radius: 1.25rem;
     background: var(--adaptive-surface);
-    box-shadow: var(--adaptive-shadow-sm);
+    box-shadow: 0 18px 45px rgb(0 0 0 / 0.045),
+            inset 0 1px 0 rgb(255 255 255 / 0.75);
   }
 
   .premium-content-card,
@@ -296,11 +299,11 @@
     position: relative;
     overflow: hidden;
     border-right: 1px solid var(--adaptive-border);
-    background: var(--adaptive-glass-bg);
+    background:   linear-gradient(180deg, rgb(255 255 255 / 0.82), rgb(255 255 255 / 0.58)),
+  radial-gradient(circle at top left, rgb(255 255 255 / 0.95), transparent 38%);
     box-shadow:
-      0 18px 48px rgb(0 0 0 / 0.12),
-      inset 0 1px 0 rgb(255 255 255 / 0.04),
-      inset 0 -1px 0 rgb(255 255 255 / 0.02);
+  24px 0 60px rgb(0 0 0 / 0.05),
+  inset -1px 0 0 rgb(255 255 255 / 0.7);
     backdrop-filter: blur(30px) saturate(190%);
     -webkit-backdrop-filter: blur(30px) saturate(190%);
   }
@@ -391,11 +394,12 @@
 
   .premium-sidebar-link-active {
     border-color: rgb(0 102 204 / 0.38);
-    background: rgb(0 102 204 / 0.16);
+    background: 
+  linear-gradient(135deg, rgb(0 102 204 / 0.13), rgb(0 102 204 / 0.06));
     color: var(--adaptive-text-main);
     box-shadow:
-      0 14px 30px rgb(0 0 0 / 0.12),
-      inset 0 1px 0 rgb(255 255 255 / 0.06);
+  0 14px 34px rgb(0 102 204 / 0.16),
+  inset 0 1px 0 rgb(255 255 255 / 0.65);
   }
 
   .premium-sidebar-icon {
@@ -404,9 +408,9 @@
     height: 2rem;
     align-items: center;
     justify-content: center;
-    border: 1px solid var(--adaptive-border);
+    border: 1px solid rgb(0 0 0 / 0.06);
     border-radius: 0.9rem;
-    background: var(--adaptive-search-bg);
+    background: rgb(255 255 255 / 0.48);
     color: var(--adaptive-text-muted);
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
     transition:
@@ -435,9 +439,10 @@
     min-height: var(--spacing-topbar);
     border-bottom: 1px solid var(--adaptive-border);
     border-top: var(--adaptive-glass-highlight);
-    background: var(--adaptive-glass-bg-vertical);
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.86), rgb(255 255 255 / 0.62));
     backdrop-filter: blur(30px) saturate(190%);
     -webkit-backdrop-filter: blur(30px) saturate(190%);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.035);
   }
 
   .app-bar-actions {
@@ -450,10 +455,13 @@
     min-height: 2.25rem;
     border: 1px solid var(--adaptive-border);
     border-radius: 0.625rem;
-    background: var(--adaptive-search-bg);
+    background: rgb(255 255 255 / 0.58);
     color: var(--adaptive-text-main);
     font-size: 0.875rem;
     outline: none;
+    box-shadow:
+  inset 0 1px 0 rgb(255 255 255 / 0.75),
+  0 6px 18px rgb(0 0 0 / 0.035);
     transition:
       background-color 180ms ease,
       border-color 180ms ease,
@@ -662,9 +670,11 @@
   .premium-table-card {
     overflow: hidden;
     border: 1px solid var(--adaptive-border);
-    border-radius: 1rem;
+    border-radius: 1.25rem;
     background: var(--adaptive-surface);
-    box-shadow: var(--adaptive-shadow-md);
+    box-shadow: 
+  0 22px 55px rgb(0 0 0 / 0.055),
+  inset 0 1px 0 rgb(255 255 255 / 0.8);
   }
 
   .premium-table-toolbar {
@@ -681,7 +691,7 @@
 
   .premium-table-head,
   .premium-table thead {
-    background: color-mix(in srgb, var(--adaptive-canvas) 92%, var(--adaptive-surface));
+    background: #f7f7f9;
     color: color-mix(in srgb, var(--adaptive-text-main) 72%, var(--adaptive-text-muted));
   }
 
