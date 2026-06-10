@@ -10,7 +10,7 @@ export interface AppUser {
   name: string
   email: string
   role: Role
-  permissions: PermissionKey[]
+  permissions: string[]
 }
 
 export interface ModuleMetric {
@@ -28,19 +28,29 @@ export interface ModuleRecord {
 }
 
 export type PermissionKey =
-  | 'dashboard.view'
-  | 'customers.view'
-  | 'vendors.view'
-  | 'vendorOnboarding.view'
-  | 'orders.view'
-  | 'manualLogistics.view'
-  | 'payments.view'
-  | 'payouts.view'
-  | 'reels.view'
-  | 'notifications.view'
-  | 'content.view'
-  | 'reports.view'
-  | 'settings.view'
-  | 'adminUsers.view'
-  | 'audit.view'
-  | 'profile.view'
+  | 'rbac:manage'
+  | 'permissions:read'
+  | 'roles:read'
+  | 'roles:create'
+  | 'roles:update'
+  | 'roles:manage_permissions'
+  | 'admin_users:read'
+  | 'admin_users:create'
+  | 'admin_users:update'
+  | 'admin_users:force_logout'
+  | 'vendors:read'
+  | 'vendors:approve'
+  | 'orders:read'
+  | 'orders:update_status'
+  | 'payments:read'
+  | 'payments:reconcile'
+  | 'payments:refund'
+  | 'payouts:read'
+  | 'payouts:approve'
+  | 'reels:read'
+  | 'reels:moderate'
+  | 'reports:read'
+  | 'reports:export'
+  | 'settings:read'
+  | 'settings:update'
+  | 'audit:read'

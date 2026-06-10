@@ -9,7 +9,27 @@ import { routePaths } from '../../../config/routes'
 import { useToast } from '../../../hooks/useToast'
 import { PasswordInput } from './PasswordInput'
 import { useLogin } from '../hooks/useLogin'
+import { LoginServiceError } from '../types/auth.types'
 import { type LoginFormValues, loginSchema } from '../schemas/auth.schema'
+
+const ADMIN_DEVICE_ID = 'admin-web-macbook-pro'
+
+function hasFieldErrors(
+  details: unknown,
+): details is {
+  fieldErrors: Array<{
+    field: string
+    code: string
+    message: string
+  }>
+} {
+  return Boolean(
+    details &&
+      typeof details === 'object' &&
+      'fieldErrors' in details &&
+      Array.isArray((details as { fieldErrors?: unknown }).fieldErrors),
+  )
+}
 
 export function LoginForm() {
   const navigate = useNavigate()
@@ -19,6 +39,7 @@ export function LoginForm() {
     formState: { errors },
     handleSubmit,
     register,
+    setError,
     setValue,
     watch,
   } = useForm<LoginFormValues>({
@@ -33,13 +54,49 @@ export function LoginForm() {
     <form
       className="relative z-10 space-y-4"
       onSubmit={handleSubmit(async (values) => {
-        await mutation.mutateAsync(values)
-        pushToast({
-          tone: 'success',
-          title: 'Signed in successfully.',
-          description: 'Loading your admin workspace.',
-        })
-        navigate(routePaths.dashboard)
+        try {
+          await mutation.mutateAsync({
+            ...values,
+            deviceId: ADMIN_DEVICE_ID,
+          })
+
+          pushToast({
+            tone: 'success',
+            title: 'Signed in successfully.',
+            description: 'Loading your admin workspace.',
+          })
+          navigate(routePaths.dashboard)
+        } catch (error) {
+          if (error instanceof LoginServiceError) {
+            if (error.status === 400) {
+              const details = error.response?.details
+
+              if (hasFieldErrors(details)) {
+                details.fieldErrors.forEach((fieldError) => {
+                  if (fieldError.field === 'email' || fieldError.field === 'password') {
+                    setError(fieldError.field, {
+                      type: fieldError.code,
+                      message: fieldError.message,
+                    })
+                  }
+                })
+              }
+
+              return
+            }
+
+            if (error.status === 401) {
+              pushToast({
+                tone: 'danger',
+                title: 'Login failed.',
+                description:
+                  error.response?.message ?? 'Invalid email or password.',
+              })
+            }
+
+            return
+          }
+        }
       })}
     >
       <div className="space-y-2">

@@ -14,11 +14,10 @@ import { Button } from "../ui/Button";
 import { routePaths } from "../../config/routes";
 import { useAuthStore } from "../../store/authStore";
 import { useUiStore } from "../../store/uiStore";
-import { storageKeys } from "../../lib/storage";
 
 export function Topbar() {
   const navigate = useNavigate();
-  const logout = useAuthStore((state) => state.logout);
+  const clearSession = useAuthStore((state) => state.clearSession);
   const user = useAuthStore((state) => state.user);
   const openMobileSidebar = useUiStore((state) => state.openMobileSidebar);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -51,8 +50,7 @@ export function Topbar() {
   }, [profileOpen]);
 
   const handleLogout = () => {
-    window.localStorage.removeItem(storageKeys.authSession);
-    logout();
+    clearSession();
     setProfileOpen(false);
     navigate(routePaths.login);
   };

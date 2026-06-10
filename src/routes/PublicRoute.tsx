@@ -3,13 +3,13 @@ import { routePaths } from '../config/routes'
 import { useAuthSession } from '../features/auth/hooks/useAuthSession'
 
 export function PublicRoute() {
-  const { isHydrated, user } = useAuthSession()
+  const { isHydrated, accessToken } = useAuthSession()
 
   if (!isHydrated) {
     return null
   }
 
-  if (user) {
+  if (accessToken) {
     return <Navigate replace to={routePaths.dashboard} />
   }
 

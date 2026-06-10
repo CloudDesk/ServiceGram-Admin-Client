@@ -1,7 +1,5 @@
-import type { PermissionKey } from '../types/common.types'
-
-export const permissions: Record<string, PermissionKey> = {
-  dashboard: 'orders:read',
+export const routePermissions = {
+  adminUsers: 'admin_users:read',
   customers: 'vendors:read',
   vendors: 'vendors:read',
   vendorOnboarding: 'vendors:approve',
@@ -14,7 +12,6 @@ export const permissions: Record<string, PermissionKey> = {
   content: 'rbac:manage',
   reports: 'reports:read',
   settings: 'settings:read',
-  adminUsers: 'admin_users:read',
   audit: 'audit:read',
   profile: 'settings:read',
-}
+} as const

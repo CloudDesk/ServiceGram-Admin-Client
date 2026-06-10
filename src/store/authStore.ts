@@ -1,20 +1,63 @@
 import { create } from 'zustand'
-import type { AppUser, PermissionKey } from '../types/common.types'
+import { storageKeys } from '../lib/storage'
+import type { AppUser } from '../types/common.types'
+import type { AuthSession } from '../features/auth/types/auth.types'
 
 interface AuthState {
   isHydrated: boolean
+  session: AuthSession | null
   user: AppUser | null
-  setUser: (user: AppUser | null) => void
+  accessToken: string | null
+  permissions: string[]
   setHydrated: (value: boolean) => void
-  can: (permission: PermissionKey) => boolean
-  logout: () => void
+  setSession: (session: AuthSession | null) => void
+  clearSession: () => void
+  can: (permission: string) => boolean
+}
+
+function persistSession(session: AuthSession | null) {
+  if (!session) {
+    window.localStorage.removeItem(storageKeys.authSession)
+    return
+  }
+
+  window.localStorage.setItem(storageKeys.authSession, JSON.stringify(session))
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   isHydrated: false,
+  session: null,
   user: null,
-  setUser: (user) => set({ user }),
+  accessToken: null,
+  permissions: [],
   setHydrated: (isHydrated) => set({ isHydrated }),
-  can: (permission) => get().user?.permissions.includes(permission) ?? false,
-  logout: () => set({ user: null, isHydrated: true }),
+  setSession: (session) => {
+    persistSession(session)
+
+    set({
+      session,
+      user: session?.user ?? null,
+      accessToken: session?.accessToken ?? null,
+      permissions: session?.user.permissions ?? [],
+    })
+  },
+  clearSession: () => {
+    persistSession(null)
+
+    set({
+      session: null,
+      user: null,
+      accessToken: null,
+      permissions: [],
+    })
+  },
+  can: (permission) => {
+    const isSuperAdmin = get().session?.admin.roleCodes.includes('SUPER_ADMIN') ?? false
+
+    if (isSuperAdmin) {
+      return true
+    }
+
+    return get().permissions.includes(permission)
+  },
 }))

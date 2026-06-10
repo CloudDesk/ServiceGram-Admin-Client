@@ -5,13 +5,13 @@ import { useAuthSession } from '../features/auth/hooks/useAuthSession'
 
 export function ProtectedRoute() {
   const location = useLocation()
-  const { isHydrated, user } = useAuthSession()
+  const { isHydrated, accessToken } = useAuthSession()
 
   if (!isHydrated) {
     return <GlobalLoadingBar />
   }
 
-  if (!user) {
+  if (!accessToken) {
     return <Navigate replace state={{ from: location }} to={routePaths.login} />
   }
 

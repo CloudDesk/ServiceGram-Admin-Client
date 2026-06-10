@@ -2,22 +2,22 @@ import type { PropsWithChildren } from 'react'
 import { useEffect } from 'react'
 import { storageKeys } from '../lib/storage'
 import { safeJsonParse } from '../utils/safeJson'
-import type { AppUser } from '../types/common.types'
+import type { AuthSession } from '../features/auth/types/auth.types'
 import { useAuthStore } from '../store/authStore'
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const setHydrated = useAuthStore((state) => state.setHydrated)
-  const setUser = useAuthStore((state) => state.setUser)
+  const setSession = useAuthStore((state) => state.setSession)
 
   useEffect(() => {
-    const persistedSession = safeJsonParse<AppUser | null>(
+    const persistedSession = safeJsonParse<AuthSession | null>(
       window.localStorage.getItem(storageKeys.authSession),
       null,
     )
 
-    setUser(persistedSession)
+    setSession(persistedSession)
     setHydrated(true)
-  }, [setHydrated, setUser])
+  }, [setHydrated, setSession])
 
   return children
 }

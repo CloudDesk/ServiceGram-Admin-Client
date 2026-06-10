@@ -3,7 +3,6 @@ import { NavLink } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { navigationItems } from "../../config/navigation";
 import { routePaths } from "../../config/routes";
-import { storageKeys } from "../../lib/storage";
 import { useAuthStore } from "../../store/authStore";
 import { useUiStore } from "../../store/uiStore";
 import { cn } from "../../utils/cn";
@@ -22,7 +21,7 @@ function SidebarPanel({
   onToggleCollapse,
 }: SidebarPanelProps) {
   const can = useAuthStore((state) => state.can);
-  const logout = useAuthStore((state) => state.logout);
+  const clearSession = useAuthStore((state) => state.clearSession);
   const navigate = useNavigate();
 
   return (
@@ -77,7 +76,7 @@ function SidebarPanel({
       <nav className="premium-sidebar-scroll flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
           {navigationItems
-            .filter((item) => item.permission && can(item.permission))
+            .filter((item) => item.alwaysVisible || (item.permission && can(item.permission)))
             .map((item) => {
               const Icon = item.icon;
 
@@ -122,8 +121,7 @@ function SidebarPanel({
             className="premium-sidebar-link flex w-full items-center gap-3 px-3.5 py-3 text-sm font-medium text-adaptive-muted"
             type="button"
             onClick={() => {
-              window.localStorage.removeItem(storageKeys.authSession);
-              logout();
+              clearSession();
               onClose?.();
               navigate(routePaths.login);
             }}

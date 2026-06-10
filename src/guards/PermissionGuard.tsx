@@ -1,1 +1,1 @@
-export { RoleGuard as PermissionGuard } from '../components/ui/RoleGuard'
+export { PermissionGuard } from '../components/ui/PermissionGuard'
