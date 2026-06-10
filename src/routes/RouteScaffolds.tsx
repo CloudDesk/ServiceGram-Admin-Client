@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { PageContextHeader } from '../components/ui/PageHeader'
 import type { DynamicTableColumn } from '../components/ui/Table'
 import { DynamicTable } from '../components/ui/Table'
+import { DetailPageHeader } from '../components/layout/DetailPageHeader'
 import { ModuleScaffoldPage } from '../components/layout/ModuleScaffoldPage'
 import { PageContainer } from '../components/layout/PageContainer'
 import type { ModuleRecord } from '../types/common.types'
@@ -49,16 +49,26 @@ const detailColumns: DynamicTableColumn<ModuleRecord>[] = [
 
 export function RecordDetailPage({
   description: _description,
+  listHref,
+  listLabel,
   record,
   title,
 }: {
   description?: string
+  listHref: string
+  listLabel: string
   record: ModuleRecord
   title: string
 }) {
   return (
     <PageContainer>
-      <PageContextHeader compact title={title} />
+      <DetailPageHeader
+        description={record.id}
+        listHref={listHref}
+        listLabel={listLabel}
+        recordName={record.name}
+        title={title}
+      />
       <DynamicTable
         bodyMaxHeight={320}
         columns={detailColumns}

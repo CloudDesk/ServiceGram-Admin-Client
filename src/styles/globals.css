@@ -250,6 +250,19 @@
     @apply w-full px-4 py-7 sm:px-6 lg:px-10;
   }
 
+  .table-skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(
+      90deg,
+      rgb(226 232 240 / 0.72) 0%,
+      rgb(248 250 252 / 0.96) 48%,
+      rgb(226 232 240 / 0.72) 100%
+    );
+    background-size: 220% 100%;
+    animation: table-skeleton-shimmer 1.45s ease-in-out infinite;
+  }
+
   /* =========================
      Glass / Surface
      ========================= */
@@ -1066,5 +1079,15 @@
 
   .auth-compact-form {
     max-width: 31.25rem;
+  }
+}
+
+@keyframes table-skeleton-shimmer {
+  0% {
+    background-position: 130% 0;
+  }
+
+  100% {
+    background-position: -130% 0;
   }
 }

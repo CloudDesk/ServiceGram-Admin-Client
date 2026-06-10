@@ -3,6 +3,17 @@ import { useAuthStore } from '../store/authStore'
 
 type ApiRequestInit = RequestInit
 
+function buildAuthHeaders(headers?: HeadersInit) {
+  const { accessToken } = useAuthStore.getState()
+  const merged = new Headers(headers)
+
+  if (accessToken && !merged.has('Authorization')) {
+    merged.set('Authorization', `Bearer ${accessToken}`)
+  }
+
+  return merged
+}
+
 function handleUnauthorized() {
   const { clearSession } = useAuthStore.getState()
 
@@ -14,7 +25,10 @@ function handleUnauthorized() {
 }
 
 async function request(input: string, init?: ApiRequestInit) {
-  const response = await fetch(input, init)
+  const response = await fetch(input, {
+    ...init,
+    headers: buildAuthHeaders(init?.headers),
+  })
 
   if (response.status === 401) {
     handleUnauthorized()

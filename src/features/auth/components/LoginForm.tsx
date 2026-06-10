@@ -17,11 +17,11 @@ const ADMIN_DEVICE_ID = 'admin-web-macbook-pro'
 function hasFieldErrors(
   details: unknown,
 ): details is {
-  fieldErrors: Array<{
+  fieldErrors: {
     field: string
     code: string
     message: string
-  }>
+  }[]
 } {
   return Boolean(
     details &&

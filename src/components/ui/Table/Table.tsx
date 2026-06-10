@@ -21,7 +21,6 @@ import { Button } from '../Button'
 import { Card } from '../Card'
 import { EmptyState } from '../EmptyState'
 import { ErrorState } from '../ErrorState'
-import { Skeleton } from '../Skeleton'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -117,6 +116,22 @@ interface LegacyTableProps<T extends object> {
   pageSize?: number
 }
 
+type TableSkeletonColumn = Pick<
+  DynamicTableColumn<unknown>,
+  'align' | 'key' | 'minWidth' | 'width'
+>
+
+interface TableSkeletonProps {
+  columns?: TableSkeletonColumn[]
+  columnCount?: number
+  hasActions?: boolean
+  hasFooter?: boolean
+  hasToolbar?: boolean
+  rowCount?: number
+  stickyHeader?: boolean
+  className?: string
+}
+
 function toCssSize(value?: number | string) {
   if (typeof value === 'number') {
     return `${value}px`
@@ -145,6 +160,150 @@ function getFlexAlignClasses(align: TextAlign = 'left') {
     default:
       return 'justify-start'
   }
+}
+
+function TableSkeletonBlock({
+  className,
+}: {
+  className?: string
+}) {
+  return (
+    <div
+      className={cn(
+        'table-skeleton-shimmer h-4 rounded-full transition-opacity duration-300',
+        className,
+      )}
+    />
+  )
+}
+
+export function TableSkeleton({
+  className,
+  columnCount = 5,
+  columns,
+  hasActions = false,
+  hasFooter = false,
+  hasToolbar = false,
+  rowCount = 6,
+  stickyHeader = true,
+}: TableSkeletonProps) {
+  const skeletonColumns =
+    columns?.length
+      ? columns
+      : Array.from({ length: columnCount }).map<TableSkeletonColumn>((_, index) => ({
+          key: `skeleton-${index}`,
+        }))
+
+  return (
+    <Card className={cn('premium-table-card overflow-hidden', className)}>
+      {hasToolbar ? (
+        <div className="premium-table-toolbar flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <TableSkeletonBlock className="h-5 w-40" />
+          <TableSkeletonBlock className="h-9 w-48 rounded-control" />
+        </div>
+      ) : null}
+      <div className="overflow-x-auto">
+        <div className="overflow-hidden">
+          <table className="min-w-full border-separate border-spacing-0">
+            <thead
+              className={cn(
+                'premium-table-head text-left text-[0.7rem] uppercase tracking-[0.08em]',
+                stickyHeader && 'sticky top-0 z-10',
+              )}
+            >
+              <tr>
+                {skeletonColumns.map((column, index) => {
+                  const alignClass = getAlignClasses(column.align)
+                  const style: CSSProperties = {
+                    width: toCssSize(column.width),
+                    minWidth: toCssSize(column.minWidth ?? column.width),
+                  }
+
+                  return (
+                    <th
+                      className={cn('px-4 py-3 font-semibold', alignClass)}
+                      key={column.key ?? `skeleton-head-${index}`}
+                      style={style}
+                    >
+                      <TableSkeletonBlock
+                        className={cn(
+                          'h-3',
+                          index % 3 === 0
+                            ? 'w-20'
+                            : index % 3 === 1
+                              ? 'w-28'
+                              : 'w-16',
+                          column.align === 'right' && 'ml-auto',
+                          column.align === 'center' && 'mx-auto',
+                        )}
+                      />
+                    </th>
+                  )
+                })}
+                {hasActions ? (
+                  <th className="premium-table-head sticky right-0 z-10 px-4 py-3 text-right font-semibold">
+                    <TableSkeletonBlock className="ml-auto h-3 w-16" />
+                  </th>
+                ) : null}
+              </tr>
+            </thead>
+            <tbody className="premium-table-body">
+              {Array.from({ length: rowCount }).map((_, rowIndex) => (
+                <tr className="transition" key={`skeleton-row-${rowIndex}`}>
+                  {skeletonColumns.map((column, columnIndex) => {
+                    const alignClass = getAlignClasses(column.align)
+                    const style: CSSProperties = {
+                      width: toCssSize(column.width),
+                      minWidth: toCssSize(column.minWidth ?? column.width),
+                    }
+
+                    return (
+                      <td
+                        className={cn(
+                          'premium-table-cell px-4 py-3.5 align-top text-sm',
+                          alignClass,
+                        )}
+                        key={`${column.key ?? columnIndex}-${rowIndex}`}
+                        style={style}
+                      >
+                        <TableSkeletonBlock
+                          className={cn(
+                            rowIndex % 2 === 0 ? 'w-4/5' : 'w-2/3',
+                            columnIndex % 4 === 0 && 'w-3/5',
+                            columnIndex % 4 === 2 && 'w-1/2',
+                            column.align === 'right' && 'ml-auto',
+                            column.align === 'center' && 'mx-auto',
+                          )}
+                        />
+                      </td>
+                    )
+                  })}
+                  {hasActions ? (
+                    <td className="premium-table-cell sticky right-0 px-4 py-3.5 text-right align-top">
+                      <div className="flex items-center justify-end gap-2">
+                        <TableSkeletonBlock className="h-8 w-20 rounded-control" />
+                        <TableSkeletonBlock className="h-8 w-9 rounded-control" />
+                      </div>
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {hasFooter ? (
+        <div className="premium-table-footer flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <TableSkeletonBlock className="h-4 w-36" />
+          <div className="flex items-center gap-2">
+            <TableSkeletonBlock className="h-9 w-9 rounded-control" />
+            <TableSkeletonBlock className="h-4 w-20" />
+            <TableSkeletonBlock className="h-9 w-9 rounded-control" />
+          </div>
+        </div>
+      ) : null}
+    </Card>
+  )
 }
 
 function normalizeValue(value: unknown) {
@@ -439,16 +598,14 @@ export function DynamicTable<T>({
 
   if (loading) {
     return (
-      <Card className={cn('premium-table-card overflow-hidden', className)}>
-        {toolbar ? <div className="premium-table-toolbar px-4 py-3">{toolbar}</div> : null}
-        <div className="space-y-3 p-4">
-          <Skeleton className="h-11 w-full" />
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton className="h-14 w-full" key={index} />
-          ))}
-        </div>
-        {footerNode}
-      </Card>
+      <TableSkeleton
+        className={className}
+        columns={columns}
+        hasActions={Boolean(rowActions)}
+        hasFooter={Boolean(footerNode)}
+        hasToolbar={Boolean(toolbar)}
+        stickyHeader={stickyHeader}
+      />
     )
   }
 
@@ -665,13 +822,12 @@ export function TableShell<T extends object>({
 
   if (isLoading) {
     return (
-      <Card className="premium-table-card overflow-hidden">
-        <div className="space-y-4 p-4">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      </Card>
+      <TableSkeleton
+        columnCount={columns.length}
+        hasFooter={Boolean(total)}
+        rowCount={5}
+        stickyHeader={false}
+      />
     )
   }
 

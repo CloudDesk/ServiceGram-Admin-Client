@@ -1,8 +1,8 @@
-export function buildQueryParams(params: Record<string, string | number | undefined>) {
+export function buildQueryParams(params: object) {
   const searchParams = new URLSearchParams()
 
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== '') {
+  Object.entries(params as Record<string, unknown>).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
       searchParams.set(key, String(value))
     }
   })

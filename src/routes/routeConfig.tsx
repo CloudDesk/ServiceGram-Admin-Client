@@ -15,6 +15,8 @@ import { LoginPage } from '../features/auth/pages/LoginPage'
 import { ForgotPasswordPage } from '../features/auth/pages/ForgotPasswordPage'
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
 import { DashboardPage } from '../features/dashboard/pages/DashboardPage'
+import { VendorsPage } from '../features/vendors/components/VendorsPage'
+import { VendorDetailPage } from '../features/vendors/components/VendorDetailPage'
 import { AdminLayout } from '../layouts/AdminLayout'
 import { ModuleLayout } from '../layouts/ModuleLayout'
 import { ProtectedRoute } from './ProtectedRoute'
@@ -25,7 +27,7 @@ import { PermissionGuard } from '../components/ui/PermissionGuard'
 
 const [primaryUser] = mockUsers
 const [primaryCustomer] = mockCustomers
-const [primaryVendor, secondaryVendor] = mockVendors
+const [, secondaryVendor] = mockVendors
 const [primaryOrder] = mockOrders
 const [primaryPayment] = mockPayments
 const [primaryPayout] = mockPayouts
@@ -34,7 +36,6 @@ const [primaryReel] = mockReels
 if (
   !primaryUser ||
   !primaryCustomer ||
-  !primaryVendor ||
   !secondaryVendor ||
   !primaryOrder ||
   !primaryPayment ||
@@ -96,6 +97,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Foundation form route for creating a new admin user."
+                        listHref={routePaths.adminUsers}
+                        listLabel="Users"
                         record={{
                           id: 'FORM',
                           name: 'Create Admin User',
@@ -112,6 +115,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Detail shell for profile, role and access, login history, session history, and audit activity."
+                        listHref={routePaths.adminUsers}
+                        listLabel="Users"
                         record={{
                           id: primaryUser.id,
                           name: primaryUser.name,
@@ -143,6 +148,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Detail shell with overview, orders, payments, notes, and activity tabs ready for backend integration."
+                        listHref={routePaths.customers}
+                        listLabel="Customers"
                         record={primaryCustomer}
                         title="Customer Detail"
                       />
@@ -155,23 +162,11 @@ export const appRoutes: RouteObject[] = [
                 children: [
                   {
                     path: routePaths.vendors,
-                    element: (
-                      <ModulePageFactory
-                        description="Vendor operations shell covering approvals, documents, activity, pricing, and payments."
-                        records={mockVendors}
-                        title="Vendors"
-                      />
-                    ),
+                    element: <VendorsPage />,
                   },
                   {
                     path: `${routePaths.vendors}/:vendorId`,
-                    element: (
-                      <RecordDetailPage
-                        description="Detail shell for profile, services, orders, documents, payments, notes, and activity."
-                        record={primaryVendor}
-                        title="Vendor Detail"
-                      />
-                    ),
+                    element: <VendorDetailPage />,
                   },
                   {
                     path: routePaths.vendorOnboarding,
@@ -188,6 +183,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Detail shell for stage review, document verification, and approval decisions."
+                        listHref={routePaths.vendorOnboarding}
+                        listLabel="Vendor Onboarding"
                         record={secondaryVendor}
                         title="Onboarding Detail"
                       />
@@ -213,6 +210,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Detail shell for customer, vendor, payment, notes, action history, and manual logistics."
+                        listHref={routePaths.orders}
+                        listLabel="Orders"
                         record={primaryOrder}
                         title="Order Detail"
                       />
@@ -233,6 +232,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Route placeholder for order-specific logistics actions, proof uploads, and exception handling."
+                        listHref={routePaths.manualLogistics}
+                        listLabel="Manual Logistics"
                         record={primaryOrder}
                         title="Manual Logistics Detail"
                       />
@@ -258,6 +259,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Detail shell for payment context, status, references, and refund actions."
+                        listHref={routePaths.payments}
+                        listLabel="Payments"
                         record={primaryPayment}
                         title="Payment Detail"
                       />
@@ -283,6 +286,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Detail shell for bank verification, deductions, references, and payout decisions."
+                        listHref={routePaths.payouts}
+                        listLabel="Payouts"
                         record={primaryPayout}
                         title="Payout Detail"
                       />
@@ -308,6 +313,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Detail shell for video review, moderation history, and approval actions."
+                        listHref={routePaths.reels}
+                        listLabel="Reels"
                         record={primaryReel}
                         title="Reel Detail"
                       />
@@ -346,6 +353,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Composer shell for title, body, audience, schedule, preview, and confirmation."
+                        listHref={routePaths.notifications}
+                        listLabel="Notifications"
                         record={{
                           id: 'DRAFT',
                           name: 'Notification Composer',
@@ -362,6 +371,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Detail shell for campaign status, audience summary, and send history."
+                        listHref={routePaths.notifications}
+                        listLabel="Notifications"
                         record={{
                           id: 'NTF-001',
                           name: 'Monsoon campaign reminder',
@@ -401,6 +412,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Editor shell for draft, preview, publish, archive, and rollback flows."
+                        listHref={routePaths.content}
+                        listLabel="Content"
                         record={{
                           id: 'CNT-101',
                           name: 'FAQ Landing Content',
@@ -440,6 +453,8 @@ export const appRoutes: RouteObject[] = [
                     element: (
                       <RecordDetailPage
                         description="Report detail shell with filters, export, retry, and long-running job placeholders."
+                        listHref={routePaths.reports}
+                        listLabel="Reports"
                         record={{
                           id: 'RPT-OPS-01',
                           name: 'Order lifecycle report',

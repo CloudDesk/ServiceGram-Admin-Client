@@ -44,11 +44,11 @@ export interface LoginValidationErrorResponse {
   details: ApiErrorDetails & {
     reason: string
     action: string
-    fieldErrors: Array<{
+    fieldErrors: {
       field: string
       code: string
       message: string
-    }>
+    }[]
   }
   meta?: LoginResponse['meta']
 }
