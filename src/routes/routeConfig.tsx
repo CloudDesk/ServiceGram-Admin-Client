@@ -1,6 +1,5 @@
 import type { RouteObject } from 'react-router-dom'
 import { Link } from 'react-router-dom'
-import { mockCustomers } from '../mock/db/customers.mock'
 import { mockOrders } from '../mock/db/orders.mock'
 import { mockPayments } from '../mock/db/payments.mock'
 import { mockPayouts } from '../mock/db/payouts.mock'
@@ -17,6 +16,8 @@ import { LoginPage } from '../features/auth/pages/LoginPage'
 import { ForgotPasswordPage } from '../features/auth/pages/ForgotPasswordPage'
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
 import { DashboardPage } from '../features/dashboard/pages/DashboardPage'
+import { CustomerDetailPage } from '../features/customers/components/CustomerDetailPage'
+import { CustomersPage } from '../features/customers/components/CustomersPage'
 import { OrderDetailPage } from '../features/orders/components/OrderDetailPage'
 import { OrdersPage } from '../features/orders/components/OrdersPage'
 import { PaymentDetailPage } from '../features/payments/components/PaymentDetailPage'
@@ -37,14 +38,12 @@ import { ModulePageFactory, RecordDetailPage } from './RouteScaffolds'
 import { Button } from '../components/ui/Button'
 import { PermissionGuard } from '../components/ui/PermissionGuard'
 
-const [primaryCustomer] = mockCustomers
 const [, secondaryVendor] = mockVendors
 const [primaryOrder] = mockOrders
 const [primaryPayment] = mockPayments
 const [primaryPayout] = mockPayouts
 
 if (
-  !primaryCustomer ||
   !secondaryVendor ||
   !primaryOrder ||
   !primaryPayment ||
@@ -102,25 +101,11 @@ export const appRoutes: RouteObject[] = [
                 children: [
                   {
                     path: routePaths.customers,
-                    element: (
-                      <ModulePageFactory
-                        description="Customer management shell with search, filters, list behavior, and mock-backed detail routing."
-                        records={mockCustomers}
-                        title="Customers"
-                      />
-                    ),
+                    element: <CustomersPage />,
                   },
                   {
                     path: `${routePaths.customers}/:customerId`,
-                    element: (
-                      <RecordDetailPage
-                        description="Detail shell with overview, orders, payments, notes, and activity tabs ready for backend integration."
-                        listHref={routePaths.customers}
-                        listLabel="Customers"
-                        record={primaryCustomer}
-                        title="Customer Detail"
-                      />
-                    ),
+                    element: <CustomerDetailPage />,
                   },
                 ],
               },

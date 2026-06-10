@@ -1,40 +1,38 @@
-import { zodResolver } from '@hookform/resolvers/zod'
-import { LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
-import { useForm } from 'react-hook-form'
-import { Link, useNavigate } from 'react-router-dom'
-import { Button } from '../../../components/ui/Button'
-import { Input } from '../../../components/ui/Input'
-import { FormErrorSummary } from '../../../components/feedback/FormErrorSummary'
-import { routePaths } from '../../../config/routes'
-import { useToast } from '../../../hooks/useToast'
-import { PasswordInput } from './PasswordInput'
-import { useLogin } from '../hooks/useLogin'
-import { LoginServiceError } from '../types/auth.types'
-import { type LoginFormValues, loginSchema } from '../schemas/auth.schema'
+import { zodResolver } from "@hookform/resolvers/zod";
+import { LockKeyhole, Mail, ShieldCheck } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { Link, useNavigate } from "react-router-dom";
+import { Button } from "../../../components/ui/Button";
+import { Input } from "../../../components/ui/Input";
+import { FormErrorSummary } from "../../../components/feedback/FormErrorSummary";
+import { routePaths } from "../../../config/routes";
+import { useToast } from "../../../hooks/useToast";
+import { PasswordInput } from "./PasswordInput";
+import { useLogin } from "../hooks/useLogin";
+import { LoginServiceError } from "../types/auth.types";
+import { type LoginFormValues, loginSchema } from "../schemas/auth.schema";
 
-const ADMIN_DEVICE_ID = 'admin-web-macbook-pro'
+const ADMIN_DEVICE_ID = "admin-web-macbook-pro";
 
-function hasFieldErrors(
-  details: unknown,
-): details is {
+function hasFieldErrors(details: unknown): details is {
   fieldErrors: {
-    field: string
-    code: string
-    message: string
-  }[]
+    field: string;
+    code: string;
+    message: string;
+  }[];
 } {
   return Boolean(
     details &&
-      typeof details === 'object' &&
-      'fieldErrors' in details &&
-      Array.isArray((details as { fieldErrors?: unknown }).fieldErrors),
-  )
+    typeof details === "object" &&
+    "fieldErrors" in details &&
+    Array.isArray((details as { fieldErrors?: unknown }).fieldErrors),
+  );
 }
 
 export function LoginForm() {
-  const navigate = useNavigate()
-  const { pushToast } = useToast()
-  const mutation = useLogin()
+  const navigate = useNavigate();
+  const { pushToast } = useToast();
+  const mutation = useLogin();
   const {
     formState: { errors },
     handleSubmit,
@@ -45,10 +43,10 @@ export function LoginForm() {
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: 'aparna@servicegram.local',
-      password: 'Password@123',
+      email: "aparna@servicegram.local",
+      password: "Password@123",
     },
-  })
+  });
 
   return (
     <form
@@ -58,43 +56,46 @@ export function LoginForm() {
           await mutation.mutateAsync({
             ...values,
             deviceId: ADMIN_DEVICE_ID,
-          })
+          });
 
           pushToast({
-            tone: 'success',
-            title: 'Signed in successfully.',
-            description: 'Loading your admin workspace.',
-          })
-          navigate(routePaths.dashboard)
+            tone: "success",
+            title: "Signed in successfully.",
+            description: "Loading your admin workspace.",
+          });
+          navigate(routePaths.dashboard);
         } catch (error) {
           if (error instanceof LoginServiceError) {
             if (error.status === 400) {
-              const details = error.response?.details
+              const details = error.response?.details;
 
               if (hasFieldErrors(details)) {
                 details.fieldErrors.forEach((fieldError) => {
-                  if (fieldError.field === 'email' || fieldError.field === 'password') {
+                  if (
+                    fieldError.field === "email" ||
+                    fieldError.field === "password"
+                  ) {
                     setError(fieldError.field, {
                       type: fieldError.code,
                       message: fieldError.message,
-                    })
+                    });
                   }
-                })
+                });
               }
 
-              return
+              return;
             }
 
             if (error.status === 401) {
               pushToast({
-                tone: 'danger',
-                title: 'Login failed.',
+                tone: "danger",
+                title: "Login failed.",
                 description:
-                  error.response?.message ?? 'Invalid email or password.',
-              })
+                  error.response?.message ?? "Invalid email or password.",
+              });
             }
 
-            return
+            return;
           }
         }
       })}
@@ -119,7 +120,7 @@ export function LoginForm() {
             hasError={Boolean(errors.email)}
             id="email"
             placeholder="aparna@servicegram.local"
-            {...register('email')}
+            {...register("email")}
           />
         </div>
         <FormErrorSummary message={errors.email?.message} />
@@ -139,9 +140,11 @@ export function LoginForm() {
             id="password"
             inputClassName="min-h-12 rounded-[1.125rem] border-border bg-surface/80 pl-11 text-[0.9375rem] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] placeholder:text-muted focus-visible:border-foreground/20 focus-visible:bg-surface focus-visible:ring-foreground/10"
             onBlur={() => undefined}
-            onChange={(value) => setValue('password', value, { shouldValidate: true })}
+            onChange={(value) =>
+              setValue("password", value, { shouldValidate: true })
+            }
             placeholder="Enter your password"
-            value={watch('password')}
+            value={watch("password")}
           />
         </div>
         <FormErrorSummary message={errors.password?.message} />
@@ -183,12 +186,6 @@ export function LoginForm() {
           </p>
         </div>
       </div>
-
-      <p className="text-[0.8125rem] leading-5 text-muted">
-        Use{' '}
-        <span className="font-semibold text-foreground">aparna@servicegram.local</span>{' '}
-        and <span className="font-semibold text-foreground">Password@123</span> for local access.
-      </p>
     </form>
-  )
+  );
 }
