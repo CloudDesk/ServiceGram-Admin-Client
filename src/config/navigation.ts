@@ -1,6 +1,4 @@
 import {
-  Bell,
-  ClipboardList,
   CreditCard,
   FileBarChart2,
   Film,
@@ -33,10 +31,8 @@ export const navigationItems: NavigationItem[] = [
   { label: 'Payments', href: routePaths.payments, icon: CreditCard, permission: permissions.payments },
   { label: 'Payouts', href: routePaths.payouts, icon: Wallet, permission: permissions.payouts },
   { label: 'Reels', href: routePaths.reels, icon: Film, permission: permissions.reels },
-  { label: 'Notifications', href: routePaths.notifications, icon: Bell, permission: permissions.notifications },
   { label: 'Reports', href: routePaths.reports, icon: FileBarChart2, permission: permissions.reports },
   { label: 'Settings', href: routePaths.settings, icon: Settings, permission: permissions.settings },
   { label: 'User', href: routePaths.adminUsers, icon: Shield, permission: permissions.adminUsers },
-  { label: 'Audit Logs', href: routePaths.audit, icon: ClipboardList, permission: permissions.audit },
   { label: 'Profile', href: routePaths.profile, icon: UserCircle2, permission: permissions.profile },
 ] as const

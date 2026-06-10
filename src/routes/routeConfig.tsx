@@ -4,17 +4,29 @@ import { mockCustomers } from '../mock/db/customers.mock'
 import { mockOrders } from '../mock/db/orders.mock'
 import { mockPayments } from '../mock/db/payments.mock'
 import { mockPayouts } from '../mock/db/payouts.mock'
-import { mockReels } from '../mock/db/reels.mock'
-import { mockUsers } from '../mock/db/users.mock'
 import { mockVendors } from '../mock/db/vendors.mock'
 import { routePaths } from '../config/routes'
 import { routePermissions } from '../config/routePermissions'
 import { AccessDeniedPage } from './AccessDeniedPage'
 import { NotFoundPage } from './NotFoundPage'
+import { AdminUserDetailPage } from '../features/admin-users/components/AdminUserDetailPage'
+import { AdminUsersPage } from '../features/admin-users/components/AdminUsersPage'
+import { CreateAdminUserPage } from '../features/admin-users/components/CreateAdminUserPage'
+import { ProfilePage } from '../features/admin-users/components/ProfilePage'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { ForgotPasswordPage } from '../features/auth/pages/ForgotPasswordPage'
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
 import { DashboardPage } from '../features/dashboard/pages/DashboardPage'
+import { OrderDetailPage } from '../features/orders/components/OrderDetailPage'
+import { OrdersPage } from '../features/orders/components/OrdersPage'
+import { PaymentDetailPage } from '../features/payments/components/PaymentDetailPage'
+import { PaymentsPage } from '../features/payments/components/PaymentsPage'
+import { PayoutDetailPage } from '../features/payouts/components/PayoutDetailPage'
+import { PayoutsPage } from '../features/payouts/components/PayoutsPage'
+import { ReelDetailPage } from '../features/reels/components/ReelDetailPage'
+import { ReelsPage } from '../features/reels/components/ReelsPage'
+import { SettingsDetailPage } from '../features/settings/components/SettingsDetailPage'
+import { SettingsPage } from '../features/settings/components/SettingsPage'
 import { VendorsPage } from '../features/vendors/components/VendorsPage'
 import { VendorDetailPage } from '../features/vendors/components/VendorDetailPage'
 import { AdminLayout } from '../layouts/AdminLayout'
@@ -25,22 +37,18 @@ import { ModulePageFactory, RecordDetailPage } from './RouteScaffolds'
 import { Button } from '../components/ui/Button'
 import { PermissionGuard } from '../components/ui/PermissionGuard'
 
-const [primaryUser] = mockUsers
 const [primaryCustomer] = mockCustomers
 const [, secondaryVendor] = mockVendors
 const [primaryOrder] = mockOrders
 const [primaryPayment] = mockPayments
 const [primaryPayout] = mockPayouts
-const [primaryReel] = mockReels
 
 if (
-  !primaryUser ||
   !primaryCustomer ||
   !secondaryVendor ||
   !primaryOrder ||
   !primaryPayment ||
-  !primaryPayout ||
-  !primaryReel
+  !primaryPayout
 ) {
   throw new Error('Mock route seed data is incomplete.')
 }
@@ -73,62 +81,21 @@ export const appRoutes: RouteObject[] = [
                 children: [
                   {
                     path: routePaths.adminUsers,
-                    element: (
-                      <ModulePageFactory
-                        actionNode={
-                          <Link to={`${routePaths.adminUsers}/new`}>
-                            <Button size="sm">Add User</Button>
-                          </Link>
-                        }
-                        description="Typed admin user management shell with permissions, session visibility, and audit-ready actions."
-                        records={mockUsers.map((user) => ({
-                          id: user.id,
-                          name: user.name,
-                          status: user.role,
-                          subtitle: user.email,
-                          updatedAt: '2026-06-05T07:20:00.000Z',
-                        }))}
-                        title="Users"
-                      />
-                    ),
+                    element: <AdminUsersPage />,
                   },
                   {
                     path: `${routePaths.adminUsers}/new`,
-                    element: (
-                      <RecordDetailPage
-                        description="Foundation form route for creating a new admin user."
-                        listHref={routePaths.adminUsers}
-                        listLabel="Users"
-                        record={{
-                          id: 'FORM',
-                          name: 'Create Admin User',
-                          status: 'Draft Ready',
-                          subtitle: 'React Hook Form + Zod route placeholder',
-                          updatedAt: '2026-06-05T07:20:00.000Z',
-                        }}
-                        title="Create Admin User"
-                      />
-                    ),
+                    element: <CreateAdminUserPage />,
                   },
                   {
                     path: `${routePaths.adminUsers}/:adminUserId`,
-                    element: (
-                      <RecordDetailPage
-                        description="Detail shell for profile, role and access, login history, session history, and audit activity."
-                        listHref={routePaths.adminUsers}
-                        listLabel="Users"
-                        record={{
-                          id: primaryUser.id,
-                          name: primaryUser.name,
-                          status: primaryUser.role,
-                          subtitle: primaryUser.email,
-                          updatedAt: '2026-06-05T07:20:00.000Z',
-                        }}
-                        title="Admin User Detail"
-                      />
-                    ),
+                    element: <AdminUserDetailPage />,
                   },
                 ],
+              },
+              {
+                element: <PermissionGuard />,
+                children: [{ path: routePaths.profile, element: <ProfilePage /> }],
               },
               {
                 element: <PermissionGuard permission={routePermissions.customers} />,
@@ -197,25 +164,11 @@ export const appRoutes: RouteObject[] = [
                 children: [
                   {
                     path: routePaths.orders,
-                    element: (
-                      <ModulePageFactory
-                        description="Order management foundation with status-heavy operations, notes, and logistics controls."
-                        records={mockOrders}
-                        title="Orders"
-                      />
-                    ),
+                    element: <OrdersPage />,
                   },
                   {
                     path: `${routePaths.orders}/:orderId`,
-                    element: (
-                      <RecordDetailPage
-                        description="Detail shell for customer, vendor, payment, notes, action history, and manual logistics."
-                        listHref={routePaths.orders}
-                        listLabel="Orders"
-                        record={primaryOrder}
-                        title="Order Detail"
-                      />
-                    ),
+                    element: <OrderDetailPage />,
                   },
                   {
                     path: routePaths.manualLogistics,
@@ -246,25 +199,11 @@ export const appRoutes: RouteObject[] = [
                 children: [
                   {
                     path: routePaths.payments,
-                    element: (
-                      <ModulePageFactory
-                        description="Finance operations shell for transactions, refunds, reconciliation, and reporting."
-                        records={mockPayments}
-                        title="Payments"
-                      />
-                    ),
+                    element: <PaymentsPage />,
                   },
                   {
                     path: `${routePaths.payments}/:paymentId`,
-                    element: (
-                      <RecordDetailPage
-                        description="Detail shell for payment context, status, references, and refund actions."
-                        listHref={routePaths.payments}
-                        listLabel="Payments"
-                        record={primaryPayment}
-                        title="Payment Detail"
-                      />
-                    ),
+                    element: <PaymentDetailPage />,
                   },
                 ],
               },
@@ -273,25 +212,11 @@ export const appRoutes: RouteObject[] = [
                 children: [
                   {
                     path: routePaths.payouts,
-                    element: (
-                      <ModulePageFactory
-                        description="Vendor payout shell for queue, history, failed payouts, and adjustment actions."
-                        records={mockPayouts}
-                        title="Payouts"
-                      />
-                    ),
+                    element: <PayoutsPage />,
                   },
                   {
                     path: `${routePaths.payouts}/:payoutId`,
-                    element: (
-                      <RecordDetailPage
-                        description="Detail shell for bank verification, deductions, references, and payout decisions."
-                        listHref={routePaths.payouts}
-                        listLabel="Payouts"
-                        record={primaryPayout}
-                        title="Payout Detail"
-                      />
-                    ),
+                    element: <PayoutDetailPage />,
                   },
                 ],
               },
@@ -300,25 +225,11 @@ export const appRoutes: RouteObject[] = [
                 children: [
                   {
                     path: routePaths.reels,
-                    element: (
-                      <ModulePageFactory
-                        description="Moderation shell for pending approvals, live reel controls, and media review states."
-                        records={mockReels}
-                        title="Reels"
-                      />
-                    ),
+                    element: <ReelsPage />,
                   },
                   {
                     path: `${routePaths.reels}/:reelId`,
-                    element: (
-                      <RecordDetailPage
-                        description="Detail shell for video review, moderation history, and approval actions."
-                        listHref={routePaths.reels}
-                        listLabel="Reels"
-                        record={primaryReel}
-                        title="Reel Detail"
-                      />
-                    ),
+                    element: <ReelDetailPage />,
                   },
                 ],
               },
@@ -473,39 +384,11 @@ export const appRoutes: RouteObject[] = [
                 children: [
                   {
                     path: routePaths.settings,
-                    element: (
-                      <ModulePageFactory
-                        description="Platform configuration shell for categories, zones, vendors, orders, payments, and notifications."
-                        records={[
-                          {
-                            id: 'SET-ORDER',
-                            name: 'Order settings',
-                            subtitle: 'Cancellation rules • OTP rules',
-                            status: 'Configured',
-                            updatedAt: '2026-06-05T04:45:00.000Z',
-                          },
-                        ]}
-                        title="Settings"
-                      />
-                    ),
+                    element: <SettingsPage />,
                   },
                   {
-                    path: routePaths.profile,
-                    element: (
-                      <ModulePageFactory
-                        description="Profile and session management shell with account details, password change, and active sessions."
-                        records={[
-                          {
-                            id: primaryUser.id,
-                            name: primaryUser.name,
-                            subtitle: primaryUser.email,
-                            status: 'Active Session',
-                            updatedAt: '2026-06-05T02:35:00.000Z',
-                          },
-                        ]}
-                        title="My Profile"
-                      />
-                    ),
+                    path: `${routePaths.settings}/:type/:recordId`,
+                    element: <SettingsDetailPage />,
                   },
                 ],
               },
