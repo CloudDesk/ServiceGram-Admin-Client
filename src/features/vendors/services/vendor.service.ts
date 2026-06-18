@@ -6,6 +6,7 @@ import {
   VENDOR_LIST_PATH,
   VENDOR_ONBOARDING_QUEUE_PATH,
   VENDOR_REACTIVATE_PATH,
+  VENDOR_REJECT_DOCUMENT_PATH,
   VENDOR_REJECT_PATH,
   VENDOR_REQUEST_DOCUMENTS_PATH,
   VENDOR_SUSPEND_PATH,
@@ -156,6 +157,25 @@ async function verifyVendorDocument(
   return parseJsonResponse<VendorActionResponse>(response)
 }
 
+async function rejectVendorDocument(
+  vendorId: string,
+  documentId: string,
+  payload: VendorRequiredReasonPayload,
+): Promise<VendorActionResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(VENDOR_REJECT_DOCUMENT_PATH(vendorId, documentId)),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    },
+  )
+
+  return parseJsonResponse<VendorActionResponse>(response)
+}
+
 async function addVendorNote(
   vendorId: string,
   payload: VendorNotePayload,
@@ -181,5 +201,6 @@ export const vendorService = {
   suspendVendor,
   reactivateVendor,
   verifyVendorDocument,
+  rejectVendorDocument,
   addVendorNote,
 }

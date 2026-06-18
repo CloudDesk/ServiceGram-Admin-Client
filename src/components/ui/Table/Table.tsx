@@ -13,9 +13,12 @@ import {
   type MouseEvent,
   type ReactNode,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { Badge } from '../Badge'
 import { Button } from '../Button'
 import { Card } from '../Card'
@@ -95,6 +98,9 @@ export interface DynamicTableProps<T> {
   bodyHeight?: number | string
   bodyMaxHeight?: number | string
   actionColumnLabel?: string
+  actionColumnMinWidth?: number | string
+  actionColumnWidth?: number | string
+  inlineActionLimit?: number
   getRowId?: (row: T, index: number) => string
   enableLocalSort?: boolean
   className?: string
@@ -241,7 +247,7 @@ export function TableSkeleton({
                   )
                 })}
                 {hasActions ? (
-                  <th className="premium-table-head sticky right-0 z-10 px-4 py-3 text-right font-semibold">
+                  <th className="premium-table-head premium-table-sticky-action sticky right-0 z-10 px-4 py-3 text-right font-semibold">
                     <TableSkeletonBlock className="ml-auto h-3 w-16" />
                   </th>
                 ) : null}
@@ -279,7 +285,7 @@ export function TableSkeleton({
                     )
                   })}
                   {hasActions ? (
-                    <td className="premium-table-cell sticky right-0 px-4 py-3.5 text-right align-top">
+                    <td className="premium-table-cell premium-table-sticky-action sticky right-0 px-4 py-3.5 text-right align-top">
                       <div className="flex items-center justify-end gap-2">
                         <TableSkeletonBlock className="h-8 w-20 rounded-control" />
                         <TableSkeletonBlock className="h-8 w-9 rounded-control" />
@@ -346,6 +352,18 @@ function isActionDisabled<T>(
     : action.isDisabled ?? false
 }
 
+const ROW_ACTION_MENU_WIDTH = 224
+const ROW_ACTION_MENU_GAP = 8
+const ROW_ACTION_MENU_PADDING = 12
+const ROW_ACTION_MENU_MIN_HEIGHT = 144
+const ROW_ACTION_MENU_MAX_HEIGHT = 320
+
+interface RowActionMenuPosition {
+  top: number
+  right: number
+  maxHeight: number
+}
+
 function DynamicRowActionMenu<T>({
   actions,
   row,
@@ -353,59 +371,167 @@ function DynamicRowActionMenu<T>({
   actions: DynamicTableRowAction<T>[]
   row: T
 }) {
+  const anchorRef = useRef<HTMLSpanElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
   const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState<RowActionMenuPosition | null>(null)
+
+  const closeMenu = () => {
+    setOpen(false)
+    setPosition(null)
+  }
+
+  const updatePosition = () => {
+    const anchor = anchorRef.current
+
+    if (!anchor) {
+      return
+    }
+
+    const rect = anchor.getBoundingClientRect()
+    const availableBelow = window.innerHeight - rect.bottom - ROW_ACTION_MENU_PADDING
+    const availableAbove = rect.top - ROW_ACTION_MENU_PADDING
+    const shouldOpenAbove =
+      availableBelow < ROW_ACTION_MENU_MIN_HEIGHT &&
+      availableAbove > availableBelow
+    const availableSpace = shouldOpenAbove ? availableAbove : availableBelow
+    const maxHeight = Math.min(
+      ROW_ACTION_MENU_MAX_HEIGHT,
+      Math.max(
+        ROW_ACTION_MENU_MIN_HEIGHT,
+        availableSpace - ROW_ACTION_MENU_GAP,
+      ),
+    )
+    const top = shouldOpenAbove
+      ? Math.max(
+          ROW_ACTION_MENU_PADDING,
+          rect.top - ROW_ACTION_MENU_GAP - maxHeight,
+        )
+      : Math.min(
+          Math.max(ROW_ACTION_MENU_PADDING, rect.bottom + ROW_ACTION_MENU_GAP),
+          window.innerHeight - ROW_ACTION_MENU_PADDING - maxHeight,
+        )
+    const maxRight = Math.max(
+      ROW_ACTION_MENU_PADDING,
+      window.innerWidth - ROW_ACTION_MENU_PADDING - ROW_ACTION_MENU_WIDTH,
+    )
+    const right = Math.min(
+      Math.max(ROW_ACTION_MENU_PADDING, window.innerWidth - rect.right),
+      maxRight,
+    )
+
+    setPosition({ maxHeight, right, top })
+  }
+
+  useLayoutEffect(() => {
+    if (!open) {
+      return
+    }
+
+    updatePosition()
+  }, [open])
 
   useEffect(() => {
     if (!open) {
       return
     }
 
-    const handleClose = () => setOpen(false)
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
 
-    window.addEventListener('click', handleClose)
+      if (
+        target &&
+        (anchorRef.current?.contains(target) || menuRef.current?.contains(target))
+      ) {
+        return
+      }
+
+      closeMenu()
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeMenu()
+      }
+    }
+    const handleClose = () => closeMenu()
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('resize', handleClose)
+    window.addEventListener('scroll', handleClose, true)
 
     return () => {
-      window.removeEventListener('click', handleClose)
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('resize', handleClose)
+      window.removeEventListener('scroll', handleClose, true)
     }
   }, [open])
 
+  const menu =
+    open && position && typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            className="premium-common-surface fixed overflow-y-auto rounded-[1rem] p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.22)]"
+            onClick={(event) => event.stopPropagation()}
+            ref={menuRef}
+            role="menu"
+            style={{
+              maxHeight: position.maxHeight,
+              right: position.right,
+              top: position.top,
+              width: ROW_ACTION_MENU_WIDTH,
+              zIndex: 1000,
+            }}
+          >
+            {actions.map((action) => (
+              <button
+                className="flex w-full items-center gap-2 rounded-[0.8rem] px-3 py-2 text-left text-sm text-foreground transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isActionDisabled(action, row)}
+                key={action.key}
+                role="menuitem"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  closeMenu()
+                  action.onClick(row)
+                }}
+              >
+                {action.icon}
+                <span>{action.label}</span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )
+      : null
+
   return (
-    <div className="relative">
-      <Button
-        aria-label="More actions"
-        size="sm"
-        type="button"
-        variant="ghost"
-        onClick={(event) => {
-          event.stopPropagation()
-          setOpen((current) => !current)
-        }}
-      >
-        <MoreHorizontal className="size-4" />
-      </Button>
-      {open ? (
-        <div
-          className="premium-common-surface absolute right-0 top-[calc(100%+0.375rem)] z-30 min-w-[11rem] overflow-hidden rounded-[1rem] p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.14)]"
-          onClick={(event) => event.stopPropagation()}
+    <div className="relative inline-flex">
+      <span className="inline-flex" ref={anchorRef}>
+        <Button
+          aria-expanded={open}
+          aria-haspopup="menu"
+          aria-label="More actions"
+          size="sm"
+          type="button"
+          variant="ghost"
+          onClick={(event) => {
+            event.stopPropagation()
+
+            if (open) {
+              closeMenu()
+              return
+            }
+
+            updatePosition()
+            setOpen(true)
+          }}
         >
-          {actions.map((action) => (
-            <button
-              className="flex w-full items-center gap-2 rounded-[0.8rem] px-3 py-2 text-left text-sm text-foreground transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={isActionDisabled(action, row)}
-              key={action.key}
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                setOpen(false)
-                action.onClick(row)
-              }}
-            >
-              {action.icon}
-              <span>{action.label}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </span>
+      {menu}
     </div>
   )
 }
@@ -514,6 +640,8 @@ function resolveCellContent<T>(column: DynamicTableColumn<T>, row: T) {
 
 export function DynamicTable<T>({
   actionColumnLabel = 'Actions',
+  actionColumnMinWidth,
+  actionColumnWidth,
   bodyHeight,
   bodyMaxHeight = 540,
   className,
@@ -526,6 +654,7 @@ export function DynamicTable<T>({
   error = false,
   footer,
   getRowId,
+  inlineActionLimit = 2,
   loading = false,
   onRetry,
   onRowClick,
@@ -541,6 +670,7 @@ export function DynamicTable<T>({
 }: DynamicTableProps<T>) {
   const [internalSort, setInternalSort] = useState<DynamicTableSortState>({})
   const activeSort = sort ?? internalSort
+  const resolvedInlineActionLimit = Math.max(0, inlineActionLimit)
   const resolvedActions = useMemo(
     () =>
       data.map((row) => {
@@ -586,6 +716,10 @@ export function DynamicTable<T>({
   const tableBodyStyle: CSSProperties = {
     height: toCssSize(bodyHeight),
     maxHeight: toCssSize(bodyMaxHeight),
+  }
+  const actionColumnStyle: CSSProperties = {
+    width: toCssSize(actionColumnWidth),
+    minWidth: toCssSize(actionColumnMinWidth ?? actionColumnWidth),
   }
 
   const footerNode =
@@ -708,7 +842,10 @@ export function DynamicTable<T>({
                   )
                 })}
                 {rowActions ? (
-                  <th className="premium-table-head sticky right-0 z-10 px-4 py-3 text-right font-semibold">
+                  <th
+                    className="premium-table-head premium-table-sticky-action sticky right-0 z-10 px-4 py-3 text-right font-semibold"
+                    style={actionColumnStyle}
+                  >
                     {actionColumnLabel}
                   </th>
                 ) : null}
@@ -718,10 +855,14 @@ export function DynamicTable<T>({
               {computedData.map((row, rowIndex) => {
                 const rowId = getRowId?.(row, rowIndex) ?? String(rowIndex)
                 const actions = resolvedActions[rowIndex] ?? []
-                const inlineActions = actions.filter((action) => action.placement !== 'menu').slice(0, 2)
+                const inlineActions = actions
+                  .filter((action) => action.placement !== 'menu')
+                  .slice(0, resolvedInlineActionLimit)
                 const menuActions = [
                   ...actions.filter((action) => action.placement === 'menu'),
-                  ...actions.filter((action) => action.placement !== 'menu').slice(2),
+                  ...actions
+                    .filter((action) => action.placement !== 'menu')
+                    .slice(resolvedInlineActionLimit),
                 ]
 
                 return (
@@ -761,7 +902,10 @@ export function DynamicTable<T>({
                       )
                     })}
                     {rowActions ? (
-                      <td className="premium-table-cell sticky right-0 px-4 py-3.5 text-right align-top group-hover:bg-surface-muted/70">
+                      <td
+                        className="premium-table-cell premium-table-sticky-action sticky right-0 px-4 py-3.5 text-right align-top"
+                        style={actionColumnStyle}
+                      >
                         <div
                           className="flex items-center justify-end gap-1"
                           onClick={(event) => event.stopPropagation()}
@@ -770,6 +914,7 @@ export function DynamicTable<T>({
                             <Button
                               disabled={isActionDisabled(action, row)}
                               key={action.key}
+                              className="gap-2 whitespace-nowrap"
                               size="sm"
                               type="button"
                               variant={action.variant ?? 'ghost'}

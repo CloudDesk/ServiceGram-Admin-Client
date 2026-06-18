@@ -1,4 +1,4 @@
-import { CheckCircle2, FileCheck2, FileWarning, MessageSquarePlus, PauseCircle, RotateCcw, XCircle } from 'lucide-react'
+import { CheckCircle2, Eye, FileCheck2, FileWarning, History, MessageSquarePlus, PauseCircle, RotateCcw, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
@@ -36,7 +36,12 @@ const documentColumns: DynamicTableColumn<VendorDocument>[] = [
     key: 'status',
     label: 'Status',
     format: 'status',
-    statusTone: (value) => (value === 'VERIFIED' ? 'success' : 'warning'),
+    statusTone: (value) =>
+      value === 'VERIFIED'
+        ? 'success'
+        : value === 'REJECTED'
+          ? 'danger'
+          : 'warning',
     minWidth: 140,
   },
   {
@@ -69,6 +74,47 @@ const timelineColumns: DynamicTableColumn<VendorReviewTimelineItem>[] = [
   {
     key: 'createdAt',
     label: 'Created',
+    format: 'date',
+    minWidth: 180,
+  },
+]
+
+interface VendorDocumentHistoryRow {
+  reviewEventId: string
+  action: string
+  fromStatus: string | null
+  toStatus: string | null
+  reason: string | null
+  createdAt: string
+}
+
+const documentHistoryColumns: DynamicTableColumn<VendorDocumentHistoryRow>[] = [
+  {
+    key: 'action',
+    label: 'Action',
+    minWidth: 220,
+  },
+  {
+    key: 'fromStatus',
+    label: 'From',
+    minWidth: 120,
+    placeholder: '—',
+  },
+  {
+    key: 'toStatus',
+    label: 'To',
+    minWidth: 120,
+    placeholder: '—',
+  },
+  {
+    key: 'reason',
+    label: 'Reason',
+    minWidth: 280,
+    placeholder: 'No reason recorded',
+  },
+  {
+    key: 'createdAt',
+    label: 'When',
     format: 'date',
     minWidth: 180,
   },
@@ -134,6 +180,101 @@ function VendorHeaderStatus({ vendor }: { vendor: VendorDetail }) {
   )
 }
 
+function openDocumentDownload(document: VendorDocument) {
+  const downloadUrl = document.download?.downloadUrl
+
+  if (!downloadUrl) {
+    return
+  }
+
+  window.open(downloadUrl, '_blank', 'noopener,noreferrer')
+}
+
+function getApprovalBlockMessage(vendor: VendorDetail) {
+  const summary = vendor.documentSummary
+
+  if (!summary || summary.total === 0) {
+    return 'Approval is blocked until the vendor uploads the required documents.'
+  }
+
+  const unverifiedBySummary = Math.max(summary.total - summary.verified, 0)
+  const unverifiedDocuments = vendor.documents.filter(
+    (document) => document.status !== 'VERIFIED',
+  )
+  const unverifiedCount = Math.max(
+    unverifiedBySummary,
+    unverifiedDocuments.length,
+  )
+
+  if (unverifiedCount === 0) {
+    return null
+  }
+
+  const documentLabel = unverifiedCount === 1 ? 'document is' : 'documents are'
+
+  return `Approval is blocked until ${unverifiedCount} ${documentLabel} verified. Verify the documents or request corrections before approving this vendor.`
+}
+
+function getMetadataString(
+  metadata: Record<string, unknown> | null,
+  key: string,
+) {
+  const value = metadata?.[key]
+
+  return typeof value === 'string' ? value : null
+}
+
+function getDocumentHistoryActionLabel(actionCode: string) {
+  switch (actionCode) {
+    case 'reject_document':
+      return 'Admin requested resubmission'
+    case 'document_upload_confirm':
+      return 'Vendor resubmitted document'
+    case 'verify_document':
+      return 'Admin verified document'
+    case 'request_documents':
+      return 'Admin requested documents'
+    default:
+      return actionCode
+  }
+}
+
+function getDocumentHistoryRows(
+  vendor: VendorDetail,
+  document: VendorDocument | null,
+): VendorDocumentHistoryRow[] {
+  if (!document) {
+    return []
+  }
+
+  return vendor.reviewTimeline
+    .filter((event) => {
+      const documentId = getMetadataString(event.metadata, 'documentId')
+      const documentType = getMetadataString(event.metadata, 'documentType')
+      const requestedDocumentTypes = event.metadata?.requestedDocumentTypes
+
+      if (documentId) {
+        return documentId === document.documentId
+      }
+
+      if (documentType) {
+        return documentType === document.documentType
+      }
+
+      return Array.isArray(requestedDocumentTypes)
+        ? requestedDocumentTypes.includes(document.documentType)
+        : false
+    })
+    .map((event) => ({
+      reviewEventId: event.reviewEventId,
+      action: getDocumentHistoryActionLabel(event.actionCode),
+      fromStatus: getMetadataString(event.metadata, 'fromDocumentStatus'),
+      toStatus: getMetadataString(event.metadata, 'toDocumentStatus'),
+      reason: event.reason,
+      createdAt: event.createdAt,
+    }))
+}
+
 function VendorHeaderActions({
   isSubmitting,
   onSelectAction,
@@ -144,13 +285,15 @@ function VendorHeaderActions({
   vendor: VendorDetail
 }) {
   const hasAction = (action: string) => vendor.availableActions.includes(action)
+  const approvalBlockMessage = getApprovalBlockMessage(vendor)
 
   return (
     <div className="flex flex-wrap justify-end gap-2">
       {hasAction('APPROVE') ? (
         <Button
-          disabled={isSubmitting}
+          disabled={isSubmitting || Boolean(approvalBlockMessage)}
           size="sm"
+          title={approvalBlockMessage ?? undefined}
           onClick={() => onSelectAction('APPROVE')}
         >
           <CheckCircle2 className="mr-2 size-4" />
@@ -219,6 +362,8 @@ export function VendorDetailPage() {
   const queryClient = useQueryClient()
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedAction, setSelectedAction] = useState<VendorActionSelection | null>(null)
+  const [selectedHistoryDocument, setSelectedHistoryDocument] =
+    useState<VendorDocument | null>(null)
 
   const vendorQuery = useQuery({
     enabled: Boolean(vendorId),
@@ -248,6 +393,12 @@ export function VendorDetailPage() {
       }
 
       if (action.kind === 'APPROVE') {
+        const approvalBlockMessage = getApprovalBlockMessage(vendor)
+
+        if (approvalBlockMessage) {
+          throw new Error(approvalBlockMessage)
+        }
+
         return vendorService.approveVendor(vendor.vendorId, {
           reason: values.reason,
         })
@@ -302,6 +453,22 @@ export function VendorDetailPage() {
         return vendorService.addVendorNote(vendor.vendorId, {
           note: values.note,
         })
+      }
+
+      if (action.kind === 'REJECT_DOCUMENT') {
+        if (!action.document) {
+          throw new Error('Document details are unavailable.')
+        }
+
+        if (!values.reason) {
+          throw new Error('Resubmission reason is required.')
+        }
+
+        return vendorService.rejectVendorDocument(
+          vendor.vendorId,
+          action.document.documentId,
+          { reason: values.reason },
+        )
       }
 
       if (!action.document) {
@@ -385,6 +552,20 @@ export function VendorDetailPage() {
     )
   }
 
+  const approvalBlockMessage = vendor.availableActions.includes('APPROVE')
+    ? getApprovalBlockMessage(vendor)
+    : null
+  const activeHistoryDocument = selectedHistoryDocument
+    ? vendor.documents.find(
+        (document) =>
+          document.documentId === selectedHistoryDocument.documentId,
+      ) ?? selectedHistoryDocument
+    : null
+  const selectedDocumentHistory = getDocumentHistoryRows(
+    vendor,
+    activeHistoryDocument,
+  )
+
   return (
     <PageContainer>
       <DetailPageHeader
@@ -401,6 +582,13 @@ export function VendorDetailPage() {
         recordName={vendor.shopName}
         titleMetaNode={<VendorHeaderStatus vendor={vendor} />}
       />
+
+      {approvalBlockMessage ? (
+        <div className="flex items-start gap-2 rounded-surface border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
+          <FileWarning className="mt-0.5 size-4 shrink-0" />
+          <span>{approvalBlockMessage}</span>
+        </div>
+      ) : null}
 
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4 lg:col-span-2">
@@ -459,13 +647,28 @@ export function VendorDetailPage() {
       <section className="space-y-4">
         <DynamicTable
           actionColumnLabel="Document Actions"
+          actionColumnMinWidth={410}
           bodyMaxHeight={360}
           columns={documentColumns}
           data={vendor.documents}
+          description={
+            vendor.onboardingStatus === 'APPROVED'
+              ? 'Approved vendor documents are locked from onboarding resubmission.'
+              : 'Verified documents can still be requested for resubmission before vendor approval.'
+          }
           emptyDescription="This vendor has no uploaded documents."
           emptyTitle="No documents"
           getRowId={(row) => row.documentId}
+          inlineActionLimit={3}
           rowActions={(document) => [
+            {
+              icon: <Eye className="size-4" />,
+              isDisabled: !document.download?.downloadUrl,
+              key: 'view',
+              label: document.download?.downloadUrl ? 'View' : 'No preview',
+              onClick: openDocumentDownload,
+              variant: 'ghost',
+            },
             {
               icon: <FileCheck2 className="size-4" />,
               isVisible:
@@ -476,9 +679,82 @@ export function VendorDetailPage() {
               onClick: () => openAction('VERIFY_DOCUMENT', document),
               variant: 'secondary',
             },
+            {
+              icon: <FileWarning className="size-4" />,
+              isVisible:
+                vendor.onboardingStatus !== 'APPROVED' &&
+                ['PENDING', 'VERIFIED'].includes(document.status),
+              key: 'reject',
+              label:
+                document.status === 'VERIFIED'
+                  ? 'Request resubmit again'
+                  : 'Request resubmit',
+              onClick: () => openAction('REJECT_DOCUMENT', document),
+              variant: 'secondary',
+            },
+            {
+              icon: <History className="size-4" />,
+              key: 'history',
+              label: 'History',
+              onClick: () => setSelectedHistoryDocument(document),
+              placement: 'menu',
+              variant: 'ghost',
+            },
           ]}
           title="Documents"
         />
+
+        {activeHistoryDocument ? (
+          <section className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-semibold text-foreground">
+                    Document History
+                  </h2>
+                  <Badge
+                    tone={
+                      activeHistoryDocument.status === 'VERIFIED'
+                        ? 'success'
+                        : activeHistoryDocument.status === 'REJECTED'
+                          ? 'danger'
+                          : 'warning'
+                    }
+                  >
+                    {activeHistoryDocument.status}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted">
+                  {activeHistoryDocument.documentType}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                type="button"
+                variant="ghost"
+                onClick={() => setSelectedHistoryDocument(null)}
+              >
+                Close
+              </Button>
+            </div>
+
+            {activeHistoryDocument.rejectionReason ? (
+              <div className="rounded-surface border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
+                Current admin reason: {activeHistoryDocument.rejectionReason}
+              </div>
+            ) : null}
+
+            <DynamicTable
+              bodyMaxHeight={300}
+              columns={documentHistoryColumns}
+              data={selectedDocumentHistory}
+              emptyDescription="No review or resubmission events have been recorded for this document yet."
+              emptyTitle="No document history"
+              getRowId={(row) => row.reviewEventId}
+              title={`${activeHistoryDocument.documentType} history`}
+            />
+          </section>
+        ) : null}
 
         <DynamicTable
           bodyMaxHeight={360}

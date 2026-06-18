@@ -72,6 +72,13 @@ export interface VendorDocumentSummary {
   expired: number
 }
 
+export interface VendorDocumentDownload {
+  downloadUrl: string | null
+  expiresAt: string | null
+  providerStatus: string
+  warnings: string[]
+}
+
 export interface VendorListItem {
   vendorId: string
   publicVendorId: string
@@ -101,6 +108,7 @@ export interface VendorDocument {
   documentType: string
   mediaAssetId: string | null
   status: string
+  download?: VendorDocumentDownload
   rejectionReason: string | null
   verifiedByAdminId: string | null
   verifiedAt: string | null
@@ -130,6 +138,7 @@ export interface VendorDetail extends VendorListItem {
 export interface VendorVerifiedDocument {
   documentId: string
   documentType: string
+  rejectionReason?: string | null
   status: string
 }
 
@@ -140,6 +149,7 @@ export interface VendorNote {
 
 export interface VendorActionResult extends VendorListItem {
   verifiedDocument?: VendorVerifiedDocument
+  rejectedDocument?: VendorVerifiedDocument
   addedNote?: VendorNote
 }
 

@@ -10,4 +10,6 @@ export const VENDOR_REACTIVATE_PATH = (vendorId: string) =>
   `/admin/vendors/${vendorId}/reactivate`
 export const VENDOR_VERIFY_DOCUMENT_PATH = (vendorId: string, documentId: string) =>
   `/admin/vendors/${vendorId}/verify-document/${documentId}`
+export const VENDOR_REJECT_DOCUMENT_PATH = (vendorId: string, documentId: string) =>
+  `/admin/vendors/${vendorId}/reject-document/${documentId}`
 export const VENDOR_ADD_NOTE_PATH = (vendorId: string) => `/admin/vendors/${vendorId}/notes`

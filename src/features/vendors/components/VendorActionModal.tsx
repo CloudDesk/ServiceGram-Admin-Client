@@ -11,6 +11,7 @@ export type VendorActionKind =
   | 'REACTIVATE'
   | 'ADD_NOTE'
   | 'VERIFY_DOCUMENT'
+  | 'REJECT_DOCUMENT'
 
 export interface VendorActionSelection {
   kind: VendorActionKind
@@ -93,6 +94,14 @@ const actionContent: Record<VendorActionKind, ActionContent> = {
     description: 'Mark this vendor document as verified.',
     submitLabel: 'Verify document',
     reasonLabel: 'Verification reason',
+    submitVariant: 'secondary',
+  },
+  REJECT_DOCUMENT: {
+    title: 'Request document resubmission',
+    description: 'Ask the vendor to upload this document again with a clear reason.',
+    submitLabel: 'Request resubmission',
+    reasonLabel: 'Resubmission reason',
+    reasonRequired: true,
     submitVariant: 'secondary',
   },
 }
