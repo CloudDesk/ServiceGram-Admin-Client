@@ -1106,6 +1106,27 @@
   }
 }
 
+@media (max-height: 700px) and (min-width: 1024px) {
+  .auth-hero-title {
+    font-size: clamp(2.5rem, 3.5vw, 3.5rem);
+    line-height: 1;
+  }
+
+  .auth-compact-grid {
+    margin-top: 1rem;
+  }
+
+  .auth-compact-form {
+    max-width: 29.5rem;
+    padding: 1.25rem;
+  }
+
+  .auth-hero-visual-card {
+    width: min(100%, 46rem);
+    height: clamp(18rem, 43vh, 24rem);
+  }
+}
+
 @keyframes table-skeleton-shimmer {
   0% {
     background-position: 130% 0;

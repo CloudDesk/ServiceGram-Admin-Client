@@ -3,7 +3,7 @@ import type { PropsWithChildren } from 'react'
 
 export function AuthLayout({ children }: PropsWithChildren) {
   return (
-    <div className="auth-premium-shell relative flex h-dvh items-center justify-center overflow-hidden px-6 py-6 text-[#111111] lg:px-10 lg:py-8 xl:px-14">
+    <div className="auth-premium-shell relative flex min-h-dvh items-center justify-center overflow-x-hidden overflow-y-auto px-6 py-6 text-[#111111] lg:px-10 lg:py-8 xl:px-14">
       <div className="auth-premium-noise pointer-events-none absolute inset-0 opacity-20" />
       <div className="auth-soft-shape absolute left-[8%] top-[10%] hidden h-[21.25rem] w-[21.25rem] rounded-full bg-white/50 blur-[28px] shadow-[0_40px_120px_rgba(80,70,60,0.14)] lg:block" />
       <div className="auth-soft-shape auth-soft-shape-delayed absolute bottom-[12%] right-[8%] hidden h-[17.5rem] w-[17.5rem] rounded-full bg-[#252525]/10 blur-[28px] shadow-[0_40px_120px_rgba(80,70,60,0.14)] lg:block" />

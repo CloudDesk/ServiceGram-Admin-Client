@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LockKeyhole, Mail, ShieldCheck } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../../components/ui/Button";
@@ -17,6 +17,10 @@ import { LoginServiceError } from "../types/auth.types";
 import { type LoginFormValues, loginSchema } from "../schemas/auth.schema";
 
 const ADMIN_DEVICE_ID = "admin-web-macbook-pro";
+const EMPTY_LOGIN_VALUES: LoginFormValues = {
+  email: "",
+  password: "",
+};
 
 interface LoginLocationState {
   from?: {
@@ -99,22 +103,35 @@ export function LoginForm() {
           "Your session has expired. Please log in again."
         : null;
   const {
+    clearErrors,
     formState: { errors },
     handleSubmit,
     register,
+    reset,
     setError,
     setValue,
     watch,
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "aparna@servicegram.local",
-      password: "Password@123",
-    },
+    defaultValues: EMPTY_LOGIN_VALUES,
   });
+  const emailField = register("email");
+
+  useEffect(() => {
+    reset(EMPTY_LOGIN_VALUES);
+  }, [reset]);
+
+  function clearLoginFeedback(field: keyof LoginFormValues) {
+    clearErrors(field);
+
+    if (mutation.error) {
+      mutation.reset();
+    }
+  }
 
   return (
     <form
+      autoComplete="off"
       className="relative z-10 space-y-4"
       onSubmit={handleSubmit(async (values) => {
         try {
@@ -187,11 +204,16 @@ export function LoginForm() {
         <div className="relative">
           <Mail className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <Input
+            autoComplete="off"
             className="min-h-12 rounded-[1.125rem] border-border bg-surface/80 pl-11 text-[0.9375rem] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] placeholder:text-muted focus-visible:border-foreground/20 focus-visible:bg-surface focus-visible:ring-foreground/10"
             hasError={Boolean(errors.email)}
             id="email"
-            placeholder="aparna@servicegram.local"
-            {...register("email")}
+            placeholder="admin@servicegram.in"
+            {...emailField}
+            onChange={(event) => {
+              clearLoginFeedback("email");
+              void emailField.onChange(event);
+            }}
           />
         </div>
         <FormErrorSummary message={errors.email?.message} />
@@ -207,13 +229,19 @@ export function LoginForm() {
         <div className="relative">
           <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 z-10 size-4 -translate-y-1/2 text-muted" />
           <PasswordInput
+            autoComplete="off"
             hasError={Boolean(errors.password)}
             id="password"
             inputClassName="min-h-12 rounded-[1.125rem] border-border bg-surface/80 pl-11 text-[0.9375rem] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] placeholder:text-muted focus-visible:border-foreground/20 focus-visible:bg-surface focus-visible:ring-foreground/10"
+            name="password"
             onBlur={() => undefined}
-            onChange={(value) =>
-              setValue("password", value, { shouldValidate: true })
-            }
+            onChange={(value) => {
+              clearLoginFeedback("password");
+              setValue("password", value, {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+            }}
             placeholder="Enter your password"
             value={watch("password")}
           />
