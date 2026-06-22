@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
-import type { AdminPayoutDetail, AdminPayoutMethod } from '../types/payout.types'
+import type { AdminPayoutMethod, AdminPayoutSummary } from '../types/payout.types'
 
 export type PayoutActionKind =
   | 'CREATE'
@@ -13,7 +13,7 @@ export type PayoutActionKind =
 
 export interface PayoutActionSelection {
   kind: PayoutActionKind
-  payout?: AdminPayoutDetail
+  payout?: AdminPayoutSummary
 }
 
 export interface PayoutActionFormValues {

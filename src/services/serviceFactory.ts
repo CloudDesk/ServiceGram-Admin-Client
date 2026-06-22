@@ -1,3 +1,3 @@
 export const serviceFactory = {
-  mode: 'mock' as const,
+  mode: 'api' as const,
 }

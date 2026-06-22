@@ -1,9 +1,4 @@
 import type { RouteObject } from 'react-router-dom'
-import { Link } from 'react-router-dom'
-import { mockOrders } from '../mock/db/orders.mock'
-import { mockPayments } from '../mock/db/payments.mock'
-import { mockPayouts } from '../mock/db/payouts.mock'
-import { mockVendors } from '../mock/db/vendors.mock'
 import { routePaths } from '../config/routes'
 import { routePermissions } from '../config/routePermissions'
 import { AccessDeniedPage } from './AccessDeniedPage'
@@ -12,45 +7,46 @@ import { AdminUserDetailPage } from '../features/admin-users/components/AdminUse
 import { AdminUsersPage } from '../features/admin-users/components/AdminUsersPage'
 import { CreateAdminUserPage } from '../features/admin-users/components/CreateAdminUserPage'
 import { ProfilePage } from '../features/admin-users/components/ProfilePage'
+import { CreateRolePage } from '../features/rbac/components/CreateRolePage'
+import { RoleDetailPage } from '../features/rbac/components/RoleDetailPage'
+import { RolesPage } from '../features/rbac/components/RolesPage'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { ForgotPasswordPage } from '../features/auth/pages/ForgotPasswordPage'
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
+import { AuditLogsPage } from '../features/audit/components/AuditLogsPage'
+import { ContentDetailPage } from '../features/content/components/ContentDetailPage'
+import { ContentPage } from '../features/content/components/ContentPage'
+import { CreateContentPage } from '../features/content/components/CreateContentPage'
 import { DashboardPage } from '../features/dashboard/pages/DashboardPage'
+import { InfluencerDetailPage } from '../features/influencers/components/InfluencerDetailPage'
+import { InfluencersPage } from '../features/influencers/components/InfluencersPage'
 import { CustomerDetailPage } from '../features/customers/components/CustomerDetailPage'
 import { CustomersPage } from '../features/customers/components/CustomersPage'
+import { ManualLogisticsPage } from '../features/orders/components/ManualLogisticsPage'
 import { OrderDetailPage } from '../features/orders/components/OrderDetailPage'
 import { OrdersPage } from '../features/orders/components/OrdersPage'
+import { NotificationComposerPage } from '../features/notifications/components/NotificationComposerPage'
+import { NotificationDetailPage } from '../features/notifications/components/NotificationDetailPage'
+import { NotificationsPage } from '../features/notifications/components/NotificationsPage'
 import { PaymentDetailPage } from '../features/payments/components/PaymentDetailPage'
 import { PaymentsPage } from '../features/payments/components/PaymentsPage'
+import { RefundsPage } from '../features/payments/components/RefundsPage'
 import { PayoutDetailPage } from '../features/payouts/components/PayoutDetailPage'
 import { PayoutsPage } from '../features/payouts/components/PayoutsPage'
 import { ReelDetailPage } from '../features/reels/components/ReelDetailPage'
 import { ReelsPage } from '../features/reels/components/ReelsPage'
+import { ReportDetailPage } from '../features/reports/components/ReportDetailPage'
+import { ReportsPage } from '../features/reports/components/ReportsPage'
 import { SettingsDetailPage } from '../features/settings/components/SettingsDetailPage'
 import { SettingsPage } from '../features/settings/components/SettingsPage'
+import { VendorOnboardingPage } from '../features/vendors/components/VendorOnboardingPage'
 import { VendorsPage } from '../features/vendors/components/VendorsPage'
 import { VendorDetailPage } from '../features/vendors/components/VendorDetailPage'
 import { AdminLayout } from '../layouts/AdminLayout'
 import { ModuleLayout } from '../layouts/ModuleLayout'
 import { ProtectedRoute } from './ProtectedRoute'
 import { PublicRoute } from './PublicRoute'
-import { ModulePageFactory, RecordDetailPage } from './RouteScaffolds'
-import { Button } from '../components/ui/Button'
 import { PermissionGuard } from '../components/ui/PermissionGuard'
-
-const [, secondaryVendor] = mockVendors
-const [primaryOrder] = mockOrders
-const [primaryPayment] = mockPayments
-const [primaryPayout] = mockPayouts
-
-if (
-  !secondaryVendor ||
-  !primaryOrder ||
-  !primaryPayment ||
-  !primaryPayout
-) {
-  throw new Error('Mock route seed data is incomplete.')
-}
 
 export const appRoutes: RouteObject[] = [
   {
@@ -72,7 +68,7 @@ export const appRoutes: RouteObject[] = [
             element: <ModuleLayout />,
             children: [
               {
-                element: <PermissionGuard />,
+                element: <PermissionGuard permission={routePermissions.dashboard} />,
                 children: [{ path: routePaths.dashboard, element: <DashboardPage /> }],
               },
               {
@@ -89,6 +85,23 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: `${routePaths.adminUsers}/:adminUserId`,
                     element: <AdminUserDetailPage />,
+                  },
+                ],
+              },
+              {
+                element: <PermissionGuard permission={routePermissions.roles} />,
+                children: [
+                  {
+                    path: routePaths.roles,
+                    element: <RolesPage />,
+                  },
+                  {
+                    path: `${routePaths.roles}/new`,
+                    element: <CreateRolePage />,
+                  },
+                  {
+                    path: `${routePaths.roles}/:roleId`,
+                    element: <RoleDetailPage />,
                   },
                 ],
               },
@@ -122,23 +135,14 @@ export const appRoutes: RouteObject[] = [
                   },
                   {
                     path: routePaths.vendorOnboarding,
-                    element: (
-                      <ModulePageFactory
-                        description="Queue-first onboarding shell prepared for kanban and review workflows."
-                        records={mockVendors}
-                        title="Vendor Onboarding"
-                      />
-                    ),
+                    element: <VendorOnboardingPage />,
                   },
                   {
                     path: `${routePaths.vendorOnboarding}/:vendorId`,
                     element: (
-                      <RecordDetailPage
-                        description="Detail shell for stage review, document verification, and approval decisions."
+                      <VendorDetailPage
                         listHref={routePaths.vendorOnboarding}
                         listLabel="Vendor Onboarding"
-                        record={secondaryVendor}
-                        title="Onboarding Detail"
                       />
                     ),
                   },
@@ -157,23 +161,14 @@ export const appRoutes: RouteObject[] = [
                   },
                   {
                     path: routePaths.manualLogistics,
-                    element: (
-                      <ModulePageFactory
-                        description="Manual delivery control shell with chronological update history and exception workflows."
-                        records={mockOrders}
-                        title="Manual Logistics"
-                      />
-                    ),
+                    element: <ManualLogisticsPage />,
                   },
                   {
                     path: `${routePaths.orders}/:orderId/logistics`,
                     element: (
-                      <RecordDetailPage
-                        description="Route placeholder for order-specific logistics actions, proof uploads, and exception handling."
+                      <OrderDetailPage
                         listHref={routePaths.manualLogistics}
                         listLabel="Manual Logistics"
-                        record={primaryOrder}
-                        title="Manual Logistics Detail"
                       />
                     ),
                   },
@@ -189,6 +184,15 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: `${routePaths.payments}/:paymentId`,
                     element: <PaymentDetailPage />,
+                  },
+                ],
+              },
+              {
+                element: <PermissionGuard permission={routePermissions.refunds} />,
+                children: [
+                  {
+                    path: routePaths.refunds,
+                    element: <RefundsPage />,
                   },
                 ],
               },
@@ -219,66 +223,32 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
+                element: <PermissionGuard permission={routePermissions.influencers} />,
+                children: [
+                  {
+                    path: routePaths.influencers,
+                    element: <InfluencersPage />,
+                  },
+                  {
+                    path: `${routePaths.influencers}/:profileId`,
+                    element: <InfluencerDetailPage />,
+                  },
+                ],
+              },
+              {
                 element: <PermissionGuard permission={routePermissions.notifications} />,
                 children: [
                   {
                     path: routePaths.notifications,
-                    element: (
-                      <ModulePageFactory
-                        actionNode={
-                          <Link to={`${routePaths.notifications}/new`}>
-                            <Button size="sm">New Notification</Button>
-                          </Link>
-                        }
-                        description="Notification center foundation for drafts, previews, scheduling, and audience targeting."
-                        records={[
-                          {
-                            id: 'NTF-001',
-                            name: 'Monsoon campaign reminder',
-                            subtitle: 'Customer App • Scheduled',
-                            status: 'Draft',
-                            updatedAt: '2026-06-05T07:05:00.000Z',
-                          },
-                        ]}
-                        title="Notifications"
-                      />
-                    ),
+                    element: <NotificationsPage />,
                   },
                   {
                     path: `${routePaths.notifications}/new`,
-                    element: (
-                      <RecordDetailPage
-                        description="Composer shell for title, body, audience, schedule, preview, and confirmation."
-                        listHref={routePaths.notifications}
-                        listLabel="Notifications"
-                        record={{
-                          id: 'DRAFT',
-                          name: 'Notification Composer',
-                          subtitle: 'Mock compose workflow',
-                          status: 'Draft Ready',
-                          updatedAt: '2026-06-05T07:05:00.000Z',
-                        }}
-                        title="Create Notification"
-                      />
-                    ),
+                    element: <NotificationComposerPage />,
                   },
                   {
                     path: `${routePaths.notifications}/:notificationId`,
-                    element: (
-                      <RecordDetailPage
-                        description="Detail shell for campaign status, audience summary, and send history."
-                        listHref={routePaths.notifications}
-                        listLabel="Notifications"
-                        record={{
-                          id: 'NTF-001',
-                          name: 'Monsoon campaign reminder',
-                          subtitle: 'Customer App • Scheduled',
-                          status: 'Draft',
-                          updatedAt: '2026-06-05T07:05:00.000Z',
-                        }}
-                        title="Notification Detail"
-                      />
-                    ),
+                    element: <NotificationDetailPage />,
                   },
                 ],
               },
@@ -287,39 +257,15 @@ export const appRoutes: RouteObject[] = [
                 children: [
                   {
                     path: routePaths.content,
-                    element: (
-                      <ModulePageFactory
-                        description="Content management shell for static content, templates, preview, and versioning."
-                        records={[
-                          {
-                            id: 'CNT-101',
-                            name: 'FAQ Landing Content',
-                            subtitle: 'Published static page',
-                            status: 'Published',
-                            updatedAt: '2026-06-05T06:15:00.000Z',
-                          },
-                        ]}
-                        title="Content"
-                      />
-                    ),
+                    element: <ContentPage />,
+                  },
+                  {
+                    path: `${routePaths.content}/new`,
+                    element: <CreateContentPage />,
                   },
                   {
                     path: `${routePaths.content}/:contentId`,
-                    element: (
-                      <RecordDetailPage
-                        description="Editor shell for draft, preview, publish, archive, and rollback flows."
-                        listHref={routePaths.content}
-                        listLabel="Content"
-                        record={{
-                          id: 'CNT-101',
-                          name: 'FAQ Landing Content',
-                          subtitle: 'Published static page',
-                          status: 'Published',
-                          updatedAt: '2026-06-05T06:15:00.000Z',
-                        }}
-                        title="Content Editor"
-                      />
-                    ),
+                    element: <ContentDetailPage />,
                   },
                 ],
               },
@@ -328,39 +274,11 @@ export const appRoutes: RouteObject[] = [
                 children: [
                   {
                     path: routePaths.reports,
-                    element: (
-                      <ModulePageFactory
-                        description="Report catalog shell with export-ready tables, filters, and finance-aware access control."
-                        records={[
-                          {
-                            id: 'RPT-OPS-01',
-                            name: 'Order lifecycle report',
-                            subtitle: 'Operations',
-                            status: 'Ready',
-                            updatedAt: '2026-06-05T05:05:00.000Z',
-                          },
-                        ]}
-                        title="Reports"
-                      />
-                    ),
+                    element: <ReportsPage />,
                   },
                   {
                     path: `${routePaths.reports}/:reportKey`,
-                    element: (
-                      <RecordDetailPage
-                        description="Report detail shell with filters, export, retry, and long-running job placeholders."
-                        listHref={routePaths.reports}
-                        listLabel="Reports"
-                        record={{
-                          id: 'RPT-OPS-01',
-                          name: 'Order lifecycle report',
-                          subtitle: 'Operations',
-                          status: 'Ready',
-                          updatedAt: '2026-06-05T05:05:00.000Z',
-                        }}
-                        title="Report Detail"
-                      />
-                    ),
+                    element: <ReportDetailPage />,
                   },
                 ],
               },
@@ -382,21 +300,7 @@ export const appRoutes: RouteObject[] = [
                 children: [
                   {
                     path: routePaths.audit,
-                    element: (
-                      <ModulePageFactory
-                        description="Audit log shell for role changes, payment actions, manual overrides, and settings changes."
-                        records={[
-                          {
-                            id: 'AUD-0001',
-                            name: 'Vendor approval updated',
-                            subtitle: 'Operations Admin • Sparkle Laundry Hub',
-                            status: 'Logged',
-                            updatedAt: '2026-06-05T03:55:00.000Z',
-                          },
-                        ]}
-                        title="Audit Logs"
-                      />
-                    ),
+                    element: <AuditLogsPage />,
                   },
                 ],
               },

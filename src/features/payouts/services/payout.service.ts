@@ -24,8 +24,23 @@ import type {
   PayoutReasonPayload,
 } from '../types/payout.types'
 
+interface ErrorEnvelope {
+  message?: string
+  error?: string
+  code?: string
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  return (await response.json()) as T
+  const payload = (await response.json()) as T | ErrorEnvelope
+
+  if (!response.ok) {
+    const errorPayload =
+      payload && typeof payload === 'object' ? (payload as ErrorEnvelope) : null
+
+    throw new Error(errorPayload?.message ?? 'Request failed.')
+  }
+
+  return payload as T
 }
 
 function postJson<TPayload>(payload: TPayload) {

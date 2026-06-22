@@ -1,6 +1,15 @@
-import { Plus, Search } from 'lucide-react'
+import {
+  CheckCircle2,
+  CircleDollarSign,
+  Eye,
+  PauseCircle,
+  Plus,
+  RotateCcw,
+  Search,
+  XCircle,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../../../components/ui/Button'
 import { DynamicTable, TableSkeleton, type DynamicTableColumn } from '../../../components/ui/Table'
@@ -10,6 +19,7 @@ import { Input } from '../../../components/ui/Input'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
+import { useAuthStore } from '../../../store/authStore'
 import { formatMoney } from '../../../utils/formatMoney'
 import { payoutService } from '../services/payout.service'
 import { PayoutActionModal, type PayoutActionFormValues, type PayoutActionSelection } from './PayoutActionModal'
@@ -32,7 +42,11 @@ function OptionalSelect<T extends string>({ label, options, value, onChange }: {
 
 export function PayoutsPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const can = useAuthStore((state) => state.can)
   const [selectedAction, setSelectedAction] = useState<PayoutActionSelection | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(20)
   const [search, setSearch] = useState('')
@@ -51,30 +65,59 @@ export function PayoutsPage() {
   const data = queryResult.data?.data ?? []
   const pagination = queryResult.data?.pagination
   const isLoading = queryResult.isLoading || queryResult.isFetching
+  const canApprovePayouts = can('payouts:approve')
   const reset = () => setPage(1)
 
-  const createMutation = useMutation({
-    mutationFn: (values: PayoutActionFormValues) => {
-      if (!values.vendorId || !values.reason) {
-        throw new Error('Vendor ID and reason are required.')
+  const mutation = useMutation({
+    mutationFn: ({ action, values }: { action: PayoutActionSelection; values: PayoutActionFormValues }) => {
+      if (action.kind === 'CREATE') {
+        if (!values.vendorId || !values.reason) {
+          throw new Error('Vendor ID and reason are required.')
+        }
+
+        return payoutService.createPayout({
+          vendorId: values.vendorId,
+          earningIds: values.earningIds?.length ? values.earningIds : undefined,
+          payoutMethod: values.payoutMethod,
+          reason: values.reason,
+        })
       }
 
-      return payoutService.createPayout({
-        vendorId: values.vendorId,
-        earningIds: values.earningIds?.length ? values.earningIds : undefined,
-        payoutMethod: values.payoutMethod,
-        reason: values.reason,
-      })
+      if (!action.payout || !values.reason) {
+        throw new Error('Payout details and reason are required.')
+      }
+
+      if (action.kind === 'APPROVE') return payoutService.approvePayout(action.payout.payoutId, { reason: values.reason, processImmediately: values.processImmediately })
+      if (action.kind === 'HOLD') return payoutService.holdPayout(action.payout.payoutId, { reason: values.reason })
+      if (action.kind === 'RELEASE_HOLD') return payoutService.releasePayoutHold(action.payout.payoutId, { reason: values.reason })
+      if (action.kind === 'MARK_PAID') {
+        if (!values.utrReference) throw new Error('UTR reference is required.')
+        return payoutService.markPayoutPaid(action.payout.payoutId, { reason: values.reason, utrReference: values.utrReference, paidAt: values.paidAt })
+      }
+      if (action.kind === 'MARK_FAILED') return payoutService.markPayoutFailed(action.payout.payoutId, { reason: values.reason })
+      throw new Error('Unsupported payout action.')
     },
-    onSuccess: () => {
+    onMutate: () => {
+      setActionError(null)
+      setActionMessage(null)
+    },
+    onSuccess: async (response) => {
       setSelectedAction(null)
-      void queryResult.refetch()
+      setActionMessage(response.message ?? 'Payout action completed.')
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['payouts'] }),
+        queryClient.invalidateQueries({ queryKey: ['payout-detail'] }),
+      ])
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : 'Payout action failed.')
     },
   })
 
   return (
     <PageContainer>
-      <PageContextHeader title="Payouts" description="Review, create, and manage vendor payouts." actionNode={<Button size="sm" onClick={() => setSelectedAction({ kind: 'CREATE' })}><Plus className="mr-2 size-4" />Create Payout</Button>} />
+      <PageContextHeader title="Payouts" description="Review, create, and manage vendor payouts." actionNode={canApprovePayouts ? <Button size="sm" onClick={() => setSelectedAction({ kind: 'CREATE' })}><Plus className="mr-2 size-4" />Create Payout</Button> : null} />
+      {actionMessage ? <div className="rounded-[1rem] border border-success/25 bg-success/10 p-3 text-sm text-success">{actionMessage}</div> : null}
       <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
         <div className="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-4">
           <label className="space-y-1"><span className="text-sm font-medium text-foreground">Search</span><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><Input className="pl-9" value={search} onChange={(event) => { setSearch(event.target.value); reset() }} /></div></label>
@@ -86,10 +129,17 @@ export function PayoutsPage() {
           <label className="space-y-1"><span className="text-sm font-medium text-foreground">Date From</span><Input type="datetime-local" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); reset() }} /></label>
           <label className="space-y-1"><span className="text-sm font-medium text-foreground">Date To</span><Input type="datetime-local" value={dateTo} onChange={(event) => { setDateTo(event.target.value); reset() }} /></label>
         </div>
-        {queryResult.isError ? <ErrorState title="Payout data unavailable" description="We could not load payout data." onRetry={() => void queryResult.refetch()} /> : isLoading ? <TableSkeleton columns={columns} rowCount={8} hasFooter={Boolean(pagination)} /> : data.length === 0 ? <EmptyState title="No payouts found" description="No payout records matched the current filters." /> : <DynamicTable columns={columns} data={data} getRowId={(row) => row.payoutId} title="Payouts" onRowClick={(row) => navigate(`${routePaths.payouts}/${row.payoutId}`)} pagination={pagination ? { page: pagination.page, pageSize: pagination.limit, total: pagination.totalItems, onPageChange: setPage, onPageSizeChange: (next) => { setLimit(next); setPage(1) }, rowsPerPageOptions: [10, 20, 50, 100] } : undefined} />}
+        {queryResult.isError ? <ErrorState title="Payout data unavailable" description={queryResult.error instanceof Error ? queryResult.error.message : 'We could not load payout data.'} onRetry={() => void queryResult.refetch()} /> : isLoading ? <TableSkeleton columns={columns} rowCount={8} hasActions hasFooter={Boolean(pagination)} /> : data.length === 0 ? <EmptyState title="No payouts found" description="No payout records matched the current filters." /> : <DynamicTable actionColumnLabel="Actions" columns={columns} data={data} getRowId={(row) => row.payoutId} title="Payouts" onRowClick={(row) => navigate(`${routePaths.payouts}/${row.payoutId}`)} pagination={pagination ? { page: pagination.page, pageSize: pagination.limit, total: pagination.totalItems, onPageChange: setPage, onPageSizeChange: (next) => { setLimit(next); setPage(1) }, rowsPerPageOptions: [10, 20, 50, 100] } : undefined} rowActions={(payout) => [
+          { key: 'view', label: 'View Detail', icon: <Eye className="size-4" />, onClick: () => navigate(`${routePaths.payouts}/${payout.payoutId}`) },
+          { key: 'approve', label: 'Approve', icon: <CheckCircle2 className="size-4" />, isVisible: canApprovePayouts && payout.availableActions.includes('APPROVE'), onClick: () => setSelectedAction({ kind: 'APPROVE', payout }) },
+          { key: 'hold', label: 'Hold', icon: <PauseCircle className="size-4" />, isVisible: canApprovePayouts && payout.availableActions.includes('HOLD'), onClick: () => setSelectedAction({ kind: 'HOLD', payout }) },
+          { key: 'release-hold', label: 'Release Hold', icon: <RotateCcw className="size-4" />, isVisible: canApprovePayouts && payout.availableActions.includes('RELEASE_HOLD'), onClick: () => setSelectedAction({ kind: 'RELEASE_HOLD', payout }) },
+          { key: 'mark-paid', label: 'Mark Paid', icon: <CircleDollarSign className="size-4" />, isVisible: canApprovePayouts && payout.availableActions.includes('MARK_PAID'), onClick: () => setSelectedAction({ kind: 'MARK_PAID', payout }) },
+          { key: 'mark-failed', label: 'Mark Failed', icon: <XCircle className="size-4" />, isVisible: canApprovePayouts && payout.availableActions.includes('MARK_FAILED'), variant: 'danger', onClick: () => setSelectedAction({ kind: 'MARK_FAILED', payout }) },
+        ]} />}
         {pagination ? <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4"><p className="text-sm text-muted">Page {pagination.page} of {pagination.totalPages}</p><div className="flex gap-2"><Button disabled={!pagination.hasPreviousPage || isLoading} size="sm" variant="secondary" onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</Button><Button disabled={!pagination.hasNextPage || isLoading} size="sm" variant="secondary" onClick={() => setPage((current) => current + 1)}>Next</Button></div></div> : null}
       </section>
-      <PayoutActionModal action={selectedAction} error={createMutation.error instanceof Error ? createMutation.error.message : null} isSubmitting={createMutation.isPending} onClose={() => setSelectedAction(null)} onSubmit={(values) => createMutation.mutate(values)} />
+      <PayoutActionModal action={selectedAction} error={actionError} isSubmitting={mutation.isPending} onClose={() => { if (!mutation.isPending) { setSelectedAction(null); setActionError(null) } }} onSubmit={(values) => { if (selectedAction) void mutation.mutateAsync({ action: selectedAction, values }) }} />
     </PageContainer>
   )
 }

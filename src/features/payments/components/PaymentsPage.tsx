@@ -1,7 +1,7 @@
-import { Search } from 'lucide-react'
+import { RotateCcw, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '../../../components/ui/Button'
 import { DynamicTable, TableSkeleton, type DynamicTableColumn } from '../../../components/ui/Table'
 import { EmptyState } from '../../../components/ui/EmptyState'
@@ -100,7 +100,18 @@ export function PaymentsPage() {
 
   return (
     <PageContainer>
-      <PageContextHeader title="Payments" description="Review and reconcile backend payment records." />
+      <PageContextHeader
+        actionNode={
+          <Link to={routePaths.refunds}>
+            <Button size="sm" variant="secondary">
+              <RotateCcw className="mr-2 size-4" />
+              Refund Queue
+            </Button>
+          </Link>
+        }
+        description="Review and reconcile backend payment records."
+        title="Payments"
+      />
       <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
         <div className="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-4">
           <label className="space-y-1"><span className="text-sm font-medium text-foreground">Search</span><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><Input className="pl-9" value={search} onChange={(event) => { setSearch(event.target.value); reset() }} /></div></label>

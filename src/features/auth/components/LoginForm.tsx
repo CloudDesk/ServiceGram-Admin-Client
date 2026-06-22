@@ -1,18 +1,36 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LockKeyhole, Mail, ShieldCheck } from "lucide-react";
+import { useMemo } from "react";
 import { useForm } from "react-hook-form";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../../components/ui/Button";
+import { InlineAlert } from "../../../components/feedback/InlineAlert";
 import { Input } from "../../../components/ui/Input";
 import { FormErrorSummary } from "../../../components/feedback/FormErrorSummary";
 import { routePaths } from "../../../config/routes";
 import { useToast } from "../../../hooks/useToast";
+import { storageKeys } from "../../../lib/storage";
+import { safeJsonParse } from "../../../utils/safeJson";
 import { PasswordInput } from "./PasswordInput";
 import { useLogin } from "../hooks/useLogin";
 import { LoginServiceError } from "../types/auth.types";
 import { type LoginFormValues, loginSchema } from "../schemas/auth.schema";
 
 const ADMIN_DEVICE_ID = "admin-web-macbook-pro";
+
+interface LoginLocationState {
+  from?: {
+    hash?: string
+    pathname?: string
+    search?: string
+  }
+}
+
+interface AuthRedirectNotice {
+  message: string
+  reason: "expired" | "reauth"
+  redirectTo: string
+}
 
 function hasFieldErrors(details: unknown): details is {
   fieldErrors: {
@@ -29,10 +47,57 @@ function hasFieldErrors(details: unknown): details is {
   );
 }
 
+function safeRedirectPath(path: string | null | undefined) {
+  if (!path || !path.startsWith("/") || path.startsWith("//")) {
+    return routePaths.dashboard;
+  }
+
+  if (path.startsWith(routePaths.login)) {
+    return routePaths.dashboard;
+  }
+
+  return path;
+}
+
+function redirectFromLocationState(state: unknown) {
+  const locationState = state as LoginLocationState | null;
+  const from = locationState?.from;
+
+  if (!from?.pathname) {
+    return null;
+  }
+
+  return `${from.pathname}${from.search ?? ""}${from.hash ?? ""}`;
+}
+
+function readAuthRedirectNotice() {
+  return safeJsonParse<AuthRedirectNotice | null>(
+    window.sessionStorage.getItem(storageKeys.authRedirectNotice),
+    null,
+  );
+}
+
 export function LoginForm() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { pushToast } = useToast();
   const mutation = useLogin();
+  const redirectNotice = useMemo(readAuthRedirectNotice, []);
+  const redirectTo = safeRedirectPath(
+    searchParams.get("redirectTo") ??
+      redirectNotice?.redirectTo ??
+      redirectFromLocationState(location.state),
+  );
+  const reason = searchParams.get("reason") ?? redirectNotice?.reason;
+  const noticeMessage =
+    reason === "reauth"
+      ? redirectNotice?.message ??
+        "Please sign in again before performing this action."
+      : reason === "expired"
+        ? redirectNotice?.message ??
+          "Your session has expired. Please log in again."
+        : null;
   const {
     formState: { errors },
     handleSubmit,
@@ -61,9 +126,13 @@ export function LoginForm() {
           pushToast({
             tone: "success",
             title: "Signed in successfully.",
-            description: "Loading your admin workspace.",
+            description:
+              redirectTo === routePaths.dashboard
+                ? "Loading your admin workspace."
+                : "Returning you to your previous page.",
           });
-          navigate(routePaths.dashboard);
+          window.sessionStorage.removeItem(storageKeys.authRedirectNotice);
+          navigate(redirectTo, { replace: true });
         } catch (error) {
           if (error instanceof LoginServiceError) {
             if (error.status === 400) {
@@ -105,6 +174,8 @@ export function LoginForm() {
           Welcome back
         </h1>
       </div>
+
+      {noticeMessage ? <InlineAlert message={noticeMessage} /> : null}
 
       <div className="space-y-2">
         <label

@@ -1,8 +1,14 @@
 import {
+  ArrowRight,
   Ban,
+  CalendarClock,
+  CircleCheck,
   FileUp,
+  KeyRound,
   MessageSquarePlus,
+  PackageCheck,
   RotateCcw,
+  Route,
   ShieldCheck,
   Truck,
 } from 'lucide-react'
@@ -18,6 +24,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
 import { orderService } from '../services/order.service'
 import {
@@ -60,6 +67,13 @@ const logisticsColumns: DynamicTableColumn<AdminOrderLogisticsTimelineItem>[] = 
   { key: 'eventType', label: 'Event', minWidth: 190 },
   { key: 'packageCondition', label: 'Condition', minWidth: 140 },
   { key: 'issueType', label: 'Issue', minWidth: 140 },
+  { key: 'internalNote', label: 'Note', minWidth: 240, placeholder: 'No note' },
+  {
+    key: 'proofMediaAssetId',
+    label: 'Proof',
+    minWidth: 160,
+    renderCell: (event) => event.proofMediaAssetId ? 'Attached' : 'Not attached',
+  },
   { key: 'eventTime', label: 'Event Time', format: 'date', minWidth: 180 },
 ]
 
@@ -97,14 +111,95 @@ function DetailField({ label, value }: { label: string; value: string | number |
   )
 }
 
+const logisticsStatusOrder: AdminOrderStatus[] = [
+  'VENDOR_ACCEPTED',
+  'PICKUP_SCHEDULED',
+  'PICKED_UP_FROM_CUSTOMER',
+  'HANDED_OVER_TO_VENDOR',
+  'ITEM_RECEIVED_BY_VENDOR',
+  'SERVICE_IN_PROGRESS',
+  'SERVICE_COMPLETED',
+  'COLLECTED_FROM_VENDOR',
+  'OUT_FOR_DELIVERY',
+  'DELIVERED',
+]
+
+const manualStatusCopy: Partial<Record<AdminOrderStatus, { label: string; description: string }>> = {
+  PICKUP_SCHEDULED: {
+    label: 'Schedule pickup',
+    description: 'Pickup is planned and ready for field pickup.',
+  },
+  PICKED_UP_FROM_CUSTOMER: {
+    label: 'Mark picked up',
+    description: 'Package was collected from the customer.',
+  },
+  HANDED_OVER_TO_VENDOR: {
+    label: 'Hand over to vendor',
+    description: 'Package was handed over to the service vendor.',
+  },
+  COLLECTED_FROM_VENDOR: {
+    label: 'Collect from vendor',
+    description: 'Completed package was collected from the vendor.',
+  },
+  OUT_FOR_DELIVERY: {
+    label: 'Send out for delivery',
+    description: 'Package is on the way back to the customer.',
+  },
+  DELIVERED: {
+    label: 'Mark delivered',
+    description: 'Customer received the completed order.',
+  },
+  DELIVERY_FAILED: {
+    label: 'Mark delivery failed',
+    description: 'Delivery attempt failed and needs follow-up.',
+  },
+  CUSTOMER_UNAVAILABLE: {
+    label: 'Customer unavailable',
+    description: 'Customer could not receive the delivery.',
+  },
+  CANCELLED: {
+    label: 'Cancel order',
+    description: 'Stop the order from further processing.',
+  },
+}
+
+function formatStatusLabel(status?: string | null) {
+  if (!status) {
+    return 'Not available'
+  }
+
+  return status
+    .toLowerCase()
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+function statusTone(status: string) {
+  if (status === 'DELIVERED' || status === 'SERVICE_COMPLETED') {
+    return 'success' as const
+  }
+  if (['CANCELLED', 'DELIVERY_FAILED', 'CUSTOMER_UNAVAILABLE', 'ITEM_DAMAGED', 'ITEM_LOST', 'WRONG_ITEM'].includes(status)) {
+    return 'danger' as const
+  }
+  if (['OUT_FOR_DELIVERY', 'PICKED_UP_FROM_CUSTOMER', 'COLLECTED_FROM_VENDOR'].includes(status)) {
+    return 'warning' as const
+  }
+  return 'info' as const
+}
+
+function actionTargetStatus(action: string) {
+  return action.replace(/^MARK_/, '') as AdminOrderStatus
+}
+
 function OrderHeaderStatus({ order }: { order: AdminOrderDetail }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Badge tone={order.orderStatus === 'DELIVERED' ? 'success' : order.orderStatus === 'CANCELLED' ? 'danger' : 'info'}>
-        {order.orderStatus}
+        {formatStatusLabel(order.orderStatus)}
       </Badge>
       <Badge tone={order.paymentStatus === 'PAID' ? 'success' : order.paymentStatus === 'FAILED' ? 'danger' : 'warning'}>
-        {order.paymentStatus}
+        {formatStatusLabel(order.paymentStatus)}
       </Badge>
     </div>
   )
@@ -119,32 +214,8 @@ function OrderHeaderActions({
   onSelectAction: (kind: OrderActionKind, targetStatus?: AdminOrderStatus) => void
   order: AdminOrderDetail
 }) {
-  const markActions = order.availableActions.filter((action) => action.startsWith('MARK_'))
-
   return (
     <div className="flex flex-wrap justify-end gap-2">
-      {markActions.map((action) => {
-        const targetStatus = action.replace(/^MARK_/, '') as AdminOrderStatus
-
-        return (
-          <Button disabled={isSubmitting} key={action} size="sm" onClick={() => onSelectAction('UPDATE_STATUS', targetStatus)}>
-            <Truck className="mr-2 size-4" />
-            {targetStatus.replaceAll('_', ' ')}
-          </Button>
-        )
-      })}
-      {order.availableActions.includes('GENERATE_DELIVERY_OTP') ? (
-        <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('GENERATE_DELIVERY_OTP')}>
-          <ShieldCheck className="mr-2 size-4" />
-          Generate OTP
-        </Button>
-      ) : null}
-      {order.availableActions.includes('CONFIRM_DELIVERY_OTP') ? (
-        <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('CONFIRM_DELIVERY_OTP')}>
-          <ShieldCheck className="mr-2 size-4" />
-          Confirm OTP
-        </Button>
-      ) : null}
       {order.availableActions.includes('INITIATE_REFUND') ? (
         <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('INITIATE_REFUND')}>
           <RotateCcw className="mr-2 size-4" />
@@ -171,7 +242,171 @@ function OrderHeaderActions({
   )
 }
 
-export function OrderDetailPage() {
+function ManualLogisticsPanel({
+  isSubmitting,
+  onSelectAction,
+  order,
+}: {
+  isSubmitting: boolean
+  onSelectAction: (kind: OrderActionKind, targetStatus?: AdminOrderStatus) => void
+  order: AdminOrderDetail
+}) {
+  const markActions = order.availableActions.filter((action) => action.startsWith('MARK_'))
+  const currentStepIndex = logisticsStatusOrder.indexOf(order.orderStatus)
+  const primaryAction =
+    order.nextRecommendedAction?.startsWith('MARK_') && markActions.includes(order.nextRecommendedAction)
+      ? order.nextRecommendedAction
+      : markActions[0]
+  const secondaryActions = markActions.filter((action) => action !== primaryAction)
+  const primaryTarget = primaryAction ? actionTargetStatus(primaryAction) : null
+
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.85fr)]">
+      <div className="rounded-[1rem] border border-border bg-surface p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Route className="size-5 text-primary" />
+              <h2 className="text-base font-semibold text-foreground">Manual Logistics</h2>
+            </div>
+            <p className="max-w-2xl text-sm text-muted">
+              Admin-controlled pickup and delivery movement until the delivery partner app is ready.
+            </p>
+          </div>
+          <Badge tone={statusTone(order.orderStatus)}>{formatStatusLabel(order.orderStatus)}</Badge>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-[0.85rem] border border-border bg-background/40 p-3">
+            <p className="text-xs font-semibold uppercase text-muted">Current status</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">{formatStatusLabel(order.orderStatus)}</p>
+          </div>
+          <div className="rounded-[0.85rem] border border-border bg-background/40 p-3">
+            <p className="text-xs font-semibold uppercase text-muted">Next step</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">
+              {primaryTarget ? manualStatusCopy[primaryTarget]?.label ?? formatStatusLabel(primaryTarget) : 'No manual step'}
+            </p>
+          </div>
+          <div className="rounded-[0.85rem] border border-border bg-background/40 p-3">
+            <p className="text-xs font-semibold uppercase text-muted">Event count</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">{order.counts?.logisticsEventCount ?? order.logisticsTimeline.length}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {logisticsStatusOrder.map((status, index) => {
+            const isCurrent = order.orderStatus === status
+            const isDone = currentStepIndex >= 0 && index < currentStepIndex
+            const tone = isCurrent ? statusTone(status) : isDone ? 'success' : 'neutral'
+
+            return (
+              <div className="flex items-center gap-2" key={status}>
+                <Badge tone={tone}>{formatStatusLabel(status)}</Badge>
+                {index < logisticsStatusOrder.length - 1 ? <ArrowRight className="size-3 text-muted" /> : null}
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          {primaryTarget ? (
+            <Button disabled={isSubmitting} size="sm" onClick={() => onSelectAction('UPDATE_STATUS', primaryTarget)}>
+              <Truck className="mr-2 size-4" />
+              {manualStatusCopy[primaryTarget]?.label ?? formatStatusLabel(primaryTarget)}
+            </Button>
+          ) : (
+            <div className="rounded-[0.85rem] border border-border bg-background/40 px-3 py-2 text-sm text-muted">
+              No valid manual transition is available for this status.
+            </div>
+          )}
+
+          {secondaryActions.map((action) => {
+            const targetStatus = actionTargetStatus(action)
+            return (
+              <Button disabled={isSubmitting} key={action} size="sm" variant="secondary" onClick={() => onSelectAction('UPDATE_STATUS', targetStatus)}>
+                {manualStatusCopy[targetStatus]?.label ?? formatStatusLabel(targetStatus)}
+              </Button>
+            )
+          })}
+        </div>
+
+        {primaryTarget ? (
+          <p className="mt-3 text-sm text-muted">
+            {manualStatusCopy[primaryTarget]?.description ?? 'This update will write order history and a logistics timeline event.'}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="rounded-[1rem] border border-border bg-surface p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <KeyRound className="size-5 text-primary" />
+              <h2 className="text-base font-semibold text-foreground">Delivery OTP</h2>
+            </div>
+            <p className="text-sm text-muted">Customer handover verification for final delivery.</p>
+          </div>
+          {order.activeDeliveryOtp ? <Badge tone="warning">{order.activeDeliveryOtp.status}</Badge> : <Badge tone="neutral">No active OTP</Badge>}
+        </div>
+
+        {order.activeDeliveryOtp ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[0.85rem] border border-border bg-background/40 p-3">
+              <p className="text-xs font-semibold uppercase text-muted">Expires</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{formatDate(order.activeDeliveryOtp.expiresAt, true)}</p>
+            </div>
+            <div className="rounded-[0.85rem] border border-border bg-background/40 p-3">
+              <p className="text-xs font-semibold uppercase text-muted">Attempts</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {order.activeDeliveryOtp.attempts}/{order.activeDeliveryOtp.maxAttempts}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-[0.85rem] border border-border bg-background/40 p-3 text-sm text-muted">
+            OTP controls become available when the order is out for delivery.
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {order.availableActions.includes('GENERATE_DELIVERY_OTP') ? (
+            <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('GENERATE_DELIVERY_OTP')}>
+              <ShieldCheck className="mr-2 size-4" />
+              Generate OTP
+            </Button>
+          ) : null}
+          {order.availableActions.includes('CONFIRM_DELIVERY_OTP') ? (
+            <Button disabled={isSubmitting} size="sm" onClick={() => onSelectAction('CONFIRM_DELIVERY_OTP')}>
+              <CircleCheck className="mr-2 size-4" />
+              Confirm OTP
+            </Button>
+          ) : null}
+          {order.availableActions.includes('CREATE_PROOF_UPLOAD_INTENT') ? (
+            <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('CREATE_PROOF_UPLOAD_INTENT')}>
+              <PackageCheck className="mr-2 size-4" />
+              Proof Upload
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="mt-4 flex items-start gap-2 rounded-[0.85rem] border border-border bg-background/40 p-3 text-sm text-muted">
+          <CalendarClock className="mt-0.5 size-4 shrink-0" />
+          <p>Every manual update writes order history, logistics timeline, and admin audit records.</p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+interface OrderDetailPageProps {
+  listHref?: string
+  listLabel?: string
+}
+
+export function OrderDetailPage({
+  listHref = routePaths.orders,
+  listLabel = 'Orders',
+}: OrderDetailPageProps = {}) {
   const { orderId } = useParams()
   const queryClient = useQueryClient()
   const [actionError, setActionError] = useState<string | null>(null)
@@ -189,6 +424,7 @@ export function OrderDetailPage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['order-detail', orderId] }),
       queryClient.invalidateQueries({ queryKey: ['orders'] }),
+      queryClient.invalidateQueries({ queryKey: ['manual-logistics'] }),
     ])
   }
 
@@ -319,10 +555,16 @@ export function OrderDetailPage() {
       <DetailPageHeader
         actionNode={<OrderHeaderActions isSubmitting={actionMutation.isPending} order={order} onSelectAction={openAction} />}
         description={`${order.customer.fullName} · ${order.vendor.shopName}`}
-        listHref={routePaths.orders}
-        listLabel="Orders"
+        listHref={listHref}
+        listLabel={listLabel}
         recordName={order.publicOrderId}
         titleMetaNode={<OrderHeaderStatus order={order} />}
+      />
+
+      <ManualLogisticsPanel
+        isSubmitting={actionMutation.isPending}
+        order={order}
+        onSelectAction={openAction}
       />
 
       <section className="grid gap-4 lg:grid-cols-3">

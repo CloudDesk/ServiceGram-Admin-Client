@@ -11,10 +11,11 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { useAuthStore } from '../../../store/authStore'
 import { formatMoney } from '../../../utils/formatMoney'
 import { paymentService } from '../services/payment.service'
 import { PaymentActionModal, type PaymentActionFormValues, type PaymentActionSelection } from './PaymentActionModal'
-import type { AdminPaymentDetail, AdminRefundCore, AdminRefundSummary } from '../types/payment.types'
+import type { AdminPaymentDetail, AdminRefundCore } from '../types/payment.types'
 
 const refundColumns: DynamicTableColumn<AdminRefundCore>[] = [
   { key: 'refundId', label: 'Refund', minWidth: 220 },
@@ -31,10 +32,10 @@ function HeaderStatus({ payment }: { payment: AdminPaymentDetail }) {
   return <div className="flex flex-wrap gap-2"><Badge tone={payment.status === 'SUCCESS' ? 'success' : payment.status === 'FAILED' ? 'danger' : 'warning'}>{payment.status}</Badge><Badge tone="info">{payment.gateway}</Badge></div>
 }
 
-function HeaderActions({ payment, isSubmitting, onSelect }: { payment: AdminPaymentDetail; isSubmitting: boolean; onSelect: (action: PaymentActionSelection) => void }) {
+function HeaderActions({ canReconcile, payment, isSubmitting, onSelect }: { canReconcile: boolean; payment: AdminPaymentDetail; isSubmitting: boolean; onSelect: (action: PaymentActionSelection) => void }) {
   return (
     <div className="flex flex-wrap justify-end gap-2">
-      {payment.availableActions.includes('RECONCILE') ? <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelect({ kind: 'RECONCILE_PAYMENT', payment })}><RefreshCcw className="mr-2 size-4" />Reconcile</Button> : null}
+      {canReconcile && payment.availableActions.includes('RECONCILE') ? <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelect({ kind: 'RECONCILE_PAYMENT', payment })}><RefreshCcw className="mr-2 size-4" />Reconcile</Button> : null}
     </div>
   )
 }
@@ -42,8 +43,12 @@ function HeaderActions({ payment, isSubmitting, onSelect }: { payment: AdminPaym
 export function PaymentDetailPage() {
   const { paymentId } = useParams()
   const queryClient = useQueryClient()
+  const can = useAuthStore((state) => state.can)
   const [selectedAction, setSelectedAction] = useState<PaymentActionSelection | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const canReconcile = can('payments:reconcile')
+  const canReviewRefunds = can('payments:refund')
 
   const paymentQuery = useQuery({ enabled: Boolean(paymentId), queryKey: ['payment-detail', paymentId], queryFn: () => paymentService.getPaymentById(paymentId as string) })
   const payment = paymentQuery.data?.data
@@ -58,11 +63,16 @@ export function PaymentDetailPage() {
       if (!values.reason) throw new Error('Rejection reason is required.')
       return paymentService.rejectRefund(action.refund.refundId, { reason: values.reason })
     },
-    onMutate: () => setActionError(null),
-    onSuccess: () => {
+    onMutate: () => {
+      setActionError(null)
+      setActionMessage(null)
+    },
+    onSuccess: (response) => {
       setSelectedAction(null)
+      setActionMessage(response.message ?? 'Payment action completed.')
       void queryClient.invalidateQueries({ queryKey: ['payment-detail', paymentId] })
       void queryClient.invalidateQueries({ queryKey: ['payments'] })
+      void queryClient.invalidateQueries({ queryKey: ['refunds'] })
     },
     onError: (error) => setActionError(error instanceof Error ? error.message : 'Payment action failed.'),
   })
@@ -74,7 +84,12 @@ export function PaymentDetailPage() {
 
   return (
     <PageContainer>
-      <DetailPageHeader actionNode={<HeaderActions payment={payment} isSubmitting={mutation.isPending} onSelect={setSelectedAction} />} description={`${payment.order.publicOrderId} · ${payment.customer.fullName}`} listHref={routePaths.payments} listLabel="Payments" recordName={payment.publicPaymentId} titleMetaNode={<HeaderStatus payment={payment} />} />
+      <DetailPageHeader actionNode={<HeaderActions canReconcile={canReconcile} payment={payment} isSubmitting={mutation.isPending} onSelect={setSelectedAction} />} description={`${payment.order.publicOrderId} · ${payment.customer.fullName}`} listHref={routePaths.payments} listLabel="Payments" recordName={payment.publicPaymentId} titleMetaNode={<HeaderStatus payment={payment} />} />
+      {actionMessage ? (
+        <div className="rounded-[1rem] border border-success/25 bg-success/10 p-3 text-sm text-success">
+          {actionMessage}
+        </div>
+      ) : null}
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4 lg:col-span-2">
           <h2 className="text-base font-semibold text-foreground">Payment Information</h2>
@@ -88,10 +103,9 @@ export function PaymentDetailPage() {
         </div>
       </section>
       <DynamicTable actionColumnLabel="Refund Actions" columns={refundColumns} data={payment.refunds} getRowId={(row) => row.refundId} title="Refunds" rowActions={(refund) => {
-        const refundAction = refund as AdminRefundSummary
         return [
-          { key: 'approve', label: 'Approve', icon: <CheckCircle2 className="size-4" />, isVisible: refund.status === 'REQUESTED', onClick: () => setSelectedAction({ kind: 'APPROVE_REFUND', refund: refundAction }) },
-          { key: 'reject', label: 'Reject', icon: <XCircle className="size-4" />, isVisible: refund.status === 'REQUESTED', variant: 'danger', onClick: () => setSelectedAction({ kind: 'REJECT_REFUND', refund: refundAction }) },
+          { key: 'approve', label: 'Approve', icon: <CheckCircle2 className="size-4" />, isVisible: canReviewRefunds && refund.status === 'REQUESTED', onClick: () => setSelectedAction({ kind: 'APPROVE_REFUND', refund }) },
+          { key: 'reject', label: 'Reject', icon: <XCircle className="size-4" />, isVisible: canReviewRefunds && refund.status === 'REQUESTED', variant: 'danger', onClick: () => setSelectedAction({ kind: 'REJECT_REFUND', refund }) },
         ]
       }} />
       <PaymentActionModal action={selectedAction} error={actionError} isSubmitting={mutation.isPending} onClose={() => { if (!mutation.isPending) { setSelectedAction(null); setActionError(null) } }} onSubmit={(values) => { if (selectedAction) void mutation.mutateAsync({ action: selectedAction, values }) }} />

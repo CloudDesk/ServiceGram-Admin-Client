@@ -7,7 +7,7 @@ export function NotFoundPage() {
   return (
     <div className="relative">
       <ErrorLayout
-        description="The route may be invalid or the mock module foundation for this path is not available yet."
+        description="The route may be invalid or this admin workflow is not available yet."
         title="Page not found"
       />
       <div className="absolute inset-x-0 top-[60%] flex justify-center">

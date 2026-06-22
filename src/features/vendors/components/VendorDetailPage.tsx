@@ -357,7 +357,15 @@ function VendorHeaderActions({
   )
 }
 
-export function VendorDetailPage() {
+interface VendorDetailPageProps {
+  listHref?: string
+  listLabel?: string
+}
+
+export function VendorDetailPage({
+  listHref = routePaths.vendors,
+  listLabel = 'Vendors',
+}: VendorDetailPageProps = {}) {
   const { vendorId } = useParams()
   const queryClient = useQueryClient()
   const [actionError, setActionError] = useState<string | null>(null)
@@ -377,6 +385,7 @@ export function VendorDetailPage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['vendor-detail', vendorId] }),
       queryClient.invalidateQueries({ queryKey: ['vendors'] }),
+      queryClient.invalidateQueries({ queryKey: ['vendor-onboarding'] }),
     ])
   }
 
@@ -577,8 +586,8 @@ export function VendorDetailPage() {
           />
         }
         description={vendor.publicVendorId}
-        listHref={routePaths.vendors}
-        listLabel="Vendors"
+        listHref={listHref}
+        listLabel={listLabel}
         recordName={vendor.shopName}
         titleMetaNode={<VendorHeaderStatus vendor={vendor} />}
       />

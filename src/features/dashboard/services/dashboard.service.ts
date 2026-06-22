@@ -1,1 +1,1 @@
-export { dashboardMockService as dashboardService } from './dashboard.mock'
+export { dashboardApiService as dashboardService } from './dashboard.api'

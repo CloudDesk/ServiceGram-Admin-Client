@@ -11,6 +11,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { useAuthStore } from '../../../store/authStore'
 import { formatMoney } from '../../../utils/formatMoney'
 import { payoutService } from '../services/payout.service'
 import { PayoutActionModal, type PayoutActionFormValues, type PayoutActionKind, type PayoutActionSelection } from './PayoutActionModal'
@@ -31,8 +32,12 @@ function HeaderStatus({ payout }: { payout: AdminPayoutDetail }) {
   return <div className="flex flex-wrap gap-2"><Badge tone={payout.status === 'PAID' ? 'success' : payout.status === 'FAILED' || payout.status === 'HELD' ? 'danger' : 'warning'}>{payout.status}</Badge><Badge tone="info">{payout.payoutMethod}</Badge></div>
 }
 
-function HeaderActions({ payout, isSubmitting, onSelect }: { payout: AdminPayoutDetail; isSubmitting: boolean; onSelect: (kind: PayoutActionKind) => void }) {
+function HeaderActions({ canApprovePayouts, payout, isSubmitting, onSelect }: { canApprovePayouts: boolean; payout: AdminPayoutDetail; isSubmitting: boolean; onSelect: (kind: PayoutActionKind) => void }) {
   const has = (action: string) => payout.availableActions.includes(action)
+  if (!canApprovePayouts) {
+    return null
+  }
+
   return (
     <div className="flex flex-wrap justify-end gap-2">
       {has('APPROVE') ? <Button disabled={isSubmitting} size="sm" onClick={() => onSelect('APPROVE')}><CheckCircle2 className="mr-2 size-4" />Approve</Button> : null}
@@ -47,8 +52,11 @@ function HeaderActions({ payout, isSubmitting, onSelect }: { payout: AdminPayout
 export function PayoutDetailPage() {
   const { payoutId } = useParams()
   const queryClient = useQueryClient()
+  const can = useAuthStore((state) => state.can)
   const [selectedAction, setSelectedAction] = useState<PayoutActionSelection | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const canApprovePayouts = can('payouts:approve')
   const payoutQuery = useQuery({ enabled: Boolean(payoutId), queryKey: ['payout-detail', payoutId], queryFn: () => payoutService.getPayoutById(payoutId as string) })
   const payout = payoutQuery.data?.data
 
@@ -65,9 +73,13 @@ export function PayoutDetailPage() {
       if (action.kind === 'MARK_FAILED') return payoutService.markPayoutFailed(action.payout.payoutId, { reason: values.reason })
       throw new Error('Unsupported payout action.')
     },
-    onMutate: () => setActionError(null),
-    onSuccess: () => {
+    onMutate: () => {
+      setActionError(null)
+      setActionMessage(null)
+    },
+    onSuccess: (response) => {
       setSelectedAction(null)
+      setActionMessage(response.message ?? 'Payout action completed.')
       void queryClient.invalidateQueries({ queryKey: ['payout-detail', payoutId] })
       void queryClient.invalidateQueries({ queryKey: ['payouts'] })
     },
@@ -76,12 +88,13 @@ export function PayoutDetailPage() {
 
   if (!payoutId) return <PageContainer><ErrorState title="Payout not found" description="The payout route is missing a payout id." /></PageContainer>
   if (payoutQuery.isLoading) return <PageContainer><Skeleton className="h-24 w-full" /><Skeleton className="h-[24rem] w-full" /></PageContainer>
-  if (payoutQuery.isError) return <PageContainer><ErrorState title="Payout unavailable" description="We could not load this payout." onRetry={() => void payoutQuery.refetch()} /></PageContainer>
+  if (payoutQuery.isError) return <PageContainer><ErrorState title="Payout unavailable" description={payoutQuery.error instanceof Error ? payoutQuery.error.message : 'We could not load this payout.'} onRetry={() => void payoutQuery.refetch()} /></PageContainer>
   if (!payout) return <PageContainer><EmptyState title="Payout not found" description="The payout detail API returned no data." /></PageContainer>
 
   return (
     <PageContainer>
-      <DetailPageHeader actionNode={<HeaderActions payout={payout} isSubmitting={mutation.isPending} onSelect={(kind) => setSelectedAction({ kind, payout })} />} description={`${payout.vendor.shopName} · ${formatMoney(payout.totalAmountPaise / 100)}`} listHref={routePaths.payouts} listLabel="Payouts" recordName={payout.publicPayoutId} titleMetaNode={<HeaderStatus payout={payout} />} />
+      <DetailPageHeader actionNode={<HeaderActions canApprovePayouts={canApprovePayouts} payout={payout} isSubmitting={mutation.isPending} onSelect={(kind) => setSelectedAction({ kind, payout })} />} description={`${payout.vendor.shopName} · ${formatMoney(payout.totalAmountPaise / 100)}`} listHref={routePaths.payouts} listLabel="Payouts" recordName={payout.publicPayoutId} titleMetaNode={<HeaderStatus payout={payout} />} />
+      {actionMessage ? <div className="rounded-[1rem] border border-success/25 bg-success/10 p-3 text-sm text-success">{actionMessage}</div> : null}
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4 lg:col-span-2"><h2 className="text-base font-semibold text-foreground">Payout Information</h2><div className="grid gap-4 sm:grid-cols-2"><Field label="Payout ID" value={payout.payoutId} /><Field label="Vendor" value={payout.vendor.shopName} /><Field label="Amount" value={formatMoney(payout.totalAmountPaise / 100)} /><Field label="UTR" value={payout.utrReference} /><Field label="Hold Reason" value={payout.holdReason} /><Field label="Failure Reason" value={payout.failureReason} /><Field label="Warnings" value={payout.warnings.length ? payout.warnings.join(', ') : null} /><Field label="Next Action" value={payout.nextRecommendedAction} /></div></div>
         <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4"><h2 className="text-base font-semibold text-foreground">Item Summary</h2><Field label="Items" value={payout.itemSummary.itemCount} /><Field label="Gross" value={formatMoney(payout.itemSummary.grossAmountPaise / 100)} /><Field label="Commission" value={formatMoney(payout.itemSummary.commissionAmountPaise / 100)} /><Field label="Net Payable" value={formatMoney(payout.itemSummary.netPayablePaise / 100)} /></div>

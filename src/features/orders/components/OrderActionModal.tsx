@@ -148,6 +148,11 @@ export function OrderActionModal({
       return
     }
 
+    if (action.kind === 'UPDATE_STATUS' && internalNote.trim().length < 3) {
+      setFormError('Internal note must be at least 3 characters for manual logistics updates.')
+      return
+    }
+
     if (action.kind === 'ADD_NOTE' && note.trim().length < 3) {
       setFormError('Note must be at least 3 characters.')
       return
@@ -266,9 +271,12 @@ export function OrderActionModal({
                 ) : null}
               </div>
               <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Internal note</span>
+                <span className="text-sm font-semibold text-foreground">
+                  Internal note{action.kind === 'UPDATE_STATUS' ? ' *' : ''}
+                </span>
                 <textarea
                   className="form-input min-h-24 resize-y"
+                  placeholder={action.kind === 'UPDATE_STATUS' ? 'Example: Pickup completed by operations runner.' : undefined}
                   value={internalNote}
                   onChange={(event) => setInternalNote(event.target.value)}
                 />

@@ -11,6 +11,7 @@ import { Skeleton } from '../../../components/ui/Skeleton'
 import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
+import { rbacService } from '../../rbac/services/rbac.service'
 import { adminUserService } from '../services/adminUser.service'
 import type { AdminUser, AdminUserStatus } from '../types/adminUser.types'
 
@@ -58,10 +59,21 @@ export function AdminUserDetailPage() {
     queryKey: ['admin-users', 'detail-resolver'],
     queryFn: () => adminUserService.getAdminUsers({ page: 1, limit: 100 }),
   })
+  const rolesQuery = useQuery({
+    queryKey: ['rbac', 'roles'],
+    queryFn: () => rbacService.getRoles(),
+  })
 
   const user = useMemo(
     () => usersQuery.data?.data.find((item) => item.adminId === adminUserId),
     [adminUserId, usersQuery.data?.data],
+  )
+  const roleOptions = useMemo(
+    () =>
+      rolesQuery.data?.data.filter(
+        (role) => role.isActive || role.roleId === user?.role?.roleId,
+      ) ?? [],
+    [rolesQuery.data?.data, user?.role?.roleId],
   )
 
   const refreshUsers = async () => {
@@ -76,7 +88,10 @@ export function AdminUserDetailPage() {
 
       return adminUserService.updateAdminUser(adminUserId, {
         fullName: fullName.trim() || undefined,
-        roleId: roleId.trim() || undefined,
+        roleId:
+          roleId.trim() && roleId.trim() !== user?.role?.roleId
+            ? roleId.trim()
+            : undefined,
         status: status || undefined,
         forceLogout,
         reason: reason.trim() || undefined,
@@ -163,7 +178,7 @@ export function AdminUserDetailPage() {
     return (
       <PageContainer>
         <EmptyState
-          description="Swagger does not expose a single admin-user detail endpoint. This page can only resolve users available from the list API response."
+          description="This admin user is not available in the current list view."
           title="Admin user not found"
         />
       </PageContainer>
@@ -259,12 +274,27 @@ export function AdminUserDetailPage() {
             />
           </label>
           <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Role ID</span>
-            <Input
-              className="min-h-11"
+            <span className="text-sm font-medium text-foreground">Role</span>
+            <select
+              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={rolesQuery.isLoading || rolesQuery.isError}
               value={roleId || (user.role?.roleId ?? '')}
               onChange={(event) => setRoleId(event.target.value)}
-            />
+            >
+              <option value="">Select role</option>
+              {roleOptions.map((role) => (
+                <option key={role.roleId} value={role.roleId}>
+                  {role.roleName} ({role.roleCode})
+                </option>
+              ))}
+            </select>
+            {rolesQuery.isError ? (
+              <p className="text-xs text-danger">
+                {rolesQuery.error instanceof Error
+                  ? rolesQuery.error.message
+                  : 'Roles could not be loaded.'}
+              </p>
+            ) : null}
           </label>
           <label className="space-y-1">
             <span className="text-sm font-medium text-foreground">Status</span>
