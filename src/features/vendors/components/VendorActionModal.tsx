@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
-import type { VendorDetail, VendorDocument } from '../types/vendor.types'
+import type { VendorBankAccount, VendorDetail, VendorDocument } from '../types/vendor.types'
 
 export type VendorActionKind =
   | 'APPROVE'
@@ -12,10 +12,13 @@ export type VendorActionKind =
   | 'ADD_NOTE'
   | 'VERIFY_DOCUMENT'
   | 'REJECT_DOCUMENT'
+  | 'VERIFY_BANK_ACCOUNT'
+  | 'REJECT_BANK_ACCOUNT'
 
 export interface VendorActionSelection {
   kind: VendorActionKind
   document?: VendorDocument
+  bankAccount?: VendorBankAccount
 }
 
 export interface VendorActionFormValues {
@@ -104,6 +107,21 @@ const actionContent: Record<VendorActionKind, ActionContent> = {
     reasonRequired: true,
     submitVariant: 'secondary',
   },
+  VERIFY_BANK_ACCOUNT: {
+    title: 'Verify bank account',
+    description: 'Mark this payout bank account as verified for settlement use.',
+    submitLabel: 'Verify account',
+    reasonLabel: 'Verification note',
+    submitVariant: 'secondary',
+  },
+  REJECT_BANK_ACCOUNT: {
+    title: 'Reject bank account',
+    description: 'Reject this payout bank account and ask the vendor to correct it.',
+    submitLabel: 'Reject account',
+    reasonLabel: 'Rejection reason',
+    reasonRequired: true,
+    submitVariant: 'danger',
+  },
 }
 
 function parseDocumentTypes(value: string) {
@@ -191,6 +209,14 @@ export function VendorActionModal({
           {action.document ? (
             <p className="mt-2 text-muted">
               Document: <span className="text-foreground">{action.document.documentType}</span>
+            </p>
+          ) : null}
+          {action.bankAccount ? (
+            <p className="mt-2 text-muted">
+              Bank account:{' '}
+              <span className="text-foreground">
+                {action.bankAccount.bankName} · {action.bankAccount.accountNumberMasked}
+              </span>
             </p>
           ) : null}
         </div>

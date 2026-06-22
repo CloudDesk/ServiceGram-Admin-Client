@@ -12,4 +12,8 @@ export const VENDOR_VERIFY_DOCUMENT_PATH = (vendorId: string, documentId: string
   `/admin/vendors/${vendorId}/verify-document/${documentId}`
 export const VENDOR_REJECT_DOCUMENT_PATH = (vendorId: string, documentId: string) =>
   `/admin/vendors/${vendorId}/reject-document/${documentId}`
+export const VENDOR_VERIFY_BANK_ACCOUNT_PATH = (vendorId: string, bankAccountId: string) =>
+  `/admin/vendors/${vendorId}/bank-accounts/${bankAccountId}/verify`
+export const VENDOR_REJECT_BANK_ACCOUNT_PATH = (vendorId: string, bankAccountId: string) =>
+  `/admin/vendors/${vendorId}/bank-accounts/${bankAccountId}/reject`
 export const VENDOR_ADD_NOTE_PATH = (vendorId: string) => `/admin/vendors/${vendorId}/notes`

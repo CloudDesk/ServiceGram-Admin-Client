@@ -1,4 +1,4 @@
-import { CheckCircle2, Eye, FileCheck2, FileWarning, History, MessageSquarePlus, PauseCircle, RotateCcw, XCircle } from 'lucide-react'
+import { CheckCircle2, Eye, FileCheck2, FileWarning, History, Landmark, MessageSquarePlus, PauseCircle, RotateCcw, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
@@ -11,6 +11,7 @@ import { DynamicTable, type DynamicTableColumn } from '../../../components/ui/Ta
 import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
+import { useAuthStore } from '../../../store/authStore'
 import { vendorService } from '../services/vendor.service'
 import {
   VendorActionModal,
@@ -20,6 +21,7 @@ import {
 } from './VendorActionModal'
 import type {
   VendorDetail,
+  VendorBankAccount,
   VendorDocument,
   VendorReviewTimelineItem,
   VendorStatus,
@@ -43,6 +45,64 @@ const documentColumns: DynamicTableColumn<VendorDocument>[] = [
           ? 'danger'
           : 'warning',
     minWidth: 140,
+  },
+  {
+    key: 'verifiedAt',
+    label: 'Verified',
+    format: 'date',
+    minWidth: 180,
+    placeholder: 'Not verified',
+  },
+  {
+    key: 'updatedAt',
+    label: 'Updated',
+    format: 'date',
+    minWidth: 180,
+  },
+]
+
+const bankAccountColumns: DynamicTableColumn<VendorBankAccount>[] = [
+  {
+    key: 'account',
+    label: 'Account',
+    minWidth: 260,
+    renderCell: (account) => (
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold text-foreground">{account.bankName}</p>
+          {account.isPrimary ? <Badge tone="info">Primary</Badge> : null}
+        </div>
+        <p className="text-xs text-muted">{account.accountNumberMasked}</p>
+      </div>
+    ),
+  },
+  {
+    key: 'accountHolderName',
+    label: 'Holder',
+    minWidth: 180,
+  },
+  {
+    key: 'ifscCode',
+    label: 'IFSC',
+    minWidth: 140,
+  },
+  {
+    key: 'upiId',
+    label: 'UPI',
+    minWidth: 180,
+    placeholder: 'Not linked',
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    format: 'status',
+    statusTone: (value) =>
+      value === 'VERIFIED'
+        ? 'success'
+        : value === 'REJECTED' || value === 'DISABLED'
+          ? 'danger'
+          : 'warning',
+    minWidth: 190,
   },
   {
     key: 'verifiedAt',
@@ -215,6 +275,24 @@ function getApprovalBlockMessage(vendor: VendorDetail) {
   return `Approval is blocked until ${unverifiedCount} ${documentLabel} verified. Verify the documents or request corrections before approving this vendor.`
 }
 
+function getBankSummaryMessage(vendor: VendorDetail) {
+  const summary = vendor.bankAccountSummary
+
+  if (!summary.hasPrimary) {
+    return 'No primary payout bank account has been submitted by this vendor.'
+  }
+
+  if (summary.payoutReady) {
+    return `Primary payout account is verified: ${summary.primaryBankName ?? 'Bank'} ${summary.primaryAccountNumberMasked ?? ''}`.trim()
+  }
+
+  if (summary.primaryStatus === 'REJECTED') {
+    return 'Primary payout account was rejected. The vendor needs to submit corrected details.'
+  }
+
+  return 'Primary payout account is waiting for admin verification.'
+}
+
 function getMetadataString(
   metadata: Record<string, unknown> | null,
   key: string,
@@ -368,6 +446,7 @@ export function VendorDetailPage({
 }: VendorDetailPageProps = {}) {
   const { vendorId } = useParams()
   const queryClient = useQueryClient()
+  const canApproveVendors = useAuthStore((state) => state.can('vendors:approve'))
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedAction, setSelectedAction] = useState<VendorActionSelection | null>(null)
   const [selectedHistoryDocument, setSelectedHistoryDocument] =
@@ -480,6 +559,34 @@ export function VendorDetailPage({
         )
       }
 
+      if (action.kind === 'VERIFY_BANK_ACCOUNT') {
+        if (!action.bankAccount) {
+          throw new Error('Bank account details are unavailable.')
+        }
+
+        return vendorService.verifyVendorBankAccount(
+          vendor.vendorId,
+          action.bankAccount.bankAccountId,
+          { reason: values.reason },
+        )
+      }
+
+      if (action.kind === 'REJECT_BANK_ACCOUNT') {
+        if (!action.bankAccount) {
+          throw new Error('Bank account details are unavailable.')
+        }
+
+        if (!values.reason) {
+          throw new Error('Bank account rejection reason is required.')
+        }
+
+        return vendorService.rejectVendorBankAccount(
+          vendor.vendorId,
+          action.bankAccount.bankAccountId,
+          { reason: values.reason },
+        )
+      }
+
       if (!action.document) {
         throw new Error('Document details are unavailable.')
       }
@@ -502,9 +609,13 @@ export function VendorDetailPage({
     },
   })
 
-  const openAction = (kind: VendorActionKind, document?: VendorDocument) => {
+  const openAction = (
+    kind: VendorActionKind,
+    document?: VendorDocument,
+    bankAccount?: VendorBankAccount,
+  ) => {
     setActionError(null)
-    setSelectedAction({ kind, document })
+    setSelectedAction({ kind, document, bankAccount })
   }
 
   const submitAction = (values: VendorActionFormValues) => {
@@ -598,6 +709,66 @@ export function VendorDetailPage({
           <span>{approvalBlockMessage}</span>
         </div>
       ) : null}
+
+      <section className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Landmark className="size-4 text-muted" />
+              <h2 className="text-base font-semibold text-foreground">Payout Bank Account</h2>
+              <Badge tone={vendor.bankAccountSummary.payoutReady ? 'success' : 'warning'}>
+                {vendor.bankAccountSummary.payoutReady ? 'Payout Ready' : 'Review Needed'}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted">{getBankSummaryMessage(vendor)}</p>
+          </div>
+          <div className="grid gap-3 text-sm sm:grid-cols-3">
+            <DetailField label="Total" value={vendor.bankAccountSummary.total} />
+            <DetailField label="Verified" value={vendor.bankAccountSummary.verified} />
+            <DetailField label="Pending" value={vendor.bankAccountSummary.pending} />
+          </div>
+        </div>
+
+        {vendor.bankAccountSummary.warnings.length ? (
+          <div className="rounded-surface border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
+            {vendor.bankAccountSummary.warnings.join(', ')}
+          </div>
+        ) : null}
+
+        <DynamicTable
+          actionColumnLabel="Bank Actions"
+          actionColumnMinWidth={260}
+          bodyMaxHeight={320}
+          columns={bankAccountColumns}
+          data={vendor.bankAccounts}
+          emptyDescription="This vendor has not submitted payout bank details yet."
+          emptyTitle="No bank account"
+          getRowId={(row) => row.bankAccountId}
+          rowActions={(bankAccount) => [
+            {
+              icon: <CheckCircle2 className="size-4" />,
+              isVisible:
+                canApproveVendors &&
+                bankAccount.availableActions.includes('VERIFY'),
+              key: 'verify-bank',
+              label: 'Verify',
+              onClick: () => openAction('VERIFY_BANK_ACCOUNT', undefined, bankAccount),
+              variant: 'secondary',
+            },
+            {
+              icon: <XCircle className="size-4" />,
+              isVisible:
+                canApproveVendors &&
+                bankAccount.availableActions.includes('REJECT'),
+              key: 'reject-bank',
+              label: 'Reject',
+              onClick: () => openAction('REJECT_BANK_ACCOUNT', undefined, bankAccount),
+              variant: 'danger',
+            },
+          ]}
+          title="Bank Accounts"
+        />
+      </section>
 
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4 lg:col-span-2">
@@ -782,7 +953,7 @@ export function VendorDetailPage({
         isSubmitting={actionMutation.isPending}
         key={
           selectedAction
-            ? `${selectedAction.kind}-${selectedAction.document?.documentId ?? 'vendor'}`
+            ? `${selectedAction.kind}-${selectedAction.document?.documentId ?? selectedAction.bankAccount?.bankAccountId ?? 'vendor'}`
             : 'closed'
         }
         vendor={vendor}

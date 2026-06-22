@@ -42,6 +42,14 @@ export interface VendorNotePayload {
   note: string
 }
 
+export type VendorBankAccountStatus =
+  | 'PENDING_VERIFICATION'
+  | 'VERIFIED'
+  | 'REJECTED'
+  | 'DISABLED'
+
+export type VendorBankAccountType = 'SAVINGS' | 'CURRENT'
+
 export interface VendorCategory {
   categoryId: string
   categoryCode: string
@@ -130,8 +138,46 @@ export interface VendorReviewTimelineItem {
   createdAt: string
 }
 
+export interface VendorBankAccount {
+  bankAccountId: string
+  vendorId: string
+  accountHolderName: string
+  bankName: string
+  accountType: VendorBankAccountType
+  accountNumberMasked: string
+  ifscCode: string
+  upiId: string | null
+  status: VendorBankAccountStatus
+  isPrimary: boolean
+  rejectionReason: string | null
+  verifiedByAdminId: string | null
+  verifiedAt: string | null
+  warnings: string[]
+  availableActions: string[]
+  nextRecommendedAction: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface VendorBankAccountSummary {
+  total: number
+  verified: number
+  pending: number
+  rejected: number
+  disabled: number
+  hasPrimary: boolean
+  primaryStatus: VendorBankAccountStatus | null
+  primaryBankName: string | null
+  primaryAccountNumberMasked: string | null
+  payoutReady: boolean
+  warnings: string[]
+  nextRecommendedAction: string | null
+}
+
 export interface VendorDetail extends VendorListItem {
   documents: VendorDocument[]
+  bankAccounts: VendorBankAccount[]
+  bankAccountSummary: VendorBankAccountSummary
   reviewTimeline: VendorReviewTimelineItem[]
 }
 
@@ -150,6 +196,7 @@ export interface VendorNote {
 export interface VendorActionResult extends VendorListItem {
   verifiedDocument?: VendorVerifiedDocument
   rejectedDocument?: VendorVerifiedDocument
+  bankAccount?: VendorBankAccount
   addedNote?: VendorNote
 }
 

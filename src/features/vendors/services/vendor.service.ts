@@ -6,10 +6,12 @@ import {
   VENDOR_LIST_PATH,
   VENDOR_ONBOARDING_QUEUE_PATH,
   VENDOR_REACTIVATE_PATH,
+  VENDOR_REJECT_BANK_ACCOUNT_PATH,
   VENDOR_REJECT_DOCUMENT_PATH,
   VENDOR_REJECT_PATH,
   VENDOR_REQUEST_DOCUMENTS_PATH,
   VENDOR_SUSPEND_PATH,
+  VENDOR_VERIFY_BANK_ACCOUNT_PATH,
   VENDOR_VERIFY_DOCUMENT_PATH,
 } from '../../../config/vendorApiPaths'
 import { buildQueryParams } from '../../../utils/buildQueryParams'
@@ -176,6 +178,44 @@ async function rejectVendorDocument(
   return parseJsonResponse<VendorActionResponse>(response)
 }
 
+async function verifyVendorBankAccount(
+  vendorId: string,
+  bankAccountId: string,
+  payload: VendorOptionalReasonPayload = {},
+): Promise<VendorActionResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(VENDOR_VERIFY_BANK_ACCOUNT_PATH(vendorId, bankAccountId)),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    },
+  )
+
+  return parseJsonResponse<VendorActionResponse>(response)
+}
+
+async function rejectVendorBankAccount(
+  vendorId: string,
+  bankAccountId: string,
+  payload: VendorRequiredReasonPayload,
+): Promise<VendorActionResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(VENDOR_REJECT_BANK_ACCOUNT_PATH(vendorId, bankAccountId)),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    },
+  )
+
+  return parseJsonResponse<VendorActionResponse>(response)
+}
+
 async function addVendorNote(
   vendorId: string,
   payload: VendorNotePayload,
@@ -202,5 +242,7 @@ export const vendorService = {
   reactivateVendor,
   verifyVendorDocument,
   rejectVendorDocument,
+  verifyVendorBankAccount,
+  rejectVendorBankAccount,
   addVendorNote,
 }
