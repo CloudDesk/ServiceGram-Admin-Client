@@ -3,7 +3,6 @@ import {
   ChevronDown,
   LogOut,
   Menu,
-  Search,
   Settings,
   User,
   UserCircle2,
@@ -14,6 +13,7 @@ import { Button } from "../ui/Button";
 import { routePaths } from "../../config/routes";
 import { useAuthStore } from "../../store/authStore";
 import { useUiStore } from "../../store/uiStore";
+import { GlobalSearch } from "../../features/search/components/GlobalSearch";
 
 export function Topbar() {
   const navigate = useNavigate();
@@ -61,8 +61,8 @@ export function Topbar() {
   };
 
   return (
-    <header className="premium-appbar flex items-center justify-between px-4 sm:px-6 lg:px-8">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="premium-appbar grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 sm:px-6 lg:px-8 xl:grid-cols-[minmax(12rem,1fr)_minmax(20rem,58rem)_minmax(12rem,1fr)]">
+      <div className="flex min-w-0 items-center justify-start">
         <Button
           className="lg:hidden"
           size="sm"
@@ -72,15 +72,13 @@ export function Topbar() {
         >
           <Menu className="size-4" />
         </Button>
-        <div className="premium-search-chip flex min-w-0 items-center gap-2">
-          <Search className="size-4 shrink-0" />
-          <span className="flex min-h-5 items-center truncate leading-none">
-            Global search placeholder
-          </span>
-        </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 justify-center">
+        <GlobalSearch />
+      </div>
+
+      <div className="flex items-center justify-end gap-3">
         <Button aria-label="Alerts" size="sm" type="button" variant="ghost">
           <Bell className="size-4 sm:mr-2" />
           <span className="hidden sm:inline">Alerts</span>
