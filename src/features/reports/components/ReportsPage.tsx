@@ -13,6 +13,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { InlineAlert } from '../../../components/feedback/InlineAlert'
+import { ListFilterBar } from '../../../components/layout/ListFilterBar'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
@@ -57,6 +58,7 @@ const reportCatalog: Record<
     statusOptions: [
       'ORDER_PLACED',
       'VENDOR_ACCEPTANCE_PENDING',
+      'PRICE_REVISION_PENDING_CUSTOMER',
       'VENDOR_ACCEPTED',
       'VENDOR_DECLINED',
       'PICKUP_SCHEDULED',
@@ -193,6 +195,7 @@ function statusTone(value: string): StatusTone {
       'UNDER_REVIEW',
       'HELD',
       'VENDOR_ACCEPTANCE_PENDING',
+      'PRICE_REVISION_PENDING_CUSTOMER',
       'CUSTOMER_UNAVAILABLE',
     ].includes(normalized)
   ) {
@@ -749,25 +752,8 @@ export function ReportsPage({
   return (
     <PageContainer>
       <PageContextHeader
-        actionNode={
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" title="Reload report" variant="secondary" onClick={() => void reportQuery.refetch()}>
-              <RefreshCcw className="mr-2 size-4" />
-              Refresh
-            </Button>
-            <Button
-              disabled={!canQueueExport}
-              isLoading={exportMutation.isPending}
-              size="sm"
-              title="Queue report export"
-              onClick={queueExport}
-            >
-              <Download className="mr-2 size-4" />
-              Queue Export
-            </Button>
-          </div>
-        }
         description="Operational report views and async export jobs."
+        placement="topbar"
         title="Reports"
       />
 
@@ -800,87 +786,73 @@ export function ReportsPage({
       </section>
 
       <section className="space-y-4 rounded-lg border border-border bg-surface p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold text-foreground">Filters</h2>
-            <p className="text-sm text-muted">{activeReport.label}</p>
-          </div>
-          <Button size="sm" title="Reset filters" variant="secondary" onClick={resetFilters}>
-            <RefreshCcw className="mr-2 size-4" />
-            Reset
-          </Button>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Date From</span>
-            <Input
-              type="datetime-local"
-              value={dateFrom}
-              onChange={(event) => setDateFrom(event.target.value)}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Date To</span>
-            <Input
-              type="datetime-local"
-              value={dateTo}
-              onChange={(event) => setDateTo(event.target.value)}
-            />
-          </label>
-          <OptionalSelect
-            label="Status"
-            options={activeReport.statusOptions}
-            value={status}
-            onChange={setStatus}
-          />
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">City</span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-              <Input
-                className="pl-9"
-                value={city}
-                onChange={(event) => setCity(event.target.value)}
-              />
+        <ListFilterBar
+          actionNode={
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" title="Reset filters" variant="secondary" onClick={resetFilters}>
+                <RefreshCcw className="mr-2 size-4" />
+                Reset
+              </Button>
+              <Button size="sm" title="Reload report" variant="secondary" onClick={() => void reportQuery.refetch()}>
+                <RefreshCcw className="mr-2 size-4" />
+                Refresh
+              </Button>
+              <Button disabled={!canQueueExport} isLoading={exportMutation.isPending} size="sm" title="Queue report export" onClick={queueExport}>
+                <Download className="mr-2 size-4" />
+                Queue Export
+              </Button>
             </div>
-          </label>
-          {[
-            ['Zone ID', zoneId, setZoneId],
-            ['Vendor ID', vendorId, setVendorId],
-            ['Category ID', categoryId, setCategoryId],
-            ['Limit', limit, setLimit],
-          ].map(([label, value, setter]) => (
-            <label className="space-y-1" key={label as string}>
-              <span className="text-sm font-medium text-foreground">{label as string}</span>
-              <Input
-                max={label === 'Limit' ? 100 : undefined}
-                min={label === 'Limit' ? 1 : undefined}
-                type={label === 'Limit' ? 'number' : 'text'}
-                value={value as string}
-                onChange={(event) => (setter as (nextValue: string) => void)(event.target.value)}
-              />
-            </label>
-          ))}
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Export Format</span>
-            <select
-              className="min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={format}
-              onChange={(event) => setFormat(event.target.value as ReportExportFormat)}
-            >
-              {exportFormats.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
+          }
+          primaryFilters={
+            <>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Date From</span>
+                <Input type="datetime-local" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Date To</span>
+                <Input type="datetime-local" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+              </label>
+              <OptionalSelect label="Status" options={activeReport.statusOptions} value={status} onChange={setStatus} />
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">City</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                  <Input className="pl-9" value={city} onChange={(event) => setCity(event.target.value)} />
+                </div>
+              </label>
+            </>
+          }
+          secondaryFilters={
+            <>
+              {[
+                ['Zone ID', zoneId, setZoneId],
+                ['Vendor ID', vendorId, setVendorId],
+                ['Category ID', categoryId, setCategoryId],
+                ['Limit', limit, setLimit],
+              ].map(([label, value, setter]) => (
+                <label className="space-y-1" key={label as string}>
+                  <span className="text-sm font-medium text-foreground">{label as string}</span>
+                  <Input max={label === 'Limit' ? 100 : undefined} min={label === 'Limit' ? 1 : undefined} type={label === 'Limit' ? 'number' : 'text'} value={value as string} onChange={(event) => (setter as (nextValue: string) => void)(event.target.value)} />
+                </label>
               ))}
-            </select>
-          </label>
-          <label className="space-y-1 md:col-span-2">
-            <span className="text-sm font-medium text-foreground">Export Reason</span>
-            <Input value={reason} onChange={(event) => setReason(event.target.value)} />
-          </label>
-        </div>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Export Format</span>
+                <select className="min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none" value={format} onChange={(event) => setFormat(event.target.value as ReportExportFormat)}>
+                  {exportFormats.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Export Reason</span>
+                <Input value={reason} onChange={(event) => setReason(event.target.value)} />
+              </label>
+            </>
+          }
+        />
 
         {filterError ? <InlineAlert message={filterError} /> : null}
         {reasonError ? <InlineAlert message={reasonError} /> : null}

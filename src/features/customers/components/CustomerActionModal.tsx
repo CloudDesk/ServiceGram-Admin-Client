@@ -1,8 +1,12 @@
 import { type FormEvent, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
+import { featureFlags } from '../../../config/featureFlags'
 import { formatMoney } from '../../../utils/formatMoney'
-import type { AdminCustomerDetail } from '../types/customer.types'
+import type {
+  AdminCustomerDetail,
+  AdminCustomerListItem,
+} from '../types/customer.types'
 
 export type CustomerActionKind =
   | 'ADD_NOTE'
@@ -24,7 +28,7 @@ export interface CustomerActionFormValues {
 
 interface CustomerActionModalProps {
   action: CustomerActionSelection | null
-  customer: AdminCustomerDetail
+  customer: AdminCustomerDetail | AdminCustomerListItem
   error?: string | null
   isSubmitting: boolean
   onClose: () => void
@@ -89,6 +93,10 @@ export function CustomerActionModal({
   const [referenceId, setReferenceId] = useState('')
 
   if (!action) {
+    return null
+  }
+
+  if (action.kind === 'WALLET_CREDIT' && !featureFlags.customerWallet) {
     return null
   }
 

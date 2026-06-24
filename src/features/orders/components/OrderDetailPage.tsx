@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Route,
   ShieldCheck,
+  TriangleAlert,
   Truck,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -111,6 +112,21 @@ function DetailField({ label, value }: { label: string; value: string | number |
   )
 }
 
+function orderDisplayValue(order: AdminOrderDetail) {
+  const pendingRevision = order.pricing.pendingPriceRevision
+
+  if (pendingRevision) {
+    return formatMoney(pendingRevision.revisedPricePaise / 100)
+  }
+
+  const amountPaise =
+    order.pricing.finalPricePaise ??
+    order.pricing.payableAmountPaise ??
+    order.pricing.priceEstimatePaise
+
+  return formatMoney(amountPaise / 100)
+}
+
 const logisticsStatusOrder: AdminOrderStatus[] = [
   'VENDOR_ACCEPTED',
   'PICKUP_SCHEDULED',
@@ -185,6 +201,9 @@ function statusTone(status: string) {
   if (['OUT_FOR_DELIVERY', 'PICKED_UP_FROM_CUSTOMER', 'COLLECTED_FROM_VENDOR'].includes(status)) {
     return 'warning' as const
   }
+  if (['PRICE_REVISION_PENDING_CUSTOMER', 'VENDOR_ACCEPTANCE_PENDING'].includes(status)) {
+    return 'warning' as const
+  }
   return 'info' as const
 }
 
@@ -195,13 +214,49 @@ function actionTargetStatus(action: string) {
 function OrderHeaderStatus({ order }: { order: AdminOrderDetail }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Badge tone={order.orderStatus === 'DELIVERED' ? 'success' : order.orderStatus === 'CANCELLED' ? 'danger' : 'info'}>
+      <Badge tone={statusTone(order.orderStatus)}>
         {formatStatusLabel(order.orderStatus)}
       </Badge>
       <Badge tone={order.paymentStatus === 'PAID' ? 'success' : order.paymentStatus === 'FAILED' ? 'danger' : 'warning'}>
         {formatStatusLabel(order.paymentStatus)}
       </Badge>
     </div>
+  )
+}
+
+function PriceRevisionNotice({ order }: { order: AdminOrderDetail }) {
+  const revision = order.pricing.pendingPriceRevision
+
+  if (!revision) {
+    return null
+  }
+
+  return (
+    <section className="rounded-[1rem] border border-warning/35 bg-warning/10 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" />
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold text-foreground">Customer price approval pending</h2>
+            <p className="max-w-3xl text-sm text-muted">
+              Vendor revised the quote before accepting the order. The customer must approve, ask for clarification, find another vendor, or cancel from the customer app.
+            </p>
+          </div>
+        </div>
+        <Badge tone="warning">{formatStatusLabel(order.orderStatus)}</Badge>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+        <DetailField label="Original Estimate" value={formatMoney(revision.previousPricePaise / 100)} />
+        <DetailField label="Revised Quote" value={formatMoney(revision.revisedPricePaise / 100)} />
+        <DetailField label="Difference" value={formatMoney(revision.differencePaise / 100)} />
+        <DetailField label="Requested At" value={formatDate(revision.requestedAt, true)} />
+      </div>
+
+      <div className="mt-4">
+        <DetailField label="Vendor Reason" value={revision.reason} />
+      </div>
+    </section>
   )
 }
 
@@ -561,6 +616,8 @@ export function OrderDetailPage({
         titleMetaNode={<OrderHeaderStatus order={order} />}
       />
 
+      <PriceRevisionNotice order={order} />
+
       <ManualLogisticsPanel
         isSubmitting={actionMutation.isPending}
         order={order}
@@ -578,7 +635,7 @@ export function OrderDetailPage({
             <DetailField label="Vendor" value={order.vendor.shopName} />
             <DetailField label="Category" value={order.category?.name} />
             <DetailField label="Payment Method" value={order.paymentMethod} />
-            <DetailField label="Value" value={formatMoney((order.pricing.finalPricePaise ?? order.pricing.priceEstimatePaise) / 100)} />
+            <DetailField label="Value" value={orderDisplayValue(order)} />
             <DetailField label="Pickup Date" value={order.schedule.pickupDate} />
             <DetailField label="Expected Delivery" value={order.schedule.expectedDeliveryAt} />
             <DetailField label="Cancellation Reason" value={order.cancellationReason} />

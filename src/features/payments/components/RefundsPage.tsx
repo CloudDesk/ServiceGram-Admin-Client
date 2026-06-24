@@ -13,6 +13,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
+import { ListFilterBar } from '../../../components/layout/ListFilterBar'
 import { routePaths } from '../../../config/routes'
 import { useAuthStore } from '../../../store/authStore'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -151,11 +152,11 @@ export function RefundsPage() {
   const queryClient = useQueryClient()
   const can = useAuthStore((state) => state.can)
   const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(20)
+  const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<'' | AdminRefundStatus>('REQUESTED')
   const [city, setCity] = useState('')
-  const [zoneId, setZoneId] = useState('')
+  // const [zoneId, setZoneId] = useState('')
   const [paymentId, setPaymentId] = useState('')
   const [orderId, setOrderId] = useState('')
   const [customerId, setCustomerId] = useState('')
@@ -178,7 +179,7 @@ export function RefundsPage() {
       search: search.trim() || undefined,
       status: status || undefined,
       city: city.trim() || undefined,
-      zoneId: zoneId.trim() || undefined,
+      // zoneId: zoneId.trim() || undefined,
       paymentId: paymentId.trim() || undefined,
       orderId: orderId.trim() || undefined,
       customerId: customerId.trim() || undefined,
@@ -202,7 +203,6 @@ export function RefundsPage() {
       search,
       status,
       vendorId,
-      zoneId,
     ],
   )
 
@@ -266,6 +266,7 @@ export function RefundsPage() {
     <PageContainer>
       <PageContextHeader
         description="Review requested refunds and approve or reject finance actions."
+        placement="topbar"
         title="Refunds"
       />
 
@@ -275,82 +276,53 @@ export function RefundsPage() {
         </div>
       ) : null}
 
-      <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-        <div className="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-4">
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Search</span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-              <Input
-                className="min-h-11 pl-9"
-                placeholder="Search refund, payment, order, customer, vendor"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value)
-                  reset()
-                }}
-              />
-            </div>
-          </label>
-          <OptionalSelect
-            label="Status"
-            options={refundStatuses}
-            value={status}
-            onChange={(value) => {
-              setStatus(value)
-              reset()
-            }}
-          />
-          {[
-            ['City', city, setCity],
-            ['Zone ID', zoneId, setZoneId],
-            ['Payment ID', paymentId, setPaymentId],
-            ['Order ID', orderId, setOrderId],
-            ['Customer ID', customerId, setCustomerId],
-            ['Vendor ID', vendorId, setVendorId],
-            ['Min Amount Paise', minAmountPaise, setMinAmountPaise],
-            ['Max Amount Paise', maxAmountPaise, setMaxAmountPaise],
-          ].map(([label, value, setter]) => (
-            <label className="space-y-1" key={label as string}>
-              <span className="text-sm font-medium text-foreground">
-                {label as string}
-              </span>
-              <Input
-                className="min-h-11"
-                value={value as string}
-                onChange={(event) => {
-                  ;(setter as (nextValue: string) => void)(event.target.value)
-                  reset()
-                }}
-              />
-            </label>
-          ))}
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Date From</span>
-            <Input
-              className="min-h-11"
-              type="datetime-local"
-              value={dateFrom}
-              onChange={(event) => {
-                setDateFrom(event.target.value)
-                reset()
-              }}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Date To</span>
-            <Input
-              className="min-h-11"
-              type="datetime-local"
-              value={dateTo}
-              onChange={(event) => {
-                setDateTo(event.target.value)
-                reset()
-              }}
-            />
-          </label>
-        </div>
+      <div className="list-workspace">
+        <ListFilterBar
+          primaryFilters={
+            <>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Search</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                  <Input className="min-h-11 pl-9" placeholder="Search refund, payment, order, customer, vendor" value={search} onChange={(event) => { setSearch(event.target.value); reset() }} />
+                </div>
+              </label>
+              <OptionalSelect label="Status" options={refundStatuses} value={status} onChange={(value) => { setStatus(value); reset() }} />
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">City</span>
+                <Input className="min-h-11" value={city} onChange={(event) => { setCity(event.target.value); reset() }} />
+              </label>
+            </>
+          }
+          secondaryFilters={
+            <>
+              {[
+                // ['Zone ID', zoneId, setZoneId],
+                ['Payment ID', paymentId, setPaymentId],
+                ['Order ID', orderId, setOrderId],
+                ['Customer ID', customerId, setCustomerId],
+                ['Vendor ID', vendorId, setVendorId],
+                ['Min Amount', minAmountPaise, setMinAmountPaise],
+                ['Maximum Amount', maxAmountPaise, setMaxAmountPaise],
+              ].map(([label, value, setter]) => (
+                <label className="space-y-1" key={label as string}>
+                  <span className="text-sm font-medium text-foreground">{label as string}</span>
+                  <Input className="min-h-11" value={value as string} onChange={(event) => { ;(setter as (nextValue: string) => void)(event.target.value); reset() }} />
+                </label>
+              ))}
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Date From</span>
+                <Input className="min-h-11" type="datetime-local" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); reset() }} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Date To</span>
+                <Input className="min-h-11" type="datetime-local" value={dateTo} onChange={(event) => { setDateTo(event.target.value); reset() }} />
+              </label>
+            </>
+          }
+        />
 
+        <section className="list-results-panel">
         {refundsQuery.isError ? (
           <ErrorState
             description={
@@ -429,7 +401,8 @@ export function RefundsPage() {
             }
           />
         )}
-      </section>
+        </section>
+      </div>
 
       <PaymentActionModal
         action={selectedAction}

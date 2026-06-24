@@ -2,13 +2,13 @@ import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Button } from '../../../components/ui/Button'
 import { DynamicTable, TableSkeleton, type DynamicTableColumn } from '../../../components/ui/Table'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
+import { ListFilterBar } from '../../../components/layout/ListFilterBar'
 import { routePaths } from '../../../config/routes'
 import { orderService } from '../services/order.service'
 import type {
@@ -17,7 +17,7 @@ import type {
   AdminOrderSummary,
 } from '../types/order.types'
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 
 const manualStatuses: AdminOrderStatus[] = [
   'PICKUP_SCHEDULED',
@@ -131,67 +131,49 @@ export function ManualLogisticsPage() {
 
   return (
     <PageContainer>
-      <PageContextHeader title="Manual Logistics" />
+      <PageContextHeader
+        description="Track orders that need admin-controlled pickup or delivery movement."
+        placement="topbar"
+        title="Manual Logistics"
+      />
 
-      <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-        <div className="mb-4 grid gap-3 md:grid-cols-4">
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Search</span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-              <Input
-                className="pl-9"
-                placeholder="Order, customer, vendor"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value)
-                  resetToFirstPage()
-                }}
-              />
-            </div>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Status</span>
-            <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={orderStatus}
-              onChange={(event) => {
-                setOrderStatus(event.target.value as '' | AdminOrderStatus)
-                resetToFirstPage()
-              }}
-            >
-              <option value="">All operational statuses</option>
-              {manualStatuses.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">City</span>
-            <Input
-              placeholder="Bengaluru"
-              value={city}
-              onChange={(event) => {
-                setCity(event.target.value)
-                resetToFirstPage()
-              }}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Vendor ID</span>
-            <Input
-              placeholder="UUID"
-              value={vendorId}
-              onChange={(event) => {
-                setVendorId(event.target.value)
-                resetToFirstPage()
-              }}
-            />
-          </label>
-        </div>
+      <div className="list-workspace">
+        <ListFilterBar
+          primaryFilters={
+            <>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Search</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                  <Input className="pl-9" placeholder="Order, customer, vendor" value={search} onChange={(event) => { setSearch(event.target.value); resetToFirstPage() }} />
+                </div>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Status</span>
+                <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={orderStatus} onChange={(event) => { setOrderStatus(event.target.value as '' | AdminOrderStatus); resetToFirstPage() }}>
+                  <option value="">All operational statuses</option>
+                  {manualStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">City</span>
+                <Input placeholder="Bengaluru" value={city} onChange={(event) => { setCity(event.target.value); resetToFirstPage() }} />
+              </label>
+            </>
+          }
+          secondaryFilters={
+            <label className="space-y-1">
+              <span className="text-sm font-medium text-foreground">Vendor ID</span>
+              <Input placeholder="UUID" value={vendorId} onChange={(event) => { setVendorId(event.target.value); resetToFirstPage() }} />
+            </label>
+          }
+        />
 
+        <section className="list-results-panel">
         {ordersQuery.isError ? (
           <ErrorState
             description="We could not load manual logistics orders."
@@ -233,32 +215,8 @@ export function ManualLogisticsPage() {
           />
         )}
 
-        {pagination ? (
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
-            <p className="text-sm text-muted">
-              Page {pagination.page} of {pagination.totalPages}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                disabled={!pagination.hasPreviousPage || isLoading}
-                size="sm"
-                variant="secondary"
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-              >
-                Previous
-              </Button>
-              <Button
-                disabled={!pagination.hasNextPage || isLoading}
-                size="sm"
-                variant="secondary"
-                onClick={() => setPage((current) => current + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </section>
+        </section>
+      </div>
     </PageContainer>
   )
 }

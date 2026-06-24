@@ -20,6 +20,7 @@ import { CreateContentPage } from '../features/content/components/CreateContentP
 import { DashboardPage } from '../features/dashboard/pages/DashboardPage'
 import { InfluencerDetailPage } from '../features/influencers/components/InfluencerDetailPage'
 import { InfluencersPage } from '../features/influencers/components/InfluencersPage'
+import { CustomerWorkbenchPreviewPage } from '../features/customers/components/CustomerWorkbenchPreviewPage'
 import { CustomerDetailPage } from '../features/customers/components/CustomerDetailPage'
 import { CustomersPage } from '../features/customers/components/CustomersPage'
 import { ManualLogisticsPage } from '../features/orders/components/ManualLogisticsPage'
@@ -115,6 +116,10 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: routePaths.customers,
                     element: <CustomersPage />,
+                  },
+                  {
+                    path: routePaths.customerWorkbenchPreview,
+                    element: <CustomerWorkbenchPreviewPage />,
                   },
                   {
                     path: `${routePaths.customers}/:customerId`,

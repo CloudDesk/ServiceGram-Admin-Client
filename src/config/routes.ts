@@ -8,6 +8,7 @@ export const routePaths = {
   adminUsers: '/app/admin-users',
   roles: '/app/roles',
   customers: '/app/customers',
+  customerWorkbenchPreview: '/app/customers/workbench-preview',
   vendors: '/app/vendors',
   vendorOnboarding: '/app/vendor-onboarding',
   orders: '/app/orders',

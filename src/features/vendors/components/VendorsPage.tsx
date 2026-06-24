@@ -4,8 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { EmptyState } from "../../../components/ui/EmptyState";
 import { ErrorState } from "../../../components/ui/ErrorState";
-import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
+import {
+  ListFilterBar,
+  type ActiveFilterChip,
+} from "../../../components/layout/ListFilterBar";
 import { PageContextHeader } from "../../../components/ui/PageHeader";
 import {
   DynamicTable,
@@ -23,7 +26,7 @@ import type {
 } from "../types/vendor.types";
 
 type VendorViewMode = "active" | "onboarding";
-const DEFAULT_PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 10;
 
 const vendorColumns: DynamicTableColumn<VendorListItem>[] = [
   {
@@ -163,164 +166,236 @@ export function VendorsPage() {
   const vendors = vendorQuery.data?.data ?? [];
   const pagination = vendorQuery.data?.pagination;
   const isLoading = vendorQuery.isLoading || vendorQuery.isFetching;
-  const hasNextPage = pagination?.hasNextPage ?? false;
-  const hasPreviousPage = pagination?.hasPreviousPage ?? false;
 
   const resetToFirstPage = () => setPage(1);
+  const clearVendorFilters = () => {
+    setSearch("");
+    setCity("");
+    setCategoryId("");
+    setZoneId("");
+    setOnboardingStatus("");
+    setVendorStatus("");
+    resetToFirstPage();
+  };
+  const activeFilters: ActiveFilterChip[] = [
+    search
+      ? {
+          key: "search",
+          label: `Search: ${search}`,
+          onRemove: () => {
+            setSearch("");
+            resetToFirstPage();
+          },
+        }
+      : null,
+    city
+      ? {
+          key: "city",
+          label: `City: ${city}`,
+          onRemove: () => {
+            setCity("");
+            resetToFirstPage();
+          },
+        }
+      : null,
+    categoryId
+      ? {
+          key: "categoryId",
+          label: `Category: ${categoryId}`,
+          onRemove: () => {
+            setCategoryId("");
+            resetToFirstPage();
+          },
+        }
+      : null,
+    zoneId
+      ? {
+          key: "zoneId",
+          label: `Zone: ${zoneId}`,
+          onRemove: () => {
+            setZoneId("");
+            resetToFirstPage();
+          },
+        }
+      : null,
+    onboardingStatus
+      ? {
+          key: "onboardingStatus",
+          label: `Onboarding: ${onboardingStatus}`,
+          onRemove: () => {
+            setOnboardingStatus("");
+            resetToFirstPage();
+          },
+        }
+      : null,
+    vendorStatus
+      ? {
+          key: "vendorStatus",
+          label: `Vendor: ${vendorStatus}`,
+          onRemove: () => {
+            setVendorStatus("");
+            resetToFirstPage();
+          },
+        }
+      : null,
+  ].filter((filter): filter is ActiveFilterChip => Boolean(filter));
 
   return (
     <PageContainer>
       <PageContextHeader
-        title="Vendors"
-        utilityNode={
-          <div className="inline-flex rounded-full border border-border bg-surface p-1">
-            <button
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                viewMode === "active"
-                  ? "bg-foreground text-primary-foreground"
-                  : "text-muted hover:text-foreground"
-              }`}
-              type="button"
-              onClick={() => {
-                setViewMode("active");
-                resetToFirstPage();
-              }}
-            >
-              Active Vendors
-            </button>
-            <button
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                viewMode === "onboarding"
-                  ? "bg-foreground text-primary-foreground"
-                  : "text-muted hover:text-foreground"
-              }`}
-              type="button"
-              onClick={() => {
-                setViewMode("onboarding");
-                resetToFirstPage();
-              }}
-            >
-              Onboarding Queue
-            </button>
-          </div>
+        description={
+          viewMode === "active"
+            ? "Live vendors currently active in the platform."
+            : "Vendors waiting for onboarding review and approval."
         }
+        placement="topbar"
+        title="Vendors"
       />
 
-      <div className="space-y-4">
-        <div className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-          <div className="mb-4 grid gap-3 lg:grid-cols-3">
-            <label className="space-y-1">
-              <span className="text-sm font-medium text-foreground">
-                Search
-              </span>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+      <div className="list-workspace">
+        <ListFilterBar
+          activeFilters={activeFilters}
+          onClearAll={clearVendorFilters}
+          primaryFilters={
+            <>
+              <div className="inline-flex min-h-11 rounded-[0.9rem] border border-border bg-surface p-1">
+                <button
+                  className={`rounded-[0.7rem] px-3 text-sm font-medium transition ${
+                    viewMode === "active"
+                      ? "bg-foreground text-primary-foreground"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                  type="button"
+                  onClick={() => {
+                    setViewMode("active");
+                    resetToFirstPage();
+                  }}
+                >
+                  Active
+                </button>
+                <button
+                  className={`rounded-[0.7rem] px-3 text-sm font-medium transition ${
+                    viewMode === "onboarding"
+                      ? "bg-foreground text-primary-foreground"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                  type="button"
+                  onClick={() => {
+                    setViewMode("onboarding");
+                    resetToFirstPage();
+                  }}
+                >
+                  Onboarding
+                </button>
+              </div>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">
+                  Search
+                </span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                  <Input
+                    className="min-h-11 pl-9"
+                    placeholder="Search vendors"
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      resetToFirstPage();
+                    }}
+                  />
+                </div>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">City</span>
                 <Input
-                  className="min-h-11 pl-9"
-                  placeholder="Search vendors"
-                  value={search}
+                  className="min-h-11"
+                  placeholder="Bengaluru"
+                  value={city}
                   onChange={(event) => {
-                    setSearch(event.target.value);
+                    setCity(event.target.value);
                     resetToFirstPage();
                   }}
                 />
-              </div>
-            </label>
-            <label className="space-y-1">
-              <span className="text-sm font-medium text-foreground">City</span>
-              <Input
-                className="min-h-11"
-                placeholder="Bengaluru"
-                value={city}
-                onChange={(event) => {
-                  setCity(event.target.value);
-                  resetToFirstPage();
-                }}
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-sm font-medium text-foreground">
-                Category ID
-              </span>
-              <Input
-                className="min-h-11"
-                placeholder="UUID"
-                value={categoryId}
-                onChange={(event) => {
-                  setCategoryId(event.target.value);
-                  resetToFirstPage();
-                }}
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-sm font-medium text-foreground">
-                Zone ID
-              </span>
-              <Input
-                className="min-h-11"
-                placeholder="UUID"
-                value={zoneId}
-                onChange={(event) => {
-                  setZoneId(event.target.value);
-                  resetToFirstPage();
-                }}
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-sm font-medium text-foreground">
-                Onboarding Status
-              </span>
-              <select
-                className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-                value={onboardingStatus}
-                onChange={(event) => {
-                  setOnboardingStatus(
-                    event.target.value as "" | VendorOnboardingStatus,
-                  );
-                  resetToFirstPage();
-                }}
-              >
-                <option value="">All</option>
-                <option value="DRAFT">DRAFT</option>
-                <option value="SUBMITTED">SUBMITTED</option>
-                <option value="DOCUMENTS_PENDING">DOCUMENTS_PENDING</option>
-                <option value="UNDER_REVIEW">UNDER_REVIEW</option>
-                <option value="APPROVED">APPROVED</option>
-                <option value="REJECTED">REJECTED</option>
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-sm font-medium text-foreground">
-                Vendor Status
-              </span>
-              <select
-                className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-                value={vendorStatus}
-                onChange={(event) => {
-                  setVendorStatus(event.target.value as "" | VendorStatus);
-                  resetToFirstPage();
-                }}
-              >
-                <option value="">All</option>
-                <option value="PENDING">PENDING</option>
-                <option value="ACTIVE">ACTIVE</option>
-                <option value="SUSPENDED">SUSPENDED</option>
-                <option value="INACTIVE">INACTIVE</option>
-              </select>
-            </label>
-          </div>
+              </label>
+            </>
+          }
+          secondaryFilters={
+            <>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">
+                  Category ID
+                </span>
+                <Input
+                  className="min-h-11"
+                  placeholder="UUID"
+                  value={categoryId}
+                  onChange={(event) => {
+                    setCategoryId(event.target.value);
+                    resetToFirstPage();
+                  }}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">
+                  Zone ID
+                </span>
+                <Input
+                  className="min-h-11"
+                  placeholder="UUID"
+                  value={zoneId}
+                  onChange={(event) => {
+                    setZoneId(event.target.value);
+                    resetToFirstPage();
+                  }}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">
+                  Onboarding Status
+                </span>
+                <select
+                  className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
+                  value={onboardingStatus}
+                  onChange={(event) => {
+                    setOnboardingStatus(
+                      event.target.value as "" | VendorOnboardingStatus,
+                    );
+                    resetToFirstPage();
+                  }}
+                >
+                  <option value="">All</option>
+                  <option value="DRAFT">DRAFT</option>
+                  <option value="SUBMITTED">SUBMITTED</option>
+                  <option value="DOCUMENTS_PENDING">DOCUMENTS_PENDING</option>
+                  <option value="UNDER_REVIEW">UNDER_REVIEW</option>
+                  <option value="APPROVED">APPROVED</option>
+                  <option value="REJECTED">REJECTED</option>
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">
+                  Vendor Status
+                </span>
+                <select
+                  className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
+                  value={vendorStatus}
+                  onChange={(event) => {
+                    setVendorStatus(event.target.value as "" | VendorStatus);
+                    resetToFirstPage();
+                  }}
+                >
+                  <option value="">All</option>
+                  <option value="PENDING">PENDING</option>
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="SUSPENDED">SUSPENDED</option>
+                  <option value="INACTIVE">INACTIVE</option>
+                </select>
+              </label>
+            </>
+          }
+        />
 
-          <div className="mb-4">
-            <h2 className="text-base font-semibold text-foreground">
-              {viewMode === "active" ? "Active Vendors" : "Onboarding Queue"}
-            </h2>
-            <p className="text-sm text-muted">
-              {viewMode === "active"
-                ? "Live vendors currently active in the platform."
-                : "Vendors waiting for onboarding review and approval."}
-            </p>
-          </div>
-
+        <section className="list-results-panel">
           {vendorQuery.isError ? (
             <ErrorState
               description="We could not load vendor data. Please retry."
@@ -346,7 +421,7 @@ export function VendorsPage() {
             />
           ) : (
             <DynamicTable
-              bodyMaxHeight={560}
+              bodyMaxHeight="calc(100vh - 18rem)"
               columns={vendorColumns}
               data={vendors}
               description="No vendor records are available."
@@ -372,7 +447,7 @@ export function VendorsPage() {
                     }
               }
               title={
-                viewMode === "active" ? "Active vendors" : "Onboarding queue"
+                viewMode === "active" ? "Active Vendors" : "Onboarding Queue"
               }
               getRowId={(row) => row.vendorId}
               onRowClick={(row) =>
@@ -381,32 +456,7 @@ export function VendorsPage() {
             />
           )}
 
-          {pagination ? (
-            <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
-              <p className="text-sm text-muted">
-                Page {pagination.page} of {pagination.totalPages}
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={!hasPreviousPage || isLoading}
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                >
-                  Previous
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={!hasNextPage || isLoading}
-                  onClick={() => setPage((current) => current + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </div>
+        </section>
       </div>
     </PageContainer>
   );

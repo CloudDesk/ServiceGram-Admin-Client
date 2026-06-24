@@ -2,13 +2,13 @@ import { BadgeCheck, Search, Settings2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { DynamicTable, TableSkeleton, type DynamicTableColumn } from '../../../components/ui/Table'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { PageContainer } from '../../../components/layout/PageContainer'
+import { ListFilterBar } from '../../../components/layout/ListFilterBar'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { routePaths } from '../../../config/routes'
 import { settingsService } from '../../settings/services/settings.service'
@@ -20,7 +20,7 @@ import type {
   InfluencerStatus,
 } from '../types/influencer.types'
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 const INFLUENCER_STATUSES: InfluencerStatus[] = [
   'PENDING_REVIEW',
   'APPROVED',
@@ -204,19 +204,9 @@ export function InfluencersPage() {
   return (
     <PageContainer>
       <PageContextHeader
-        title="Influencers"
         description="Review creator applications, monitor approved creators, and keep Phase 1 commission policy visible for operations."
-        titleMetaNode={
-          <div className="flex flex-wrap gap-2">
-            <Badge tone="warning">
-              Pending {summary.PENDING_REVIEW ?? 0}
-            </Badge>
-            <Badge tone="success">
-              Approved {summary.APPROVED ?? 0}
-            </Badge>
-            <Badge tone="neutral">Total {summary.total ?? 0}</Badge>
-          </div>
-        }
+        placement="topbar"
+        title="Influencers"
       />
 
       <div className="grid gap-4 lg:grid-cols-4">
@@ -255,69 +245,43 @@ export function InfluencersPage() {
         </div>
       </div>
 
-      <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-        <div className="mb-4 grid gap-3 lg:grid-cols-4">
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Search</span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-              <Input
-                className="min-h-11 pl-9"
-                placeholder="Name, handle, mobile"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value)
-                  resetToFirstPage()
-                }}
-              />
-            </div>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Status</span>
-            <select
-              className="form-input min-h-11"
-              value={status}
-              onChange={(event) => {
-                setStatus(event.target.value as '' | InfluencerStatus)
-                resetToFirstPage()
-              }}
-            >
-              <option value="">All</option>
-              {INFLUENCER_STATUSES.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">City</span>
-            <Input
-              className="min-h-11"
-              placeholder="Chennai"
-              value={city}
-              onChange={(event) => {
-                setCity(event.target.value)
-                resetToFirstPage()
-              }}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">
-              Category ID
-            </span>
-            <Input
-              className="min-h-11"
-              placeholder="UUID"
-              value={categoryId}
-              onChange={(event) => {
-                setCategoryId(event.target.value)
-                resetToFirstPage()
-              }}
-            />
-          </label>
-        </div>
+      <div className="list-workspace">
+        <ListFilterBar
+          primaryFilters={
+            <>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Search</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                  <Input className="min-h-11 pl-9" placeholder="Name, handle, mobile" value={search} onChange={(event) => { setSearch(event.target.value); resetToFirstPage() }} />
+                </div>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Status</span>
+                <select className="form-input min-h-11" value={status} onChange={(event) => { setStatus(event.target.value as '' | InfluencerStatus); resetToFirstPage() }}>
+                  <option value="">All</option>
+                  {INFLUENCER_STATUSES.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">City</span>
+                <Input className="min-h-11" placeholder="Chennai" value={city} onChange={(event) => { setCity(event.target.value); resetToFirstPage() }} />
+              </label>
+            </>
+          }
+          secondaryFilters={
+            <label className="space-y-1">
+              <span className="text-sm font-medium text-foreground">Category ID</span>
+              <Input className="min-h-11" placeholder="UUID" value={categoryId} onChange={(event) => { setCategoryId(event.target.value); resetToFirstPage() }} />
+            </label>
+          }
+        />
 
+        <section className="list-results-panel">
         {influencersQuery.isError ? (
           <ErrorState
             title="Influencers unavailable"
@@ -361,7 +325,8 @@ export function InfluencersPage() {
             title="Creator applications"
           />
         )}
-      </section>
+        </section>
+      </div>
 
       <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
         <div className="flex items-start gap-3">

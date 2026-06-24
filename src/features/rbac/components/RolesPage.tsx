@@ -8,6 +8,7 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { PageContainer } from '../../../components/layout/PageContainer'
+import { ListFilterBar } from '../../../components/layout/ListFilterBar'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import {
   DynamicTable,
@@ -100,34 +101,35 @@ export function RolesPage() {
   return (
     <PageContainer>
       <PageContextHeader
-        actionNode={
-          canCreateRoles ? (
-            <Link to={`${routePaths.roles}/new`}>
-              <Button size="sm">
-                <Plus className="mr-2 size-4" />
-                New Role
-              </Button>
-            </Link>
-          ) : null
-        }
         description="Manage admin role access across platform modules."
+        placement="topbar"
         title="Roles"
       />
 
-      <div className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-        <label className="mb-4 block space-y-1">
-          <span className="text-sm font-medium text-foreground">Search</span>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-            <Input
-              className="min-h-11 pl-9"
-              placeholder="Search by role name, code, or description"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </div>
-        </label>
+      <div className="list-workspace">
+        <ListFilterBar
+          actionNode={
+            canCreateRoles ? (
+              <Link to={`${routePaths.roles}/new`}>
+                <Button size="sm">
+                  <Plus className="mr-2 size-4" />
+                  New Role
+                </Button>
+              </Link>
+            ) : null
+          }
+          primaryFilters={
+            <label className="space-y-1">
+              <span className="text-sm font-medium text-foreground">Search</span>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                <Input className="min-h-11 pl-9" placeholder="Search by role name, code, or description" value={search} onChange={(event) => setSearch(event.target.value)} />
+              </div>
+            </label>
+          }
+        />
 
+        <section className="list-results-panel">
         {rolesQuery.isError ? (
           <ErrorState
             description={
@@ -160,6 +162,7 @@ export function RolesPage() {
             onRowClick={(row) => navigate(`${routePaths.roles}/${row.roleId}`)}
           />
         )}
+        </section>
       </div>
     </PageContainer>
   )

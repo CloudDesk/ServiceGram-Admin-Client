@@ -10,7 +10,7 @@ export function MobileSidebar() {
   }
 
   return (
-    <div className="fixed inset-0 z-40 lg:hidden">
+    <div className="fixed inset-0 z-[80] lg:hidden">
       <button
         aria-label="Close sidebar backdrop"
         className="absolute inset-0 bg-overlay"

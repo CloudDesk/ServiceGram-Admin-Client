@@ -10,6 +10,7 @@ import { apiClient } from '../../../services/apiClient'
 import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
   AdminUserActionResponse,
+  AdminUserErrorResponse,
   AdminUsersListResponse,
   AdminUsersQueryParams,
   CreateAdminUserPayload,
@@ -17,9 +18,32 @@ import type {
   ForceLogoutAdminUserResponse,
   UpdateAdminUserPayload,
 } from '../types/adminUser.types'
+import { AdminUserServiceError } from '../types/adminUser.types'
+
+async function readJsonResponse<T>(response: Response): Promise<T | null> {
+  const text = await response.text()
+
+  if (!text) {
+    return null
+  }
+
+  return JSON.parse(text) as T
+}
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  return (await response.json()) as T
+  const body = await readJsonResponse<T | AdminUserErrorResponse>(response)
+
+  if (!response.ok) {
+    const errorBody = body as AdminUserErrorResponse | null
+
+    throw new AdminUserServiceError(
+      errorBody?.message ?? 'Request failed.',
+      response.status,
+      errorBody,
+    )
+  }
+
+  return body as T
 }
 
 function jsonRequest<TPayload>(method: 'POST' | 'PUT', payload: TPayload) {

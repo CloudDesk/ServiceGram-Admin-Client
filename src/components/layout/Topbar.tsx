@@ -13,6 +13,7 @@ import { Button } from "../ui/Button";
 import { routePaths } from "../../config/routes";
 import { useAuthStore } from "../../store/authStore";
 import { useUiStore } from "../../store/uiStore";
+import { usePageChrome } from "../../providers/pageChromeContext";
 import { GlobalSearch } from "../../features/search/components/GlobalSearch";
 
 export function Topbar() {
@@ -20,8 +21,11 @@ export function Topbar() {
   const clearSession = useAuthStore((state) => state.clearSession);
   const user = useAuthStore((state) => state.user);
   const openMobileSidebar = useUiStore((state) => state.openMobileSidebar);
+  const { pageChrome } = usePageChrome();
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement | null>(null);
+  const title = pageChrome.title ?? "ServiceGram Admin";
+  const description = pageChrome.description ?? "Admin operations console";
 
   useEffect(() => {
     if (!profileOpen) {
@@ -61,8 +65,8 @@ export function Topbar() {
   };
 
   return (
-    <header className="premium-appbar grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 sm:px-6 lg:px-8 xl:grid-cols-[minmax(12rem,1fr)_minmax(20rem,58rem)_minmax(12rem,1fr)]">
-      <div className="flex min-w-0 items-center justify-start">
+    <header className="premium-appbar grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 sm:px-6 md:grid-cols-[minmax(12rem,0.9fr)_minmax(16rem,42rem)_auto] lg:px-8 xl:grid-cols-[minmax(16rem,0.9fr)_minmax(26rem,58rem)_minmax(16rem,0.9fr)]">
+      <div className="flex min-w-0 items-center justify-start gap-3">
         <Button
           className="lg:hidden"
           size="sm"
@@ -72,9 +76,17 @@ export function Topbar() {
         >
           <Menu className="size-4" />
         </Button>
+        <div className="min-w-0">
+          <h1 className="truncate text-sm font-semibold leading-5 text-adaptive-main sm:text-base">
+            {title}
+          </h1>
+          <p className="hidden truncate text-xs leading-4 text-adaptive-muted sm:block">
+            {description}
+          </p>
+        </div>
       </div>
 
-      <div className="flex min-w-0 justify-center">
+      <div className="hidden min-w-0 justify-center md:flex">
         <GlobalSearch />
       </div>
 
@@ -107,7 +119,7 @@ export function Topbar() {
           </button>
 
           {profileOpen ? (
-            <div className="premium-common-surface absolute right-0 top-[calc(100%+0.625rem)] z-40 w-[min(20rem,calc(100vw-2rem))] overflow-hidden">
+            <div className="premium-common-surface absolute right-0 top-[calc(100%+0.625rem)] z-[70] w-[min(20rem,calc(100vw-2rem))] overflow-hidden">
               <div className="border-b border-adaptive bg-adaptive-surface px-4 py-4">
                 <div className="flex items-start gap-3">
                   <div className="premium-avatar size-10 shrink-0 text-[color:var(--adaptive-primary)]">

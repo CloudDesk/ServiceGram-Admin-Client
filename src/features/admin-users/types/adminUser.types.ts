@@ -1,4 +1,7 @@
-import type { ApiErrorDetails } from '../../../types/api.types'
+import type {
+  ApiErrorDetails,
+  ApiErrorResponse,
+} from '../../../types/api.types'
 
 export type AdminUserStatus = 'ACTIVE' | 'DISABLED'
 
@@ -104,4 +107,22 @@ export interface AdminUserApiErrorDetails extends ApiErrorDetails {
     code: string
     message: string
   }[]
+}
+
+export type AdminUserErrorResponse = ApiErrorResponse<AdminUserApiErrorDetails>
+
+export class AdminUserServiceError extends Error {
+  status: number
+  response: AdminUserErrorResponse | null
+
+  constructor(
+    message: string,
+    status: number,
+    response: AdminUserErrorResponse | null,
+  ) {
+    super(message)
+    this.name = 'AdminUserServiceError'
+    this.status = status
+    this.response = response
+  }
 }

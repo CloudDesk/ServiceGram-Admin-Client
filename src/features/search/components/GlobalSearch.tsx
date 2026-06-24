@@ -7,6 +7,7 @@ import {
   FileBarChart2,
   FileText,
   Film,
+  HandCoins,
   KeyRound,
   LoaderCircle,
   PackageSearch,
@@ -16,7 +17,6 @@ import {
   Shield,
   UserRound,
   Users,
-  Wallet,
   Wrench,
   X,
 } from 'lucide-react'
@@ -41,7 +41,7 @@ const moduleIcons: Record<AdminSearchModule, LucideIcon> = {
   orders: PackageSearch,
   payments: CreditCard,
   refunds: RotateCcw,
-  payouts: Wallet,
+  payouts: HandCoins,
   reels: Film,
   influencers: BadgeCheck,
   notifications: Bell,
@@ -209,7 +209,7 @@ export function GlobalSearch() {
       </button>
 
       {isOpen ? (
-        <div className="premium-common-surface fixed inset-x-3 top-20 z-50 max-h-[calc(100vh-6rem)] overflow-hidden md:absolute md:inset-x-auto md:left-1/2 md:top-[calc(100%+0.75rem)] md:w-[min(58rem,calc(100vw-8rem))] md:-translate-x-1/2 lg:w-[min(64rem,calc(100vw-24rem))]">
+        <div className="premium-common-surface fixed inset-x-3 top-20 z-[70] max-h-[calc(100vh-6rem)] overflow-hidden md:absolute md:inset-x-auto md:left-1/2 md:top-[calc(100%+0.75rem)] md:w-[min(58rem,calc(100vw-8rem))] md:-translate-x-1/2 lg:w-[min(64rem,calc(100vw-24rem))]">
           <div className="border-b border-adaptive p-3">
             <div className="flex items-center gap-2 rounded-[0.75rem] border border-adaptive bg-adaptive-surface px-3">
               <Search className="size-4 shrink-0 text-adaptive-muted" />

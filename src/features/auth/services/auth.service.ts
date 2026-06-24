@@ -1,15 +1,22 @@
 import { buildApiUrl } from '../../../config/api'
-import { ADMIN_LOGIN_PATH } from '../../../config/apiPaths'
+import {
+  ADMIN_FORGOT_PASSWORD_PATH,
+  ADMIN_LOGIN_PATH,
+  ADMIN_RESET_PASSWORD_PATH,
+} from '../../../config/apiPaths'
 import { useAuthStore } from '../../../store/authStore'
 import { apiClient } from '../../../services/apiClient'
 import type { AppUser } from '../../../types/common.types'
 import type {
   AuthSession,
+  AuthActionResponse,
+  ForgotPasswordPayload,
+  ResetPasswordPayload,
   LoginErrorResponse,
   LoginPayload,
   LoginResponse,
 } from '../types/auth.types'
-import { LoginServiceError } from '../types/auth.types'
+import { AuthActionServiceError, LoginServiceError } from '../types/auth.types'
 
 function mapAdminToUser(admin: LoginResponse['data']['admin']): AppUser {
   const role = admin.roleCodes[0]?.toLowerCase().replaceAll('_', '-') as AppUser['role']
@@ -75,6 +82,54 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
   return session
 }
 
+async function requestPasswordReset(
+  payload: ForgotPasswordPayload,
+): Promise<AuthActionResponse> {
+  const response = await apiClient.request(buildApiUrl(ADMIN_FORGOT_PASSWORD_PATH), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorBody = await readJsonResponse<LoginErrorResponse>(response)
+    throw new AuthActionServiceError(
+      errorBody?.message ?? 'We could not request a password reset.',
+      response.status,
+      errorBody,
+    )
+  }
+
+  return (await response.json()) as AuthActionResponse
+}
+
+async function resetPassword(
+  payload: ResetPasswordPayload,
+): Promise<AuthActionResponse> {
+  const response = await apiClient.request(buildApiUrl(ADMIN_RESET_PASSWORD_PATH), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorBody = await readJsonResponse<LoginErrorResponse>(response)
+    throw new AuthActionServiceError(
+      errorBody?.message ?? 'We could not reset this password.',
+      response.status,
+      errorBody,
+    )
+  }
+
+  return (await response.json()) as AuthActionResponse
+}
+
 export const authService = {
   login,
+  requestPasswordReset,
+  resetPassword,
 }

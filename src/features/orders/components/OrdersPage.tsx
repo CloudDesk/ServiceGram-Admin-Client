@@ -2,13 +2,17 @@ import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Button } from '../../../components/ui/Button'
 import { DynamicTable, TableSkeleton, type DynamicTableColumn } from '../../../components/ui/Table'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
+import {
+  ListFilterBar,
+  type ActiveFilterChip,
+} from '../../../components/layout/ListFilterBar'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
+import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
 import { formatMoney } from '../../../utils/formatMoney'
 import { orderService } from '../services/order.service'
@@ -20,11 +24,12 @@ import type {
   AdminOrderSummary,
 } from '../types/order.types'
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 
 const orderStatuses: AdminOrderStatus[] = [
   'ORDER_PLACED',
   'VENDOR_ACCEPTANCE_PENDING',
+  'PRICE_REVISION_PENDING_CUSTOMER',
   'VENDOR_ACCEPTED',
   'VENDOR_DECLINED',
   'PICKUP_SCHEDULED',
@@ -53,7 +58,49 @@ const paymentStatuses: AdminOrderPaymentStatus[] = [
   'COD_PENDING',
 ]
 
-const paymentMethods: AdminOrderPaymentMethod[] = ['PREPAID', 'COD', 'WALLET', 'MIXED']
+const paymentMethods: AdminOrderPaymentMethod[] = [
+  'PREPAID',
+  'COD',
+  ...(featureFlags.customerWallet
+    ? (['WALLET', 'MIXED'] as AdminOrderPaymentMethod[])
+    : []),
+]
+
+function orderStatusTone(value: unknown) {
+  if (value === 'DELIVERED') {
+    return 'success'
+  }
+
+  if (value === 'CANCELLED') {
+    return 'danger'
+  }
+
+  if (value === 'PRICE_REVISION_PENDING_CUSTOMER' || value === 'VENDOR_ACCEPTANCE_PENDING') {
+    return 'warning'
+  }
+
+  return 'info'
+}
+
+function orderDisplayValue(order: AdminOrderSummary) {
+  const pendingRevision = order.pricing.pendingPriceRevision
+
+  if (pendingRevision) {
+    return (
+      <div className="text-right">
+        <p className="font-semibold text-foreground">{formatMoney(pendingRevision.revisedPricePaise / 100)}</p>
+        <p className="text-xs text-muted">Was {formatMoney(pendingRevision.previousPricePaise / 100)}</p>
+      </div>
+    )
+  }
+
+  const amountPaise =
+    order.pricing.finalPricePaise ??
+    order.pricing.payableAmountPaise ??
+    order.pricing.priceEstimatePaise
+
+  return formatMoney(amountPaise / 100)
+}
 
 const orderColumns: DynamicTableColumn<AdminOrderSummary>[] = [
   {
@@ -93,7 +140,7 @@ const orderColumns: DynamicTableColumn<AdminOrderSummary>[] = [
     key: 'orderStatus',
     label: 'Order Status',
     format: 'status',
-    statusTone: (value) => value === 'DELIVERED' ? 'success' : value === 'CANCELLED' ? 'danger' : 'info',
+    statusTone: orderStatusTone,
     minWidth: 180,
   },
   {
@@ -108,8 +155,7 @@ const orderColumns: DynamicTableColumn<AdminOrderSummary>[] = [
     label: 'Value',
     align: 'right',
     minWidth: 120,
-    renderCell: (order) =>
-      formatMoney((order.pricing.finalPricePaise ?? order.pricing.priceEstimatePaise) / 100),
+    renderCell: orderDisplayValue,
   },
   {
     key: 'pickupDate',
@@ -201,108 +247,138 @@ export function OrdersPage() {
   const isLoading = ordersQuery.isLoading || ordersQuery.isFetching
 
   const resetToFirstPage = () => setPage(1)
+  const clearOrderFilters = () => {
+    setSearch('')
+    setCity('')
+    setCategoryId('')
+    setCustomerId('')
+    setDateFrom('')
+    setDateTo('')
+    setOrderStatus('')
+    setPaymentMethod('')
+    setPaymentStatus('')
+    setVendorId('')
+    setZoneId('')
+    resetToFirstPage()
+  }
+  const activeFilters: ActiveFilterChip[] = [
+    search ? { key: 'search', label: `Search: ${search}`, onRemove: () => { setSearch(''); resetToFirstPage() } } : null,
+    orderStatus ? { key: 'orderStatus', label: `Order: ${orderStatus}`, onRemove: () => { setOrderStatus(''); resetToFirstPage() } } : null,
+    paymentStatus ? { key: 'paymentStatus', label: `Payment: ${paymentStatus}`, onRemove: () => { setPaymentStatus(''); resetToFirstPage() } } : null,
+    paymentMethod ? { key: 'paymentMethod', label: `Method: ${paymentMethod}`, onRemove: () => { setPaymentMethod(''); resetToFirstPage() } } : null,
+    city ? { key: 'city', label: `City: ${city}`, onRemove: () => { setCity(''); resetToFirstPage() } } : null,
+    dateFrom ? { key: 'dateFrom', label: `From: ${dateFrom}`, onRemove: () => { setDateFrom(''); resetToFirstPage() } } : null,
+    dateTo ? { key: 'dateTo', label: `To: ${dateTo}`, onRemove: () => { setDateTo(''); resetToFirstPage() } } : null,
+    categoryId ? { key: 'categoryId', label: `Category: ${categoryId}`, onRemove: () => { setCategoryId(''); resetToFirstPage() } } : null,
+    zoneId ? { key: 'zoneId', label: `Zone: ${zoneId}`, onRemove: () => { setZoneId(''); resetToFirstPage() } } : null,
+    vendorId ? { key: 'vendorId', label: `Vendor: ${vendorId}`, onRemove: () => { setVendorId(''); resetToFirstPage() } } : null,
+    customerId ? { key: 'customerId', label: `Customer: ${customerId}`, onRemove: () => { setCustomerId(''); resetToFirstPage() } } : null,
+  ].filter((filter): filter is ActiveFilterChip => Boolean(filter))
 
   return (
     <PageContainer>
       <PageContextHeader
         description="Search, filter, and manage customer orders from backend data."
+        placement="topbar"
         title="Orders"
       />
 
-      <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-        <div className="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-4">
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Search</span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-              <Input
-                className="pl-9"
-                placeholder="Order ID, customer, vendor"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value)
-                  resetToFirstPage()
-                }}
-              />
-            </div>
-          </label>
-          <OptionalSelect label="Order Status" options={orderStatuses} value={orderStatus} onChange={(value) => { setOrderStatus(value); resetToFirstPage() }} />
-          <OptionalSelect label="Payment Status" options={paymentStatuses} value={paymentStatus} onChange={(value) => { setPaymentStatus(value); resetToFirstPage() }} />
-          <OptionalSelect label="Payment Method" options={paymentMethods} value={paymentMethod} onChange={(value) => { setPaymentMethod(value); resetToFirstPage() }} />
-          {[
-            ['City', city, setCity],
-            ['Category ID', categoryId, setCategoryId],
-            ['Zone ID', zoneId, setZoneId],
-            ['Vendor ID', vendorId, setVendorId],
-            ['Customer ID', customerId, setCustomerId],
-          ].map(([label, value, setter]) => (
-            <label className="space-y-1" key={label as string}>
-              <span className="text-sm font-medium text-foreground">{label as string}</span>
-              <Input
-                value={value as string}
-                onChange={(event) => {
-                  ;(setter as (value: string) => void)(event.target.value)
-                  resetToFirstPage()
-                }}
-              />
-            </label>
-          ))}
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Date From</span>
-            <Input type="datetime-local" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); resetToFirstPage() }} />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Date To</span>
-            <Input type="datetime-local" value={dateTo} onChange={(event) => { setDateTo(event.target.value); resetToFirstPage() }} />
-          </label>
-        </div>
+      <div className="list-workspace">
+        <ListFilterBar
+          activeFilters={activeFilters}
+          onClearAll={clearOrderFilters}
+          primaryFilters={
+            <>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Search</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Order ID, customer, vendor"
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </div>
+              </label>
+              <OptionalSelect label="Order Status" options={orderStatuses} value={orderStatus} onChange={(value) => { setOrderStatus(value); resetToFirstPage() }} />
+              <OptionalSelect label="Payment Status" options={paymentStatuses} value={paymentStatus} onChange={(value) => { setPaymentStatus(value); resetToFirstPage() }} />
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">City</span>
+                <Input value={city} onChange={(event) => { setCity(event.target.value); resetToFirstPage() }} />
+              </label>
+            </>
+          }
+          secondaryFilters={
+            <>
+              <OptionalSelect label="Payment Method" options={paymentMethods} value={paymentMethod} onChange={(value) => { setPaymentMethod(value); resetToFirstPage() }} />
+              {[
+                ['Category ID', categoryId, setCategoryId],
+                ['Zone ID', zoneId, setZoneId],
+                ['Vendor ID', vendorId, setVendorId],
+                ['Customer ID', customerId, setCustomerId],
+              ].map(([label, value, setter]) => (
+                <label className="space-y-1" key={label as string}>
+                  <span className="text-sm font-medium text-foreground">{label as string}</span>
+                  <Input
+                    value={value as string}
+                    onChange={(event) => {
+                      ;(setter as (value: string) => void)(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </label>
+              ))}
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Date From</span>
+                <Input type="datetime-local" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); resetToFirstPage() }} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Date To</span>
+                <Input type="datetime-local" value={dateTo} onChange={(event) => { setDateTo(event.target.value); resetToFirstPage() }} />
+              </label>
+            </>
+          }
+        />
 
-        {ordersQuery.isError ? (
-          <ErrorState
-            description="We could not load order data. Please retry."
-            title="Order data unavailable"
-            onRetry={() => void ordersQuery.refetch()}
-          />
-        ) : isLoading ? (
-          <TableSkeleton columns={orderColumns} hasFooter={Boolean(pagination)} rowCount={8} />
-        ) : orders.length === 0 ? (
-          <EmptyState description="No orders matched the current filters." title="No orders found" />
-        ) : (
-          <DynamicTable
-            bodyMaxHeight={560}
-            columns={orderColumns}
-            data={orders}
-            pagination={pagination ? {
-              page: pagination.page,
-              pageSize: pagination.limit,
-              total: pagination.totalItems,
-              onPageChange: setPage,
-              onPageSizeChange: (nextLimit) => {
-                setLimit(nextLimit)
-                setPage(1)
-              },
-              rowsPerPageOptions: [10, 20, 50, 100],
-            } : undefined}
-            title="Orders"
-            getRowId={(row) => row.orderId}
-            onRowClick={(row) => navigate(`${routePaths.orders}/${row.orderId}`)}
-          />
-        )}
+        <section className="list-results-panel">
+          {ordersQuery.isError ? (
+            <ErrorState
+              description="We could not load order data. Please retry."
+              title="Order data unavailable"
+              onRetry={() => void ordersQuery.refetch()}
+            />
+          ) : isLoading ? (
+            <TableSkeleton columns={orderColumns} hasFooter={Boolean(pagination)} rowCount={8} />
+          ) : orders.length === 0 ? (
+            <EmptyState description="No orders matched the current filters." title="No orders found" />
+          ) : (
+            <DynamicTable
+              bodyMaxHeight="calc(100vh - 18rem)"
+              columns={orderColumns}
+              data={orders}
+              pagination={pagination ? {
+                page: pagination.page,
+                pageSize: pagination.limit,
+                total: pagination.totalItems,
+                onPageChange: setPage,
+                onPageSizeChange: (nextLimit) => {
+                  setLimit(nextLimit)
+                  setPage(1)
+                },
+                rowsPerPageOptions: [10, 20, 50, 100],
+              } : undefined}
+              title="Orders"
+              getRowId={(row) => row.orderId}
+              onRowClick={(row) => navigate(`${routePaths.orders}/${row.orderId}`)}
+            />
+          )}
 
-        {pagination ? (
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
-            <p className="text-sm text-muted">Page {pagination.page} of {pagination.totalPages}</p>
-            <div className="flex items-center gap-2">
-              <Button disabled={!pagination.hasPreviousPage || isLoading} size="sm" variant="secondary" onClick={() => setPage((current) => Math.max(1, current - 1))}>
-                Previous
-              </Button>
-              <Button disabled={!pagination.hasNextPage || isLoading} size="sm" variant="secondary" onClick={() => setPage((current) => current + 1)}>
-                Next
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </section>
+        </section>
+      </div>
     </PageContainer>
   )
 }

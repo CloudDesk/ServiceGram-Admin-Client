@@ -7,6 +7,16 @@ export interface LoginPayload {
   deviceId: string
 }
 
+export interface ForgotPasswordPayload {
+  email: string
+}
+
+export interface ResetPasswordPayload {
+  token: string
+  newPassword: string
+  confirmPassword: string
+}
+
 export interface LoginResponse {
   success: true
   code: 'LOGIN_SUCCESS'
@@ -67,6 +77,14 @@ export type LoginErrorResponse =
   | LoginValidationErrorResponse
   | LoginUnauthorizedErrorResponse
 
+export interface AuthActionResponse {
+  success: true
+  code: string
+  message: string
+  data: Record<string, unknown>
+  meta?: LoginResponse['meta']
+}
+
 export interface AuthSession {
   accessToken: string
   accessTokenExpiresAt: string
@@ -89,6 +107,22 @@ export class LoginServiceError extends Error {
   ) {
     super(message)
     this.name = 'LoginServiceError'
+    this.status = status
+    this.response = response
+  }
+}
+
+export class AuthActionServiceError extends Error {
+  status: number
+  response: LoginErrorResponse | null
+
+  constructor(
+    message: string,
+    status: number,
+    response: LoginErrorResponse | null,
+  ) {
+    super(message)
+    this.name = 'AuthActionServiceError'
     this.status = status
     this.response = response
   }

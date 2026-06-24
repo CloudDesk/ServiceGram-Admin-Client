@@ -2,13 +2,13 @@ import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Button } from '../../../components/ui/Button'
 import { DynamicTable, TableSkeleton, type DynamicTableColumn } from '../../../components/ui/Table'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
+import { ListFilterBar } from '../../../components/layout/ListFilterBar'
 import { routePaths } from '../../../config/routes'
 import { vendorService } from '../services/vendor.service'
 import type {
@@ -17,7 +17,7 @@ import type {
   VendorOnboardingStatus,
 } from '../types/vendor.types'
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 
 const onboardingStatuses: VendorOnboardingStatus[] = [
   'DRAFT',
@@ -121,56 +121,43 @@ export function VendorOnboardingPage() {
 
   return (
     <PageContainer>
-      <PageContextHeader title="Vendor Onboarding" />
+      <PageContextHeader
+        description="Review vendor onboarding submissions and document readiness."
+        placement="topbar"
+        title="Vendor Onboarding"
+      />
 
-      <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-        <div className="mb-4 grid gap-3 md:grid-cols-3">
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Search</span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-              <Input
-                className="pl-9"
-                placeholder="Vendor, owner, mobile"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value)
-                  resetToFirstPage()
-                }}
-              />
-            </div>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">City</span>
-            <Input
-              placeholder="Bengaluru"
-              value={city}
-              onChange={(event) => {
-                setCity(event.target.value)
-                resetToFirstPage()
-              }}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Status</span>
-            <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={onboardingStatus}
-              onChange={(event) => {
-                setOnboardingStatus(event.target.value as '' | VendorOnboardingStatus)
-                resetToFirstPage()
-              }}
-            >
-              <option value="">All</option>
-              {onboardingStatuses.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+      <div className="list-workspace">
+        <ListFilterBar
+          primaryFilters={
+            <>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Search</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                  <Input className="pl-9" placeholder="Vendor, owner, mobile" value={search} onChange={(event) => { setSearch(event.target.value); resetToFirstPage() }} />
+                </div>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">City</span>
+                <Input placeholder="Bengaluru" value={city} onChange={(event) => { setCity(event.target.value); resetToFirstPage() }} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Status</span>
+                <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={onboardingStatus} onChange={(event) => { setOnboardingStatus(event.target.value as '' | VendorOnboardingStatus); resetToFirstPage() }}>
+                  <option value="">All</option>
+                  {onboardingStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          }
+        />
 
+        <section className="list-results-panel">
         {onboardingQuery.isError ? (
           <ErrorState
             description="We could not load the vendor onboarding queue."
@@ -212,32 +199,8 @@ export function VendorOnboardingPage() {
           />
         )}
 
-        {pagination ? (
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
-            <p className="text-sm text-muted">
-              Page {pagination.page} of {pagination.totalPages}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                disabled={!pagination.hasPreviousPage || isLoading}
-                size="sm"
-                variant="secondary"
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-              >
-                Previous
-              </Button>
-              <Button
-                disabled={!pagination.hasNextPage || isLoading}
-                size="sm"
-                variant="secondary"
-                onClick={() => setPage((current) => current + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </section>
+        </section>
+      </div>
     </PageContainer>
   )
 }

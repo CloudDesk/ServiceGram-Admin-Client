@@ -3,13 +3,83 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../../../components/ui/Button'
 import { ErrorState } from '../../../components/ui/ErrorState'
+import { FormErrorSummary } from '../../../components/feedback/FormErrorSummary'
 import { Input } from '../../../components/ui/Input'
 import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
+import { cn } from '../../../utils/cn'
 import { rbacService } from '../../rbac/services/rbac.service'
 import { adminUserService } from '../services/adminUser.service'
-import type { AdminUserStatus } from '../types/adminUser.types'
+import {
+  AdminUserServiceError,
+  type AdminUserStatus,
+} from '../types/adminUser.types'
+
+const strongPasswordMessage =
+  'Password must be at least 12 characters and include uppercase, lowercase, number, and symbol.'
+const strongPasswordPattern =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/
+
+type CreateAdminUserField = 'email' | 'fullName' | 'password' | 'roleId'
+type CreateAdminUserFieldErrors = Partial<Record<CreateAdminUserField, string>>
+
+function isCreateAdminUserField(field: string): field is CreateAdminUserField {
+  return (
+    field === 'email' ||
+    field === 'fullName' ||
+    field === 'password' ||
+    field === 'roleId'
+  )
+}
+
+function validateCreateAdminUserForm(input: {
+  email: string
+  fullName: string
+  password: string
+  roleId: string
+}): CreateAdminUserFieldErrors {
+  const errors: CreateAdminUserFieldErrors = {}
+
+  if (!input.email.trim()) {
+    errors.email = 'Email is required.'
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())) {
+    errors.email = 'Please enter a valid email address.'
+  }
+
+  if (!input.fullName.trim()) {
+    errors.fullName = 'Full name is required.'
+  } else if (input.fullName.trim().length < 2) {
+    errors.fullName = 'Full name must be at least 2 characters.'
+  }
+
+  if (!input.password) {
+    errors.password = 'Password is required.'
+  } else if (!strongPasswordPattern.test(input.password)) {
+    errors.password = strongPasswordMessage
+  }
+
+  if (!input.roleId.trim()) {
+    errors.roleId = 'Role is required.'
+  }
+
+  return errors
+}
+
+function mapAdminUserFieldErrors(
+  error: AdminUserServiceError,
+): CreateAdminUserFieldErrors {
+  const errors: CreateAdminUserFieldErrors = {}
+  const fieldErrors = error.response?.details?.fieldErrors ?? []
+
+  fieldErrors.forEach((fieldError) => {
+    if (isCreateAdminUserField(fieldError.field)) {
+      errors[fieldError.field] = fieldError.message
+    }
+  })
+
+  return errors
+}
 
 export function CreateAdminUserPage() {
   const navigate = useNavigate()
@@ -20,6 +90,7 @@ export function CreateAdminUserPage() {
   const [roleId, setRoleId] = useState('')
   const [status, setStatus] = useState<AdminUserStatus>('ACTIVE')
   const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<CreateAdminUserFieldErrors>({})
 
   const rolesQuery = useQuery({
     queryKey: ['rbac', 'roles'],
@@ -42,15 +113,66 @@ export function CreateAdminUserPage() {
       navigate(`${routePaths.adminUsers}/${response.data.adminId}`)
     },
     onError: (error) => {
+      if (error instanceof AdminUserServiceError) {
+        const nextFieldErrors = mapAdminUserFieldErrors(error)
+
+        if (Object.keys(nextFieldErrors).length > 0) {
+          setFieldErrors(nextFieldErrors)
+          setFormError(null)
+          return
+        }
+
+        setFormError(error.message)
+        return
+      }
+
       setFormError(
         error instanceof Error ? error.message : 'Admin user creation failed.',
       )
     },
   })
 
+  const clearFieldError = (field: CreateAdminUserField) => {
+    setFieldErrors((current) => {
+      if (!current[field]) {
+        return current
+      }
+
+      const next: CreateAdminUserFieldErrors = {}
+
+      if (field !== 'email' && current.email) {
+        next.email = current.email
+      }
+
+      if (field !== 'fullName' && current.fullName) {
+        next.fullName = current.fullName
+      }
+
+      if (field !== 'password' && current.password) {
+        next.password = current.password
+      }
+
+      if (field !== 'roleId' && current.roleId) {
+        next.roleId = current.roleId
+      }
+
+      return next
+    })
+    setFormError(null)
+  }
+
   const submitForm = () => {
-    if (!email.trim() || !fullName.trim() || !password || !roleId.trim()) {
-      setFormError('Email, full name, password, and role are required.')
+    const nextFieldErrors = validateCreateAdminUserForm({
+      email,
+      fullName,
+      password,
+      roleId,
+    })
+
+    setFieldErrors(nextFieldErrors)
+    setFormError(null)
+
+    if (Object.keys(nextFieldErrors).length > 0) {
       return
     }
 
@@ -91,38 +213,60 @@ export function CreateAdminUserPage() {
             <span className="text-sm font-medium text-foreground">Email</span>
             <Input
               className="min-h-11"
+              hasError={Boolean(fieldErrors.email)}
               placeholder="vikram.sethi@servicegram.in"
               type="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                clearFieldError('email')
+                setEmail(event.target.value)
+              }}
             />
+            <FormErrorSummary message={fieldErrors.email} />
           </label>
           <label className="space-y-1">
             <span className="text-sm font-medium text-foreground">Full Name</span>
             <Input
               className="min-h-11"
+              hasError={Boolean(fieldErrors.fullName)}
               placeholder="Vikram Sethi"
               value={fullName}
-              onChange={(event) => setFullName(event.target.value)}
+              onChange={(event) => {
+                clearFieldError('fullName')
+                setFullName(event.target.value)
+              }}
             />
+            <FormErrorSummary message={fieldErrors.fullName} />
           </label>
           <label className="space-y-1">
             <span className="text-sm font-medium text-foreground">Password</span>
             <Input
               className="min-h-11"
+              hasError={Boolean(fieldErrors.password)}
               placeholder="Initial strong password"
               type="password"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => {
+                clearFieldError('password')
+                setPassword(event.target.value)
+              }}
             />
+            <FormErrorSummary message={fieldErrors.password} />
           </label>
           <label className="space-y-1">
             <span className="text-sm font-medium text-foreground">Role</span>
             <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-70"
+              className={cn(
+                'min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-70',
+                fieldErrors.roleId &&
+                  'border-[color:var(--adaptive-danger-text)] focus-visible:border-[color:var(--adaptive-danger-text)]',
+              )}
               disabled={rolesQuery.isLoading || rolesQuery.isError}
               value={roleId}
-              onChange={(event) => setRoleId(event.target.value)}
+              onChange={(event) => {
+                clearFieldError('roleId')
+                setRoleId(event.target.value)
+              }}
             >
               <option value="">Select role</option>
               {activeRoles.map((role) => (
@@ -131,6 +275,7 @@ export function CreateAdminUserPage() {
                 </option>
               ))}
             </select>
+            <FormErrorSummary message={fieldErrors.roleId} />
             {rolesQuery.isError ? (
               <p className="text-xs text-danger">
                 {rolesQuery.error instanceof Error

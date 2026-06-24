@@ -18,6 +18,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
+import { ListFilterBar } from '../../../components/layout/ListFilterBar'
 import { routePaths } from '../../../config/routes'
 import { useAuthStore } from '../../../store/authStore'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -48,7 +49,7 @@ export function PayoutsPage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(20)
+  const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<'' | AdminPayoutStatus>('')
   const [payoutMethod, setPayoutMethod] = useState<'' | AdminPayoutMethod>('')
@@ -116,19 +117,30 @@ export function PayoutsPage() {
 
   return (
     <PageContainer>
-      <PageContextHeader title="Payouts" description="Review, create, and manage vendor payouts." actionNode={canApprovePayouts ? <Button size="sm" onClick={() => setSelectedAction({ kind: 'CREATE' })}><Plus className="mr-2 size-4" />Create Payout</Button> : null} />
+      <PageContextHeader title="Payouts" description="Review, create, and manage vendor payouts." placement="topbar" />
       {actionMessage ? <div className="rounded-[1rem] border border-success/25 bg-success/10 p-3 text-sm text-success">{actionMessage}</div> : null}
-      <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-        <div className="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-4">
-          <label className="space-y-1"><span className="text-sm font-medium text-foreground">Search</span><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><Input className="pl-9" value={search} onChange={(event) => { setSearch(event.target.value); reset() }} /></div></label>
-          <OptionalSelect label="Status" options={statuses} value={status} onChange={(value) => { setStatus(value); reset() }} />
-          <OptionalSelect label="Method" options={methods} value={payoutMethod} onChange={(value) => { setPayoutMethod(value); reset() }} />
-          {[
-            ['City', city, setCity], ['Zone ID', zoneId, setZoneId], ['Vendor ID', vendorId, setVendorId], ['Min Amount Paise', minAmountPaise, setMinAmountPaise], ['Max Amount Paise', maxAmountPaise, setMaxAmountPaise],
-          ].map(([label, value, setter]) => <label className="space-y-1" key={label as string}><span className="text-sm font-medium text-foreground">{label as string}</span><Input value={value as string} onChange={(event) => { (setter as (value: string) => void)(event.target.value); reset() }} /></label>)}
-          <label className="space-y-1"><span className="text-sm font-medium text-foreground">Date From</span><Input type="datetime-local" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); reset() }} /></label>
-          <label className="space-y-1"><span className="text-sm font-medium text-foreground">Date To</span><Input type="datetime-local" value={dateTo} onChange={(event) => { setDateTo(event.target.value); reset() }} /></label>
-        </div>
+      <div className="list-workspace">
+        <ListFilterBar
+          actionNode={canApprovePayouts ? <Button size="sm" onClick={() => setSelectedAction({ kind: 'CREATE' })}><Plus className="mr-2 size-4" />Create Payout</Button> : null}
+          primaryFilters={
+            <>
+              <label className="space-y-1"><span className="text-sm font-medium text-foreground">Search</span><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><Input className="pl-9" value={search} onChange={(event) => { setSearch(event.target.value); reset() }} /></div></label>
+              <OptionalSelect label="Status" options={statuses} value={status} onChange={(value) => { setStatus(value); reset() }} />
+              <OptionalSelect label="Method" options={methods} value={payoutMethod} onChange={(value) => { setPayoutMethod(value); reset() }} />
+            </>
+          }
+          secondaryFilters={
+            <>
+              {[
+                ['City', city, setCity], ['Zone ID', zoneId, setZoneId], ['Vendor ID', vendorId, setVendorId], ['Min Amount Paise', minAmountPaise, setMinAmountPaise], ['Max Amount Paise', maxAmountPaise, setMaxAmountPaise],
+              ].map(([label, value, setter]) => <label className="space-y-1" key={label as string}><span className="text-sm font-medium text-foreground">{label as string}</span><Input value={value as string} onChange={(event) => { (setter as (value: string) => void)(event.target.value); reset() }} /></label>)}
+              <label className="space-y-1"><span className="text-sm font-medium text-foreground">Date From</span><Input type="datetime-local" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); reset() }} /></label>
+              <label className="space-y-1"><span className="text-sm font-medium text-foreground">Date To</span><Input type="datetime-local" value={dateTo} onChange={(event) => { setDateTo(event.target.value); reset() }} /></label>
+            </>
+          }
+        />
+
+        <section className="list-results-panel">
         {queryResult.isError ? <ErrorState title="Payout data unavailable" description={queryResult.error instanceof Error ? queryResult.error.message : 'We could not load payout data.'} onRetry={() => void queryResult.refetch()} /> : isLoading ? <TableSkeleton columns={columns} rowCount={8} hasActions hasFooter={Boolean(pagination)} /> : data.length === 0 ? <EmptyState title="No payouts found" description="No payout records matched the current filters." /> : <DynamicTable actionColumnLabel="Actions" columns={columns} data={data} getRowId={(row) => row.payoutId} title="Payouts" onRowClick={(row) => navigate(`${routePaths.payouts}/${row.payoutId}`)} pagination={pagination ? { page: pagination.page, pageSize: pagination.limit, total: pagination.totalItems, onPageChange: setPage, onPageSizeChange: (next) => { setLimit(next); setPage(1) }, rowsPerPageOptions: [10, 20, 50, 100] } : undefined} rowActions={(payout) => [
           { key: 'view', label: 'View Detail', icon: <Eye className="size-4" />, onClick: () => navigate(`${routePaths.payouts}/${payout.payoutId}`) },
           { key: 'approve', label: 'Approve', icon: <CheckCircle2 className="size-4" />, isVisible: canApprovePayouts && payout.availableActions.includes('APPROVE'), onClick: () => setSelectedAction({ kind: 'APPROVE', payout }) },
@@ -137,8 +149,8 @@ export function PayoutsPage() {
           { key: 'mark-paid', label: 'Mark Paid', icon: <CircleDollarSign className="size-4" />, isVisible: canApprovePayouts && payout.availableActions.includes('MARK_PAID'), onClick: () => setSelectedAction({ kind: 'MARK_PAID', payout }) },
           { key: 'mark-failed', label: 'Mark Failed', icon: <XCircle className="size-4" />, isVisible: canApprovePayouts && payout.availableActions.includes('MARK_FAILED'), variant: 'danger', onClick: () => setSelectedAction({ kind: 'MARK_FAILED', payout }) },
         ]} />}
-        {pagination ? <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4"><p className="text-sm text-muted">Page {pagination.page} of {pagination.totalPages}</p><div className="flex gap-2"><Button disabled={!pagination.hasPreviousPage || isLoading} size="sm" variant="secondary" onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</Button><Button disabled={!pagination.hasNextPage || isLoading} size="sm" variant="secondary" onClick={() => setPage((current) => current + 1)}>Next</Button></div></div> : null}
-      </section>
+        </section>
+      </div>
       <PayoutActionModal action={selectedAction} error={actionError} isSubmitting={mutation.isPending} onClose={() => { if (!mutation.isPending) { setSelectedAction(null); setActionError(null) } }} onSubmit={(values) => { if (selectedAction) void mutation.mutateAsync({ action: selectedAction, values }) }} />
     </PageContainer>
   )

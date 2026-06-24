@@ -3,6 +3,7 @@ import type { ApiErrorDetails } from '../../../types/api.types'
 export type AdminOrderStatus =
   | 'ORDER_PLACED'
   | 'VENDOR_ACCEPTANCE_PENDING'
+  | 'PRICE_REVISION_PENDING_CUSTOMER'
   | 'VENDOR_ACCEPTED'
   | 'VENDOR_DECLINED'
   | 'PICKUP_SCHEDULED'
@@ -158,9 +159,23 @@ export interface AdminOrderSchedule {
   deliveredAt: string | null
 }
 
+export interface AdminOrderPendingPriceRevision {
+  priceRevisionId: string
+  status: string
+  previousPricePaise: number
+  revisedPricePaise: number
+  differencePaise: number
+  currency: string
+  reason: string | null
+  requestedAt: string
+}
+
 export interface AdminOrderPricing {
   priceEstimatePaise: number
   finalPricePaise: number | null
+  payableAmountPaise?: number | null
+  priceApprovalRequired?: boolean
+  pendingPriceRevision?: AdminOrderPendingPriceRevision | null
   currency: string
 }
 

@@ -21,19 +21,40 @@ export function DetailPageHeader({
   title,
   titleMetaNode,
 }: DetailPageHeaderProps) {
+  const resolvedTitle = title ?? recordName
+
   return (
-    <section className="sticky top-0 z-40 rounded-2xl border border-border bg-surface/95 px-4 py-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-5 sm:py-5">
+    <>
       <PageContextHeader
-        actionNode={actionNode}
         breadcrumbs={[
           { label: 'Home', href: routePaths.dashboard },
           { label: listLabel, href: listHref },
           { label: recordName },
         ]}
         description={description}
-        title={title ?? recordName}
-        titleMetaNode={titleMetaNode}
+        placement="topbar"
+        title={resolvedTitle}
       />
-    </section>
+      {actionNode || titleMetaNode ? (
+        <section className="sticky top-0 z-20 rounded-[1rem] border border-border bg-surface/95 px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.07)] backdrop-blur-xl sm:px-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            {titleMetaNode ? (
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                {titleMetaNode}
+              </div>
+            ) : (
+              <span className="text-sm font-medium text-muted">
+                {listLabel} actions
+              </span>
+            )}
+            {actionNode ? (
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                {actionNode}
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+    </>
   )
 }

@@ -1,0 +1,5 @@
+:root {
+  /* Change this one stack to update the app font globally. */
+  --sg-font-sans: "Google Sans", "Google Sans Text", "Product Sans", "Inter",
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}

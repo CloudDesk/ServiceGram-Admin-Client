@@ -4,9 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
-import { Button } from '../../../components/ui/Button'
 import { Input } from '../../../components/ui/Input'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import { ListFilterBar } from '../../../components/layout/ListFilterBar'
 import {
   DynamicTable,
   TableSkeleton,
@@ -24,7 +24,7 @@ import type {
 } from '../types/reel.types'
 
 type ReelViewMode = 'pending' | 'live'
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 
 const reelColumns: DynamicTableColumn<AdminReel>[] = [
   {
@@ -177,181 +177,93 @@ export function ReelsPage() {
   const pagination = reelsQuery.data?.pagination
   const summary = reelsQuery.data?.summary
   const isLoading = reelsQuery.isLoading || reelsQuery.isFetching
-  const hasNextPage = pagination?.hasNextPage ?? false
-  const hasPreviousPage = pagination?.hasPreviousPage ?? false
   const resetToFirstPage = () => setPage(1)
 
   return (
     <PageContainer>
       <PageContextHeader
+        description={viewMode === 'pending' ? 'Reels waiting for moderation review.' : 'Published and active reel inventory.'}
+        placement="topbar"
         title="Reels"
-        utilityNode={
-          <div className="inline-flex rounded-full border border-border bg-surface p-1">
-            <button
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                viewMode === 'pending'
-                  ? 'bg-foreground text-primary-foreground'
-                  : 'text-muted hover:text-foreground'
-              }`}
-              type="button"
-              onClick={() => {
-                setViewMode('pending')
-                resetToFirstPage()
-              }}
-            >
-              Pending Queue
-            </button>
-            <button
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                viewMode === 'live'
-                  ? 'bg-foreground text-primary-foreground'
-                  : 'text-muted hover:text-foreground'
-              }`}
-              type="button"
-              onClick={() => {
-                setViewMode('live')
-                resetToFirstPage()
-              }}
-            >
-              Live Reels
-            </button>
-          </div>
-        }
       />
 
-      <div className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-        <div className="mb-4 grid gap-3 lg:grid-cols-4">
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Search</span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-              <Input
-                className="min-h-11 pl-9"
-                placeholder="Search reels"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value)
-                  resetToFirstPage()
-                }}
-              />
+      <div className="list-workspace">
+        <ListFilterBar
+          actionNode={
+            <div className="inline-flex rounded-full border border-border bg-surface p-1">
+              <button className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${viewMode === 'pending' ? 'bg-foreground text-primary-foreground' : 'text-muted hover:text-foreground'}`} type="button" onClick={() => { setViewMode('pending'); resetToFirstPage() }}>Pending Queue</button>
+              <button className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${viewMode === 'live' ? 'bg-foreground text-primary-foreground' : 'text-muted hover:text-foreground'}`} type="button" onClick={() => { setViewMode('live'); resetToFirstPage() }}>Live Reels</button>
             </div>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">City</span>
-            <Input
-              className="min-h-11"
-              placeholder="Bengaluru"
-              value={city}
-              onChange={(event) => {
-                setCity(event.target.value)
-                resetToFirstPage()
-              }}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">
-              Category ID
-            </span>
-            <Input
-              className="min-h-11"
-              placeholder="UUID"
-              value={categoryId}
-              onChange={(event) => {
-                setCategoryId(event.target.value)
-                resetToFirstPage()
-              }}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Zone ID</span>
-            <Input
-              className="min-h-11"
-              placeholder="UUID"
-              value={zoneId}
-              onChange={(event) => {
-                setZoneId(event.target.value)
-                resetToFirstPage()
-              }}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Vendor ID</span>
-            <Input
-              className="min-h-11"
-              placeholder="UUID"
-              value={vendorId}
-              onChange={(event) => {
-                setVendorId(event.target.value)
-                resetToFirstPage()
-              }}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">
-              Content Type
-            </span>
-            <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={contentType}
-              onChange={(event) => {
-                setContentType(event.target.value as '' | ReelContentType)
-                resetToFirstPage()
-              }}
-            >
-              <option value="">All</option>
-              <option value="BEFORE_AFTER">BEFORE_AFTER</option>
-              <option value="SERVICE_DEMO">SERVICE_DEMO</option>
-              <option value="NEW_OFFER">NEW_OFFER</option>
-              <option value="INTRODUCTION">INTRODUCTION</option>
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">
-              Upload Status
-            </span>
-            <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={uploadStatus}
-              onChange={(event) => {
-                setUploadStatus(event.target.value as '' | ReelUploadStatus)
-                resetToFirstPage()
-              }}
-            >
-              <option value="">All</option>
-              <option value="UPLOAD_REQUESTED">UPLOAD_REQUESTED</option>
-              <option value="UPLOADING">UPLOADING</option>
-              <option value="PROCESSING">PROCESSING</option>
-              <option value="READY">READY</option>
-              <option value="FAILED">FAILED</option>
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">
-              Moderation Status
-            </span>
-            <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={moderationStatus}
-              onChange={(event) => {
-                setModerationStatus(
-                  event.target.value as '' | ReelModerationStatus,
-                )
-                resetToFirstPage()
-              }}
-            >
-              <option value="">All</option>
-              <option value="DRAFT">DRAFT</option>
-              <option value="PENDING_REVIEW">PENDING_REVIEW</option>
-              <option value="APPROVED">APPROVED</option>
-              <option value="REJECTED">REJECTED</option>
-              <option value="EDIT_REQUESTED">EDIT_REQUESTED</option>
-              <option value="PAUSED">PAUSED</option>
-              <option value="REMOVED">REMOVED</option>
-            </select>
-          </label>
-        </div>
+          }
+          primaryFilters={
+            <>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Search</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                  <Input className="min-h-11 pl-9" placeholder="Search reels" value={search} onChange={(event) => { setSearch(event.target.value); resetToFirstPage() }} />
+                </div>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">City</span>
+                <Input className="min-h-11" placeholder="Bengaluru" value={city} onChange={(event) => { setCity(event.target.value); resetToFirstPage() }} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Content Type</span>
+                <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={contentType} onChange={(event) => { setContentType(event.target.value as '' | ReelContentType); resetToFirstPage() }}>
+                  <option value="">All</option>
+                  <option value="BEFORE_AFTER">BEFORE_AFTER</option>
+                  <option value="SERVICE_DEMO">SERVICE_DEMO</option>
+                  <option value="NEW_OFFER">NEW_OFFER</option>
+                  <option value="INTRODUCTION">INTRODUCTION</option>
+                </select>
+              </label>
+            </>
+          }
+          secondaryFilters={
+            <>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Category ID</span>
+                <Input className="min-h-11" placeholder="UUID" value={categoryId} onChange={(event) => { setCategoryId(event.target.value); resetToFirstPage() }} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Zone ID</span>
+                <Input className="min-h-11" placeholder="UUID" value={zoneId} onChange={(event) => { setZoneId(event.target.value); resetToFirstPage() }} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Vendor ID</span>
+                <Input className="min-h-11" placeholder="UUID" value={vendorId} onChange={(event) => { setVendorId(event.target.value); resetToFirstPage() }} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Upload Status</span>
+                <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={uploadStatus} onChange={(event) => { setUploadStatus(event.target.value as '' | ReelUploadStatus); resetToFirstPage() }}>
+                  <option value="">All</option>
+                  <option value="UPLOAD_REQUESTED">UPLOAD_REQUESTED</option>
+                  <option value="UPLOADING">UPLOADING</option>
+                  <option value="PROCESSING">PROCESSING</option>
+                  <option value="READY">READY</option>
+                  <option value="FAILED">FAILED</option>
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Moderation Status</span>
+                <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={moderationStatus} onChange={(event) => { setModerationStatus(event.target.value as '' | ReelModerationStatus); resetToFirstPage() }}>
+                  <option value="">All</option>
+                  <option value="DRAFT">DRAFT</option>
+                  <option value="PENDING_REVIEW">PENDING_REVIEW</option>
+                  <option value="APPROVED">APPROVED</option>
+                  <option value="REJECTED">REJECTED</option>
+                  <option value="EDIT_REQUESTED">EDIT_REQUESTED</option>
+                  <option value="PAUSED">PAUSED</option>
+                  <option value="REMOVED">REMOVED</option>
+                </select>
+              </label>
+            </>
+          }
+        />
 
-        <div className="mb-4">
+        <section className="list-results-panel">
+          <div className="mb-4">
           <h2 className="text-base font-semibold text-foreground">
             {viewMode === 'pending' ? 'Pending Queue' : 'Live Reels'}
           </h2>
@@ -418,31 +330,7 @@ export function ReelsPage() {
           />
         )}
 
-        {pagination ? (
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
-            <p className="text-sm text-muted">
-              Page {pagination.page} of {pagination.totalPages}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                disabled={!hasPreviousPage || isLoading}
-                size="sm"
-                variant="secondary"
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-              >
-                Previous
-              </Button>
-              <Button
-                disabled={!hasNextPage || isLoading}
-                size="sm"
-                variant="secondary"
-                onClick={() => setPage((current) => current + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        ) : null}
+        </section>
       </div>
     </PageContainer>
   )

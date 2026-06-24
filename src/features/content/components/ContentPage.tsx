@@ -9,6 +9,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
+import { ListFilterBar } from '../../../components/layout/ListFilterBar'
 import { routePaths } from '../../../config/routes'
 import { contentService } from '../services/content.service'
 import type {
@@ -18,7 +19,7 @@ import type {
   ContentPageType,
 } from '../types/content.types'
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 const statuses: ContentPageStatus[] = ['DRAFT', 'PUBLISHED', 'ARCHIVED']
 const pageTypes: ContentPageType[] = [
   'LEGAL',
@@ -108,72 +109,57 @@ export function ContentPage() {
   return (
     <PageContainer>
       <PageContextHeader
-        actionNode={
-          <Link to={`${routePaths.content}/new`}>
-            <Button size="sm">
-              <FilePlus2 className="mr-2 size-4" />
-              New Content
-            </Button>
-          </Link>
-        }
+        description="Manage app content pages, policies, FAQs, and support copy."
+        placement="topbar"
         title="Content"
       />
 
-      <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-        <div className="mb-4 grid gap-3 md:grid-cols-3">
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Search</span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-              <Input
-                className="pl-9"
-                placeholder="Slug, title, excerpt"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value)
-                  resetToFirstPage()
-                }}
-              />
-            </div>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Status</span>
-            <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={status}
-              onChange={(event) => {
-                setStatus(event.target.value as '' | ContentPageStatus)
-                resetToFirstPage()
-              }}
-            >
-              <option value="">All</option>
-              {statuses.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Type</span>
-            <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={pageType}
-              onChange={(event) => {
-                setPageType(event.target.value as '' | ContentPageType)
-                resetToFirstPage()
-              }}
-            >
-              <option value="">All</option>
-              {pageTypes.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+      <div className="list-workspace">
+        <ListFilterBar
+          actionNode={
+            <Link to={`${routePaths.content}/new`}>
+              <Button size="sm">
+                <FilePlus2 className="mr-2 size-4" />
+                New Content
+              </Button>
+            </Link>
+          }
+          primaryFilters={
+            <>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Search</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                  <Input className="pl-9" placeholder="Slug, title, excerpt" value={search} onChange={(event) => { setSearch(event.target.value); resetToFirstPage() }} />
+                </div>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Status</span>
+                <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={status} onChange={(event) => { setStatus(event.target.value as '' | ContentPageStatus); resetToFirstPage() }}>
+                  <option value="">All</option>
+                  {statuses.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Type</span>
+                <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={pageType} onChange={(event) => { setPageType(event.target.value as '' | ContentPageType); resetToFirstPage() }}>
+                  <option value="">All</option>
+                  {pageTypes.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          }
+        />
 
+        <section className="list-results-panel">
         {contentQuery.isError ? (
           <ErrorState
             description="We could not load content pages."
@@ -211,7 +197,8 @@ export function ContentPage() {
             }
           />
         )}
-      </section>
+        </section>
+      </div>
     </PageContainer>
   )
 }

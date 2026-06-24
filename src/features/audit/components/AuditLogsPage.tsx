@@ -1,17 +1,17 @@
 import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Button } from '../../../components/ui/Button'
 import { DynamicTable, TableSkeleton, type DynamicTableColumn } from '../../../components/ui/Table'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
+import { ListFilterBar } from '../../../components/layout/ListFilterBar'
 import { auditService } from '../services/audit.service'
 import type { AuditLog, AuditLogsQueryParams } from '../types/audit.types'
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 
 const columns: DynamicTableColumn<AuditLog>[] = [
   {
@@ -97,44 +97,50 @@ export function AuditLogsPage() {
 
   return (
     <PageContainer>
-      <PageContextHeader title="Audit Logs" />
+      <PageContextHeader
+        description="Review administrative actions and entity-level audit history."
+        placement="topbar"
+        title="Audit Logs"
+      />
 
-      <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-        <div className="mb-4 grid gap-3 md:grid-cols-3">
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Module</span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-              <Input
-                className="pl-9"
-                placeholder="vendors, payments, rbac"
-                value={moduleCode}
-                onChange={(event) => {
-                  setModuleCode(event.target.value)
-                  resetToFirstPage()
-                }}
-              />
-            </div>
-          </label>
-          {[
-            ['Action', actionCode, setActionCode],
-            ['Entity Type', entityType, setEntityType],
-            ['Entity ID', entityId, setEntityId],
-            ['Actor Admin ID', actorAdminId, setActorAdminId],
-          ].map(([label, value, setter]) => (
-            <label className="space-y-1" key={label as string}>
-              <span className="text-sm font-medium text-foreground">{label as string}</span>
-              <Input
-                value={value as string}
-                onChange={(event) => {
-                  ;(setter as (nextValue: string) => void)(event.target.value)
-                  resetToFirstPage()
-                }}
-              />
-            </label>
-          ))}
-        </div>
+      <div className="list-workspace">
+        <ListFilterBar
+          primaryFilters={
+            <>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Module</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                  <Input className="pl-9" placeholder="vendors, payments, rbac" value={moduleCode} onChange={(event) => { setModuleCode(event.target.value); resetToFirstPage() }} />
+                </div>
+              </label>
+              {[
+                ['Action', actionCode, setActionCode],
+                ['Entity Type', entityType, setEntityType],
+              ].map(([label, value, setter]) => (
+                <label className="space-y-1" key={label as string}>
+                  <span className="text-sm font-medium text-foreground">{label as string}</span>
+                  <Input value={value as string} onChange={(event) => { ;(setter as (nextValue: string) => void)(event.target.value); resetToFirstPage() }} />
+                </label>
+              ))}
+            </>
+          }
+          secondaryFilters={
+            <>
+              {[
+                ['Entity ID', entityId, setEntityId],
+                ['Actor Admin ID', actorAdminId, setActorAdminId],
+              ].map(([label, value, setter]) => (
+                <label className="space-y-1" key={label as string}>
+                  <span className="text-sm font-medium text-foreground">{label as string}</span>
+                  <Input value={value as string} onChange={(event) => { ;(setter as (nextValue: string) => void)(event.target.value); resetToFirstPage() }} />
+                </label>
+              ))}
+            </>
+          }
+        />
 
+        <section className="list-results-panel">
         {auditQuery.isError ? (
           <ErrorState
             description="We could not load audit logs."
@@ -170,32 +176,8 @@ export function AuditLogsPage() {
           />
         )}
 
-        {pagination ? (
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
-            <p className="text-sm text-muted">
-              Page {pagination.page} of {pagination.totalPages}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                disabled={!pagination.hasPreviousPage || isLoading}
-                size="sm"
-                variant="secondary"
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-              >
-                Previous
-              </Button>
-              <Button
-                disabled={!pagination.hasNextPage || isLoading}
-                size="sm"
-                variant="secondary"
-                onClick={() => setPage((current) => current + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </section>
+        </section>
+      </div>
     </PageContainer>
   )
 }

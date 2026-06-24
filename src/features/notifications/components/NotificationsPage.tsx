@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BellPlus, Pencil, Search, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { InlineAlert } from '../../../components/feedback/InlineAlert'
+import { ListFilterBar } from '../../../components/layout/ListFilterBar'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
@@ -26,7 +27,7 @@ import type {
   UpdateNotificationTemplatePayload,
 } from '../types/notification.types'
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 const channels: NotificationChannel[] = ['PUSH', 'SMS', 'EMAIL']
 const recipientTypes: NotificationRecipientType[] = ['CUSTOMER', 'VENDOR', 'ADMIN']
 const statuses: NotificationEventStatus[] = ['QUEUED', 'SENT', 'FAILED', 'SKIPPED']
@@ -386,21 +387,8 @@ export function NotificationsPage() {
   return (
     <PageContainer>
       <PageContextHeader
-        actionNode={
-          canSendNotifications ? (
-            <Link to={`${routePaths.notifications}/new`}>
-              <Button size="sm">
-                <BellPlus className="mr-2 size-4" />
-                New Notification
-              </Button>
-            </Link>
-          ) : (
-            <Button disabled size="sm" title="Requires notifications:send">
-              <BellPlus className="mr-2 size-4" />
-              New Notification
-            </Button>
-          )
-        }
+        description="Manage notification templates and delivery events."
+        placement="topbar"
         title="Notifications"
       />
 
@@ -421,46 +409,56 @@ export function NotificationsPage() {
           ))}
         </div>
 
-        <div className="mb-4 grid gap-3 md:grid-cols-4">
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Template Search</span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-              <Input
-                className="pl-9"
-                placeholder="OTP, order, payout"
-                value={templateSearch}
-                onChange={(event) => setTemplateSearch(event.target.value)}
-              />
-            </div>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Template Channel</span>
-            <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={templateChannel}
-              onChange={(event) => setTemplateChannel(event.target.value as '' | NotificationChannel)}
-            >
-              <option value="">All</option>
-              {channels.map((channel) => (
-                <option key={channel} value={channel}>
-                  {channel}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Template State</span>
-            <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={templateActive}
-              onChange={(event) => setTemplateActive(event.target.value as ActiveFilter)}
-            >
-              <option value="">All</option>
-              <option value="true">Active</option>
-              <option value="false">Inactive</option>
-            </select>
-          </label>
+        <div className="mb-4">
+          <ListFilterBar
+            actionNode={
+              canSendNotifications ? (
+                <Link to={`${routePaths.notifications}/new`}>
+                  <Button size="sm">
+                    <BellPlus className="mr-2 size-4" />
+                    New Notification
+                  </Button>
+                </Link>
+              ) : (
+                <Button disabled size="sm" title="Requires notifications:send">
+                  <BellPlus className="mr-2 size-4" />
+                  New Notification
+                </Button>
+              )
+            }
+            primaryFilters={
+              <>
+                <label className="space-y-1">
+                  <span className="text-sm font-medium text-foreground">Template Search</span>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                    <Input className="pl-9" placeholder="OTP, order, payout" value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} />
+                  </div>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-sm font-medium text-foreground">Template Channel</span>
+                  <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={templateChannel} onChange={(event) => setTemplateChannel(event.target.value as '' | NotificationChannel)}>
+                    <option value="">All</option>
+                    {channels.map((channel) => (
+                      <option key={channel} value={channel}>
+                        {channel}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            }
+            secondaryFilters={
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Template State</span>
+                <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={templateActive} onChange={(event) => setTemplateActive(event.target.value as ActiveFilter)}>
+                  <option value="">All</option>
+                  <option value="true">Active</option>
+                  <option value="false">Inactive</option>
+                </select>
+              </label>
+            }
+          />
         </div>
 
         {templatesQuery.isError ? (
@@ -516,105 +514,66 @@ export function NotificationsPage() {
           ))}
         </div>
 
-        <div className="mb-4 grid gap-3 md:grid-cols-4">
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Template Code</span>
-            <Input
-              placeholder="ORDER_STATUS_UPDATE"
-              value={templateCode}
-              onChange={(event) => {
-                setTemplateCode(event.target.value)
-                resetEventsPage()
-              }}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Recipient User ID</span>
-            <Input
-              placeholder="UUID"
-              value={recipientUserId}
-              onChange={(event) => {
-                setRecipientUserId(event.target.value)
-                resetEventsPage()
-              }}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Status</span>
-            <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={eventStatus}
-              onChange={(event) => {
-                setEventStatus(event.target.value as '' | NotificationEventStatus)
-                resetEventsPage()
-              }}
-            >
-              <option value="">All</option>
-              {statuses.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Channel</span>
-            <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={eventChannel}
-              onChange={(event) => {
-                setEventChannel(event.target.value as '' | NotificationChannel)
-                resetEventsPage()
-              }}
-            >
-              <option value="">All</option>
-              {channels.map((channel) => (
-                <option key={channel} value={channel}>
-                  {channel}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Recipient</span>
-            <select
-              className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-              value={recipientType}
-              onChange={(event) => {
-                setRecipientType(event.target.value as '' | NotificationRecipientType)
-                resetEventsPage()
-              }}
-            >
-              <option value="">All</option>
-              {recipientTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Date From</span>
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={(event) => {
-                setDateFrom(event.target.value)
-                resetEventsPage()
-              }}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Date To</span>
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={(event) => {
-                setDateTo(event.target.value)
-                resetEventsPage()
-              }}
-            />
-          </label>
+        <div className="mb-4">
+          <ListFilterBar
+            primaryFilters={
+              <>
+                <label className="space-y-1">
+                  <span className="text-sm font-medium text-foreground">Template Code</span>
+                  <Input placeholder="ORDER_STATUS_UPDATE" value={templateCode} onChange={(event) => { setTemplateCode(event.target.value); resetEventsPage() }} />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-sm font-medium text-foreground">Status</span>
+                  <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={eventStatus} onChange={(event) => { setEventStatus(event.target.value as '' | NotificationEventStatus); resetEventsPage() }}>
+                    <option value="">All</option>
+                    {statuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-sm font-medium text-foreground">Channel</span>
+                  <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={eventChannel} onChange={(event) => { setEventChannel(event.target.value as '' | NotificationChannel); resetEventsPage() }}>
+                    <option value="">All</option>
+                    {channels.map((channel) => (
+                      <option key={channel} value={channel}>
+                        {channel}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            }
+            secondaryFilters={
+              <>
+                <label className="space-y-1">
+                  <span className="text-sm font-medium text-foreground">Recipient User ID</span>
+                  <Input placeholder="UUID" value={recipientUserId} onChange={(event) => { setRecipientUserId(event.target.value); resetEventsPage() }} />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-sm font-medium text-foreground">Recipient</span>
+                  <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={recipientType} onChange={(event) => { setRecipientType(event.target.value as '' | NotificationRecipientType); resetEventsPage() }}>
+                    <option value="">All</option>
+                    {recipientTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-sm font-medium text-foreground">Date From</span>
+                  <Input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); resetEventsPage() }} />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-sm font-medium text-foreground">Date To</span>
+                  <Input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); resetEventsPage() }} />
+                </label>
+              </>
+            }
+          />
         </div>
 
         {eventsQuery.isError ? (

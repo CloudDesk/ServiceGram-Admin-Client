@@ -955,7 +955,7 @@ export function TableShell<T extends object>({
   isLoading = false,
   onRetry,
   page = 1,
-  pageSize = 25,
+  pageSize = 10,
   title,
   total,
 }: LegacyTableProps<T>) {

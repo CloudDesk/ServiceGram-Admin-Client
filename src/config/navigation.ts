@@ -5,6 +5,7 @@ import {
   BadgeCheck,
   Bell,
   ClipboardList,
+  HandCoins,
   LayoutDashboard,
   PackageSearch,
   FileText,
@@ -14,7 +15,6 @@ import {
   Shield,
   UserCircle2,
   Users,
-  Wallet,
   Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -36,7 +36,7 @@ export const navigationItems: NavigationItem[] = [
   { label: 'Orders', href: routePaths.orders, icon: PackageSearch, permission: permissions.orders },
   { label: 'Payments', href: routePaths.payments, icon: CreditCard, permission: permissions.payments },
   { label: 'Refunds', href: routePaths.refunds, icon: RotateCcw, permission: permissions.refunds },
-  { label: 'Payouts', href: routePaths.payouts, icon: Wallet, permission: permissions.payouts },
+  { label: 'Payouts', href: routePaths.payouts, icon: HandCoins, permission: permissions.payouts },
   { label: 'Reels', href: routePaths.reels, icon: Film, permission: permissions.reels },
   { label: 'Influencers', href: routePaths.influencers, icon: BadgeCheck, permission: permissions.influencers },
   { label: 'Notifications', href: routePaths.notifications, icon: Bell, permission: permissions.notifications },
