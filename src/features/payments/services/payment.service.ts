@@ -4,6 +4,7 @@ import {
   PAYMENT_LIST_PATH,
   PAYMENT_RECONCILE_PATH,
   REFUND_APPROVE_PATH,
+  REFUND_DETAIL_PATH,
   REFUND_LIST_PATH,
   REFUND_REJECT_PATH,
 } from '../../../config/paymentApiPaths'
@@ -13,6 +14,7 @@ import type {
   AdminPaymentDetailResponse,
   AdminPaymentsListResponse,
   AdminPaymentsQueryParams,
+  AdminRefundDetailResponse,
   AdminRefundsListResponse,
   AdminRefundsQueryParams,
   ApproveRefundPayload,
@@ -92,6 +94,12 @@ async function getRefundList(
   return parseJsonResponse<AdminRefundsListResponse>(response)
 }
 
+async function getRefundById(refundId: string): Promise<AdminRefundDetailResponse> {
+  const response = await apiClient.request(buildApiUrl(REFUND_DETAIL_PATH(refundId)))
+
+  return parseJsonResponse<AdminRefundDetailResponse>(response)
+}
+
 async function approveRefund(
   refundId: string,
   payload: ApproveRefundPayload,
@@ -121,6 +129,7 @@ export const paymentService = {
   getPaymentById,
   reconcilePayment,
   getRefundList,
+  getRefundById,
   approveRefund,
   rejectRefund,
 }

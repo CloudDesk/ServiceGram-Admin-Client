@@ -3,6 +3,11 @@ import { X } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
 import type { VendorBankAccount, VendorDetail, VendorDocument } from '../types/vendor.types'
 
+type VendorActionContext = Pick<
+  VendorDetail,
+  'ownerName' | 'publicVendorId' | 'shopName'
+>
+
 export type VendorActionKind =
   | 'APPROVE'
   | 'REJECT'
@@ -31,7 +36,7 @@ interface VendorActionModalProps {
   action: VendorActionSelection | null
   error?: string | null
   isSubmitting: boolean
-  vendor: VendorDetail
+  vendor: VendorActionContext
   onClose: () => void
   onSubmit: (values: VendorActionFormValues) => void
 }

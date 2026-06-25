@@ -1,5 +1,5 @@
 import { CheckCircle2, Eye, FileCheck2, FileWarning, History, Landmark, MessageSquarePlus, PauseCircle, RotateCcw, XCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
@@ -12,6 +12,7 @@ import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
 import { useAuthStore } from '../../../store/authStore'
+import { cn } from '../../../utils/cn'
 import { vendorService } from '../services/vendor.service'
 import {
   VendorActionModal,
@@ -27,6 +28,18 @@ import type {
   VendorStatus,
   VendorOnboardingStatus,
 } from '../types/vendor.types'
+
+const hiddenVendorDetailActions = ['REQUEST_DOCUMENTS'] as const
+type VendorTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+
+function getVisibleVendorDetailActions(actions: string[]) {
+  return actions.filter(
+    (action) =>
+      !hiddenVendorDetailActions.includes(
+        action as (typeof hiddenVendorDetailActions)[number],
+      ),
+  )
+}
 
 const documentColumns: DynamicTableColumn<VendorDocument>[] = [
   {
@@ -227,6 +240,80 @@ function getOnboardingStatusTone(status: VendorOnboardingStatus) {
   return 'info'
 }
 
+function toneClasses(tone: VendorTone) {
+  if (tone === 'success') return 'border-border bg-surface text-success'
+  if (tone === 'warning') return 'border-border bg-surface text-warning'
+  if (tone === 'danger') return 'border-border bg-surface text-danger'
+  if (tone === 'info') return 'border-border bg-surface text-primary'
+  return 'border-border bg-surface text-muted'
+}
+
+function getVendorInitials(name: string) {
+  return name
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+}
+
+function getDocumentMetricTone(vendor: VendorDetail): VendorTone {
+  const summary = vendor.documentSummary
+
+  if (!summary || summary.total === 0) return 'warning'
+  if (summary.rejected || summary.expired) return 'danger'
+  if (summary.verified === summary.total) return 'success'
+  return 'warning'
+}
+
+function getPayoutMetricTone(vendor: VendorDetail): VendorTone {
+  if (vendor.bankAccountSummary.payoutReady) return 'success'
+  if (
+    vendor.bankAccountSummary.primaryStatus === 'REJECTED' ||
+    vendor.bankAccountSummary.primaryStatus === 'DISABLED'
+  ) {
+    return 'danger'
+  }
+
+  return 'warning'
+}
+
+function DetailMetricCard({
+  icon,
+  label,
+  meta,
+  tone,
+  value,
+}: {
+  icon: ReactNode
+  label: string
+  meta: string
+  tone: VendorTone
+  value: string
+}) {
+  return (
+    <div
+      className={cn(
+        'min-h-[4.35rem] rounded-[0.75rem] border p-2.5',
+        toneClasses(tone),
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-normal opacity-80">
+            {label}
+          </p>
+          <p className="mt-1 truncate text-lg font-semibold tracking-normal">
+            {value}
+          </p>
+        </div>
+        <span className="mt-0.5 shrink-0 opacity-80">{icon}</span>
+      </div>
+      <p className="mt-0.5 truncate text-xs leading-4 opacity-80">{meta}</p>
+    </div>
+  )
+}
+
 function VendorHeaderStatus({ vendor }: { vendor: VendorDetail }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -362,7 +449,8 @@ function VendorHeaderActions({
   onSelectAction: (kind: VendorActionKind) => void
   vendor: VendorDetail
 }) {
-  const hasAction = (action: string) => vendor.availableActions.includes(action)
+  const visibleActions = getVisibleVendorDetailActions(vendor.availableActions)
+  const hasAction = (action: string) => visibleActions.includes(action)
   const approvalBlockMessage = getApprovalBlockMessage(vendor)
 
   return (
@@ -710,6 +798,45 @@ export function VendorDetailPage({
         </div>
       ) : null}
 
+      <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+        <DetailMetricCard
+          icon={<FileCheck2 className="size-4" />}
+          label="Documents"
+          meta={`${vendor.documentSummary?.pending ?? 0} pending · ${vendor.documentSummary?.rejected ?? 0} rejected`}
+          tone={getDocumentMetricTone(vendor)}
+          value={
+            vendor.documentSummary
+              ? `${vendor.documentSummary.verified}/${vendor.documentSummary.total}`
+              : '0/0'
+          }
+        />
+        <DetailMetricCard
+          icon={<Landmark className="size-4" />}
+          label="Payout"
+          meta={
+            vendor.bankAccountSummary.hasPrimary
+              ? `${vendor.bankAccountSummary.verified}/${vendor.bankAccountSummary.total} verified`
+              : 'No primary account'
+          }
+          tone={getPayoutMetricTone(vendor)}
+          value={vendor.bankAccountSummary.payoutReady ? 'Ready' : 'Review'}
+        />
+        <DetailMetricCard
+          icon={<CheckCircle2 className="size-4" />}
+          label="Onboarding"
+          meta={`Vendor: ${vendor.vendorStatus}`}
+          tone={getOnboardingStatusTone(vendor.onboardingStatus)}
+          value={vendor.onboardingStatus}
+        />
+        <DetailMetricCard
+          icon={<History className="size-4" />}
+          label="Timeline"
+          meta="Review events"
+          tone={vendor.reviewTimeline.length ? 'info' : 'neutral'}
+          value={String(vendor.reviewTimeline.length)}
+        />
+      </section>
+
       <section className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
@@ -772,7 +899,29 @@ export function VendorDetailPage({
 
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4 lg:col-span-2">
-          <h2 className="text-base font-semibold text-foreground">Vendor Information</h2>
+          <div className="flex min-w-0 items-start gap-3">
+            <div
+              className={cn(
+                'flex size-12 shrink-0 items-center justify-center rounded-full border bg-surface text-base font-semibold',
+                vendor.vendorStatus === 'SUSPENDED'
+                  ? 'border-danger/25 text-danger'
+                  : vendor.onboardingStatus !== 'APPROVED' ||
+                      vendor.warnings.length > 0
+                    ? 'border-warning/25 text-warning'
+                    : 'border-success/25 text-success',
+              )}
+            >
+              {getVendorInitials(vendor.shopName)}
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-semibold text-foreground">
+                Vendor Information
+              </h2>
+              <p className="mt-1 truncate text-sm text-muted">
+                {vendor.shopName} · {vendor.publicVendorId}
+              </p>
+            </div>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <DetailField label="Owner" value={vendor.ownerName} />
             <DetailField label="Mobile" value={vendor.mobileNumber} />
@@ -799,8 +948,8 @@ export function VendorDetailPage({
             <DetailField
               label="Available Actions"
               value={
-                vendor.availableActions.length
-                  ? vendor.availableActions.join(', ')
+                getVisibleVendorDetailActions(vendor.availableActions).length
+                  ? getVisibleVendorDetailActions(vendor.availableActions).join(', ')
                   : null
               }
             />

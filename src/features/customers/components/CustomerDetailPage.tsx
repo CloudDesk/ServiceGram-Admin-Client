@@ -1,7 +1,6 @@
 import {
   Activity,
   AlertTriangle,
-  ArrowLeft,
   Ban,
   CalendarClock,
   CheckCircle2,
@@ -199,11 +198,11 @@ const walletCreditColumns: DynamicTableColumn<AdminCustomerWalletCredit>[] = [
 type CustomerTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
 
 function toneClasses(tone: CustomerTone) {
-  if (tone === 'success') return 'border-success/25 bg-success/10 text-success'
-  if (tone === 'warning') return 'border-warning/25 bg-warning/10 text-warning'
-  if (tone === 'danger') return 'border-danger/25 bg-danger/10 text-danger'
-  if (tone === 'info') return 'border-primary/25 bg-primary/10 text-primary'
-  return 'border-border bg-surface-muted text-muted'
+  if (tone === 'success') return 'border-border bg-surface text-success'
+  if (tone === 'warning') return 'border-border bg-surface text-warning'
+  if (tone === 'danger') return 'border-border bg-surface text-danger'
+  if (tone === 'info') return 'border-border bg-surface text-primary'
+  return 'border-border bg-surface text-muted'
 }
 
 function statusTone(status: AdminCustomerDetail['status']) {
@@ -397,19 +396,9 @@ function DetailField({
   )
 }
 
-function CustomerHeaderStatus({
-  customer,
-  onBack,
-}: {
-  customer: AdminCustomerDetail
-  onBack: () => void
-}) {
+function CustomerHeaderStatus({ customer }: { customer: AdminCustomerDetail }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button size="sm" type="button" variant="secondary" onClick={onBack}>
-        <ArrowLeft className="mr-2 size-4" />
-        Back
-      </Button>
       <Badge tone={statusTone(customer.status)}>{customer.status}</Badge>
       <Badge tone="neutral">{customer.userStatus}</Badge>
       {customerNeedsAttention(customer) ? (
@@ -495,12 +484,12 @@ function CustomerIdentityPanel({ customer }: { customer: AdminCustomerDetail }) 
         <div className="flex min-w-0 items-start gap-3 rounded-[0.75rem] border border-border bg-surface-muted/45 p-3">
           <div
             className={cn(
-              'flex size-12 shrink-0 items-center justify-center rounded-full border text-base font-semibold',
+              'flex size-12 shrink-0 items-center justify-center rounded-full border bg-surface text-base font-semibold',
               customer.status === 'BLOCKED'
-                ? 'border-danger/25 bg-danger/10 text-danger'
+                ? 'border-danger/25 text-danger'
                 : customerNeedsAttention(customer)
-                  ? 'border-warning/25 bg-warning/10 text-warning'
-                  : 'border-success/25 bg-success/10 text-success',
+                  ? 'border-warning/25 text-warning'
+                  : 'border-success/25 text-success',
             )}
           >
             {getInitials(customer.fullName)}
@@ -918,17 +907,6 @@ export function CustomerDetailPage() {
     })
   }
 
-  const goBack = () => {
-    const historyIndex = window.history.state?.idx
-
-    if (typeof historyIndex === 'number' && historyIndex > 0) {
-      navigate(-1)
-      return
-    }
-
-    navigate(routePaths.customers)
-  }
-
   if (!customerId) {
     return (
       <PageContainer>
@@ -988,7 +966,7 @@ export function CustomerDetailPage() {
         listHref={routePaths.customers}
         listLabel="Customers"
         recordName={customer.fullName}
-        titleMetaNode={<CustomerHeaderStatus customer={customer} onBack={goBack} />}
+        titleMetaNode={<CustomerHeaderStatus customer={customer} />}
       />
 
       <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">

@@ -2,7 +2,7 @@ import { type FormEvent, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
 import type {
-  AdminOrderDetail,
+  AdminOrderSummary,
   AdminOrderStatus,
   LogisticsIssueType,
   LogisticsPackageCondition,
@@ -50,7 +50,7 @@ interface OrderActionModalProps {
   action: OrderActionSelection | null
   error?: string | null
   isSubmitting: boolean
-  order: AdminOrderDetail
+  order: AdminOrderSummary
   onClose: () => void
   onSubmit: (values: OrderActionFormValues) => void
 }

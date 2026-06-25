@@ -1,10 +1,14 @@
 import { type FormEvent, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
-import type { AdminPaymentDetail, AdminRefundCore } from '../types/payment.types'
+import type {
+  AdminPaymentDetail,
+  AdminPaymentSummary,
+  AdminRefundCore,
+} from '../types/payment.types'
 
 export type PaymentActionSelection =
-  | { kind: 'RECONCILE_PAYMENT'; payment: AdminPaymentDetail }
+  | { kind: 'RECONCILE_PAYMENT'; payment: AdminPaymentDetail | AdminPaymentSummary }
   | { kind: 'APPROVE_REFUND'; refund: AdminRefundCore }
   | { kind: 'REJECT_REFUND'; refund: AdminRefundCore }
 

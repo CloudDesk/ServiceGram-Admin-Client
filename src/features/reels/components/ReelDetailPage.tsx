@@ -1,5 +1,6 @@
 import {
   CheckCircle2,
+  ExternalLink,
   PauseCircle,
   PencilLine,
   Trash2,
@@ -67,6 +68,46 @@ function DetailField({
       <p className="break-words text-sm text-foreground">
         {value === true ? 'Yes' : value === false ? 'No' : value ?? 'Not available'}
       </p>
+    </div>
+  )
+}
+
+function isOpenableUrl(value: string | null | undefined): value is string {
+  if (!value) return false
+
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function UrlDetailField({
+  label,
+  value,
+}: {
+  label: string
+  value: string | null | undefined
+}) {
+  if (!isOpenableUrl(value)) {
+    return <DetailField label={label} value={value} />
+  }
+
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-semibold uppercase text-muted">{label}</p>
+      <a
+        aria-label={`Open ${label} in a new tab`}
+        className="inline-flex max-w-full items-start gap-1.5 break-all text-sm font-medium text-primary transition hover:underline"
+        href={value}
+        rel="noreferrer"
+        target="_blank"
+        title={value}
+      >
+        <span className="min-w-0 break-all">{value}</span>
+        <ExternalLink className="mt-0.5 size-3.5 shrink-0" />
+      </a>
     </div>
   )
 }
@@ -422,8 +463,8 @@ export function ReelDetailPage() {
               value={reel.media.durationSeconds}
             />
             <DetailField label="Upload Status" value={reel.media.uploadStatus} />
-            <DetailField label="Playback URL" value={reel.media.playbackUrl} />
-            <DetailField label="Thumbnail URL" value={reel.media.thumbnailUrl} />
+            <UrlDetailField label="Playback URL" value={reel.media.playbackUrl} />
+            <UrlDetailField label="Thumbnail URL" value={reel.media.thumbnailUrl} />
           </div>
         </div>
 

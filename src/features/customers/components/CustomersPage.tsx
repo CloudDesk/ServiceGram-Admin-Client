@@ -3,20 +3,14 @@ import {
   Ban,
   ChevronLeft,
   ChevronRight,
-  CheckCircle2,
-  Clock3,
-  CreditCard,
-  Eye,
   MapPin,
   MessageSquarePlus,
   RefreshCcw,
-  Search,
-  ShieldAlert,
   SlidersHorizontal,
   UserCheck,
 } from 'lucide-react'
-import type { CSSProperties } from 'react'
-import { useMemo, useState } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
@@ -24,6 +18,7 @@ import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
+import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
@@ -48,20 +43,66 @@ import type {
 } from '../types/customer.types'
 
 const DEFAULT_PAGE_SIZE = 10
+const CUSTOMER_DEFAULT_COLUMN_WIDTH = 220
+const CUSTOMER_GRID_COLUMN_GAP = 12
+const CUSTOMER_GRID_INLINE_PADDING = 24
 const customerDataColumns = [
-  { id: 'customer', label: 'Customer', width: 'minmax(14rem,1fr)' },
-  { id: 'location', label: 'Location', width: 'minmax(10rem,0.7fr)' },
-  { id: 'health', label: 'Health', width: 'minmax(9rem,0.55fr)' },
-  { id: 'orders', label: 'Orders', width: 'minmax(8rem,0.5fr)' },
+  {
+    id: 'customer',
+    label: 'Customer',
+    defaultWidth: CUSTOMER_DEFAULT_COLUMN_WIDTH,
+    minWidth: 180,
+  },
+  {
+    id: 'location',
+    label: 'Location',
+    defaultWidth: CUSTOMER_DEFAULT_COLUMN_WIDTH,
+    minWidth: 150,
+  },
+  {
+    id: 'health',
+    label: 'Health',
+    defaultWidth: CUSTOMER_DEFAULT_COLUMN_WIDTH,
+    minWidth: 145,
+  },
+  {
+    id: 'orders',
+    label: 'Orders',
+    defaultWidth: CUSTOMER_DEFAULT_COLUMN_WIDTH,
+    minWidth: 130,
+  },
   ...(featureFlags.customerWallet
-    ? ([{ id: 'wallet', label: 'Wallet', width: 'minmax(8rem,0.5fr)' }] as const)
+    ? ([
+        {
+          id: 'wallet',
+          label: 'Wallet',
+          defaultWidth: CUSTOMER_DEFAULT_COLUMN_WIDTH,
+          minWidth: 130,
+        },
+      ] as const)
     : []),
-  { id: 'lastLogin', label: 'Last login', width: 'minmax(10rem,0.65fr)' },
-  { id: 'updatedAt', label: 'Updated', width: 'minmax(10rem,0.65fr)' },
+  {
+    id: 'lastLogin',
+    label: 'Last login',
+    defaultWidth: CUSTOMER_DEFAULT_COLUMN_WIDTH,
+    minWidth: 155,
+  },
+  {
+    id: 'updatedAt',
+    label: 'Updated',
+    defaultWidth: CUSTOMER_DEFAULT_COLUMN_WIDTH,
+    minWidth: 155,
+  },
 ] as const
+const CUSTOMER_ACTION_COLUMN_ID = 'actions'
+const CUSTOMER_ACTION_COLUMN_DEFAULT_WIDTH = 176
+const CUSTOMER_ACTION_COLUMN_MIN_WIDTH = 156
+const CUSTOMER_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.customer.columnWidths.v3'
 
 type CustomerTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
 type CustomerColumnId = (typeof customerDataColumns)[number]['id']
+type CustomerColumnWidthId = CustomerColumnId | typeof CUSTOMER_ACTION_COLUMN_ID
+type CustomerColumnWidths = Partial<Record<CustomerColumnWidthId, number>>
 const defaultCustomerColumns: CustomerColumnId[] = ['customer', 'location']
 type QueueKey =
   | 'all'
@@ -80,12 +121,97 @@ interface CustomerGridStyle extends CSSProperties {
   '--customer-grid-min-width': string
 }
 
+function getDefaultCustomerColumnWidths() {
+  const widths: CustomerColumnWidths = {
+    [CUSTOMER_ACTION_COLUMN_ID]: CUSTOMER_ACTION_COLUMN_DEFAULT_WIDTH,
+  }
+
+  customerDataColumns.forEach((column) => {
+    widths[column.id] = column.defaultWidth
+  })
+
+  return widths
+}
+
+const defaultCustomerColumnWidths = getDefaultCustomerColumnWidths()
+
+function getCustomerColumnMinWidth(columnId: CustomerColumnWidthId) {
+  if (columnId === CUSTOMER_ACTION_COLUMN_ID) {
+    return CUSTOMER_ACTION_COLUMN_MIN_WIDTH
+  }
+
+  return (
+    customerDataColumns.find((column) => column.id === columnId)?.minWidth ?? 120
+  )
+}
+
+function getCustomerColumnDefaultWidth(columnId: CustomerColumnWidthId) {
+  return (
+    defaultCustomerColumnWidths[columnId] ?? getCustomerColumnMinWidth(columnId)
+  )
+}
+
+function getCustomerColumnWidth(
+  columnWidths: CustomerColumnWidths,
+  columnId: CustomerColumnWidthId,
+) {
+  return Math.max(
+    getCustomerColumnMinWidth(columnId),
+    columnWidths[columnId] ?? getCustomerColumnDefaultWidth(columnId),
+  )
+}
+
+function normalizeCustomerColumnWidths(value: unknown) {
+  const widths = { ...defaultCustomerColumnWidths }
+
+  if (!value || typeof value !== 'object') {
+    return widths
+  }
+
+  const record = value as Record<string, unknown>
+
+  customerDataColumns.forEach((column) => {
+    const width = record[column.id]
+
+    if (typeof width === 'number' && Number.isFinite(width)) {
+      widths[column.id] = Math.max(column.minWidth, Math.round(width))
+    }
+  })
+
+  const actionWidth = record[CUSTOMER_ACTION_COLUMN_ID]
+
+  if (typeof actionWidth === 'number' && Number.isFinite(actionWidth)) {
+    widths[CUSTOMER_ACTION_COLUMN_ID] = Math.max(
+      CUSTOMER_ACTION_COLUMN_MIN_WIDTH,
+      Math.round(actionWidth),
+    )
+  }
+
+  return widths
+}
+
+function loadCustomerColumnWidths() {
+  if (typeof window === 'undefined') {
+    return defaultCustomerColumnWidths
+  }
+
+  try {
+    return normalizeCustomerColumnWidths(
+      JSON.parse(
+        window.localStorage.getItem(CUSTOMER_COLUMN_WIDTH_STORAGE_KEY) ?? 'null',
+      ),
+    )
+  } catch {
+    return defaultCustomerColumnWidths
+  }
+}
+
 function toneClasses(tone: CustomerTone) {
-  if (tone === 'success') return 'border-success/25 bg-success/10 text-success'
-  if (tone === 'warning') return 'border-warning/25 bg-warning/10 text-warning'
-  if (tone === 'danger') return 'border-danger/25 bg-danger/10 text-danger'
-  if (tone === 'info') return 'border-primary/25 bg-primary/10 text-primary'
-  return 'border-border bg-surface-muted text-muted'
+  if (tone === 'success') return 'border-border bg-surface text-success'
+  if (tone === 'warning') return 'border-border bg-surface text-warning'
+  if (tone === 'danger') return 'border-border bg-surface text-danger'
+  if (tone === 'info') return 'border-border bg-surface text-primary'
+  return 'border-border bg-surface text-muted'
 }
 
 function statusTone(status: AdminCustomerStatus) {
@@ -102,18 +228,6 @@ function humanizeCode(value: string | null | undefined) {
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
-}
-
-function signalLabel(warning: string) {
-  const labels: Record<string, string> = {
-    CUSTOMER_BLOCKED: 'Customer blocked',
-    HAS_ACTIVE_ORDERS: 'Active orders',
-    HAS_WALLET_CREDIT: 'Wallet credit',
-    PROFILE_INCOMPLETE: 'Profile incomplete',
-    ZONE_MISSING: 'Zone missing',
-  }
-
-  return labels[warning] ?? humanizeCode(warning)
 }
 
 function customerNeedsAttention(customer: AdminCustomerListItem) {
@@ -146,6 +260,15 @@ function healthColor(score: number) {
 function formatDateSafe(value: string | null | undefined) {
   if (!value) return 'Not available'
   return formatDate(value, true)
+}
+
+function formatRefreshTime(value: number) {
+  if (!value) return 'Not refreshed yet'
+
+  return `Last refreshed ${new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value))}`
 }
 
 function formatPaise(value: number) {
@@ -206,16 +329,40 @@ function mapRecommendedAction(
   return null
 }
 
-function getCustomerGridTemplate(visibleColumns: CustomerColumnId[]) {
+function getCustomerGridTemplate(
+  visibleColumns: CustomerColumnId[],
+  columnWidths: CustomerColumnWidths,
+) {
   const selectedWidths = customerDataColumns
     .filter((column) => visibleColumns.includes(column.id))
-    .map((column) => column.width)
+    .map((column) => `${getCustomerColumnWidth(columnWidths, column.id)}px`)
 
-  return [...selectedWidths, 'minmax(8rem,0.62fr)'].join(' ')
+  return [
+    ...selectedWidths,
+    `${getCustomerColumnWidth(columnWidths, CUSTOMER_ACTION_COLUMN_ID)}px`,
+  ].join(' ')
 }
 
-function getCustomerGridMinWidth(visibleColumns: CustomerColumnId[]) {
-  return `${20 + visibleColumns.length * 10}rem`
+function getCustomerGridMinWidth(
+  visibleColumns: CustomerColumnId[],
+  columnWidths: CustomerColumnWidths,
+) {
+  const visibleColumnCount = visibleColumns.length
+  const gridColumnCount = visibleColumnCount + 1
+  const gridGapWidth = Math.max(gridColumnCount - 1, 0) * CUSTOMER_GRID_COLUMN_GAP
+  const visibleWidth = customerDataColumns
+    .filter((column) => visibleColumns.includes(column.id))
+    .reduce(
+      (total, column) => total + getCustomerColumnWidth(columnWidths, column.id),
+      0,
+    )
+
+  return `${
+    visibleWidth +
+    getCustomerColumnWidth(columnWidths, CUSTOMER_ACTION_COLUMN_ID) +
+    gridGapWidth +
+    CUSTOMER_GRID_INLINE_PADDING
+  }px`
 }
 
 function MetricCard({
@@ -250,46 +397,50 @@ function MetricCard({
 
 function CustomerRow({
   customer,
+  isSubmitting,
   onOpenAction,
-  onSelect,
   onViewDetails,
-  selected = false,
   visibleColumns,
 }: {
   customer: AdminCustomerListItem
+  isSubmitting: boolean
   onOpenAction: (customer: AdminCustomerListItem, kind: CustomerActionKind) => void
-  onSelect: (customer: AdminCustomerListItem) => void
   onViewDetails: (customer: AdminCustomerListItem) => void
-  selected?: boolean
   visibleColumns: CustomerColumnId[]
 }) {
   const health = customerHealth(customer)
   const recommendedAction = mapRecommendedAction(customer)
   const warningCount = visibleWarnings(customer.warnings).length
+  const canBlock = customer.availableActions.includes('BLOCK')
+  const canUnblock = customer.availableActions.includes('UNBLOCK')
+  const showAddNoteAction = recommendedAction !== 'ADD_NOTE'
+  const showBlockAction = canBlock && recommendedAction !== 'BLOCK'
+  const showUnblockAction = canUnblock && recommendedAction !== 'UNBLOCK'
   const showColumn = (columnId: CustomerColumnId) => visibleColumns.includes(columnId)
 
   const handlePrimaryAction = () => {
-    if (recommendedAction) {
-      onOpenAction(customer, recommendedAction)
-      return
-    }
+    if (!recommendedAction) return
 
-    onViewDetails(customer)
+    onOpenAction(customer, recommendedAction)
   }
 
   return (
     <article
       className={cn(
-        'grid min-w-0 cursor-pointer gap-3 border-b border-border px-3 py-2.5 transition last:border-b-0 xl:grid-cols-[var(--customer-grid-template)] xl:items-center',
-        selected ? 'bg-primary/5' : 'bg-surface hover:bg-surface-muted/60',
+        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--customer-grid-template)] xl:items-center',
       )}
+      aria-label={`Open details for ${customer.fullName}`}
       role="button"
       tabIndex={0}
-      onClick={() => onSelect(customer)}
+      onClick={() => onViewDetails(customer)}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) {
+          return
+        }
+
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
-          onSelect(customer)
+          onViewDetails(customer)
         }
       }}
     >
@@ -297,12 +448,12 @@ function CustomerRow({
         <div className="flex min-w-0 items-start gap-3">
           <div
             className={cn(
-              'flex size-10 shrink-0 items-center justify-center rounded-full border text-sm font-semibold',
+              'flex size-10 shrink-0 items-center justify-center rounded-full border bg-surface text-sm font-semibold',
               customer.status === 'BLOCKED'
-                ? 'border-danger/25 bg-danger/10 text-danger'
+                ? 'border-danger/25 text-danger'
                 : customerNeedsAttention(customer)
-                  ? 'border-warning/25 bg-warning/10 text-warning'
-                  : 'border-success/25 bg-success/10 text-success',
+                  ? 'border-warning/25 text-warning'
+                  : 'border-success/25 text-success',
             )}
           >
             {customer.fullName
@@ -341,7 +492,7 @@ function CustomerRow({
       ) : null}
 
       {showColumn('health') ? (
-        <div className="space-y-2">
+        <div className="w-full min-w-0 space-y-2 xl:max-w-72">
           <div className="flex items-center justify-between gap-3 text-xs">
             <span className="text-muted">Health</span>
             <span className="font-semibold text-foreground">{health}</span>
@@ -397,37 +548,77 @@ function CustomerRow({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2 xl:justify-end">
-        <Button
-          size="sm"
-          type="button"
-          variant={
-            recommendedAction === 'BLOCK'
-              ? 'danger'
-              : customerNeedsAttention(customer)
-                ? 'primary'
-                : 'secondary'
-          }
-          onClick={(event) => {
-            event.stopPropagation()
-            handlePrimaryAction()
-          }}
-        >
-          <ArrowUpRight className="mr-2 size-4" />
-          {primaryActionLabel(customer)}
-        </Button>
-        <button
-          aria-label={`Open details for ${customer.fullName}`}
-          className="btn-icon"
-          title="Open details"
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            onViewDetails(customer)
-          }}
-        >
-          <Eye className="size-4" />
-        </button>
+      <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+        {recommendedAction ? (
+          <Button
+            disabled={isSubmitting}
+            size="sm"
+            type="button"
+            variant={
+              recommendedAction === 'BLOCK'
+                ? 'danger'
+                : recommendedAction === 'ADD_NOTE'
+                  ? 'secondary'
+                  : 'primary'
+            }
+            onClick={(event) => {
+              event.stopPropagation()
+              handlePrimaryAction()
+            }}
+          >
+            {recommendedAction === 'ADD_NOTE' ? (
+              <MessageSquarePlus className="mr-2 size-4" />
+            ) : (
+              <ArrowUpRight className="mr-2 size-4" />
+            )}
+            {primaryActionLabel(customer)}
+          </Button>
+        ) : null}
+        {showAddNoteAction ? (
+          <button
+            aria-label={`Add note for ${customer.fullName}`}
+            className="btn-icon disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isSubmitting}
+            title="Add note"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenAction(customer, 'ADD_NOTE')
+            }}
+          >
+            <MessageSquarePlus className="size-4" />
+          </button>
+        ) : null}
+        {showBlockAction ? (
+          <button
+            aria-label={`Block ${customer.fullName}`}
+            className="btn-icon text-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isSubmitting}
+            title="Block customer"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenAction(customer, 'BLOCK')
+            }}
+          >
+            <Ban className="size-4" />
+          </button>
+        ) : null}
+        {showUnblockAction ? (
+          <button
+            aria-label={`Unblock ${customer.fullName}`}
+            className="btn-icon text-success hover:text-success disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isSubmitting}
+            title="Unblock customer"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenAction(customer, 'UNBLOCK')
+            }}
+          >
+            <UserCheck className="size-4" />
+          </button>
+        ) : null}
       </div>
     </article>
   )
@@ -504,185 +695,6 @@ function CustomerPagination({
   )
 }
 
-function CustomerInspector({
-  customer,
-  isSubmitting,
-  onOpenAction,
-  onViewDetails,
-}: {
-  customer: AdminCustomerListItem
-  isSubmitting: boolean
-  onOpenAction: (customer: AdminCustomerListItem, kind: CustomerActionKind) => void
-  onViewDetails: (customer: AdminCustomerListItem) => void
-}) {
-  const hasAction = (action: string) => customer.availableActions.includes(action)
-  const firstWarning = visibleWarnings(customer.warnings)[0]
-  const nextRecommendedAction = visibleRecommendedAction(customer)
-  const healthy = !firstWarning && customer.status === 'ACTIVE'
-
-  return (
-    <aside className="hidden min-h-0 space-y-3 self-stretch overflow-y-auto rounded-[0.875rem] border border-border bg-surface p-3 shadow-surface 2xl:col-start-3 2xl:row-start-1 2xl:block">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-            Selected customer
-          </p>
-          <h2 className="mt-1 truncate text-lg font-semibold text-foreground">
-            {customer.fullName}
-          </h2>
-          <p className="text-sm text-muted">{customer.customerId}</p>
-        </div>
-        <Badge tone={customerNeedsAttention(customer) ? 'warning' : 'success'}>
-          {customerNeedsAttention(customer) ? 'Action needed' : 'Healthy'}
-        </Badge>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-[0.875rem] border border-border bg-surface-muted p-3">
-          <p className="text-xs text-muted">Orders</p>
-          <p className="mt-1 text-lg font-semibold text-foreground">
-            {customer.orderSummary.totalOrders}
-          </p>
-        </div>
-        <div className="rounded-[0.875rem] border border-border bg-surface-muted p-3">
-          <p className="text-xs text-muted">
-            {featureFlags.customerWallet ? 'Wallet' : 'Notes'}
-          </p>
-          <p className="mt-1 text-lg font-semibold text-foreground">
-            {featureFlags.customerWallet
-              ? formatPaise(customer.walletSummary.creditBalancePaise)
-              : customer.noteSummary.totalNotes}
-          </p>
-        </div>
-      </div>
-
-      <div
-        className={cn(
-          'rounded-[0.875rem] border p-3',
-          healthy
-            ? 'border-success/25 bg-success/10 text-success'
-            : 'border-warning/25 bg-warning/10 text-warning',
-        )}
-      >
-        <div className="flex items-start gap-2">
-          {healthy ? (
-            <CheckCircle2 className="mt-0.5 size-4" />
-          ) : (
-            <ShieldAlert className="mt-0.5 size-4" />
-          )}
-          <div>
-            <p className="text-sm font-semibold">
-              {healthy ? 'No active warning' : signalLabel(firstWarning ?? '')}
-            </p>
-            <p className="mt-1 text-xs leading-5 opacity-80">
-              {nextRecommendedAction
-                ? `Recommended: ${humanizeCode(nextRecommendedAction)}`
-                : healthy
-                  ? 'This customer has no warning in the current response.'
-                  : 'Open the customer record before taking high-impact action.'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Button
-          className="w-full justify-start"
-          disabled={isSubmitting}
-          size="sm"
-          variant="secondary"
-          onClick={() => onViewDetails(customer)}
-        >
-          <ArrowUpRight className="mr-2 size-4" />
-          View details
-        </Button>
-        <Button
-          className="w-full justify-start"
-          disabled={isSubmitting}
-          size="sm"
-          variant="secondary"
-          onClick={() => onOpenAction(customer, 'ADD_NOTE')}
-        >
-          <MessageSquarePlus className="mr-2 size-4" />
-          Add note
-        </Button>
-        {featureFlags.customerWallet && hasAction('WALLET_CREDIT') ? (
-          <Button
-            className="w-full justify-start"
-            disabled={isSubmitting}
-            size="sm"
-            variant="secondary"
-            onClick={() => onOpenAction(customer, 'WALLET_CREDIT')}
-          >
-            <CreditCard className="mr-2 size-4" />
-            Wallet credit
-          </Button>
-        ) : null}
-        {hasAction('BLOCK') ? (
-          <Button
-            className="w-full justify-start"
-            disabled={isSubmitting}
-            size="sm"
-            variant="danger"
-            onClick={() => onOpenAction(customer, 'BLOCK')}
-          >
-            <Ban className="mr-2 size-4" />
-            Block customer
-          </Button>
-        ) : null}
-        {hasAction('UNBLOCK') ? (
-          <Button
-            className="w-full justify-start"
-            disabled={isSubmitting}
-            size="sm"
-            variant="secondary"
-            onClick={() => onOpenAction(customer, 'UNBLOCK')}
-          >
-            <UserCheck className="mr-2 size-4" />
-            Unblock customer
-          </Button>
-        ) : null}
-      </div>
-
-      <div className="border-t border-border pt-3">
-        <h3 className="text-sm font-semibold text-foreground">Activity trail</h3>
-        <div className="mt-3 space-y-3 text-sm">
-          <div className="flex gap-2">
-            <Clock3 className="mt-0.5 size-4 text-muted" />
-            <p>
-              <span className="font-medium">Last order</span>
-              <br />
-              <span className="text-xs text-muted">
-                {formatDateSafe(customer.orderSummary.lastOrderAt)}
-              </span>
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <MessageSquarePlus className="mt-0.5 size-4 text-muted" />
-            <p>
-              <span className="font-medium">Last note</span>
-              <br />
-              <span className="text-xs text-muted">
-                {formatDateSafe(customer.noteSummary.lastNoteAt)}
-              </span>
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <UserCheck className="mt-0.5 size-4 text-success" />
-            <p>
-              <span className="font-medium">Last login</span>
-              <br />
-              <span className="text-xs text-muted">
-                {formatDateSafe(customer.lastLoginAt)}
-              </span>
-            </p>
-          </div>
-        </div>
-      </div>
-    </aside>
-  )
-}
-
 function CustomerRowsSkeleton() {
   return (
     <div className="space-y-2.5 p-3">
@@ -699,14 +711,12 @@ export function CustomersPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<'' | AdminCustomerStatus>('')
   const [city, setCity] = useState('')
-  const [zoneId, setZoneId] = useState('')
   const [hasOrders, setHasOrders] = useState('')
   const [hasWalletCredit, setHasWalletCredit] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
@@ -714,6 +724,101 @@ export function CustomersPage() {
   const [visibleColumns, setVisibleColumns] = useState<CustomerColumnId[]>(
     defaultCustomerColumns,
   )
+  const [columnWidths, setColumnWidths] = useState<CustomerColumnWidths>(
+    loadCustomerColumnWidths,
+  )
+  const columnsMenuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        CUSTOMER_COLUMN_WIDTH_STORAGE_KEY,
+        JSON.stringify(columnWidths),
+      )
+    } catch {
+      // Width persistence is a convenience; the table still works without it.
+    }
+  }, [columnWidths])
+
+  useEffect(() => {
+    if (!columnsOpen) {
+      return
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+
+      if (target instanceof Node && columnsMenuRef.current?.contains(target)) {
+        return
+      }
+
+      setColumnsOpen(false)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setColumnsOpen(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [columnsOpen])
+
+  const startColumnResize = (
+    columnId: CustomerColumnWidthId,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startX = event.clientX
+    const startWidth = getCustomerColumnWidth(columnWidths, columnId)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextWidth = startWidth + moveEvent.clientX - startX
+
+      setColumnWidths((currentWidths) => ({
+        ...currentWidths,
+        [columnId]: Math.max(
+          getCustomerColumnMinWidth(columnId),
+          Math.round(nextWidth),
+        ),
+      }))
+    }
+
+    const stopResize = () => {
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', stopResize)
+      document.removeEventListener('pointercancel', stopResize)
+    }
+
+    document.addEventListener('pointermove', handlePointerMove)
+    document.addEventListener('pointerup', stopResize)
+    document.addEventListener('pointercancel', stopResize)
+  }
+
+  const resetColumnWidth = (columnId: CustomerColumnWidthId) => {
+    setColumnWidths((currentWidths) => ({
+      ...currentWidths,
+      [columnId]: getCustomerColumnDefaultWidth(columnId),
+    }))
+  }
+
+  const adjustColumnWidth = (columnId: CustomerColumnWidthId, delta: number) => {
+    setColumnWidths((currentWidths) => ({
+      ...currentWidths,
+      [columnId]: Math.max(
+        getCustomerColumnMinWidth(columnId),
+        getCustomerColumnWidth(currentWidths, columnId) + delta,
+      ),
+    }))
+  }
 
   const resetToFirstPage = () => setPage(1)
 
@@ -724,7 +829,6 @@ export function CustomersPage() {
       search: search.trim() || undefined,
       status: status || undefined,
       city: city.trim() || undefined,
-      zoneId: zoneId.trim() || undefined,
       hasOrders: hasOrders === '' ? undefined : hasOrders === 'true',
       hasWalletCredit:
         featureFlags.customerWallet && hasWalletCredit !== ''
@@ -743,7 +847,6 @@ export function CustomersPage() {
       page,
       search,
       status,
-      zoneId,
     ],
   )
 
@@ -755,12 +858,11 @@ export function CustomersPage() {
   const customers = customersQuery.data?.data ?? []
   const pagination = customersQuery.data?.pagination
   const summary = customersQuery.data?.summary
-  const selectedCustomer =
-    customers.find((customer) => customer.customerId === selectedCustomerId) ??
-    customers[0] ??
-    null
   const isInitialLoading = customersQuery.isLoading && !customersQuery.data
   const isRefreshing = customersQuery.isFetching && Boolean(customersQuery.data)
+  const refreshStatusLabel = isRefreshing
+    ? 'Refreshing now'
+    : formatRefreshTime(customersQuery.dataUpdatedAt)
 
   const visibleAttentionCount = customers.filter(customerNeedsAttention).length
   const visibleWarningCount = customers.reduce(
@@ -787,21 +889,23 @@ export function CustomersPage() {
 
   const customerGridStyle = useMemo<CustomerGridStyle>(
     () => ({
-      '--customer-grid-template': getCustomerGridTemplate(visibleColumns),
-      '--customer-grid-min-width': getCustomerGridMinWidth(visibleColumns),
+      '--customer-grid-template': getCustomerGridTemplate(
+        visibleColumns,
+        columnWidths,
+      ),
+      '--customer-grid-min-width': getCustomerGridMinWidth(
+        visibleColumns,
+        columnWidths,
+      ),
     }),
-    [visibleColumns],
+    [columnWidths, visibleColumns],
   )
-  const hasAdditionalColumns =
-    visibleColumns.length > defaultCustomerColumns.length ||
-    !defaultCustomerColumns.every((columnId) => visibleColumns.includes(columnId))
   const hasWalletFilter = featureFlags.customerWallet && Boolean(hasWalletCredit)
 
   const hasActiveFilters = Boolean(
     search ||
       status ||
       city ||
-      zoneId ||
       hasOrders ||
       hasWalletFilter ||
       dateFrom ||
@@ -812,7 +916,6 @@ export function CustomersPage() {
     setSearch('')
     setStatus('')
     setCity('')
-    setZoneId('')
     setHasOrders('')
     setHasWalletCredit('')
     setDateFrom('')
@@ -960,14 +1063,14 @@ export function CustomersPage() {
   }
 
   return (
-    <PageContainer className="flex h-full min-h-0 flex-col overflow-hidden !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6">
+    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         description="Search, filter, and manage customer accounts from backend data."
         placement="topbar"
         title="Customers"
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex flex-col gap-3 xl:min-h-0 xl:flex-1">
         <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
           {metrics.map((metric) => (
             <MetricCard
@@ -982,17 +1085,17 @@ export function CustomersPage() {
 
         <section
           className={cn(
-            'grid min-h-0 flex-1 items-stretch gap-3 overflow-y-auto xl:grid-cols-[18rem_minmax(0,1fr)] xl:overflow-hidden 2xl:grid-cols-[18rem_minmax(0,1fr)_21rem]',
+            'grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[18rem_minmax(0,1fr)] xl:items-stretch xl:overflow-hidden',
             filtersCollapsed &&
-              'xl:grid-cols-[4.25rem_minmax(0,1fr)] 2xl:grid-cols-[4.25rem_minmax(0,1fr)_21rem]',
+              'xl:grid-cols-[4.25rem_minmax(0,1fr)]',
           )}
         >
           <aside
             className={cn(
-              'min-h-0 self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface 2xl:col-start-1 2xl:row-start-1',
+              'self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0 2xl:col-start-1 2xl:row-start-1',
               filtersCollapsed
                 ? 'flex items-center justify-between gap-3 p-2.5 xl:flex-col xl:justify-start'
-                : 'space-y-3 overflow-y-auto p-3',
+                : 'space-y-3 p-3 xl:overflow-y-auto',
             )}
           >
             {filtersCollapsed ? (
@@ -1074,23 +1177,6 @@ export function CustomersPage() {
                   <div className="mt-3 space-y-3">
                     <label className="space-y-1">
                       <span className="text-xs font-semibold text-muted">
-                        Search
-                      </span>
-                      <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-                        <Input
-                          className="min-h-10 pl-9"
-                          placeholder="Name, mobile, email"
-                          value={search}
-                          onChange={(event) => {
-                            setSearch(event.target.value)
-                            resetToFirstPage()
-                          }}
-                        />
-                      </div>
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
                         Status
                       </span>
                       <select
@@ -1121,20 +1207,6 @@ export function CustomersPage() {
                         }}
                       />
                     </label>
-                    {/*
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">Zone ID</span>
-                      <Input
-                        className="min-h-10"
-                        placeholder="UUID"
-                        value={zoneId}
-                        onChange={(event) => {
-                          setZoneId(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    */}
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                       <label className="space-y-1">
                         <span className="text-xs font-semibold text-muted">
@@ -1207,7 +1279,7 @@ export function CustomersPage() {
             )}
           </aside>
 
-          <main className="flex min-h-0 min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface 2xl:col-start-2 2xl:row-start-1">
+          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0 2xl:col-start-2 2xl:row-start-1">
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
               <div>
                 <h2 className="text-base font-semibold text-foreground">
@@ -1220,12 +1292,24 @@ export function CustomersPage() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {isRefreshing ? (
-                  <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                    Refreshing
-                  </span>
-                ) : null}
-                <div className="relative">
+                <ListHeaderSearch
+                  className="w-full sm:w-72 lg:w-80"
+                  placeholder="Search name, mobile, email"
+                  value={search}
+                  onChange={(nextSearch) => {
+                    setSearch(nextSearch)
+                    resetToFirstPage()
+                  }}
+                />
+                <span
+                  className={cn(
+                    'text-xs font-medium',
+                    isRefreshing ? 'text-primary' : 'text-muted',
+                  )}
+                >
+                  {refreshStatusLabel}
+                </span>
+                <div className="relative" ref={columnsMenuRef}>
                   <Button
                     aria-expanded={columnsOpen}
                     aria-haspopup="menu"
@@ -1284,14 +1368,19 @@ export function CustomersPage() {
                   variant="secondary"
                   onClick={() => void customersQuery.refetch()}
                 >
-                  <RefreshCcw className="mr-2 size-4" />
+                  <RefreshCcw
+                    className={cn(
+                      'mr-2 size-4',
+                      isRefreshing && 'animate-spin motion-reduce:animate-none',
+                    )}
+                  />
                   Refresh
                 </Button>
               </div>
             </div>
 
             {customersQuery.isError ? (
-              <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
                 <ErrorState
                   description="We could not load customer data. Please retry."
                   title="Customer data unavailable"
@@ -1299,49 +1388,101 @@ export function CustomersPage() {
                 />
               </div>
             ) : isInitialLoading ? (
-              <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
                 <CustomerRowsSkeleton />
               </div>
             ) : customers.length === 0 ? (
-              <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
                 <EmptyState
                   description="No customers matched the selected filters."
                   title="No customers"
                 />
               </div>
             ) : (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 overflow-auto">
+              <div className="flex flex-col xl:min-h-0 xl:flex-1">
+                <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
                   <div
-                    className={cn(
-                      'min-w-0',
-                      hasAdditionalColumns &&
-                        'xl:min-w-[var(--customer-grid-min-width)]',
-                    )}
+                    className="min-w-0 xl:min-w-[var(--customer-grid-min-width)]"
                     style={customerGridStyle}
                   >
-                    <div className="sticky top-0 z-10 hidden grid-cols-[var(--customer-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                    <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--customer-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
                       {customerDataColumns
                         .filter((column) => visibleColumns.includes(column.id))
                         .map((column) => (
-                          <span key={column.id}>{column.label}</span>
+                          <div
+                            className="relative flex min-w-0 items-center pr-3"
+                            key={column.id}
+                          >
+                            <span className="truncate">{column.label}</span>
+                            <button
+                              aria-label={`Resize ${column.label} column`}
+                              className="group absolute inset-y-0 right-0 flex w-3 cursor-col-resize items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              title="Drag to resize"
+                              type="button"
+                              onDoubleClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                resetColumnWidth(column.id)
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'ArrowLeft') {
+                                  event.preventDefault()
+                                  adjustColumnWidth(column.id, -16)
+                                }
+
+                                if (event.key === 'ArrowRight') {
+                                  event.preventDefault()
+                                  adjustColumnWidth(column.id, 16)
+                                }
+                              }}
+                              onPointerDown={(event) =>
+                                startColumnResize(column.id, event)
+                              }
+                            >
+                              <span className="h-4 w-px rounded-full bg-border transition group-hover:bg-primary group-focus-visible:bg-primary" />
+                            </button>
+                          </div>
                         ))}
-                      <span className="text-right">Actions</span>
+                      <div className="relative flex min-w-0 items-center justify-end pr-3 text-right">
+                        <span className="truncate">Actions</span>
+                        <button
+                          aria-label="Resize actions column"
+                          className="group absolute inset-y-0 right-0 flex w-3 cursor-col-resize items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          title="Drag to resize"
+                          type="button"
+                          onDoubleClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            resetColumnWidth(CUSTOMER_ACTION_COLUMN_ID)
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'ArrowLeft') {
+                              event.preventDefault()
+                              adjustColumnWidth(CUSTOMER_ACTION_COLUMN_ID, -16)
+                            }
+
+                            if (event.key === 'ArrowRight') {
+                              event.preventDefault()
+                              adjustColumnWidth(CUSTOMER_ACTION_COLUMN_ID, 16)
+                            }
+                          }}
+                          onPointerDown={(event) =>
+                            startColumnResize(CUSTOMER_ACTION_COLUMN_ID, event)
+                          }
+                        >
+                          <span className="h-4 w-px rounded-full bg-border transition group-hover:bg-primary group-focus-visible:bg-primary" />
+                        </button>
+                      </div>
                     </div>
 
                     <div>
                       {customers.map((customer) => (
                         <CustomerRow
                           customer={customer}
+                          isSubmitting={actionMutation.isPending}
                           key={customer.customerId}
-                          selected={
-                            customer.customerId === selectedCustomer?.customerId
-                          }
                           visibleColumns={visibleColumns}
                           onOpenAction={openAction}
-                          onSelect={(nextCustomer) =>
-                            setSelectedCustomerId(nextCustomer.customerId)
-                          }
                           onViewDetails={viewDetails}
                         />
                       ))}
@@ -1361,14 +1502,6 @@ export function CustomersPage() {
             )}
           </main>
 
-          {selectedCustomer ? (
-            <CustomerInspector
-              customer={selectedCustomer}
-              isSubmitting={actionMutation.isPending}
-              onOpenAction={openAction}
-              onViewDetails={viewDetails}
-            />
-          ) : null}
         </section>
       </div>
 

@@ -1,6 +1,8 @@
 import { type FormEvent, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
+import { LookupSelect } from '../../../components/ui/LookupSelect'
+import { searchVendorLookupOptions } from '../../lookups/adminLookups'
 import type { AdminPayoutMethod, AdminPayoutSummary } from '../types/payout.types'
 
 export type PayoutActionKind =
@@ -54,6 +56,7 @@ export function PayoutActionModal({ action, error, isSubmitting, onClose, onSubm
   const [reason, setReason] = useState('')
   const [utrReference, setUtrReference] = useState('')
   const [vendorId, setVendorId] = useState('')
+  const [vendorLabel, setVendorLabel] = useState('')
 
   if (!action) return null
 
@@ -96,7 +99,18 @@ export function PayoutActionModal({ action, error, isSubmitting, onClose, onSubm
         <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
           {action.kind === 'CREATE' ? (
             <>
-              <label className="block space-y-2"><span className="text-sm font-semibold text-foreground">Vendor ID *</span><input className="form-input" value={vendorId} onChange={(event) => setVendorId(event.target.value)} /></label>
+              <LookupSelect
+                fetchOptions={searchVendorLookupOptions}
+                label="Vendor *"
+                placeholder="Search vendor"
+                queryKey={['lookup', 'vendors', 'payout-create']}
+                selectedLabel={vendorLabel}
+                value={vendorId}
+                onChange={(value, option) => {
+                  setVendorId(value)
+                  setVendorLabel(option?.label ?? '')
+                }}
+              />
               <label className="block space-y-2"><span className="text-sm font-semibold text-foreground">Earning IDs</span><input className="form-input" placeholder="Comma separated UUIDs" value={earningIdsText} onChange={(event) => setEarningIdsText(event.target.value)} /></label>
               <label className="block space-y-2"><span className="text-sm font-semibold text-foreground">Payout method</span><select className="form-input" value={payoutMethod} onChange={(event) => setPayoutMethod(event.target.value as AdminPayoutMethod)}><option>MANUAL_BANK_TRANSFER</option><option>UPI</option><option>OTHER</option></select></label>
             </>

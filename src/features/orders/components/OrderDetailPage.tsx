@@ -3,6 +3,7 @@ import {
   Ban,
   CalendarClock,
   CircleCheck,
+  CreditCard,
   FileUp,
   KeyRound,
   MessageSquarePlus,
@@ -13,7 +14,7 @@ import {
   TriangleAlert,
   Truck,
 } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
@@ -25,6 +26,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
 import { orderService } from '../services/order.service'
@@ -108,6 +110,52 @@ function DetailField({ label, value }: { label: string; value: string | number |
     <div className="space-y-1">
       <p className="text-xs font-semibold uppercase text-muted">{label}</p>
       <p className="break-words text-sm text-foreground">{value ?? 'Not available'}</p>
+    </div>
+  )
+}
+
+type OrderTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+
+function toneClasses(tone: OrderTone) {
+  if (tone === 'success') return 'border-border bg-surface text-success'
+  if (tone === 'warning') return 'border-border bg-surface text-warning'
+  if (tone === 'danger') return 'border-border bg-surface text-danger'
+  if (tone === 'info') return 'border-border bg-surface text-primary'
+  return 'border-border bg-surface text-muted'
+}
+
+function DetailMetricCard({
+  icon,
+  label,
+  meta,
+  tone,
+  value,
+}: {
+  icon: ReactNode
+  label: string
+  meta: string
+  tone: OrderTone
+  value: string
+}) {
+  return (
+    <div
+      className={cn(
+        'min-h-[4.35rem] rounded-[0.75rem] border p-2.5',
+        toneClasses(tone),
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-normal opacity-80">
+            {label}
+          </p>
+          <p className="mt-1 truncate text-lg font-semibold tracking-normal">
+            {value}
+          </p>
+        </div>
+        <span className="mt-0.5 shrink-0 opacity-80">{icon}</span>
+      </div>
+      <p className="mt-0.5 truncate text-xs leading-4 opacity-80">{meta}</p>
     </div>
   )
 }
@@ -205,6 +253,13 @@ function statusTone(status: string) {
     return 'warning' as const
   }
   return 'info' as const
+}
+
+function paymentTone(status: string) {
+  if (status === 'PAID' || status === 'REFUNDED') return 'success' as const
+  if (status === 'FAILED') return 'danger' as const
+  if (status === 'PARTIALLY_REFUNDED') return 'info' as const
+  return 'warning' as const
 }
 
 function actionTargetStatus(action: string) {
@@ -332,17 +387,17 @@ function ManualLogisticsPanel({
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <div className="rounded-[0.85rem] border border-border bg-background/40 p-3">
+          <div className="rounded-[0.85rem] border border-border bg-surface-muted/50 p-3">
             <p className="text-xs font-semibold uppercase text-muted">Current status</p>
             <p className="mt-1 text-sm font-semibold text-foreground">{formatStatusLabel(order.orderStatus)}</p>
           </div>
-          <div className="rounded-[0.85rem] border border-border bg-background/40 p-3">
+          <div className="rounded-[0.85rem] border border-border bg-surface-muted/50 p-3">
             <p className="text-xs font-semibold uppercase text-muted">Next step</p>
             <p className="mt-1 text-sm font-semibold text-foreground">
               {primaryTarget ? manualStatusCopy[primaryTarget]?.label ?? formatStatusLabel(primaryTarget) : 'No manual step'}
             </p>
           </div>
-          <div className="rounded-[0.85rem] border border-border bg-background/40 p-3">
+          <div className="rounded-[0.85rem] border border-border bg-surface-muted/50 p-3">
             <p className="text-xs font-semibold uppercase text-muted">Event count</p>
             <p className="mt-1 text-sm font-semibold text-foreground">{order.counts?.logisticsEventCount ?? order.logisticsTimeline.length}</p>
           </div>
@@ -370,7 +425,7 @@ function ManualLogisticsPanel({
               {manualStatusCopy[primaryTarget]?.label ?? formatStatusLabel(primaryTarget)}
             </Button>
           ) : (
-            <div className="rounded-[0.85rem] border border-border bg-background/40 px-3 py-2 text-sm text-muted">
+            <div className="rounded-[0.85rem] border border-border bg-surface-muted/50 px-3 py-2 text-sm text-muted">
               No valid manual transition is available for this status.
             </div>
           )}
@@ -406,11 +461,11 @@ function ManualLogisticsPanel({
 
         {order.activeDeliveryOtp ? (
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[0.85rem] border border-border bg-background/40 p-3">
+            <div className="rounded-[0.85rem] border border-border bg-surface-muted/50 p-3">
               <p className="text-xs font-semibold uppercase text-muted">Expires</p>
               <p className="mt-1 text-sm font-semibold text-foreground">{formatDate(order.activeDeliveryOtp.expiresAt, true)}</p>
             </div>
-            <div className="rounded-[0.85rem] border border-border bg-background/40 p-3">
+            <div className="rounded-[0.85rem] border border-border bg-surface-muted/50 p-3">
               <p className="text-xs font-semibold uppercase text-muted">Attempts</p>
               <p className="mt-1 text-sm font-semibold text-foreground">
                 {order.activeDeliveryOtp.attempts}/{order.activeDeliveryOtp.maxAttempts}
@@ -418,7 +473,7 @@ function ManualLogisticsPanel({
             </div>
           </div>
         ) : (
-          <div className="mt-4 rounded-[0.85rem] border border-border bg-background/40 p-3 text-sm text-muted">
+          <div className="mt-4 rounded-[0.85rem] border border-border bg-surface-muted/50 p-3 text-sm text-muted">
             OTP controls become available when the order is out for delivery.
           </div>
         )}
@@ -444,7 +499,7 @@ function ManualLogisticsPanel({
           ) : null}
         </div>
 
-        <div className="mt-4 flex items-start gap-2 rounded-[0.85rem] border border-border bg-background/40 p-3 text-sm text-muted">
+        <div className="mt-4 flex items-start gap-2 rounded-[0.85rem] border border-border bg-surface-muted/50 p-3 text-sm text-muted">
           <CalendarClock className="mt-0.5 size-4 shrink-0" />
           <p>Every manual update writes order history, logistics timeline, and admin audit records.</p>
         </div>
@@ -490,12 +545,12 @@ export function OrderDetailPage({
       }
 
       if (action.kind === 'UPDATE_STATUS') {
-        if (!values.targetStatus) {
+        if (!action.targetStatus) {
           throw new Error('Target status is required.')
         }
 
         return orderService.updateOrderStatus(order.orderId, {
-          targetStatus: values.targetStatus,
+          targetStatus: action.targetStatus,
           eventTime: values.eventTime,
           internalNote: values.internalNote,
           proofMediaAssetId: values.proofMediaAssetId,
@@ -606,7 +661,7 @@ export function OrderDetailPage({
   }
 
   return (
-    <PageContainer>
+    <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
         actionNode={<OrderHeaderActions isSubmitting={actionMutation.isPending} order={order} onSelectAction={openAction} />}
         description={`${order.customer.fullName} · ${order.vendor.shopName}`}
@@ -618,16 +673,47 @@ export function OrderDetailPage({
 
       <PriceRevisionNotice order={order} />
 
+      <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+        <DetailMetricCard
+          icon={<Route className="size-4" />}
+          label="Order status"
+          meta={order.nextRecommendedAction ? `Next: ${formatStatusLabel(order.nextRecommendedAction)}` : 'No immediate action'}
+          tone={statusTone(order.orderStatus)}
+          value={formatStatusLabel(order.orderStatus)}
+        />
+        <DetailMetricCard
+          icon={<CreditCard className="size-4" />}
+          label="Payment"
+          meta={order.paymentMethod}
+          tone={paymentTone(order.paymentStatus)}
+          value={formatStatusLabel(order.paymentStatus)}
+        />
+        <DetailMetricCard
+          icon={<PackageCheck className="size-4" />}
+          label="Value"
+          meta={order.pricing.pendingPriceRevision ? 'Price revision pending' : 'Current payable value'}
+          tone={order.pricing.pendingPriceRevision ? 'warning' : 'info'}
+          value={orderDisplayValue(order)}
+        />
+        <DetailMetricCard
+          icon={<CalendarClock className="size-4" />}
+          label="Timeline"
+          meta={`${order.counts?.noteCount ?? order.notes.length} notes / ${order.counts?.refundCount ?? order.refunds.length} refunds`}
+          tone={(order.counts?.logisticsEventCount ?? order.logisticsTimeline.length) ? 'info' : 'neutral'}
+          value={String(order.counts?.logisticsEventCount ?? order.logisticsTimeline.length)}
+        />
+      </section>
+
       <ManualLogisticsPanel
         isSubmitting={actionMutation.isPending}
         order={order}
         onSelectAction={openAction}
       />
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4 lg:col-span-2">
+      <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
           <h2 className="text-base font-semibold text-foreground">Order Information</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <DetailField label="Order ID" value={order.orderId} />
             <DetailField label="Public Order ID" value={order.publicOrderId} />
             <DetailField label="Customer" value={order.customer.fullName} />
@@ -655,7 +741,7 @@ export function OrderDetailPage({
         </div>
       </section>
 
-      <section className="space-y-4">
+      <section className="space-y-3">
         <DynamicTable columns={itemColumns} data={order.items} emptyTitle="No items" getRowId={(row) => row.orderItemId} title="Items" />
         <DynamicTable columns={statusColumns} data={order.statusHistory} emptyTitle="No status history" getRowId={(row) => row.statusHistoryId} title="Status History" />
         <DynamicTable columns={logisticsColumns} data={order.logisticsTimeline} emptyTitle="No logistics timeline" getRowId={(row) => row.logisticsEventId} title="Logistics Timeline" />

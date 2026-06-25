@@ -31,6 +31,8 @@ export type AdminOrderPaymentStatus =
   | 'COD_PENDING'
 
 export type AdminOrderPaymentMethod = 'PREPAID' | 'COD' | 'WALLET' | 'MIXED'
+type AdminOrderFilterValue<T extends string> = T | T[]
+type AdminOrderIdFilterValue = string | string[]
 
 export type LogisticsPackageCondition =
   | 'GOOD'
@@ -60,14 +62,14 @@ export interface AdminOrdersQueryParams {
   page?: number
   limit?: number
   search?: string
-  orderStatus?: AdminOrderStatus
-  paymentStatus?: AdminOrderPaymentStatus
-  paymentMethod?: AdminOrderPaymentMethod
+  orderStatus?: AdminOrderFilterValue<AdminOrderStatus>
+  paymentStatus?: AdminOrderFilterValue<AdminOrderPaymentStatus>
+  paymentMethod?: AdminOrderFilterValue<AdminOrderPaymentMethod>
   city?: string
-  categoryId?: string
+  categoryId?: AdminOrderIdFilterValue
   zoneId?: string
-  vendorId?: string
-  customerId?: string
+  vendorId?: AdminOrderIdFilterValue
+  customerId?: AdminOrderIdFilterValue
   dateFrom?: string
   dateTo?: string
 }

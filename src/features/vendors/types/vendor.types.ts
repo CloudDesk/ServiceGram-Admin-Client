@@ -101,6 +101,7 @@ export interface VendorListItem {
   reviewNotes: string | null
   rejectionReason: string | null
   documentSummary: VendorDocumentSummary | null
+  bankAccountSummary: VendorBankAccountSummary | null
   warnings: string[]
   availableActions: string[]
   nextRecommendedAction: string | null

@@ -3,6 +3,8 @@ import type { ApiErrorDetails } from '../../../types/api.types'
 export type AdminPaymentStatus = 'CREATED' | 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED'
 export type AdminPaymentMethod = 'UPI' | 'CARD' | 'NET_BANKING' | 'WALLET' | 'COD'
 export type AdminPaymentGateway = 'RAZORPAY' | 'INTERNAL_COD' | 'WALLET'
+type AdminPaymentFilterValue<T extends string> = T | T[]
+type AdminPaymentIdFilterValue = string | string[]
 export type AdminRefundStatus =
   | 'REQUESTED'
   | 'APPROVED'
@@ -15,12 +17,12 @@ export interface AdminPaymentsQueryParams {
   page?: number
   limit?: number
   search?: string
-  status?: AdminPaymentStatus
-  method?: AdminPaymentMethod
-  gateway?: AdminPaymentGateway
-  orderId?: string
-  customerId?: string
-  vendorId?: string
+  status?: AdminPaymentFilterValue<AdminPaymentStatus>
+  method?: AdminPaymentFilterValue<AdminPaymentMethod>
+  gateway?: AdminPaymentFilterValue<AdminPaymentGateway>
+  orderId?: AdminPaymentIdFilterValue
+  customerId?: AdminPaymentIdFilterValue
+  vendorId?: AdminPaymentIdFilterValue
   zoneId?: string
   city?: string
   dateFrom?: string
@@ -33,11 +35,11 @@ export interface AdminRefundsQueryParams {
   page?: number
   limit?: number
   search?: string
-  status?: AdminRefundStatus
-  paymentId?: string
-  orderId?: string
-  customerId?: string
-  vendorId?: string
+  status?: AdminPaymentFilterValue<AdminRefundStatus>
+  paymentId?: AdminPaymentIdFilterValue
+  orderId?: AdminPaymentIdFilterValue
+  customerId?: AdminPaymentIdFilterValue
+  vendorId?: AdminPaymentIdFilterValue
   zoneId?: string
   city?: string
   dateFrom?: string
@@ -241,6 +243,7 @@ export interface AdminRefundsListResponse
 }
 
 export type AdminPaymentDetailResponse = AdminFinanceApiResponse<AdminPaymentDetail>
+export type AdminRefundDetailResponse = AdminFinanceApiResponse<AdminRefundDetail>
 export type ReconcilePaymentResponse = AdminFinanceApiResponse<ReconcilePaymentResult>
 export type ApproveRefundResponse = AdminFinanceApiResponse<ApproveRefundResult>
 export type RejectRefundResponse = AdminFinanceApiResponse<AdminRefundDetail>

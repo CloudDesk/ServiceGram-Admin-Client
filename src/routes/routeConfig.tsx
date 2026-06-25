@@ -31,6 +31,7 @@ import { NotificationDetailPage } from '../features/notifications/components/Not
 import { NotificationsPage } from '../features/notifications/components/NotificationsPage'
 import { PaymentDetailPage } from '../features/payments/components/PaymentDetailPage'
 import { PaymentsPage } from '../features/payments/components/PaymentsPage'
+import { RefundDetailPage } from '../features/payments/components/RefundDetailPage'
 import { RefundsPage } from '../features/payments/components/RefundsPage'
 import { PayoutDetailPage } from '../features/payouts/components/PayoutDetailPage'
 import { PayoutsPage } from '../features/payouts/components/PayoutsPage'
@@ -198,6 +199,10 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: routePaths.refunds,
                     element: <RefundsPage />,
+                  },
+                  {
+                    path: `${routePaths.refunds}/:refundId`,
+                    element: <RefundDetailPage />,
                   },
                 ],
               },

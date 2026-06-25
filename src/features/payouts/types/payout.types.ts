@@ -11,14 +11,16 @@ export type AdminPayoutStatus =
   | 'CANCELLED'
 
 export type AdminPayoutMethod = 'MANUAL_BANK_TRANSFER' | 'UPI' | 'OTHER'
+type AdminPayoutFilterValue<T extends string> = T | T[]
+type AdminPayoutIdFilterValue = string | string[]
 
 export interface AdminPayoutsQueryParams {
   page?: number
   limit?: number
   search?: string
-  status?: AdminPayoutStatus
-  payoutMethod?: AdminPayoutMethod
-  vendorId?: string
+  status?: AdminPayoutFilterValue<AdminPayoutStatus>
+  payoutMethod?: AdminPayoutFilterValue<AdminPayoutMethod>
+  vendorId?: AdminPayoutIdFilterValue
   zoneId?: string
   city?: string
   dateFrom?: string
