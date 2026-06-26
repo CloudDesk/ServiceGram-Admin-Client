@@ -19,11 +19,17 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import {
+  LIST_SELECTION_COLUMN_WIDTH,
+  ListSelectionCheckbox,
+  ListSelectionToolbar,
+} from '../../../components/ui/ListSelection'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
+import { useListSelection } from '../../../hooks/useListSelection'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -338,6 +344,7 @@ function getCustomerGridTemplate(
     .map((column) => `${getCustomerColumnWidth(columnWidths, column.id)}px`)
 
   return [
+    `${LIST_SELECTION_COLUMN_WIDTH}px`,
     ...selectedWidths,
     `${getCustomerColumnWidth(columnWidths, CUSTOMER_ACTION_COLUMN_ID)}px`,
   ].join(' ')
@@ -348,7 +355,7 @@ function getCustomerGridMinWidth(
   columnWidths: CustomerColumnWidths,
 ) {
   const visibleColumnCount = visibleColumns.length
-  const gridColumnCount = visibleColumnCount + 1
+  const gridColumnCount = visibleColumnCount + 2
   const gridGapWidth = Math.max(gridColumnCount - 1, 0) * CUSTOMER_GRID_COLUMN_GAP
   const visibleWidth = customerDataColumns
     .filter((column) => visibleColumns.includes(column.id))
@@ -359,6 +366,7 @@ function getCustomerGridMinWidth(
 
   return `${
     visibleWidth +
+    LIST_SELECTION_COLUMN_WIDTH +
     getCustomerColumnWidth(columnWidths, CUSTOMER_ACTION_COLUMN_ID) +
     gridGapWidth +
     CUSTOMER_GRID_INLINE_PADDING
@@ -397,14 +405,18 @@ function MetricCard({
 
 function CustomerRow({
   customer,
+  isSelected,
   isSubmitting,
   onOpenAction,
+  onSelect,
   onViewDetails,
   visibleColumns,
 }: {
   customer: AdminCustomerListItem
+  isSelected: boolean
   isSubmitting: boolean
   onOpenAction: (customer: AdminCustomerListItem, kind: CustomerActionKind) => void
+  onSelect: (customer: AdminCustomerListItem, selected: boolean) => void
   onViewDetails: (customer: AdminCustomerListItem) => void
   visibleColumns: CustomerColumnId[]
 }) {
@@ -426,8 +438,10 @@ function CustomerRow({
 
   return (
     <article
+      aria-selected={isSelected}
       className={cn(
         'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--customer-grid-template)] xl:items-center',
+        isSelected && 'bg-primary/5 hover:bg-primary/10',
       )}
       aria-label={`Open details for ${customer.fullName}`}
       role="button"
@@ -444,6 +458,13 @@ function CustomerRow({
         }
       }}
     >
+      <div className="flex min-w-0 items-start xl:items-center">
+        <ListSelectionCheckbox
+          checked={isSelected}
+          label={`Select ${customer.fullName}`}
+          onChange={(selected) => onSelect(customer, selected)}
+        />
+      </div>
       {showColumn('customer') ? (
         <div className="flex min-w-0 items-start gap-3">
           <div
@@ -890,6 +911,10 @@ export function CustomersPage() {
   const customers = customersQuery.data?.data ?? []
   const pagination = customersQuery.data?.pagination
   const summary = customersQuery.data?.summary
+  const customerSelection = useListSelection(
+    customers,
+    (customer) => customer.customerId,
+  )
   const isInitialLoading = customersQuery.isLoading && !customersQuery.data
   const isRefreshing = customersQuery.isFetching && Boolean(customersQuery.data)
   const refreshStatusLabel = isRefreshing
@@ -1431,6 +1456,14 @@ export function CustomersPage() {
                     style={customerGridStyle}
                   >
                     <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--customer-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                      <div className="flex min-w-0 items-center">
+                        <ListSelectionCheckbox
+                          checked={customerSelection.allVisibleSelected}
+                          indeterminate={customerSelection.someVisibleSelected}
+                          label="Select visible customers"
+                          onChange={customerSelection.setVisibleSelected}
+                        />
+                      </div>
                       {customerDataColumns
                         .filter((column) => visibleColumns.includes(column.id))
                         .map((column) => (
@@ -1499,15 +1532,29 @@ export function CustomersPage() {
                         </button>
                       </div>
                     </div>
+                    <ListSelectionToolbar
+                      allVisibleSelected={customerSelection.allVisibleSelected}
+                      selectedCount={customerSelection.selectedCount}
+                      visibleCount={customerSelection.visibleCount}
+                      onClear={customerSelection.clearSelection}
+                      onSelectVisible={() => customerSelection.setVisibleSelected(true)}
+                    />
 
                     <div>
                       {customers.map((customer) => (
                         <CustomerRow
                           customer={customer}
+                          isSelected={customerSelection.isSelected(customer.customerId)}
                           isSubmitting={actionMutation.isPending}
                           key={customer.customerId}
                           visibleColumns={visibleColumns}
                           onOpenAction={openAction}
+                          onSelect={(selectedCustomer, selected) =>
+                            customerSelection.setItemSelected(
+                              selectedCustomer.customerId,
+                              selected,
+                            )
+                          }
                           onViewDetails={viewDetails}
                         />
                       ))}

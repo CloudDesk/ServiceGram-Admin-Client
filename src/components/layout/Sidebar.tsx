@@ -1,6 +1,7 @@
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, LogOut } from "lucide-react";
-import { NavLink } from "react-router-dom";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { navigationItems } from "../../config/navigation";
 import { routePaths } from "../../config/routes";
 import { useAuthStore } from "../../store/authStore";
@@ -14,6 +15,24 @@ interface SidebarPanelProps {
   onToggleCollapse?: () => void;
 }
 
+interface SidebarLabelPopoverState {
+  href: string;
+  isActive: boolean;
+  label: string;
+  left: number;
+  top: number;
+}
+
+const SIDEBAR_LABEL_POPOVER_ID = "collapsed-sidebar-label-popover";
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function isNavigationItemActive(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 function SidebarPanel({
   isCollapsed,
   isMobile = false,
@@ -22,7 +41,61 @@ function SidebarPanel({
 }: SidebarPanelProps) {
   const can = useAuthStore((state) => state.can);
   const clearSession = useAuthStore((state) => state.clearSession);
+  const location = useLocation();
   const navigate = useNavigate();
+  const [labelPopover, setLabelPopover] =
+    useState<SidebarLabelPopoverState | null>(null);
+
+  const showCollapsedLabel = (
+    item: (typeof navigationItems)[number],
+    target: HTMLElement,
+  ) => {
+    if (!isCollapsed || isMobile) return;
+
+    const rect = target.getBoundingClientRect();
+    const viewportHeight =
+      window.innerHeight || document.documentElement.clientHeight;
+    const top = clamp(rect.top + rect.height / 2, 44, viewportHeight - 44);
+
+    setLabelPopover({
+      href: item.href,
+      isActive: isNavigationItemActive(location.pathname, item.href),
+      label: item.label,
+      left: rect.right + 12,
+      top,
+    });
+  };
+
+  const hideCollapsedLabel = () => {
+    setLabelPopover(null);
+  };
+
+  useEffect(() => {
+    if (!labelPopover) return undefined;
+
+    const hide = () => setLabelPopover(null);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        hide();
+      }
+    };
+
+    window.addEventListener("resize", hide);
+    window.addEventListener("scroll", hide, true);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("resize", hide);
+      window.removeEventListener("scroll", hide, true);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [labelPopover]);
+
+  const shouldRenderLabelPopover =
+    isCollapsed &&
+    !isMobile &&
+    labelPopover &&
+    typeof document !== "undefined";
 
   return (
     <div
@@ -79,10 +152,17 @@ function SidebarPanel({
             .filter((item) => item.alwaysVisible || (item.permission && can(item.permission)))
             .map((item) => {
               const Icon = item.icon;
+              const isPopoverActive = labelPopover?.href === item.href;
 
               return (
                 <li key={item.href}>
                   <NavLink
+                    aria-describedby={
+                      isCollapsed && !isMobile && isPopoverActive
+                        ? SIDEBAR_LABEL_POPOVER_ID
+                        : undefined
+                    }
+                    aria-label={isCollapsed && !isMobile ? item.label : undefined}
                     className={({ isActive }) =>
                       cn(
                         "premium-sidebar-link group flex items-center text-sm font-medium",
@@ -94,13 +174,22 @@ function SidebarPanel({
                           : "text-[color:var(--adaptive-text-muted)] hover:text-[color:var(--adaptive-text-main)]",
                       )
                     }
-                    title={isCollapsed && !isMobile ? item.label : undefined}
                     to={item.href}
+                    onBlur={hideCollapsedLabel}
                     onClick={() => {
+                      hideCollapsedLabel();
+
                       if (isMobile) {
                         onClose?.();
                       }
                     }}
+                    onFocus={(event) =>
+                      showCollapsedLabel(item, event.currentTarget)
+                    }
+                    onMouseEnter={(event) =>
+                      showCollapsedLabel(item, event.currentTarget)
+                    }
+                    onMouseLeave={hideCollapsedLabel}
                   >
                     <span className="premium-sidebar-icon shrink-0">
                       <Icon className="size-4" />
@@ -114,6 +203,27 @@ function SidebarPanel({
             })}
         </ul>
       </nav>
+
+      {shouldRenderLabelPopover
+        ? createPortal(
+            <div
+              className={cn(
+                "premium-sidebar-label-popover",
+                labelPopover.isActive && "premium-sidebar-label-popover-active",
+              )}
+              id={SIDEBAR_LABEL_POPOVER_ID}
+              role="tooltip"
+              style={{
+                left: labelPopover.left,
+                top: labelPopover.top,
+              }}
+            >
+              <span className="premium-sidebar-label-popover-dot" />
+              <span className="truncate">{labelPopover.label}</span>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {isMobile ? (
         <div className="border-t border-[color:var(--adaptive-border)] px-3 py-3">

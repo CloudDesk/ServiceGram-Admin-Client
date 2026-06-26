@@ -1,5 +1,6 @@
 import type {
   CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
 } from 'react'
@@ -23,8 +24,14 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import {
+  LIST_SELECTION_COLUMN_WIDTH,
+  ListSelectionCheckbox,
+  ListSelectionToolbar,
+} from '../../../components/ui/ListSelection'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
+import { useListSelection } from '../../../hooks/useListSelection'
 import type { StatusTone } from '../../../types/status.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -267,22 +274,29 @@ function getAuditGridTemplate(
   visibleColumns: AuditColumnId[],
   columnWidths: AuditColumnWidths,
 ) {
-  return auditColumns
+  const selectedWidths = auditColumns
     .filter((column) => visibleColumns.includes(column.id))
     .map((column) => `${getAuditColumnWidth(columnWidths, column.id)}px`)
-    .join(' ')
+
+  return [`${LIST_SELECTION_COLUMN_WIDTH}px`, ...selectedWidths].join(' ')
 }
 
 function getAuditGridMinWidth(
   visibleColumns: AuditColumnId[],
   columnWidths: AuditColumnWidths,
 ) {
-  const gridGapWidth = Math.max(visibleColumns.length - 1, 0) * AUDIT_GRID_COLUMN_GAP
+  const gridColumnCount = visibleColumns.length + 1
+  const gridGapWidth = Math.max(gridColumnCount - 1, 0) * AUDIT_GRID_COLUMN_GAP
   const visibleWidth = auditColumns
     .filter((column) => visibleColumns.includes(column.id))
     .reduce((total, column) => total + getAuditColumnWidth(columnWidths, column.id), 0)
 
-  return `${visibleWidth + gridGapWidth + AUDIT_GRID_INLINE_PADDING}px`
+  return `${
+    visibleWidth +
+    LIST_SELECTION_COLUMN_WIDTH +
+    gridGapWidth +
+    AUDIT_GRID_INLINE_PADDING
+  }px`
 }
 
 function MetricCard({
@@ -400,12 +414,16 @@ function JsonBlock({ title, value }: { title: string; value: unknown }) {
 
 function AuditRow({
   isExpanded,
+  isSelected,
   log,
+  onSelect,
   onToggle,
   visibleColumns,
 }: {
   isExpanded: boolean
+  isSelected: boolean
   log: AuditLog
+  onSelect: (log: AuditLog, selected: boolean) => void
   onToggle: () => void
   visibleColumns: AuditColumnId[]
 }) {
@@ -413,16 +431,39 @@ function AuditRow({
     visibleColumns.includes(column.id),
   )
 
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) {
+      return
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onToggle()
+    }
+  }
+
   return (
     <div className="border-b border-border last:border-b-0">
-      <button
+      <div
+        aria-label={`Toggle audit log ${log.auditLogId}`}
+        aria-selected={isSelected}
         className={cn(
-          'grid w-full min-w-0 gap-3 bg-surface px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--audit-grid-template)] xl:items-center',
+          'grid w-full min-w-0 cursor-pointer gap-3 bg-surface px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--audit-grid-template)] xl:items-center',
+          isSelected && 'bg-primary/5 hover:bg-primary/10',
           isExpanded && 'bg-surface-muted/45',
         )}
-        type="button"
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
+        onKeyDown={handleKeyDown}
       >
+        <div className="flex min-w-0 items-start xl:items-center">
+          <ListSelectionCheckbox
+            checked={isSelected}
+            label={`Select audit log ${log.auditLogId}`}
+            onChange={(selected) => onSelect(log, selected)}
+          />
+        </div>
         {visibleColumnDefinitions.map((column) => (
           <div className="min-w-0" key={column.id}>
             <p className="mb-1 text-[0.68rem] font-semibold uppercase tracking-normal text-muted xl:hidden">
@@ -431,7 +472,7 @@ function AuditRow({
             {column.render(log)}
           </div>
         ))}
-      </button>
+      </div>
       {isExpanded ? (
         <div className="bg-surface-muted/35 px-3 pb-3">
           <div className="grid gap-3 rounded-[0.875rem] border border-border bg-surface p-3 xl:grid-cols-2">
@@ -605,6 +646,7 @@ export function AuditLogsPage() {
     () => logs.filter((log) => logMatchesSearch(log, search)),
     [logs, search],
   )
+  const auditSelection = useListSelection(visibleLogs, (log) => log.auditLogId)
   const visibleModules = useMemo(() => {
     const counts = new Map<string, number>()
 
@@ -1104,6 +1146,14 @@ export function AuditLogsPage() {
                     style={auditGridStyle}
                   >
                     <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--audit-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                      <div className="flex min-w-0 items-center">
+                        <ListSelectionCheckbox
+                          checked={auditSelection.allVisibleSelected}
+                          indeterminate={auditSelection.someVisibleSelected}
+                          label="Select visible audit logs"
+                          onChange={auditSelection.setVisibleSelected}
+                        />
+                      </div>
                       {auditColumns
                         .filter((column) => visibleColumns.includes(column.id))
                         .map((column) => (
@@ -1142,14 +1192,28 @@ export function AuditLogsPage() {
                           </div>
                         ))}
                     </div>
+                    <ListSelectionToolbar
+                      allVisibleSelected={auditSelection.allVisibleSelected}
+                      selectedCount={auditSelection.selectedCount}
+                      visibleCount={auditSelection.visibleCount}
+                      onClear={auditSelection.clearSelection}
+                      onSelectVisible={() => auditSelection.setVisibleSelected(true)}
+                    />
 
                     <div>
                       {visibleLogs.map((log) => (
                         <AuditRow
                           isExpanded={expandedLogId === log.auditLogId}
+                          isSelected={auditSelection.isSelected(log.auditLogId)}
                           key={log.auditLogId}
                           log={log}
                           visibleColumns={visibleColumns}
+                          onSelect={(selectedLog, selected) =>
+                            auditSelection.setItemSelected(
+                              selectedLog.auditLogId,
+                              selected,
+                            )
+                          }
                           onToggle={() =>
                             setExpandedLogId((current) =>
                               current === log.auditLogId ? null : log.auditLogId,

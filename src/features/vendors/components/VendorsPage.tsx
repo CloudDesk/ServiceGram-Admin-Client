@@ -21,11 +21,17 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import {
+  LIST_SELECTION_COLUMN_WIDTH,
+  ListSelectionCheckbox,
+  ListSelectionToolbar,
+} from '../../../components/ui/ListSelection'
 import { LookupSelect } from '../../../components/ui/LookupSelect'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { useListSelection } from '../../../hooks/useListSelection'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { searchCategoryLookupOptions } from '../../lookups/adminLookups'
@@ -382,6 +388,7 @@ function getVendorGridTemplate(
     .map((column) => `${getVendorColumnWidth(columnWidths, column.id)}px`)
 
   return [
+    `${LIST_SELECTION_COLUMN_WIDTH}px`,
     ...selectedWidths,
     `${getVendorColumnWidth(columnWidths, VENDOR_ACTION_COLUMN_ID)}px`,
   ].join(' ')
@@ -392,7 +399,7 @@ function getVendorGridMinWidth(
   columnWidths: VendorColumnWidths,
 ) {
   const visibleColumnCount = visibleColumns.length
-  const gridColumnCount = visibleColumnCount + 1
+  const gridColumnCount = visibleColumnCount + 2
   const gridGapWidth = Math.max(gridColumnCount - 1, 0) * VENDOR_GRID_COLUMN_GAP
   const visibleWidth = vendorDataColumns
     .filter((column) => visibleColumns.includes(column.id))
@@ -403,6 +410,7 @@ function getVendorGridMinWidth(
 
   return `${
     visibleWidth +
+    LIST_SELECTION_COLUMN_WIDTH +
     getVendorColumnWidth(columnWidths, VENDOR_ACTION_COLUMN_ID) +
     gridGapWidth +
     VENDOR_GRID_INLINE_PADDING
@@ -528,14 +536,18 @@ function VendorPagination({
 }
 
 function VendorRow({
+  isSelected,
   isSubmitting,
   onOpenAction,
+  onSelect,
   onViewDetails,
   vendor,
   visibleColumns,
 }: {
+  isSelected: boolean
   isSubmitting: boolean
   onOpenAction: (vendor: VendorTableRow, kind: VendorListActionKind) => void
+  onSelect: (vendor: VendorTableRow, selected: boolean) => void
   onViewDetails: (vendor: VendorTableRow) => void
   vendor: VendorTableRow
   visibleColumns: VendorColumnId[]
@@ -560,7 +572,11 @@ function VendorRow({
   return (
     <article
       aria-label={`Open details for ${vendor.shopName}`}
-      className="grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--vendor-grid-template)] xl:items-center"
+      aria-selected={isSelected}
+      className={cn(
+        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--vendor-grid-template)] xl:items-center',
+        isSelected && 'bg-primary/5 hover:bg-primary/10',
+      )}
       role="button"
       tabIndex={0}
       onClick={() => onViewDetails(vendor)}
@@ -573,6 +589,13 @@ function VendorRow({
         }
       }}
     >
+      <div className="flex min-w-0 items-start xl:items-center">
+        <ListSelectionCheckbox
+          checked={isSelected}
+          label={`Select ${vendor.shopName}`}
+          onChange={(selected) => onSelect(vendor, selected)}
+        />
+      </div>
       {showColumn('vendor') ? (
         <div className="flex min-w-0 items-start gap-3">
           <div
@@ -1055,6 +1078,7 @@ export function VendorsPage() {
   const vendors = vendorQuery.data?.data ?? []
   const tableVendors: VendorTableRow[] = vendors
   const pagination = vendorQuery.data?.pagination
+  const vendorSelection = useListSelection(tableVendors, (vendor) => vendor.vendorId)
   const isInitialLoading = vendorQuery.isLoading && !vendorQuery.data
   const isRefreshing = vendorQuery.isFetching && Boolean(vendorQuery.data)
   const refreshStatusLabel = isRefreshing
@@ -1570,6 +1594,14 @@ export function VendorsPage() {
                     style={vendorGridStyle}
                   >
                     <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--vendor-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                      <div className="flex min-w-0 items-center">
+                        <ListSelectionCheckbox
+                          checked={vendorSelection.allVisibleSelected}
+                          indeterminate={vendorSelection.someVisibleSelected}
+                          label="Select visible vendors"
+                          onChange={vendorSelection.setVisibleSelected}
+                        />
+                      </div>
                       {vendorDataColumns
                         .filter((column) => visibleColumns.includes(column.id))
                         .map((column) => (
@@ -1638,15 +1670,29 @@ export function VendorsPage() {
                         </button>
                       </div>
                     </div>
+                    <ListSelectionToolbar
+                      allVisibleSelected={vendorSelection.allVisibleSelected}
+                      selectedCount={vendorSelection.selectedCount}
+                      visibleCount={vendorSelection.visibleCount}
+                      onClear={vendorSelection.clearSelection}
+                      onSelectVisible={() => vendorSelection.setVisibleSelected(true)}
+                    />
 
                     <div>
                       {tableVendors.map((vendor) => (
                         <VendorRow
+                          isSelected={vendorSelection.isSelected(vendor.vendorId)}
                           isSubmitting={actionMutation.isPending}
                           key={vendor.vendorId}
                           vendor={vendor}
                           visibleColumns={visibleColumns}
                           onOpenAction={openAction}
+                          onSelect={(selectedVendor, selected) =>
+                            vendorSelection.setItemSelected(
+                              selectedVendor.vendorId,
+                              selected,
+                            )
+                          }
                           onViewDetails={viewDetails}
                         />
                       ))}

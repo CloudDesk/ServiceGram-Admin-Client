@@ -15,6 +15,18 @@ interface AuthState {
   can: (permission: string) => boolean
 }
 
+function normalizeRoleCode(roleCode: string) {
+  return roleCode.trim().replace(/[-\s]+/g, '_').toUpperCase()
+}
+
+function isSuperAdmin(session: AuthSession | null) {
+  return Boolean(
+    session?.admin.roleCodes.some(
+      (roleCode) => normalizeRoleCode(roleCode) === 'SUPER_ADMIN',
+    ),
+  )
+}
+
 function persistSession(session: AuthSession | null) {
   if (!session) {
     window.localStorage.removeItem(storageKeys.authSession)
@@ -52,9 +64,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     })
   },
   can: (permission) => {
-    const isSuperAdmin = get().session?.admin.roleCodes.includes('SUPER_ADMIN') ?? false
-
-    if (isSuperAdmin) {
+    if (isSuperAdmin(get().session)) {
       return true
     }
 

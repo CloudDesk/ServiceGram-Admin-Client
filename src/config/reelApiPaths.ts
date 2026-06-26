@@ -7,3 +7,4 @@ export const REEL_REQUEST_EDIT_PATH = (reelId: string) =>
   `/admin/reels/${reelId}/request-edit`
 export const REEL_PAUSE_PATH = (reelId: string) => `/admin/reels/${reelId}/pause`
 export const REEL_REMOVE_PATH = (reelId: string) => `/admin/reels/${reelId}/remove`
+export const REEL_DELETE_PATH = (reelId: string) => `/admin/reels/${reelId}`

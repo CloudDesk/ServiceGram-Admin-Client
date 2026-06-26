@@ -15,11 +15,17 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import {
+  LIST_SELECTION_COLUMN_WIDTH,
+  ListSelectionCheckbox,
+  ListSelectionToolbar,
+} from '../../../components/ui/ListSelection'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { TableSkeleton } from '../../../components/ui/Table'
 import { routePaths } from '../../../config/routes'
+import { useListSelection } from '../../../hooks/useListSelection'
 import { useAuthStore } from '../../../store/authStore'
 import type { LookupOption } from '../../../types/lookup.types'
 import type { StatusTone } from '../../../types/status.types'
@@ -144,8 +150,12 @@ function getContentGridTemplate(
   visibleColumns: ContentColumnId[],
   columnWidths: ContentColumnWidths,
 ) {
-  return visibleColumns
-    .map((columnId) => `${getContentColumnWidth(columnWidths, columnId)}px`)
+  return [
+    `${LIST_SELECTION_COLUMN_WIDTH}px`,
+    ...visibleColumns.map(
+      (columnId) => `${getContentColumnWidth(columnWidths, columnId)}px`,
+    ),
+  ]
     .join(` ${CONTENT_GRID_COLUMN_GAP}px `)
 }
 
@@ -160,7 +170,8 @@ function getContentGridMinWidth(
 
   return (
     columnsWidth +
-    Math.max(visibleColumns.length - 1, 0) * CONTENT_GRID_COLUMN_GAP +
+    LIST_SELECTION_COLUMN_WIDTH +
+    Math.max(visibleColumns.length, 0) * CONTENT_GRID_COLUMN_GAP +
     CONTENT_GRID_INLINE_PADDING
   )
 }
@@ -493,6 +504,7 @@ export function ContentPage() {
 
   const pages = contentQuery.data?.data ?? EMPTY_CONTENT_PAGES
   const pagination = contentQuery.data?.pagination
+  const contentSelection = useListSelection(pages, (pageRecord) => pageRecord.pageId)
   const isLoading = contentQuery.isLoading
   const isRefreshing = contentQuery.isFetching
   const metrics = buildContentMetrics(pages, pagination?.totalItems ?? pages.length)
@@ -838,7 +850,7 @@ export function ContentPage() {
             </div>
           ) : isLoading ? (
             <div className="p-4">
-              <TableSkeleton columnCount={visibleColumns.length} hasFooter rowCount={8} />
+              <TableSkeleton columnCount={visibleColumns.length + 1} hasFooter rowCount={8} />
             </div>
           ) : pages.length === 0 ? (
             <div className="p-4">
@@ -849,6 +861,14 @@ export function ContentPage() {
               <div className="overflow-x-auto">
                 <div className="min-w-[var(--content-grid-min-width)]" style={gridStyle}>
                   <div className="grid grid-cols-[var(--content-grid-template)] gap-x-3 border-b border-border bg-surface-muted/60 px-3 py-3 text-xs font-semibold uppercase tracking-normal text-muted">
+                    <div className="flex min-w-0 items-center">
+                      <ListSelectionCheckbox
+                        checked={contentSelection.allVisibleSelected}
+                        indeterminate={contentSelection.someVisibleSelected}
+                        label="Select visible content pages"
+                        onChange={contentSelection.setVisibleSelected}
+                      />
+                    </div>
                     {visibleColumns.map((columnId) => {
                       const column = contentDataColumns.find((item) => item.id === columnId)
 
@@ -868,22 +888,48 @@ export function ContentPage() {
                       )
                     })}
                   </div>
+                  <ListSelectionToolbar
+                    allVisibleSelected={contentSelection.allVisibleSelected}
+                    selectedCount={contentSelection.selectedCount}
+                    visibleCount={contentSelection.visibleCount}
+                    onClear={contentSelection.clearSelection}
+                    onSelectVisible={() => contentSelection.setVisibleSelected(true)}
+                  />
 
                   <div className="divide-y divide-border">
                     {pages.map((contentPage) => (
                       <div
-                        className="grid min-h-[5.5rem] cursor-pointer grid-cols-[var(--content-grid-template)] gap-x-3 px-3 py-3 text-left transition hover:bg-surface-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-selected={contentSelection.isSelected(contentPage.pageId)}
+                        className={cn(
+                          'grid min-h-[5.5rem] cursor-pointer grid-cols-[var(--content-grid-template)] gap-x-3 px-3 py-3 text-left transition hover:bg-surface-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                          contentSelection.isSelected(contentPage.pageId) &&
+                            'bg-primary/5 hover:bg-primary/10',
+                        )}
                         key={contentPage.pageId}
                         role="button"
                         tabIndex={0}
                         onClick={() => navigate(`${routePaths.content}/${contentPage.pageId}`)}
                         onKeyDown={(keyboardEvent) => {
+                          if (keyboardEvent.target !== keyboardEvent.currentTarget) return
+
                           if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
                             keyboardEvent.preventDefault()
                             navigate(`${routePaths.content}/${contentPage.pageId}`)
                           }
                         }}
                       >
+                        <div className="flex min-w-0 items-start self-center">
+                          <ListSelectionCheckbox
+                            checked={contentSelection.isSelected(contentPage.pageId)}
+                            label={`Select ${contentPage.title}`}
+                            onChange={(selected) =>
+                              contentSelection.setItemSelected(
+                                contentPage.pageId,
+                                selected,
+                              )
+                            }
+                          />
+                        </div>
                         {visibleColumns.map((columnId) => (
                           <div
                             className="min-w-0 self-center text-sm"

@@ -21,12 +21,18 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import {
+  LIST_SELECTION_COLUMN_WIDTH,
+  ListSelectionCheckbox,
+  ListSelectionToolbar,
+} from '../../../components/ui/ListSelection'
 import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { useListSelection } from '../../../hooks/useListSelection'
 import { useAuthStore } from '../../../store/authStore'
 import type { LookupOption } from '../../../types/lookup.types'
 import { cn } from '../../../utils/cn'
@@ -308,6 +314,7 @@ function getRefundGridTemplate(
   columnWidths: RefundColumnWidths,
 ) {
   return [
+    `${LIST_SELECTION_COLUMN_WIDTH}px`,
     ...visibleColumns.map(
       (columnId) => `${getRefundColumnWidth(columnWidths, columnId)}px`,
     ),
@@ -324,10 +331,16 @@ function getRefundGridMinWidth(
     0,
   )
   const actionWidth = getRefundColumnWidth(columnWidths, REFUND_ACTION_COLUMN_ID)
-  const columnCount = visibleColumns.length + 1
+  const columnCount = visibleColumns.length + 2
   const gapWidth = Math.max(0, columnCount - 1) * REFUND_GRID_COLUMN_GAP
 
-  return `${visibleWidth + actionWidth + gapWidth + REFUND_GRID_INLINE_PADDING}px`
+  return `${
+    visibleWidth +
+    LIST_SELECTION_COLUMN_WIDTH +
+    actionWidth +
+    gapWidth +
+    REFUND_GRID_INLINE_PADDING
+  }px`
 }
 
 function loadRefundColumnWidths(): RefundColumnWidths {
@@ -536,6 +549,7 @@ export function RefundsPage() {
 
   const refunds = refundsQuery.data?.data ?? []
   const pagination = refundsQuery.data?.pagination
+  const refundSelection = useListSelection(refunds, (refund) => refund.refundId)
   const isInitialLoading = refundsQuery.isLoading && !refundsQuery.data
   const isRefreshing = refundsQuery.isFetching && Boolean(refundsQuery.data)
   const refreshStatusLabel = isRefreshing
@@ -1253,6 +1267,14 @@ export function RefundsPage() {
                     style={refundGridStyle}
                   >
                     <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--refund-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                      <div className="flex min-w-0 items-center">
+                        <ListSelectionCheckbox
+                          checked={refundSelection.allVisibleSelected}
+                          indeterminate={refundSelection.someVisibleSelected}
+                          label="Select visible refunds"
+                          onChange={refundSelection.setVisibleSelected}
+                        />
+                      </div>
                       {refundDataColumns
                         .filter((column) => visibleColumns.includes(column.id))
                         .map((column) => (
@@ -1289,23 +1311,57 @@ export function RefundsPage() {
                         />
                       </div>
                     </div>
+                    <ListSelectionToolbar
+                      allVisibleSelected={refundSelection.allVisibleSelected}
+                      selectedCount={refundSelection.selectedCount}
+                      visibleCount={refundSelection.visibleCount}
+                      onClear={refundSelection.clearSelection}
+                      onSelectVisible={() => refundSelection.setVisibleSelected(true)}
+                    />
 
                     <div className="divide-y divide-border">
                       {refunds.map((refund) => (
-                        <button
-                          className="grid w-full gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--refund-grid-template)]"
+                        <div
+                          aria-label={`Open refund ${refund.refundId}`}
+                          aria-selected={refundSelection.isSelected(refund.refundId)}
+                          className={cn(
+                            'grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--refund-grid-template)]',
+                            refundSelection.isSelected(refund.refundId) &&
+                              'bg-primary/5 hover:bg-primary/10',
+                          )}
                           key={refund.refundId}
+                          role="button"
                           style={refundGridStyle}
-                          type="button"
+                          tabIndex={0}
                           onClick={() => viewDetails(refund)}
+                          onKeyDown={(event) => {
+                            if (event.target !== event.currentTarget) return
+
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              viewDetails(refund)
+                            }
+                          }}
                         >
+                          <div className="flex min-w-0 items-start xl:items-center">
+                            <ListSelectionCheckbox
+                              checked={refundSelection.isSelected(refund.refundId)}
+                              label={`Select refund ${refund.refundId}`}
+                              onChange={(selected) =>
+                                refundSelection.setItemSelected(
+                                  refund.refundId,
+                                  selected,
+                                )
+                              }
+                            />
+                          </div>
                           <div className="grid gap-3 sm:grid-cols-2 xl:contents">
                             {renderRefundCells(refund)}
                           </div>
                           <div className="flex min-w-0 items-center justify-start xl:justify-end">
                             {renderRowActions(refund)}
                           </div>
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </div>

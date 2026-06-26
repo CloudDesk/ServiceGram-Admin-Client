@@ -23,9 +23,15 @@ import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import {
+  LIST_SELECTION_COLUMN_WIDTH,
+  ListSelectionCheckbox,
+  ListSelectionToolbar,
+} from '../../../components/ui/ListSelection'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { useListSelection } from '../../../hooks/useListSelection'
 import { useAuthStore } from '../../../store/authStore'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -215,22 +221,29 @@ function getRoleGridTemplate(
   visibleColumns: RoleColumnId[],
   columnWidths: RoleColumnWidths,
 ) {
-  return roleColumns
+  const selectedWidths = roleColumns
     .filter((column) => visibleColumns.includes(column.id))
     .map((column) => `${getRoleColumnWidth(columnWidths, column.id)}px`)
-    .join(' ')
+
+  return [`${LIST_SELECTION_COLUMN_WIDTH}px`, ...selectedWidths].join(' ')
 }
 
 function getRoleGridMinWidth(
   visibleColumns: RoleColumnId[],
   columnWidths: RoleColumnWidths,
 ) {
-  const gridGapWidth = Math.max(visibleColumns.length - 1, 0) * ROLE_GRID_COLUMN_GAP
+  const gridColumnCount = visibleColumns.length + 1
+  const gridGapWidth = Math.max(gridColumnCount - 1, 0) * ROLE_GRID_COLUMN_GAP
   const visibleWidth = roleColumns
     .filter((column) => visibleColumns.includes(column.id))
     .reduce((total, column) => total + getRoleColumnWidth(columnWidths, column.id), 0)
 
-  return `${visibleWidth + gridGapWidth + ROLE_GRID_INLINE_PADDING}px`
+  return `${
+    visibleWidth +
+    LIST_SELECTION_COLUMN_WIDTH +
+    gridGapWidth +
+    ROLE_GRID_INLINE_PADDING
+  }px`
 }
 
 function MetricCard({
@@ -269,11 +282,15 @@ function RoleRowsSkeleton() {
 }
 
 function RoleRow({
+  isSelected,
   onOpenDetail,
+  onSelect,
   role,
   visibleColumns,
 }: {
+  isSelected: boolean
   onOpenDetail: (role: RoleSummary) => void
+  onSelect: (role: RoleSummary, selected: boolean) => void
   role: RoleSummary
   visibleColumns: RoleColumnId[]
 }) {
@@ -282,6 +299,10 @@ function RoleRow({
   )
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) {
+      return
+    }
+
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       onOpenDetail(role)
@@ -290,12 +311,23 @@ function RoleRow({
 
   return (
     <div
-      className="grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-3 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--role-grid-template)] xl:items-center"
+      aria-selected={isSelected}
+      className={cn(
+        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-3 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--role-grid-template)] xl:items-center',
+        isSelected && 'bg-primary/5 hover:bg-primary/10',
+      )}
       role="button"
       tabIndex={0}
       onClick={() => onOpenDetail(role)}
       onKeyDown={handleKeyDown}
     >
+      <div className="flex min-w-0 items-start xl:items-center">
+        <ListSelectionCheckbox
+          checked={isSelected}
+          label={`Select ${role.roleName}`}
+          onChange={(selected) => onSelect(role, selected)}
+        />
+      </div>
       {visibleColumnDefinitions.map((column) => (
         <div className="min-w-0" key={column.id}>
           <p className="mb-1 text-[0.68rem] font-semibold uppercase tracking-normal text-muted xl:hidden">
@@ -377,6 +409,7 @@ export function RolesPage() {
       ),
     [roles, search, statusFilter, typeFilter],
   )
+  const roleSelection = useListSelection(filteredRoles, (role) => role.roleId)
   const canCreateRoles = can('roles:create')
   const isInitialLoading = rolesQuery.isLoading && roles.length === 0
   const isRefreshing = rolesQuery.isFetching && !isInitialLoading
@@ -742,6 +775,14 @@ export function RolesPage() {
                   style={roleGridStyle}
                 >
                   <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--role-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                    <div className="flex min-w-0 items-center">
+                      <ListSelectionCheckbox
+                        checked={roleSelection.allVisibleSelected}
+                        indeterminate={roleSelection.someVisibleSelected}
+                        label="Select visible roles"
+                        onChange={roleSelection.setVisibleSelected}
+                      />
+                    </div>
                     {roleColumns
                       .filter((column) => visibleColumns.includes(column.id))
                       .map((column) => (
@@ -780,14 +821,25 @@ export function RolesPage() {
                         </div>
                       ))}
                   </div>
+                  <ListSelectionToolbar
+                    allVisibleSelected={roleSelection.allVisibleSelected}
+                    selectedCount={roleSelection.selectedCount}
+                    visibleCount={roleSelection.visibleCount}
+                    onClear={roleSelection.clearSelection}
+                    onSelectVisible={() => roleSelection.setVisibleSelected(true)}
+                  />
 
                   <div>
                     {filteredRoles.map((role) => (
                       <RoleRow
+                        isSelected={roleSelection.isSelected(role.roleId)}
                         key={role.roleId}
                         role={role}
                         visibleColumns={visibleColumns}
                         onOpenDetail={openDetail}
+                        onSelect={(selectedRole, selected) =>
+                          roleSelection.setItemSelected(selectedRole.roleId, selected)
+                        }
                       />
                     ))}
                   </div>

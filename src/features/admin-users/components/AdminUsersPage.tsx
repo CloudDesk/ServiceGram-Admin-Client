@@ -23,9 +23,15 @@ import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import {
+  LIST_SELECTION_COLUMN_WIDTH,
+  ListSelectionCheckbox,
+  ListSelectionToolbar,
+} from '../../../components/ui/ListSelection'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { useListSelection } from '../../../hooks/useListSelection'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { rbacService } from '../../rbac/services/rbac.service'
@@ -241,17 +247,19 @@ function getAdminUserGridTemplate(
   visibleColumns: AdminUserColumnId[],
   columnWidths: AdminUserColumnWidths,
 ) {
-  return adminUserColumns
+  const selectedWidths = adminUserColumns
     .filter((column) => visibleColumns.includes(column.id))
     .map((column) => `${getAdminUserColumnWidth(columnWidths, column.id)}px`)
-    .join(' ')
+
+  return [`${LIST_SELECTION_COLUMN_WIDTH}px`, ...selectedWidths].join(' ')
 }
 
 function getAdminUserGridMinWidth(
   visibleColumns: AdminUserColumnId[],
   columnWidths: AdminUserColumnWidths,
 ) {
-  const gridGapWidth = Math.max(visibleColumns.length - 1, 0) * ADMIN_USER_GRID_COLUMN_GAP
+  const gridColumnCount = visibleColumns.length + 1
+  const gridGapWidth = Math.max(gridColumnCount - 1, 0) * ADMIN_USER_GRID_COLUMN_GAP
   const visibleWidth = adminUserColumns
     .filter((column) => visibleColumns.includes(column.id))
     .reduce(
@@ -259,7 +267,12 @@ function getAdminUserGridMinWidth(
       0,
     )
 
-  return `${visibleWidth + gridGapWidth + ADMIN_USER_GRID_INLINE_PADDING}px`
+  return `${
+    visibleWidth +
+    LIST_SELECTION_COLUMN_WIDTH +
+    gridGapWidth +
+    ADMIN_USER_GRID_INLINE_PADDING
+  }px`
 }
 
 function MetricCard({
@@ -363,11 +376,15 @@ function AdminUsersPaginationControls({
 }
 
 function AdminUserRow({
+  isSelected,
   onOpenDetail,
+  onSelect,
   user,
   visibleColumns,
 }: {
+  isSelected: boolean
   onOpenDetail: (user: AdminUser) => void
+  onSelect: (user: AdminUser, selected: boolean) => void
   user: AdminUser
   visibleColumns: AdminUserColumnId[]
 }) {
@@ -376,6 +393,10 @@ function AdminUserRow({
   )
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) {
+      return
+    }
+
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       onOpenDetail(user)
@@ -384,12 +405,23 @@ function AdminUserRow({
 
   return (
     <div
-      className="grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-3 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--admin-user-grid-template)] xl:items-center"
+      aria-selected={isSelected}
+      className={cn(
+        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-3 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--admin-user-grid-template)] xl:items-center',
+        isSelected && 'bg-primary/5 hover:bg-primary/10',
+      )}
       role="button"
       tabIndex={0}
       onClick={() => onOpenDetail(user)}
       onKeyDown={handleKeyDown}
     >
+      <div className="flex min-w-0 items-start xl:items-center">
+        <ListSelectionCheckbox
+          checked={isSelected}
+          label={`Select ${user.fullName}`}
+          onChange={(selected) => onSelect(user, selected)}
+        />
+      </div>
       {visibleColumnDefinitions.map((column) => (
         <div className="min-w-0" key={column.id}>
           <p className="mb-1 text-[0.68rem] font-semibold uppercase tracking-normal text-muted xl:hidden">
@@ -480,6 +512,7 @@ export function AdminUsersPage() {
 
   const users = adminUsersQuery.data?.data ?? emptyUsers
   const pagination = adminUsersQuery.data?.pagination
+  const userSelection = useListSelection(users, (user) => user.adminId)
   const activeLoadedCount = users.filter((user) => user.status === 'ACTIVE').length
   const disabledLoadedCount = users.filter((user) => user.status === 'DISABLED').length
   const stalePermissionLoadedCount = users.filter(
@@ -859,6 +892,14 @@ export function AdminUsersPage() {
                     style={adminUserGridStyle}
                   >
                     <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--admin-user-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                      <div className="flex min-w-0 items-center">
+                        <ListSelectionCheckbox
+                          checked={userSelection.allVisibleSelected}
+                          indeterminate={userSelection.someVisibleSelected}
+                          label="Select visible admin users"
+                          onChange={userSelection.setVisibleSelected}
+                        />
+                      </div>
                       {adminUserColumns
                         .filter((column) => visibleColumns.includes(column.id))
                         .map((column) => (
@@ -897,14 +938,25 @@ export function AdminUsersPage() {
                           </div>
                         ))}
                     </div>
+                    <ListSelectionToolbar
+                      allVisibleSelected={userSelection.allVisibleSelected}
+                      selectedCount={userSelection.selectedCount}
+                      visibleCount={userSelection.visibleCount}
+                      onClear={userSelection.clearSelection}
+                      onSelectVisible={() => userSelection.setVisibleSelected(true)}
+                    />
 
                     <div>
                       {users.map((user) => (
                         <AdminUserRow
+                          isSelected={userSelection.isSelected(user.adminId)}
                           key={user.adminId}
                           user={user}
                           visibleColumns={visibleColumns}
                           onOpenDetail={openDetail}
+                          onSelect={(selectedUser, selected) =>
+                            userSelection.setItemSelected(selectedUser.adminId, selected)
+                          }
                         />
                       ))}
                     </div>

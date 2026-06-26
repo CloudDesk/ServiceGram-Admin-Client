@@ -53,6 +53,7 @@ export type PermissionKey =
   | 'payouts:approve'
   | 'reels:read'
   | 'reels:moderate'
+  | 'reels:delete'
   | 'influencers:read'
   | 'influencers:review'
   | 'notifications:read'

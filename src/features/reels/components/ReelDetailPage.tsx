@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
@@ -18,6 +18,7 @@ import { DynamicTable, type DynamicTableColumn } from '../../../components/ui/Ta
 import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
+import { useAuthStore } from '../../../store/authStore'
 import { reelService } from '../services/reel.service'
 import {
   ReelActionModal,
@@ -242,10 +243,12 @@ function ReelHeaderStatus({ reel }: { reel: AdminReel }) {
 }
 
 function ReelHeaderActions({
+  canDeleteReels,
   isSubmitting,
   onSelectAction,
   reel,
 }: {
+  canDeleteReels: boolean
   isSubmitting: boolean
   onSelectAction: (kind: ReelActionKind) => void
   reel: AdminReel
@@ -309,13 +312,37 @@ function ReelHeaderActions({
           Remove
         </Button>
       ) : null}
+      {canDeleteReels && hasAction('SOFT_DELETE') ? (
+        <Button
+          disabled={isSubmitting}
+          size="sm"
+          variant="danger"
+          onClick={() => onSelectAction('SOFT_DELETE')}
+        >
+          <Trash2 className="mr-2 size-4" />
+          Soft Delete
+        </Button>
+      ) : null}
+      {canDeleteReels && hasAction('HARD_DELETE') ? (
+        <Button
+          disabled={isSubmitting}
+          size="sm"
+          variant="danger"
+          onClick={() => onSelectAction('HARD_DELETE')}
+        >
+          <Trash2 className="mr-2 size-4" />
+          Hard Delete
+        </Button>
+      ) : null}
     </div>
   )
 }
 
 export function ReelDetailPage() {
   const { reelId } = useParams()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const canDeleteReels = useAuthStore((state) => state.can('reels:delete'))
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedAction, setSelectedAction] =
     useState<ReelActionSelection | null>(null)
@@ -375,13 +402,31 @@ export function ReelDetailPage() {
         })
       }
 
+      if (action.kind === 'SOFT_DELETE' || action.kind === 'HARD_DELETE') {
+        return reelService.deleteReel(reel.reelId, {
+          hardDelete: action.kind === 'HARD_DELETE',
+          reason: values.reason,
+        })
+      }
+
       return reelService.removeReel(reel.reelId, {
         reason: values.reason,
       })
     },
     onMutate: () => setActionError(null),
-    onSuccess: () => {
+    onSuccess: (_response, variables) => {
       setSelectedAction(null)
+
+      if (
+        variables.action.kind === 'SOFT_DELETE' ||
+        variables.action.kind === 'HARD_DELETE'
+      ) {
+        void queryClient.invalidateQueries({ queryKey: ['reels'] })
+        queryClient.removeQueries({ queryKey: ['reel-detail', reelId] })
+        navigate(routePaths.reels)
+        return
+      }
+
       void refreshReel()
     },
     onError: (error) => {
@@ -461,6 +506,7 @@ export function ReelDetailPage() {
       <DetailPageHeader
         actionNode={
           <ReelHeaderActions
+            canDeleteReels={canDeleteReels}
             isSubmitting={actionMutation.isPending}
             reel={reel}
             onSelectAction={openAction}

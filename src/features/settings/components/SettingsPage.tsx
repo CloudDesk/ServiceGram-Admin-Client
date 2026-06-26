@@ -27,9 +27,15 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import {
+  LIST_SELECTION_COLUMN_WIDTH,
+  ListSelectionCheckbox,
+  ListSelectionToolbar,
+} from '../../../components/ui/ListSelection'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { useListSelection } from '../../../hooks/useListSelection'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { settingsService } from '../services/settings.service'
@@ -503,6 +509,7 @@ function getSettingsGridTemplate(
     .map((column) => `${getSettingsColumnWidth(columnWidths, column.id)}px`)
 
   return [
+    `${LIST_SELECTION_COLUMN_WIDTH}px`,
     ...selectedWidths,
     `${getSettingsColumnWidth(columnWidths, SETTINGS_ACTION_COLUMN_ID)}px`,
   ].join(' ')
@@ -519,11 +526,12 @@ function getSettingsGridMinWidth(
       (total, column) => total + getSettingsColumnWidth(columnWidths, column.id),
       0,
     )
-  const columnCount = visibleColumns.length + 1
+  const columnCount = visibleColumns.length + 2
   const gridGapWidth = Math.max(columnCount - 1, 0) * SETTINGS_GRID_COLUMN_GAP
 
   return `${
     visibleWidth +
+    LIST_SELECTION_COLUMN_WIDTH +
     getSettingsColumnWidth(columnWidths, SETTINGS_ACTION_COLUMN_ID) +
     gridGapWidth +
     SETTINGS_GRID_INLINE_PADDING
@@ -640,16 +648,20 @@ function SettingsPagination({
 }
 
 function SettingsRow({
+  isSelected,
   isSubmitting,
   onOpenAction,
   onOpenDetail,
+  onSelect,
   row,
   type,
   visibleColumns,
 }: {
+  isSelected: boolean
   isSubmitting: boolean
   onOpenAction: (selection: SettingsActionSelection) => void
   onOpenDetail: (row: Row) => void
+  onSelect: (row: Row, selected: boolean) => void
   row: Row
   type: SettingsRecordType
   visibleColumns: SettingsColumnId[]
@@ -659,6 +671,10 @@ function SettingsRow({
   )
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) {
+      return
+    }
+
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       onOpenDetail(row)
@@ -667,12 +683,23 @@ function SettingsRow({
 
   return (
     <div
-      className="grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-3 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--settings-grid-template)] xl:items-center"
+      aria-selected={isSelected}
+      className={cn(
+        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-3 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--settings-grid-template)] xl:items-center',
+        isSelected && 'bg-primary/5 hover:bg-primary/10',
+      )}
       role="button"
       tabIndex={0}
       onClick={() => onOpenDetail(row)}
       onKeyDown={handleKeyDown}
     >
+      <div className="flex min-w-0 items-start xl:items-center">
+        <ListSelectionCheckbox
+          checked={isSelected}
+          label={`Select ${getRowId(type, row)}`}
+          onChange={(selected) => onSelect(row, selected)}
+        />
+      </div>
       {visibleColumnDefinitions.map((column) => (
         <div className="min-w-0" key={column.id}>
           <p className="mb-1 text-[0.68rem] font-semibold uppercase tracking-normal text-muted xl:hidden">
@@ -946,6 +973,7 @@ export function SettingsPage() {
   const rows = (result.data?.data ?? []) as Row[]
   const pagination = result.data?.pagination
   const columns = settingsColumnsByType[type]
+  const settingsSelection = useListSelection(rows, (row) => getRowId(type, row))
   const warningCount = countWarnings(type, rows)
   const latest = latestUpdated(rows)
   const isInitialLoading = result.isLoading && rows.length === 0
@@ -1384,6 +1412,14 @@ export function SettingsPage() {
                     style={settingsGridStyle}
                   >
                     <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--settings-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                      <div className="flex min-w-0 items-center">
+                        <ListSelectionCheckbox
+                          checked={settingsSelection.allVisibleSelected}
+                          indeterminate={settingsSelection.someVisibleSelected}
+                          label="Select visible settings records"
+                          onChange={settingsSelection.setVisibleSelected}
+                        />
+                      </div>
                       {columns
                         .filter((column) => visibleColumns.includes(column.id))
                         .map((column) => (
@@ -1452,10 +1488,18 @@ export function SettingsPage() {
                         </button>
                       </div>
                     </div>
+                    <ListSelectionToolbar
+                      allVisibleSelected={settingsSelection.allVisibleSelected}
+                      selectedCount={settingsSelection.selectedCount}
+                      visibleCount={settingsSelection.visibleCount}
+                      onClear={settingsSelection.clearSelection}
+                      onSelectVisible={() => settingsSelection.setVisibleSelected(true)}
+                    />
 
                     <div>
                       {rows.map((row) => (
                         <SettingsRow
+                          isSelected={settingsSelection.isSelected(getRowId(type, row))}
                           isSubmitting={mutation.isPending}
                           key={getRowId(type, row)}
                           row={row}
@@ -1463,6 +1507,12 @@ export function SettingsPage() {
                           visibleColumns={visibleColumns}
                           onOpenAction={setSelectedAction}
                           onOpenDetail={openDetail}
+                          onSelect={(selectedRow, selected) =>
+                            settingsSelection.setItemSelected(
+                              getRowId(type, selectedRow),
+                              selected,
+                            )
+                          }
                         />
                       ))}
                     </div>

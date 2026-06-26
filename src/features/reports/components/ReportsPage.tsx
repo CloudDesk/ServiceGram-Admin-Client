@@ -28,6 +28,11 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import {
+  LIST_SELECTION_COLUMN_WIDTH,
+  ListSelectionCheckbox,
+  ListSelectionToolbar,
+} from '../../../components/ui/ListSelection'
 import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
@@ -38,6 +43,7 @@ import {
 } from '../../../components/ui/Table'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
+import { useListSelection } from '../../../hooks/useListSelection'
 import { mapApiError } from '../../../services/apiErrorMapper'
 import type { LookupOption } from '../../../types/lookup.types'
 import type { StatusTone } from '../../../types/status.types'
@@ -62,6 +68,10 @@ import type {
 } from '../types/report.types'
 
 type ReportsPageMode = 'list' | 'detail'
+interface SelectableReportRow {
+  id: string
+  row: ReportRow
+}
 
 const reportCatalog: Record<
   AdminReportType,
@@ -469,9 +479,10 @@ function getReportGridTemplate(
   visibleColumns: string[],
   columnWidths: ReportColumnWidths,
 ) {
-  return visibleColumns
+  const selectedWidths = visibleColumns
     .map((columnId) => `${getReportColumnWidth(reportType, columnWidths, columnId)}px`)
-    .join(' ')
+
+  return [`${LIST_SELECTION_COLUMN_WIDTH}px`, ...selectedWidths].join(' ')
 }
 
 function getReportGridMinWidth(
@@ -479,13 +490,19 @@ function getReportGridMinWidth(
   visibleColumns: string[],
   columnWidths: ReportColumnWidths,
 ) {
-  const gridGapWidth = Math.max(visibleColumns.length - 1, 0) * REPORT_COLUMN_GAP
+  const gridColumnCount = visibleColumns.length + 1
+  const gridGapWidth = Math.max(gridColumnCount - 1, 0) * REPORT_COLUMN_GAP
   const visibleWidth = visibleColumns.reduce(
     (sum, columnId) => sum + getReportColumnWidth(reportType, columnWidths, columnId),
     0,
   )
 
-  return `${visibleWidth + gridGapWidth + REPORT_INLINE_PADDING}px`
+  return `${
+    visibleWidth +
+    LIST_SELECTION_COLUMN_WIDTH +
+    gridGapWidth +
+    REPORT_INLINE_PADDING
+  }px`
 }
 
 function reportSupportsCustomerFilter(reportType: AdminReportType) {
@@ -747,20 +764,33 @@ function ExportStatusPanel({
 
 function ReportRowsTable({
   columns,
+  isSelected,
+  onSelect,
   rows,
-  reportType,
 }: {
   columns: string[]
-  rows: ReportRow[]
-  reportType: AdminReportType
+  isSelected: (id: string) => boolean
+  onSelect: (id: string, selected: boolean) => void
+  rows: SelectableReportRow[]
 }) {
   return (
     <div>
-      {rows.map((row, index) => (
+      {rows.map(({ id, row }, index) => (
         <article
-          className="grid min-w-0 gap-3 border-b border-border bg-surface px-3 py-2.5 last:border-b-0 xl:grid-cols-[var(--report-grid-template)] xl:items-center"
-          key={rowId(row, index, reportType)}
+          aria-selected={isSelected(id)}
+          className={cn(
+            'grid min-w-0 gap-3 border-b border-border bg-surface px-3 py-2.5 last:border-b-0 xl:grid-cols-[var(--report-grid-template)] xl:items-center',
+            isSelected(id) && 'bg-primary/5',
+          )}
+          key={id}
         >
+          <div className="flex min-w-0 items-start xl:items-center">
+            <ListSelectionCheckbox
+              checked={isSelected(id)}
+              label={`Select report row ${index + 1}`}
+              onChange={(selected) => onSelect(id, selected)}
+            />
+          </div>
           {columns.map((columnId) => (
             <div className="min-w-0 text-sm" key={columnId}>
               <span className="mb-1 block text-xs font-semibold uppercase tracking-normal text-muted xl:hidden">
@@ -918,6 +948,15 @@ export function ReportsPage({
     () => rows.filter((row) => rowMatchesSearch(row, rowSearch)),
     [rows, rowSearch],
   )
+  const selectableRows = useMemo<SelectableReportRow[]>(
+    () =>
+      filteredRows.map((row, index) => ({
+        id: rowId(row, index, reportType),
+        row,
+      })),
+    [filteredRows, reportType],
+  )
+  const reportSelection = useListSelection(selectableRows, (row) => row.id)
   const reportColumns = useMemo(() => getReportColumnKeys(rows), [rows])
   const visibleColumns = useMemo(() => {
     const savedColumns =
@@ -1555,7 +1594,7 @@ export function ReportsPage({
               </div>
             ) : isInitialLoading ? (
               <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <TableSkeleton columnCount={6} rowCount={8} />
+                <TableSkeleton columnCount={7} rowCount={8} />
               </div>
             ) : rows.length === 0 ? (
               <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
@@ -1573,6 +1612,14 @@ export function ReportsPage({
                     style={reportGridStyle}
                   >
                     <div className="sticky top-0 z-10 hidden gap-3 border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid xl:grid-cols-[var(--report-grid-template)]">
+                      <div className="flex min-w-0 items-center">
+                        <ListSelectionCheckbox
+                          checked={reportSelection.allVisibleSelected}
+                          indeterminate={reportSelection.someVisibleSelected}
+                          label="Select visible report rows"
+                          onChange={reportSelection.setVisibleSelected}
+                        />
+                      </div>
                       {visibleColumns.map((columnId) => (
                         <div
                           className="relative flex min-w-0 items-center pr-3"
@@ -1609,11 +1656,19 @@ export function ReportsPage({
                         </div>
                       ))}
                     </div>
+                    <ListSelectionToolbar
+                      allVisibleSelected={reportSelection.allVisibleSelected}
+                      selectedCount={reportSelection.selectedCount}
+                      visibleCount={reportSelection.visibleCount}
+                      onClear={reportSelection.clearSelection}
+                      onSelectVisible={() => reportSelection.setVisibleSelected(true)}
+                    />
 
                     <ReportRowsTable
                       columns={visibleColumns}
-                      reportType={reportType}
-                      rows={filteredRows}
+                      isSelected={reportSelection.isSelected}
+                      rows={selectableRows}
+                      onSelect={reportSelection.setItemSelected}
                     />
                   </div>
                 </div>

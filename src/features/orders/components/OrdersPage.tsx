@@ -23,6 +23,11 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import {
+  LIST_SELECTION_COLUMN_WIDTH,
+  ListSelectionCheckbox,
+  ListSelectionToolbar,
+} from '../../../components/ui/ListSelection'
 import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContainer } from '../../../components/layout/PageContainer'
@@ -30,6 +35,7 @@ import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
+import { useListSelection } from '../../../hooks/useListSelection'
 import type { LookupOption } from '../../../types/lookup.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -466,6 +472,7 @@ function getOrderGridTemplate(
     .map((column) => `${getOrderColumnWidth(columnWidths, column.id)}px`)
 
   return [
+    `${LIST_SELECTION_COLUMN_WIDTH}px`,
     ...selectedWidths,
     `${getOrderColumnWidth(columnWidths, ORDER_ACTION_COLUMN_ID)}px`,
   ].join(' ')
@@ -476,7 +483,7 @@ function getOrderGridMinWidth(
   columnWidths: OrderColumnWidths,
 ) {
   const visibleColumnCount = visibleColumns.length
-  const gridColumnCount = visibleColumnCount + 1
+  const gridColumnCount = visibleColumnCount + 2
   const gridGapWidth = Math.max(gridColumnCount - 1, 0) * ORDER_GRID_COLUMN_GAP
   const visibleWidth = orderDataColumns
     .filter((column) => visibleColumns.includes(column.id))
@@ -487,6 +494,7 @@ function getOrderGridMinWidth(
 
   return `${
     visibleWidth +
+    LIST_SELECTION_COLUMN_WIDTH +
     getOrderColumnWidth(columnWidths, ORDER_ACTION_COLUMN_ID) +
     gridGapWidth +
     ORDER_GRID_INLINE_PADDING
@@ -603,14 +611,18 @@ function OrderPagination({
 }
 
 function OrderRow({
+  isSelected,
   isSubmitting,
   onOpenAction,
+  onSelect,
   onViewDetails,
   order,
   visibleColumns,
 }: {
+  isSelected: boolean
   isSubmitting: boolean
   onOpenAction: (order: AdminOrderSummary, selection: OrderActionSelection) => void
+  onSelect: (order: AdminOrderSummary, selected: boolean) => void
   onViewDetails: (order: AdminOrderSummary) => void
   order: AdminOrderSummary
   visibleColumns: OrderColumnId[]
@@ -634,7 +646,11 @@ function OrderRow({
   return (
     <article
       aria-label={`Open details for ${order.publicOrderId}`}
-      className="grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--order-grid-template)] xl:items-center"
+      aria-selected={isSelected}
+      className={cn(
+        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--order-grid-template)] xl:items-center',
+        isSelected && 'bg-primary/5 hover:bg-primary/10',
+      )}
       role="button"
       tabIndex={0}
       onClick={() => onViewDetails(order)}
@@ -647,6 +663,13 @@ function OrderRow({
         }
       }}
     >
+      <div className="flex min-w-0 items-start xl:items-center">
+        <ListSelectionCheckbox
+          checked={isSelected}
+          label={`Select ${order.publicOrderId}`}
+          onChange={(selected) => onSelect(order, selected)}
+        />
+      </div>
       {showColumn('order') ? (
         <div className="flex min-w-0 items-start gap-3">
           <div
@@ -1182,6 +1205,7 @@ export function OrdersPage() {
 
   const orders = ordersQuery.data?.data ?? []
   const pagination = ordersQuery.data?.pagination
+  const orderSelection = useListSelection(orders, (order) => order.orderId)
   const isInitialLoading = ordersQuery.isLoading && !ordersQuery.data
   const isRefreshing = ordersQuery.isFetching && Boolean(ordersQuery.data)
   const refreshStatusLabel = isRefreshing
@@ -1771,6 +1795,14 @@ export function OrdersPage() {
                     style={orderGridStyle}
                   >
                     <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--order-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                      <div className="flex min-w-0 items-center">
+                        <ListSelectionCheckbox
+                          checked={orderSelection.allVisibleSelected}
+                          indeterminate={orderSelection.someVisibleSelected}
+                          label="Select visible orders"
+                          onChange={orderSelection.setVisibleSelected}
+                        />
+                      </div>
                       {orderDataColumns
                         .filter((column) => visibleColumns.includes(column.id))
                         .map((column) => (
@@ -1839,15 +1871,29 @@ export function OrdersPage() {
                         </button>
                       </div>
                     </div>
+                    <ListSelectionToolbar
+                      allVisibleSelected={orderSelection.allVisibleSelected}
+                      selectedCount={orderSelection.selectedCount}
+                      visibleCount={orderSelection.visibleCount}
+                      onClear={orderSelection.clearSelection}
+                      onSelectVisible={() => orderSelection.setVisibleSelected(true)}
+                    />
 
                     <div>
                       {orders.map((order) => (
                         <OrderRow
+                          isSelected={orderSelection.isSelected(order.orderId)}
                           isSubmitting={actionMutation.isPending}
                           key={order.orderId}
                           order={order}
                           visibleColumns={visibleColumns}
                           onOpenAction={openAction}
+                          onSelect={(selectedOrder, selected) =>
+                            orderSelection.setItemSelected(
+                              selectedOrder.orderId,
+                              selected,
+                            )
+                          }
                           onViewDetails={viewDetails}
                         />
                       ))}

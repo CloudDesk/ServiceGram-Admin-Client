@@ -3,7 +3,14 @@ import { X } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
 import type { AdminReel } from '../types/reel.types'
 
-export type ReelActionKind = 'APPROVE' | 'REJECT' | 'REQUEST_EDIT' | 'PAUSE' | 'REMOVE'
+export type ReelActionKind =
+  | 'APPROVE'
+  | 'REJECT'
+  | 'REQUEST_EDIT'
+  | 'PAUSE'
+  | 'REMOVE'
+  | 'SOFT_DELETE'
+  | 'HARD_DELETE'
 
 export interface ReelActionSelection {
   kind: ReelActionKind
@@ -29,7 +36,18 @@ function actionTitle(kind: ReelActionKind) {
     REQUEST_EDIT: 'Request reel edit',
     PAUSE: 'Pause reel',
     REMOVE: 'Remove reel',
+    SOFT_DELETE: 'Soft delete reel',
+    HARD_DELETE: 'Hard delete reel',
   }[kind]
+}
+
+function isDangerAction(kind: ReelActionKind) {
+  return (
+    kind === 'REJECT' ||
+    kind === 'REMOVE' ||
+    kind === 'SOFT_DELETE' ||
+    kind === 'HARD_DELETE'
+  )
 }
 
 export function ReelActionModal({
@@ -98,7 +116,7 @@ export function ReelActionModal({
             <Button disabled={isSubmitting} size="sm" type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button isLoading={isSubmitting} size="sm" type="submit" variant={action.kind === 'REJECT' || action.kind === 'REMOVE' ? 'danger' : 'primary'}>
+            <Button isLoading={isSubmitting} size="sm" type="submit" variant={isDangerAction(action.kind) ? 'danger' : 'primary'}>
               Submit
             </Button>
           </div>

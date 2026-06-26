@@ -1,7 +1,13 @@
 import type { ApiErrorDetails } from '../../../types/api.types'
 
 export type ReelContentType = 'BEFORE_AFTER' | 'SERVICE_DEMO' | 'NEW_OFFER' | 'INTRODUCTION'
-export type ReelUploadStatus = 'UPLOAD_REQUESTED' | 'UPLOADING' | 'PROCESSING' | 'READY' | 'FAILED'
+export type ReelUploadStatus =
+  | 'UPLOAD_REQUESTED'
+  | 'UPLOADING'
+  | 'PROCESSING'
+  | 'READY'
+  | 'FAILED'
+  | 'DELETED'
 export type ReelModerationStatus =
   | 'DRAFT'
   | 'PENDING_REVIEW'
@@ -33,6 +39,10 @@ export interface ReelOptionalReasonPayload {
 
 export interface ReelRequiredReasonPayload {
   reason: string
+}
+
+export interface ReelDeletePayload extends ReelRequiredReasonPayload {
+  hardDelete: boolean
 }
 
 export interface AdminReelZone {
@@ -109,6 +119,38 @@ export interface AdminReel {
   updatedAt: string
 }
 
+export interface AdminReelDeleteResult {
+  reelId: string
+  publicReelId: string
+  deleted: boolean
+  deleteMode: 'SOFT' | 'HARD'
+  hardDeleted: boolean
+  deletedAt: string | null
+  media: {
+    uploadStatus: ReelUploadStatus
+    cloudflareVideoUid?: string | null
+  }
+  moderation: {
+    status: ReelModerationStatus
+    rejectionReason: string | null
+  }
+  publish: AdminReelPublish
+  storage?: {
+    cloudflareVideoUid?: string | null
+    deleted: boolean
+    providerStatus: string
+    warnings: string[]
+  }
+  database?: {
+    reelDeleted: boolean
+    mediaAssetsDeleted: number
+    webhookEventsDeleted: number
+  }
+  warnings: string[]
+  availableActions: string[]
+  nextRecommendedAction: string | null
+}
+
 export interface AdminReelsSummary {
   total: number
   live: number
@@ -149,6 +191,7 @@ export interface AdminReelsListResponse extends AdminReelApiResponse<AdminReel[]
 
 export type AdminReelDetailResponse = AdminReelApiResponse<AdminReel>
 export type AdminReelActionResponse = AdminReelApiResponse<AdminReel>
+export type AdminReelDeleteResponse = AdminReelApiResponse<AdminReelDeleteResult>
 
 export interface AdminReelApiErrorDetails extends ApiErrorDetails {
   fieldErrors?: {

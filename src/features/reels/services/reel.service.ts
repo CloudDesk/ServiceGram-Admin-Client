@@ -1,6 +1,7 @@
 import { buildApiUrl } from '../../../config/api'
 import {
   REEL_APPROVE_PATH,
+  REEL_DELETE_PATH,
   REEL_DETAIL_PATH,
   REEL_LIVE_LIST_PATH,
   REEL_PAUSE_PATH,
@@ -13,20 +14,47 @@ import { apiClient } from '../../../services/apiClient'
 import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
   AdminReelActionResponse,
+  AdminReelDeleteResponse,
   AdminReelDetailResponse,
   AdminReelsListResponse,
   AdminReelsQueryParams,
+  ReelDeletePayload,
   ReelOptionalReasonPayload,
   ReelRequiredReasonPayload,
 } from '../types/reel.types'
 
+interface ErrorEnvelope {
+  message?: string
+  error?: string
+  code?: string
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  return (await response.json()) as T
+  const payload = (await response.json()) as T | ErrorEnvelope
+
+  if (!response.ok) {
+    const errorPayload =
+      payload && typeof payload === 'object' ? (payload as ErrorEnvelope) : null
+
+    throw new Error(errorPayload?.message ?? 'Request failed.')
+  }
+
+  return payload as T
 }
 
 function postJson<TPayload>(payload: TPayload) {
   return {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  }
+}
+
+function deleteJson<TPayload>(payload: TPayload) {
+  return {
+    method: 'DELETE',
     headers: {
       'Content-Type': 'application/json',
     },
@@ -122,6 +150,18 @@ async function removeReel(
   return parseJsonResponse<AdminReelActionResponse>(response)
 }
 
+async function deleteReel(
+  reelId: string,
+  payload: ReelDeletePayload,
+): Promise<AdminReelDeleteResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(REEL_DELETE_PATH(reelId)),
+    deleteJson(payload),
+  )
+
+  return parseJsonResponse<AdminReelDeleteResponse>(response)
+}
+
 export const reelService = {
   getPendingReels,
   getLiveReels,
@@ -131,4 +171,5 @@ export const reelService = {
   requestReelEdit,
   pauseReel,
   removeReel,
+  deleteReel,
 }

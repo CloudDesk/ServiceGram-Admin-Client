@@ -25,12 +25,18 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import {
+  LIST_SELECTION_COLUMN_WIDTH,
+  ListSelectionCheckbox,
+  ListSelectionToolbar,
+} from '../../../components/ui/ListSelection'
 import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { useListSelection } from '../../../hooks/useListSelection'
 import { useAuthStore } from '../../../store/authStore'
 import type { LookupOption } from '../../../types/lookup.types'
 import { cn } from '../../../utils/cn'
@@ -65,9 +71,9 @@ const REEL_DEFAULT_COLUMN_WIDTH = 220
 const REEL_GRID_COLUMN_GAP = 12
 const REEL_GRID_INLINE_PADDING = 24
 const REEL_ACTION_COLUMN_ID = 'actions'
-const REEL_ACTION_COLUMN_DEFAULT_WIDTH = 320
-const REEL_ACTION_COLUMN_MIN_WIDTH = 240
-const REEL_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.reel.columnWidths.v1'
+const REEL_ACTION_COLUMN_DEFAULT_WIDTH = 640
+const REEL_ACTION_COLUMN_MIN_WIDTH = 360
+const REEL_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.reel.columnWidths.v2'
 
 const reelContentTypes: ReelContentType[] = [
   'BEFORE_AFTER',
@@ -305,6 +311,7 @@ function getReelGridTemplate(
   columnWidths: ReelColumnWidths,
 ) {
   return [
+    `${LIST_SELECTION_COLUMN_WIDTH}px`,
     ...visibleColumns.map(
       (columnId) => `${getReelColumnWidth(columnWidths, columnId)}px`,
     ),
@@ -321,10 +328,16 @@ function getReelGridMinWidth(
     0,
   )
   const actionWidth = getReelColumnWidth(columnWidths, REEL_ACTION_COLUMN_ID)
-  const columnCount = visibleColumns.length + 1
+  const columnCount = visibleColumns.length + 2
   const gapWidth = Math.max(0, columnCount - 1) * REEL_GRID_COLUMN_GAP
 
-  return `${visibleWidth + actionWidth + gapWidth + REEL_GRID_INLINE_PADDING}px`
+  return `${
+    visibleWidth +
+    LIST_SELECTION_COLUMN_WIDTH +
+    actionWidth +
+    gapWidth +
+    REEL_GRID_INLINE_PADDING
+  }px`
 }
 
 function loadReelColumnWidths(): ReelColumnWidths {
@@ -399,6 +412,7 @@ export function ReelsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const canModerateReels = useAuthStore((state) => state.can('reels:moderate'))
+  const canDeleteReels = useAuthStore((state) => state.can('reels:delete'))
   const [viewMode, setViewMode] = useState<ReelViewMode>('pending')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
@@ -577,6 +591,7 @@ export function ReelsPage() {
   const reels = reelsQuery.data?.data ?? []
   const pagination = reelsQuery.data?.pagination
   const summary = reelsQuery.data?.summary
+  const reelSelection = useListSelection(reels, (reel) => reel.reelId)
   const isInitialLoading = reelsQuery.isLoading && !reelsQuery.data
   const isRefreshing = reelsQuery.isFetching && Boolean(reelsQuery.data)
   const refreshStatusLabel = isRefreshing
@@ -717,6 +732,13 @@ export function ReelsPage() {
 
       if (action.kind === 'PAUSE') {
         return reelService.pauseReel(action.reel.reelId, {
+          reason: values.reason,
+        })
+      }
+
+      if (action.kind === 'SOFT_DELETE' || action.kind === 'HARD_DELETE') {
+        return reelService.deleteReel(action.reel.reelId, {
+          hardDelete: action.kind === 'HARD_DELETE',
           reason: values.reason,
         })
       }
@@ -907,6 +929,28 @@ export function ReelsPage() {
           >
             <Trash2 className="mr-2 size-4" />
             Remove
+          </Button>
+        ) : null}
+        {canDeleteReels && hasAction('SOFT_DELETE') ? (
+          <Button
+            size="sm"
+            type="button"
+            variant="danger"
+            onClick={(event) => openReelAction('SOFT_DELETE', reel, event)}
+          >
+            <Trash2 className="mr-2 size-4" />
+            Soft Delete
+          </Button>
+        ) : null}
+        {canDeleteReels && hasAction('HARD_DELETE') ? (
+          <Button
+            size="sm"
+            type="button"
+            variant="danger"
+            onClick={(event) => openReelAction('HARD_DELETE', reel, event)}
+          >
+            <Trash2 className="mr-2 size-4" />
+            Hard Delete
           </Button>
         ) : null}
         <Button
@@ -1263,6 +1307,14 @@ export function ReelsPage() {
                     style={reelGridStyle}
                   >
                     <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--reel-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                      <div className="flex min-w-0 items-center">
+                        <ListSelectionCheckbox
+                          checked={reelSelection.allVisibleSelected}
+                          indeterminate={reelSelection.someVisibleSelected}
+                          label="Select visible reels"
+                          onChange={reelSelection.setVisibleSelected}
+                        />
+                      </div>
                       {reelDataColumns
                         .filter((column) => visibleColumns.includes(column.id))
                         .map((column) => (
@@ -1299,23 +1351,54 @@ export function ReelsPage() {
                         />
                       </div>
                     </div>
+                    <ListSelectionToolbar
+                      allVisibleSelected={reelSelection.allVisibleSelected}
+                      selectedCount={reelSelection.selectedCount}
+                      visibleCount={reelSelection.visibleCount}
+                      onClear={reelSelection.clearSelection}
+                      onSelectVisible={() => reelSelection.setVisibleSelected(true)}
+                    />
 
                     <div className="divide-y divide-border">
                       {reels.map((reel) => (
-                        <button
-                          className="grid w-full gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--reel-grid-template)]"
+                        <div
+                          aria-label={`Open reel ${reel.reelId}`}
+                          aria-selected={reelSelection.isSelected(reel.reelId)}
+                          className={cn(
+                            'grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--reel-grid-template)]',
+                            reelSelection.isSelected(reel.reelId) &&
+                              'bg-primary/5 hover:bg-primary/10',
+                          )}
                           key={reel.reelId}
+                          role="button"
                           style={reelGridStyle}
-                          type="button"
+                          tabIndex={0}
                           onClick={() => viewDetails(reel)}
+                          onKeyDown={(event) => {
+                            if (event.target !== event.currentTarget) return
+
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              viewDetails(reel)
+                            }
+                          }}
                         >
+                          <div className="flex min-w-0 items-start xl:items-center">
+                            <ListSelectionCheckbox
+                              checked={reelSelection.isSelected(reel.reelId)}
+                              label={`Select reel ${reel.reelId}`}
+                              onChange={(selected) =>
+                                reelSelection.setItemSelected(reel.reelId, selected)
+                              }
+                            />
+                          </div>
                           <div className="grid gap-3 sm:grid-cols-2 xl:contents">
                             {renderReelCells(reel)}
                           </div>
                           <div className="flex min-w-0 items-center justify-start xl:justify-end">
                             {renderRowActions(reel)}
                           </div>
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </div>

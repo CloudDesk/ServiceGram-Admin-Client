@@ -25,12 +25,18 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import {
+  LIST_SELECTION_COLUMN_WIDTH,
+  ListSelectionCheckbox,
+  ListSelectionToolbar,
+} from '../../../components/ui/ListSelection'
 import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { useListSelection } from '../../../hooks/useListSelection'
 import { useAuthStore } from '../../../store/authStore'
 import type { LookupOption } from '../../../types/lookup.types'
 import { cn } from '../../../utils/cn'
@@ -325,6 +331,7 @@ function getInfluencerGridTemplate(
   columnWidths: InfluencerColumnWidths,
 ) {
   return [
+    `${LIST_SELECTION_COLUMN_WIDTH}px`,
     ...visibleColumns.map(
       (columnId) => `${getInfluencerColumnWidth(columnWidths, columnId)}px`,
     ),
@@ -344,10 +351,16 @@ function getInfluencerGridMinWidth(
     columnWidths,
     INFLUENCER_ACTION_COLUMN_ID,
   )
-  const columnCount = visibleColumns.length + 1
+  const columnCount = visibleColumns.length + 2
   const gapWidth = Math.max(0, columnCount - 1) * INFLUENCER_GRID_COLUMN_GAP
 
-  return `${visibleWidth + actionWidth + gapWidth + INFLUENCER_GRID_INLINE_PADDING}px`
+  return `${
+    visibleWidth +
+    LIST_SELECTION_COLUMN_WIDTH +
+    actionWidth +
+    gapWidth +
+    INFLUENCER_GRID_INLINE_PADDING
+  }px`
 }
 
 function loadInfluencerColumnWidths(): InfluencerColumnWidths {
@@ -545,6 +558,10 @@ export function InfluencersPage() {
   const influencers = influencersQuery.data?.data ?? []
   const pagination = influencersQuery.data?.pagination
   const summary = influencersQuery.data?.summary
+  const influencerSelection = useListSelection(
+    influencers,
+    (influencer) => influencer.influencerProfileId,
+  )
   const isInitialLoading = influencersQuery.isLoading && !influencersQuery.data
   const isRefreshing = influencersQuery.isFetching && Boolean(influencersQuery.data)
   const refreshStatusLabel = isRefreshing
@@ -1227,6 +1244,14 @@ export function InfluencersPage() {
                     style={influencerGridStyle}
                   >
                     <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--influencer-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                      <div className="flex min-w-0 items-center">
+                        <ListSelectionCheckbox
+                          checked={influencerSelection.allVisibleSelected}
+                          indeterminate={influencerSelection.someVisibleSelected}
+                          label="Select visible influencers"
+                          onChange={influencerSelection.setVisibleSelected}
+                        />
+                      </div>
                       {influencerDataColumns
                         .filter((column) => visibleColumns.includes(column.id))
                         .map((column) => (
@@ -1263,23 +1288,62 @@ export function InfluencersPage() {
                         />
                       </div>
                     </div>
+                    <ListSelectionToolbar
+                      allVisibleSelected={influencerSelection.allVisibleSelected}
+                      selectedCount={influencerSelection.selectedCount}
+                      visibleCount={influencerSelection.visibleCount}
+                      onClear={influencerSelection.clearSelection}
+                      onSelectVisible={() => influencerSelection.setVisibleSelected(true)}
+                    />
 
                     <div className="divide-y divide-border">
                       {influencers.map((influencer) => (
-                        <button
-                          className="grid w-full gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--influencer-grid-template)]"
+                        <div
+                          aria-label={`Open influencer ${influencer.influencerProfileId}`}
+                          aria-selected={influencerSelection.isSelected(
+                            influencer.influencerProfileId,
+                          )}
+                          className={cn(
+                            'grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--influencer-grid-template)]',
+                            influencerSelection.isSelected(
+                              influencer.influencerProfileId,
+                            ) && 'bg-primary/5 hover:bg-primary/10',
+                          )}
                           key={influencer.influencerProfileId}
+                          role="button"
                           style={influencerGridStyle}
-                          type="button"
+                          tabIndex={0}
                           onClick={() => viewDetails(influencer)}
+                          onKeyDown={(event) => {
+                            if (event.target !== event.currentTarget) return
+
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              viewDetails(influencer)
+                            }
+                          }}
                         >
+                          <div className="flex min-w-0 items-start xl:items-center">
+                            <ListSelectionCheckbox
+                              checked={influencerSelection.isSelected(
+                                influencer.influencerProfileId,
+                              )}
+                              label={`Select influencer ${influencer.influencerProfileId}`}
+                              onChange={(selected) =>
+                                influencerSelection.setItemSelected(
+                                  influencer.influencerProfileId,
+                                  selected,
+                                )
+                              }
+                            />
+                          </div>
                           <div className="grid gap-3 sm:grid-cols-2 xl:contents">
                             {renderInfluencerCells(influencer)}
                           </div>
                           <div className="flex min-w-0 items-center justify-start xl:justify-end">
                             {renderRowActions(influencer)}
                           </div>
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </div>
