@@ -1,67 +1,492 @@
-import { Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import type {
+  CSSProperties,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { DynamicTable, TableSkeleton, type DynamicTableColumn } from '../../../components/ui/Table'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  FileJson,
+  RefreshCcw,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  UserRound,
+} from 'lucide-react'
+import { PageContainer } from '../../../components/layout/PageContainer'
+import { Badge } from '../../../components/ui/Badge'
+import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
+import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
-import { PageContainer } from '../../../components/layout/PageContainer'
-import { ListFilterBar } from '../../../components/layout/ListFilterBar'
+import { Skeleton } from '../../../components/ui/Skeleton'
+import type { StatusTone } from '../../../types/status.types'
+import { cn } from '../../../utils/cn'
+import { formatDate } from '../../../utils/formatDate'
 import { auditService } from '../services/audit.service'
-import type { AuditLog, AuditLogsQueryParams } from '../types/audit.types'
+import type { AuditLog, AuditLogsQueryParams, AuditPagination } from '../types/audit.types'
 
 const DEFAULT_PAGE_SIZE = 10
+const AUDIT_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.audit.columnWidths.v1'
+const AUDIT_DEFAULT_COLUMN_WIDTH = 220
+const AUDIT_GRID_COLUMN_GAP = 12
+const AUDIT_GRID_INLINE_PADDING = 24
+const emptyAuditLogs: AuditLog[] = []
 
-const columns: DynamicTableColumn<AuditLog>[] = [
+type AuditColumnId = 'action' | 'actor' | 'entity' | 'reason' | 'request' | 'createdAt'
+type AuditColumnWidths = Record<AuditColumnId, number>
+
+interface AuditGridStyle extends CSSProperties {
+  '--audit-grid-template': string
+  '--audit-grid-min-width': string
+}
+
+interface AuditColumn {
+  id: AuditColumnId
+  label: string
+  minWidth: number
+  render: (log: AuditLog) => ReactNode
+}
+
+const auditColumns: AuditColumn[] = [
   {
-    key: 'moduleCode',
+    id: 'action',
     label: 'Action',
-    minWidth: 260,
-    renderCell: (log) => (
-      <div>
-        <p className="font-semibold text-foreground">{log.moduleCode}</p>
-        <p className="text-xs text-muted">{log.actionCode}</p>
+    minWidth: 190,
+    render: (log) => (
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Badge tone={moduleTone(log.moduleCode)}>{humanizeCode(log.moduleCode)}</Badge>
+          <span className="truncate text-xs font-semibold text-muted">
+            {humanizeCode(log.actionCode)}
+          </span>
+        </div>
+        <p className="mt-1 truncate text-xs text-muted">{log.auditLogId}</p>
       </div>
     ),
   },
   {
-    key: 'actor',
+    id: 'actor',
     label: 'Actor',
     minWidth: 220,
-    renderCell: (log) => (
-      <div>
-        <p className="font-medium text-foreground">
-          {log.actor.adminName ?? log.actor.email ?? log.actor.actorType}
+    render: (log) => (
+      <div className="min-w-0">
+        <p className="truncate font-semibold text-foreground">
+          {log.actor.adminName ?? log.actor.email ?? humanizeCode(log.actor.actorType)}
         </p>
-        <p className="text-xs text-muted">{log.actor.actorAdminId ?? log.actor.actorUserId}</p>
+        <p className="truncate text-xs text-muted">
+          {log.actor.email ?? log.actor.actorAdminId ?? log.actor.actorUserId ?? 'No actor id'}
+        </p>
       </div>
     ),
   },
   {
-    key: 'entityType',
+    id: 'entity',
     label: 'Entity',
-    minWidth: 220,
-    renderCell: (log) => (
-      <div>
-        <p className="font-medium text-foreground">{log.entityType}</p>
-        <p className="text-xs text-muted">{log.entityId ?? 'No entity id'}</p>
+    minWidth: 210,
+    render: (log) => (
+      <div className="min-w-0">
+        <p className="truncate font-medium text-foreground">
+          {humanizeCode(log.entityType)}
+        </p>
+        <p className="truncate text-xs text-muted">{log.entityId ?? 'No entity id'}</p>
       </div>
     ),
   },
   {
-    key: 'reason',
+    id: 'reason',
     label: 'Reason',
-    minWidth: 260,
-    placeholder: 'No reason recorded',
+    minWidth: 230,
+    render: (log) => (
+      <p className="line-clamp-2 text-sm text-foreground">
+        {log.reason || <span className="text-muted">No reason recorded</span>}
+      </p>
+    ),
   },
   {
-    key: 'createdAt',
+    id: 'request',
+    label: 'Request',
+    minWidth: 210,
+    render: (log) => (
+      <div className="min-w-0">
+        <p className="truncate font-medium text-foreground">{log.requestId}</p>
+        <p className="truncate text-xs text-muted">{log.ipAddress ?? 'IP not available'}</p>
+      </div>
+    ),
+  },
+  {
+    id: 'createdAt',
     label: 'Created',
-    format: 'date',
     minWidth: 180,
+    render: (log) => (
+      <div className="min-w-0">
+        <p className="font-medium text-foreground">{formatDate(log.createdAt, true)}</p>
+        <p className="text-xs text-muted">{relativeDate(log.createdAt)}</p>
+      </div>
+    ),
   },
 ]
+
+const defaultAuditColumns = auditColumns.map((column) => column.id)
+const defaultAuditColumnWidths = Object.fromEntries(
+  auditColumns.map((column) => [
+    column.id,
+    Math.max(column.minWidth, AUDIT_DEFAULT_COLUMN_WIDTH),
+  ]),
+) as AuditColumnWidths
+
+function humanizeCode(value: string | null | undefined) {
+  if (!value) return 'Not available'
+
+  return value
+    .replace(/_/g, ' ')
+    .replace(/-/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ')
+}
+
+function moduleTone(moduleCode: string): StatusTone {
+  const normalized = moduleCode.toLowerCase()
+
+  if (['payments', 'refunds', 'payouts'].includes(normalized)) return 'warning'
+  if (['rbac', 'settings', 'audit'].includes(normalized)) return 'info'
+  if (['vendors', 'orders', 'customers'].includes(normalized)) return 'success'
+
+  return 'neutral'
+}
+
+function relativeDate(value: string) {
+  const timestamp = new Date(value).getTime()
+
+  if (!Number.isFinite(timestamp)) return 'Time not available'
+
+  const diffMs = Date.now() - timestamp
+  const minutes = Math.max(0, Math.round(diffMs / 60_000))
+
+  if (minutes < 1) return 'Just now'
+  if (minutes < 60) return `${minutes} min ago`
+
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} hr ago`
+
+  const days = Math.round(hours / 24)
+  return `${days} day${days === 1 ? '' : 's'} ago`
+}
+
+function formatRefreshTime(value: number) {
+  if (!value) return 'Not refreshed yet'
+
+  return `Last refreshed ${new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value))}`
+}
+
+function valueToSearchText(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function logMatchesSearch(log: AuditLog, search: string) {
+  const term = search.trim().toLowerCase()
+  if (!term) return true
+
+  return [
+    log.auditLogId,
+    log.moduleCode,
+    log.actionCode,
+    log.entityType,
+    log.entityId,
+    log.reason,
+    log.requestId,
+    log.ipAddress,
+    log.actor.adminName,
+    log.actor.email,
+    log.actor.actorAdminId,
+    log.actor.actorUserId,
+    valueToSearchText(log.oldValue),
+    valueToSearchText(log.newValue),
+  ].some((value) => valueToSearchText(value).toLowerCase().includes(term))
+}
+
+function getDateRangeError(dateFrom: string, dateTo: string) {
+  if (!dateFrom || !dateTo) return null
+
+  return new Date(dateFrom).getTime() <= new Date(dateTo).getTime()
+    ? null
+    : 'From date must be before To date.'
+}
+
+function normalizeAuditColumnWidths(value: unknown): AuditColumnWidths {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return defaultAuditColumnWidths
+  }
+
+  const record = value as Record<string, unknown>
+  const widths = { ...defaultAuditColumnWidths }
+
+  auditColumns.forEach((column) => {
+    const width = record[column.id]
+
+    if (typeof width === 'number' && Number.isFinite(width)) {
+      widths[column.id] = Math.max(column.minWidth, Math.round(width))
+    }
+  })
+
+  return widths
+}
+
+function loadAuditColumnWidths() {
+  if (typeof window === 'undefined') return defaultAuditColumnWidths
+
+  try {
+    return normalizeAuditColumnWidths(
+      JSON.parse(window.localStorage.getItem(AUDIT_COLUMN_WIDTH_STORAGE_KEY) ?? 'null'),
+    )
+  } catch {
+    return defaultAuditColumnWidths
+  }
+}
+
+function getAuditColumnWidth(widths: AuditColumnWidths, columnId: AuditColumnId) {
+  const column = auditColumns.find((item) => item.id === columnId)
+  const minWidth = column?.minWidth ?? AUDIT_DEFAULT_COLUMN_WIDTH
+
+  return Math.max(minWidth, widths[columnId] ?? AUDIT_DEFAULT_COLUMN_WIDTH)
+}
+
+function getAuditGridTemplate(
+  visibleColumns: AuditColumnId[],
+  columnWidths: AuditColumnWidths,
+) {
+  return auditColumns
+    .filter((column) => visibleColumns.includes(column.id))
+    .map((column) => `${getAuditColumnWidth(columnWidths, column.id)}px`)
+    .join(' ')
+}
+
+function getAuditGridMinWidth(
+  visibleColumns: AuditColumnId[],
+  columnWidths: AuditColumnWidths,
+) {
+  const gridGapWidth = Math.max(visibleColumns.length - 1, 0) * AUDIT_GRID_COLUMN_GAP
+  const visibleWidth = auditColumns
+    .filter((column) => visibleColumns.includes(column.id))
+    .reduce((total, column) => total + getAuditColumnWidth(columnWidths, column.id), 0)
+
+  return `${visibleWidth + gridGapWidth + AUDIT_GRID_INLINE_PADDING}px`
+}
+
+function MetricCard({
+  icon,
+  label,
+  meta,
+  value,
+}: {
+  icon: ReactNode
+  label: string
+  meta: string
+  value: ReactNode
+}) {
+  return (
+    <div className="min-h-[4.35rem] rounded-[0.75rem] border border-border bg-surface p-2.5">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-normal text-muted">
+        {icon}
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-semibold tracking-normal text-foreground">
+        {value}
+      </div>
+      <p className="mt-0.5 text-xs leading-4 text-muted">{meta}</p>
+    </div>
+  )
+}
+
+function AuditRowsSkeleton() {
+  return (
+    <div className="space-y-2.5 p-3">
+      {Array.from({ length: 8 }, (_, index) => (
+        <Skeleton className="h-20 w-full rounded-[1rem]" key={index} />
+      ))}
+    </div>
+  )
+}
+
+function AuditPaginationControls({
+  onPageChange,
+  onPageSizeChange,
+  pagination,
+}: {
+  onPageChange: (page: number) => void
+  onPageSizeChange: (limit: number) => void
+  pagination?: AuditPagination
+}) {
+  if (!pagination) return null
+
+  const start =
+    pagination.totalItems === 0
+      ? 0
+      : (pagination.page - 1) * pagination.limit + 1
+  const end = Math.min(pagination.page * pagination.limit, pagination.totalItems)
+
+  return (
+    <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-surface-muted px-3 py-2.5 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-wrap items-center gap-3">
+        <span>
+          Showing {start}-{end} of {pagination.totalItems}
+        </span>
+        <label className="flex items-center gap-2">
+          <span>Rows</span>
+          <select
+            className="form-input h-9 w-20 py-1"
+            value={pagination.limit}
+            onChange={(event) => onPageSizeChange(Number(event.target.value))}
+          >
+            {[10, 20, 50, 100].map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="flex items-center justify-end gap-2 text-foreground">
+        <button
+          aria-label="Previous page"
+          className="btn-icon"
+          disabled={!pagination.hasPreviousPage}
+          type="button"
+          onClick={() => onPageChange(Math.max(1, pagination.page - 1))}
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+        <span className="min-w-24 text-center text-sm font-medium">
+          Page {pagination.page} of {pagination.totalPages}
+        </span>
+        <button
+          aria-label="Next page"
+          className="btn-icon"
+          disabled={!pagination.hasNextPage}
+          type="button"
+          onClick={() => onPageChange(pagination.page + 1)}
+        >
+          <ChevronRight className="size-4" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function JsonBlock({ title, value }: { title: string; value: unknown }) {
+  return (
+    <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface p-3">
+      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+        {title}
+      </p>
+      <pre className="mt-2 max-h-52 overflow-auto rounded-[0.65rem] bg-surface-muted p-3 text-xs leading-5 text-foreground">
+        {JSON.stringify(value ?? null, null, 2)}
+      </pre>
+    </div>
+  )
+}
+
+function AuditRow({
+  isExpanded,
+  log,
+  onToggle,
+  visibleColumns,
+}: {
+  isExpanded: boolean
+  log: AuditLog
+  onToggle: () => void
+  visibleColumns: AuditColumnId[]
+}) {
+  const visibleColumnDefinitions = auditColumns.filter((column) =>
+    visibleColumns.includes(column.id),
+  )
+
+  return (
+    <div className="border-b border-border last:border-b-0">
+      <button
+        className={cn(
+          'grid w-full min-w-0 gap-3 bg-surface px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--audit-grid-template)] xl:items-center',
+          isExpanded && 'bg-surface-muted/45',
+        )}
+        type="button"
+        onClick={onToggle}
+      >
+        {visibleColumnDefinitions.map((column) => (
+          <div className="min-w-0" key={column.id}>
+            <p className="mb-1 text-[0.68rem] font-semibold uppercase tracking-normal text-muted xl:hidden">
+              {column.label}
+            </p>
+            {column.render(log)}
+          </div>
+        ))}
+      </button>
+      {isExpanded ? (
+        <div className="bg-surface-muted/35 px-3 pb-3">
+          <div className="grid gap-3 rounded-[0.875rem] border border-border bg-surface p-3 xl:grid-cols-2">
+            <div className="space-y-2 text-sm">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                  Audit identity
+                </p>
+                <p className="mt-1 break-all font-medium text-foreground">
+                  {log.auditLogId}
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                    Actor admin ID
+                  </p>
+                  <p className="mt-1 break-all text-foreground">
+                    {log.actor.actorAdminId ?? 'Not available'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                    Actor user ID
+                  </p>
+                  <p className="mt-1 break-all text-foreground">
+                    {log.actor.actorUserId ?? 'Not available'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                    Entity ID
+                  </p>
+                  <p className="mt-1 break-all text-foreground">
+                    {log.entityId ?? 'Not available'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                    Request
+                  </p>
+                  <p className="mt-1 break-all text-foreground">{log.requestId}</p>
+                </div>
+              </div>
+            </div>
+            <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-1">
+              <JsonBlock title="Old value" value={log.oldValue} />
+              <JsonBlock title="New value" value={log.newValue} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 export function AuditLogsPage() {
   const [page, setPage] = useState(1)
@@ -71,6 +496,75 @@ export function AuditLogsPage() {
   const [entityType, setEntityType] = useState('')
   const [entityId, setEntityId] = useState('')
   const [actorAdminId, setActorAdminId] = useState('')
+  const [actorUserId, setActorUserId] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [search, setSearch] = useState('')
+  const [columnsOpen, setColumnsOpen] = useState(false)
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null)
+  const [visibleColumns, setVisibleColumns] =
+    useState<AuditColumnId[]>(defaultAuditColumns)
+  const [columnWidths, setColumnWidths] =
+    useState<AuditColumnWidths>(loadAuditColumnWidths)
+  const columnsMenuRef = useRef<HTMLDivElement | null>(null)
+
+  const dateRangeError = getDateRangeError(dateFrom, dateTo)
+  const hasActiveFilters = Boolean(
+    moduleCode ||
+      actionCode ||
+      entityType ||
+      entityId ||
+      actorAdminId ||
+      actorUserId ||
+      dateFrom ||
+      dateTo ||
+      search,
+  )
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        AUDIT_COLUMN_WIDTH_STORAGE_KEY,
+        JSON.stringify(columnWidths),
+      )
+    } catch {
+      // Width persistence is optional.
+    }
+  }, [columnWidths])
+
+  useEffect(() => {
+    if (!columnsOpen) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+
+      if (target instanceof Node && columnsMenuRef.current?.contains(target)) {
+        return
+      }
+
+      setColumnsOpen(false)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setColumnsOpen(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [columnsOpen])
+
+  const resetToFirstPage = () => {
+    setPage(1)
+    setExpandedLogId(null)
+  }
 
   const query = useMemo<AuditLogsQueryParams>(
     () => ({
@@ -81,19 +575,140 @@ export function AuditLogsPage() {
       entityType: entityType.trim() || undefined,
       entityId: entityId.trim() || undefined,
       actorAdminId: actorAdminId.trim() || undefined,
+      actorUserId: actorUserId.trim() || undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
     }),
-    [actionCode, actorAdminId, entityId, entityType, limit, moduleCode, page],
+    [
+      actionCode,
+      actorAdminId,
+      actorUserId,
+      dateFrom,
+      dateTo,
+      entityId,
+      entityType,
+      limit,
+      moduleCode,
+      page,
+    ],
   )
 
   const auditQuery = useQuery({
+    enabled: !dateRangeError,
     queryKey: ['audit-logs', query],
     queryFn: () => auditService.getAuditLogs(query),
   })
 
-  const logs = auditQuery.data?.data ?? []
+  const logs = auditQuery.data?.data ?? emptyAuditLogs
   const pagination = auditQuery.data?.pagination
-  const isLoading = auditQuery.isLoading || auditQuery.isFetching
-  const resetToFirstPage = () => setPage(1)
+  const visibleLogs = useMemo(
+    () => logs.filter((log) => logMatchesSearch(log, search)),
+    [logs, search],
+  )
+  const visibleModules = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    logs.forEach((log) => {
+      counts.set(log.moduleCode, (counts.get(log.moduleCode) ?? 0) + 1)
+    })
+
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+  }, [logs])
+  const latestLog = logs.at(0)
+  const isInitialLoading = auditQuery.isLoading && logs.length === 0
+  const isRefreshing = auditQuery.isFetching && !isInitialLoading
+  const refreshStatusLabel = isRefreshing
+    ? 'Refreshing...'
+    : formatRefreshTime(auditQuery.dataUpdatedAt)
+  const auditGridStyle = useMemo<AuditGridStyle>(
+    () => ({
+      '--audit-grid-template': getAuditGridTemplate(visibleColumns, columnWidths),
+      '--audit-grid-min-width': getAuditGridMinWidth(visibleColumns, columnWidths),
+    }),
+    [columnWidths, visibleColumns],
+  )
+
+  const startColumnResize = (
+    columnId: AuditColumnId,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startX = event.clientX
+    const startWidth = getAuditColumnWidth(columnWidths, columnId)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextWidth = startWidth + moveEvent.clientX - startX
+
+      setColumnWidths((currentWidths) => ({
+        ...currentWidths,
+        [columnId]: Math.max(
+          auditColumns.find((column) => column.id === columnId)?.minWidth ??
+            AUDIT_DEFAULT_COLUMN_WIDTH,
+          Math.round(nextWidth),
+        ),
+      }))
+    }
+
+    const stopResize = () => {
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', stopResize)
+      document.removeEventListener('pointercancel', stopResize)
+    }
+
+    document.addEventListener('pointermove', handlePointerMove)
+    document.addEventListener('pointerup', stopResize)
+    document.addEventListener('pointercancel', stopResize)
+  }
+
+  const adjustColumnWidth = (columnId: AuditColumnId, delta: number) => {
+    setColumnWidths((currentWidths) => ({
+      ...currentWidths,
+      [columnId]: Math.max(
+        auditColumns.find((column) => column.id === columnId)?.minWidth ??
+          AUDIT_DEFAULT_COLUMN_WIDTH,
+        getAuditColumnWidth(currentWidths, columnId) + delta,
+      ),
+    }))
+  }
+
+  const resetColumnWidth = (columnId: AuditColumnId) => {
+    setColumnWidths((currentWidths) => ({
+      ...currentWidths,
+      [columnId]: defaultAuditColumnWidths[columnId],
+    }))
+  }
+
+  const toggleColumn = (columnId: AuditColumnId) => {
+    setVisibleColumns((currentColumns) => {
+      if (currentColumns.includes(columnId)) {
+        return currentColumns.length === 1
+          ? currentColumns
+          : currentColumns.filter((item) => item !== columnId)
+      }
+
+      return auditColumns
+        .map((column) => column.id)
+        .filter((item) => currentColumns.includes(item) || item === columnId)
+    })
+  }
+
+  const clearFilters = () => {
+    setModuleCode('')
+    setActionCode('')
+    setEntityType('')
+    setEntityId('')
+    setActorAdminId('')
+    setActorUserId('')
+    setDateFrom('')
+    setDateTo('')
+    setSearch('')
+    setPage(1)
+    setExpandedLogId(null)
+  }
 
   return (
     <PageContainer>
@@ -103,79 +718,464 @@ export function AuditLogsPage() {
         title="Audit Logs"
       />
 
-      <div className="list-workspace">
-        <ListFilterBar
-          primaryFilters={
-            <>
-              <label className="space-y-1">
-                <span className="text-sm font-medium text-foreground">Module</span>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-                  <Input className="pl-9" placeholder="vendors, payments, rbac" value={moduleCode} onChange={(event) => { setModuleCode(event.target.value); resetToFirstPage() }} />
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            icon={<ShieldCheck className="size-4 text-primary" />}
+            label="Total matches"
+            meta="Backend filtered"
+            value={pagination?.totalItems ?? 0}
+          />
+          <MetricCard
+            icon={<FileJson className="size-4 text-info" />}
+            label="Visible logs"
+            meta={search ? 'Current page search' : 'Current page'}
+            value={visibleLogs.length}
+          />
+          <MetricCard
+            icon={<UserRound className="size-4 text-success" />}
+            label="Modules visible"
+            meta="From loaded rows"
+            value={visibleModules.length}
+          />
+          <MetricCard
+            icon={<Clock3 className="size-4 text-warning" />}
+            label="Latest log"
+            meta={latestLog ? humanizeCode(latestLog.moduleCode) : 'No rows loaded'}
+            value={latestLog ? relativeDate(latestLog.createdAt) : 'None'}
+          />
+        </section>
+
+        <section
+          className={cn(
+            'grid min-h-[calc(100vh-15rem)] flex-1 gap-3 transition-[grid-template-columns] xl:min-h-0',
+            filtersCollapsed
+              ? 'xl:grid-cols-[3rem_minmax(0,1fr)]'
+              : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
+          )}
+        >
+          <aside
+            className={cn(
+              'flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface',
+              filtersCollapsed && 'items-center',
+            )}
+          >
+            {filtersCollapsed ? (
+              <button
+                aria-label="Expand audit filters"
+                className="mt-3 inline-flex size-9 items-center justify-center rounded-[0.65rem] text-muted transition hover:bg-surface-muted hover:text-foreground"
+                title="Expand filters"
+                type="button"
+                onClick={() => setFiltersCollapsed(false)}
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold text-foreground">
+                      Audit filters
+                    </h2>
+                    <p className="mt-1 text-xs text-muted">
+                      Exact fields for backend filtering.
+                    </p>
+                  </div>
+                  <button
+                    aria-label="Collapse audit filters"
+                    className="btn-icon"
+                    title="Collapse filters"
+                    type="button"
+                    onClick={() => setFiltersCollapsed(true)}
+                  >
+                    <ChevronLeft className="size-4" />
+                  </button>
                 </div>
-              </label>
-              {[
-                ['Action', actionCode, setActionCode],
-                ['Entity Type', entityType, setEntityType],
-              ].map(([label, value, setter]) => (
-                <label className="space-y-1" key={label as string}>
-                  <span className="text-sm font-medium text-foreground">{label as string}</span>
-                  <Input value={value as string} onChange={(event) => { ;(setter as (nextValue: string) => void)(event.target.value); resetToFirstPage() }} />
-                </label>
-              ))}
-            </>
-          }
-          secondaryFilters={
-            <>
-              {[
-                ['Entity ID', entityId, setEntityId],
-                ['Actor Admin ID', actorAdminId, setActorAdminId],
-              ].map(([label, value, setter]) => (
-                <label className="space-y-1" key={label as string}>
-                  <span className="text-sm font-medium text-foreground">{label as string}</span>
-                  <Input value={value as string} onChange={(event) => { ;(setter as (nextValue: string) => void)(event.target.value); resetToFirstPage() }} />
-                </label>
-              ))}
-            </>
-          }
-        />
 
-        <section className="list-results-panel">
-        {auditQuery.isError ? (
-          <ErrorState
-            description="We could not load audit logs."
-            title="Audit logs unavailable"
-            onRetry={() => void auditQuery.refetch()}
-          />
-        ) : isLoading ? (
-          <TableSkeleton columns={columns} hasFooter={Boolean(pagination)} rowCount={8} />
-        ) : logs.length === 0 ? (
-          <EmptyState description="No audit logs matched this filter." title="No audit logs" />
-        ) : (
-          <DynamicTable
-            bodyMaxHeight={560}
-            columns={columns}
-            data={logs}
-            pagination={
-              pagination
-                ? {
-                    page: pagination.page,
-                    pageSize: pagination.limit,
-                    total: pagination.totalItems,
-                    onPageChange: setPage,
-                    onPageSizeChange: (nextLimit) => {
-                      setLimit(nextLimit)
-                      setPage(1)
-                    },
-                    rowsPerPageOptions: [10, 20, 50, 100],
+                {visibleModules.length ? (
+                  <div className="mt-4 border-t border-border pt-3">
+                    <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                      Visible modules
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {visibleModules.map(([module, count]) => (
+                        <button
+                          className={cn(
+                            'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border px-3 text-left text-sm transition',
+                            moduleCode === module
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border bg-surface-muted/50 text-foreground hover:border-primary/35',
+                          )}
+                          key={module}
+                          type="button"
+                          onClick={() => {
+                            setModuleCode(moduleCode === module ? '' : module)
+                            resetToFirstPage()
+                          }}
+                        >
+                          <span className="font-medium">{humanizeCode(module)}</span>
+                          <span className="text-xs font-semibold">{count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="mt-4 border-t border-border pt-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Filter stack
+                    </h3>
+                    {hasActiveFilters ? (
+                      <button
+                        className="text-xs font-semibold text-primary"
+                        type="button"
+                        onClick={clearFilters}
+                      >
+                        Reset
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">
+                        Module
+                      </span>
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                        <Input
+                          className="min-h-10 pl-9"
+                          placeholder="vendors, payments"
+                          value={moduleCode}
+                          onChange={(event) => {
+                            setModuleCode(event.target.value)
+                            resetToFirstPage()
+                          }}
+                        />
+                      </div>
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">
+                        Action
+                      </span>
+                      <Input
+                        className="min-h-10"
+                        placeholder="update, approve"
+                        value={actionCode}
+                        onChange={(event) => {
+                          setActionCode(event.target.value)
+                          resetToFirstPage()
+                        }}
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">
+                        Entity type
+                      </span>
+                      <Input
+                        className="min-h-10"
+                        placeholder="vendor, order"
+                        value={entityType}
+                        onChange={(event) => {
+                          setEntityType(event.target.value)
+                          resetToFirstPage()
+                        }}
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">
+                        Entity ID
+                      </span>
+                      <Input
+                        className="min-h-10"
+                        placeholder="UUID"
+                        value={entityId}
+                        onChange={(event) => {
+                          setEntityId(event.target.value)
+                          resetToFirstPage()
+                        }}
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">
+                        Actor admin ID
+                      </span>
+                      <Input
+                        className="min-h-10"
+                        placeholder="UUID"
+                        value={actorAdminId}
+                        onChange={(event) => {
+                          setActorAdminId(event.target.value)
+                          resetToFirstPage()
+                        }}
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">
+                        Actor user ID
+                      </span>
+                      <Input
+                        className="min-h-10"
+                        placeholder="UUID"
+                        value={actorUserId}
+                        onChange={(event) => {
+                          setActorUserId(event.target.value)
+                          resetToFirstPage()
+                        }}
+                      />
+                    </label>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-muted">
+                          From
+                        </span>
+                        <Input
+                          className="min-h-10"
+                          type="date"
+                          value={dateFrom}
+                          onChange={(event) => {
+                            setDateFrom(event.target.value)
+                            resetToFirstPage()
+                          }}
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-muted">
+                          To
+                        </span>
+                        <Input
+                          className="min-h-10"
+                          type="date"
+                          value={dateTo}
+                          onChange={(event) => {
+                            setDateTo(event.target.value)
+                            resetToFirstPage()
+                          }}
+                        />
+                      </label>
+                    </div>
+                    {dateRangeError ? (
+                      <p className="rounded-[0.75rem] border border-danger/20 bg-danger/10 px-3 py-2 text-xs font-medium text-danger">
+                        {dateRangeError}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            )}
+          </aside>
+
+          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">
+                  Audit trail
+                </h2>
+                <p className="text-sm text-muted">
+                  {pagination
+                    ? `${visibleLogs.length} visible on this page · ${pagination.totalItems} backend matches`
+                    : 'Search and inspect admin activity from backend audit data.'}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <ListHeaderSearch
+                  className="w-full sm:w-72 lg:w-80"
+                  placeholder="Search loaded audit logs"
+                  value={search}
+                  onChange={(nextSearch) => {
+                    setSearch(nextSearch)
+                    setExpandedLogId(null)
+                  }}
+                />
+                <span
+                  className={cn(
+                    'text-xs font-medium',
+                    isRefreshing ? 'text-primary' : 'text-muted',
+                  )}
+                >
+                  {refreshStatusLabel}
+                </span>
+                <div className="relative" ref={columnsMenuRef}>
+                  <Button
+                    aria-expanded={columnsOpen}
+                    aria-haspopup="menu"
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setColumnsOpen((current) => !current)}
+                  >
+                    <SlidersHorizontal className="mr-2 size-4" />
+                    Columns
+                    {visibleColumns.length ? (
+                      <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
+                        {visibleColumns.length}
+                      </span>
+                    ) : null}
+                  </Button>
+
+                  {columnsOpen ? (
+                    <div
+                      className="absolute right-0 top-[calc(100%+0.5rem)] z-[60] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
+                      role="menu"
+                    >
+                      <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
+                        Visible columns
+                      </p>
+                      {auditColumns.map((column) => {
+                        const isChecked = visibleColumns.includes(column.id)
+                        const isRequiredLastColumn =
+                          isChecked && visibleColumns.length === 1
+
+                        return (
+                          <label
+                            className={cn(
+                              'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
+                              isRequiredLastColumn && 'cursor-not-allowed opacity-60',
+                            )}
+                            key={column.id}
+                          >
+                            <input
+                              checked={isChecked}
+                              className="size-4 accent-[color:var(--adaptive-primary)]"
+                              disabled={isRequiredLastColumn}
+                              type="checkbox"
+                              onChange={() => toggleColumn(column.id)}
+                            />
+                            <span>{column.label}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+                <Button
+                  disabled={Boolean(dateRangeError)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void auditQuery.refetch()}
+                >
+                  <RefreshCcw
+                    className={cn(
+                      'mr-2 size-4',
+                      isRefreshing && 'animate-spin motion-reduce:animate-none',
+                    )}
+                  />
+                  Refresh
+                </Button>
+              </div>
+            </div>
+
+            {dateRangeError ? (
+              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+                <ErrorState
+                  description={dateRangeError}
+                  title="Date range needs attention"
+                />
+              </div>
+            ) : auditQuery.isError ? (
+              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+                <ErrorState
+                  description="We could not load audit logs."
+                  title="Audit logs unavailable"
+                  onRetry={() => void auditQuery.refetch()}
+                />
+              </div>
+            ) : isInitialLoading ? (
+              <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+                <AuditRowsSkeleton />
+              </div>
+            ) : visibleLogs.length === 0 ? (
+              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+                <EmptyState
+                  description={
+                    logs.length
+                      ? 'No loaded audit logs matched the table search.'
+                      : 'No audit logs matched this filter.'
                   }
-                : undefined
-            }
-            title="Audit Logs"
-            getRowId={(log) => log.auditLogId}
-          />
-        )}
+                  title="No audit logs"
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col xl:min-h-0 xl:flex-1">
+                <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
+                  <div
+                    className="min-w-0 xl:min-w-[var(--audit-grid-min-width)]"
+                    style={auditGridStyle}
+                  >
+                    <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--audit-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                      {auditColumns
+                        .filter((column) => visibleColumns.includes(column.id))
+                        .map((column) => (
+                          <div
+                            className="relative flex min-w-0 items-center pr-3"
+                            key={column.id}
+                          >
+                            <span className="truncate">{column.label}</span>
+                            <button
+                              aria-label={`Resize ${column.label} column`}
+                              className="group absolute inset-y-0 right-0 flex w-3 cursor-col-resize items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              title="Drag to resize"
+                              type="button"
+                              onDoubleClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                resetColumnWidth(column.id)
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'ArrowLeft') {
+                                  event.preventDefault()
+                                  adjustColumnWidth(column.id, -16)
+                                }
 
+                                if (event.key === 'ArrowRight') {
+                                  event.preventDefault()
+                                  adjustColumnWidth(column.id, 16)
+                                }
+                              }}
+                              onPointerDown={(event) =>
+                                startColumnResize(column.id, event)
+                              }
+                            >
+                              <span className="h-4 w-px rounded-full bg-border transition group-hover:bg-primary group-focus-visible:bg-primary" />
+                            </button>
+                          </div>
+                        ))}
+                    </div>
+
+                    <div>
+                      {visibleLogs.map((log) => (
+                        <AuditRow
+                          isExpanded={expandedLogId === log.auditLogId}
+                          key={log.auditLogId}
+                          log={log}
+                          visibleColumns={visibleColumns}
+                          onToggle={() =>
+                            setExpandedLogId((current) =>
+                              current === log.auditLogId ? null : log.auditLogId,
+                            )
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <AuditPaginationControls
+                  pagination={pagination}
+                  onPageChange={(nextPage) => {
+                    setPage(nextPage)
+                    setExpandedLogId(null)
+                  }}
+                  onPageSizeChange={(nextLimit) => {
+                    setLimit(nextLimit)
+                    setPage(1)
+                    setExpandedLogId(null)
+                  }}
+                />
+              </div>
+            )}
+          </main>
         </section>
       </div>
     </PageContainer>

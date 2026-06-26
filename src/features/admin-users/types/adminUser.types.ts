@@ -9,6 +9,7 @@ export interface AdminUsersQueryParams {
   page?: number
   limit?: number
   status?: AdminUserStatus
+  roleId?: string
   search?: string
 }
 

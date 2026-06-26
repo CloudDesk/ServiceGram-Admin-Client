@@ -160,6 +160,9 @@ export interface ServiceZonesListResponse extends SettingsApiResponse<
   pagination: SettingsPagination;
 }
 
+export type PlatformSettingResponse = SettingsApiResponse<PlatformSetting>;
+export type ServiceCategoryResponse = SettingsApiResponse<ServiceCategory>;
+export type ServiceZoneResponse = SettingsApiResponse<ServiceZone>;
 export type UpdateSettingResponse = SettingsApiResponse<PlatformSetting>;
 export type UpdateCategoryResponse = SettingsApiResponse<ServiceCategory>;
 export type CreateZoneResponse = SettingsApiResponse<ServiceZone>;

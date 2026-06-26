@@ -30,6 +30,14 @@ export interface CustomerWalletCreditPayload {
   referenceId?: string
 }
 
+export interface CustomerProfileUpdatePayload {
+  fullName?: string
+  email?: string
+  city?: string
+  zoneId?: string | null
+  reason: string
+}
+
 export interface AdminCustomerZone {
   zoneId: string
   city: string
@@ -199,6 +207,8 @@ export interface AdminCustomersListResponse
 
 export type AdminCustomerDetailResponse =
   AdminCustomerApiResponse<AdminCustomerDetail>
+export type UpdateCustomerProfileResponse =
+  AdminCustomerApiResponse<AdminCustomerListItem>
 export type AddCustomerNoteResponse = AdminCustomerApiResponse<AdminCustomerNote>
 export type BlockCustomerResponse =
   AdminCustomerApiResponse<AdminCustomerListItem>

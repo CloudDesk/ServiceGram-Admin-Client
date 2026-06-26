@@ -1,5 +1,6 @@
 import { buildApiUrl } from '../../../config/api'
 import {
+  CONTENT_PAGE_DETAIL_PATH,
   CONTENT_PAGES_PATH,
   CONTENT_PAGE_ARCHIVE_PATH,
   CONTENT_PAGE_PUBLISH_PATH,
@@ -36,6 +37,13 @@ async function getPages(
     buildApiUrl(queryString ? `${CONTENT_PAGES_PATH}?${queryString}` : CONTENT_PAGES_PATH),
   )
   return parseJsonResponse<ContentPagesResponse>(response)
+}
+
+async function getPage(pageId: string): Promise<ContentPageResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CONTENT_PAGE_DETAIL_PATH(pageId)),
+  )
+  return parseJsonResponse<ContentPageResponse>(response)
 }
 
 async function createPage(
@@ -83,6 +91,7 @@ async function archivePage(
 
 export const contentService = {
   getPages,
+  getPage,
   createPage,
   updatePage,
   publishPage,

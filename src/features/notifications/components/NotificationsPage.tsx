@@ -1,9 +1,17 @@
-import { type FormEvent, useMemo, useState } from 'react'
+import {
+  BellPlus,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  RefreshCcw,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react'
+import type { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BellPlus, Pencil, Search, X } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import { InlineAlert } from '../../../components/feedback/InlineAlert'
-import { ListFilterBar } from '../../../components/layout/ListFilterBar'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
@@ -11,9 +19,14 @@ import { DynamicTable, TableSkeleton, type DynamicTableColumn } from '../../../c
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
+import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { routePaths } from '../../../config/routes'
 import { useAuthStore } from '../../../store/authStore'
+import type { LookupOption } from '../../../types/lookup.types'
+import type { StatusTone } from '../../../types/status.types'
+import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { notificationService } from '../services/notification.service'
 import type {
@@ -28,11 +41,107 @@ import type {
 } from '../types/notification.types'
 
 const DEFAULT_PAGE_SIZE = 10
+const NOTIFICATION_DEFAULT_COLUMN_WIDTH = 220
+const NOTIFICATION_GRID_COLUMN_GAP = 12
+const NOTIFICATION_GRID_INLINE_PADDING = 24
+const NOTIFICATION_COLUMN_WIDTH_STORAGE_KEY =
+  'servicegram.notification.columnWidths.v1'
+
 const channels: NotificationChannel[] = ['PUSH', 'SMS', 'EMAIL']
 const recipientTypes: NotificationRecipientType[] = ['CUSTOMER', 'VENDOR', 'ADMIN']
 const statuses: NotificationEventStatus[] = ['QUEUED', 'SENT', 'FAILED', 'SKIPPED']
 
+const notificationDataColumns = [
+  {
+    id: 'event',
+    label: 'Event',
+    defaultWidth: NOTIFICATION_DEFAULT_COLUMN_WIDTH,
+    minWidth: 190,
+  },
+  {
+    id: 'recipient',
+    label: 'Recipient',
+    defaultWidth: NOTIFICATION_DEFAULT_COLUMN_WIDTH,
+    minWidth: 190,
+  },
+  {
+    id: 'status',
+    label: 'Status',
+    defaultWidth: NOTIFICATION_DEFAULT_COLUMN_WIDTH,
+    minWidth: 150,
+  },
+  {
+    id: 'channel',
+    label: 'Channel',
+    defaultWidth: NOTIFICATION_DEFAULT_COLUMN_WIDTH,
+    minWidth: 140,
+  },
+  {
+    id: 'message',
+    label: 'Message',
+    defaultWidth: NOTIFICATION_DEFAULT_COLUMN_WIDTH,
+    minWidth: 230,
+  },
+  {
+    id: 'retry',
+    label: 'Retry',
+    defaultWidth: NOTIFICATION_DEFAULT_COLUMN_WIDTH,
+    minWidth: 180,
+  },
+  {
+    id: 'provider',
+    label: 'Provider',
+    defaultWidth: NOTIFICATION_DEFAULT_COLUMN_WIDTH,
+    minWidth: 180,
+  },
+  {
+    id: 'readAt',
+    label: 'Read',
+    defaultWidth: NOTIFICATION_DEFAULT_COLUMN_WIDTH,
+    minWidth: 170,
+  },
+  {
+    id: 'createdAt',
+    label: 'Created',
+    defaultWidth: NOTIFICATION_DEFAULT_COLUMN_WIDTH,
+    minWidth: 170,
+  },
+] as const
+
+const defaultNotificationColumns: NotificationColumnId[] = [
+  'event',
+  'recipient',
+  'status',
+  'channel',
+  'retry',
+  'createdAt',
+]
+const EMPTY_NOTIFICATION_EVENTS: NotificationEvent[] = []
+const EMPTY_NOTIFICATION_TEMPLATES: NotificationTemplate[] = []
+
 type ActiveFilter = '' | 'true' | 'false'
+type NotificationColumnId = (typeof notificationDataColumns)[number]['id']
+type NotificationColumnWidths = Partial<Record<NotificationColumnId, number>>
+type NotificationQueueKey =
+  | 'all'
+  | 'custom'
+  | 'needsReview'
+  | 'queued'
+  | 'sent'
+  | 'skipped'
+type NotificationTone = 'danger' | 'info' | 'neutral' | 'success' | 'warning'
+
+interface NotificationGridStyle extends CSSProperties {
+  '--notification-grid-template': string
+  '--notification-grid-min-width': string
+}
+
+interface NotificationMetric {
+  label: string
+  meta: string
+  tone: NotificationTone
+  value: string
+}
 
 const templateColumns: DynamicTableColumn<NotificationTemplate>[] = [
   {
@@ -42,7 +151,9 @@ const templateColumns: DynamicTableColumn<NotificationTemplate>[] = [
     renderCell: (template) => (
       <div className="space-y-1">
         <p className="font-semibold text-foreground">{template.templateCode}</p>
-        <p className="line-clamp-1 text-xs text-muted">{template.titleTemplate ?? 'No title template'}</p>
+        <p className="line-clamp-1 text-xs text-muted">
+          {template.titleTemplate ?? 'No title template'}
+        </p>
         <p className="line-clamp-1 text-xs text-muted">{template.bodyTemplate}</p>
       </div>
     ),
@@ -50,9 +161,8 @@ const templateColumns: DynamicTableColumn<NotificationTemplate>[] = [
   {
     key: 'channel',
     label: 'Channel',
-    format: 'status',
-    statusTone: 'info',
     minWidth: 120,
+    renderCell: (template) => <Badge tone="info">{template.channel}</Badge>,
   },
   {
     key: 'isActive',
@@ -73,7 +183,7 @@ const templateColumns: DynamicTableColumn<NotificationTemplate>[] = [
         <div className="flex flex-wrap gap-1">
           {template.warnings.map((warning) => (
             <Badge key={warning} tone="warning">
-              {warning}
+              {humanizeCode(warning)}
             </Badge>
           ))}
         </div>
@@ -85,99 +195,197 @@ const templateColumns: DynamicTableColumn<NotificationTemplate>[] = [
     key: 'updatedAt',
     label: 'Updated',
     minWidth: 180,
-    renderCell: (template) => formatDate(template.updatedAt, true),
+    renderCell: (template) => formatDateSafe(template.updatedAt),
   },
 ]
 
-const eventColumns: DynamicTableColumn<NotificationEvent>[] = [
-  {
-    key: 'templateCode',
-    label: 'Event',
-    minWidth: 280,
-    renderCell: (event) => (
-      <div className="space-y-1">
-        <p className="font-semibold text-foreground">{event.templateCode}</p>
-        <p className="line-clamp-1 text-xs text-muted">{event.title ?? event.body}</p>
-      </div>
-    ),
-  },
-  {
-    key: 'recipientType',
-    label: 'Recipient',
-    minWidth: 210,
-    renderCell: (event) => (
-      <div>
-        <p className="font-medium text-foreground">{event.recipientType}</p>
-        <p className="text-xs text-muted">
-          {event.recipient?.mobileNumber ?? event.recipient?.email ?? event.recipientUserId ?? 'No recipient'}
-        </p>
-      </div>
-    ),
-  },
-  {
-    key: 'channel',
-    label: 'Channel',
-    format: 'status',
-    statusTone: 'info',
-    minWidth: 120,
-  },
-  {
-    key: 'status',
-    label: 'Status',
-    format: 'status',
-    statusTone: (value) =>
-      value === 'SENT'
-        ? 'success'
-        : value === 'FAILED'
-          ? 'danger'
-          : value === 'SKIPPED'
-            ? 'neutral'
-            : 'warning',
-    minWidth: 140,
-  },
-  {
-    key: 'warnings',
-    label: 'Warnings',
-    minWidth: 220,
-    renderCell: (event) =>
-      event.warnings.length ? (
-        <div className="flex flex-wrap gap-1">
-          {event.warnings.slice(0, 2).map((warning) => (
-            <Badge key={warning} tone={event.status === 'FAILED' ? 'danger' : 'warning'}>
-              {warning}
-            </Badge>
-          ))}
-          {event.warnings.length > 2 ? <Badge tone="neutral">+{event.warnings.length - 2}</Badge> : null}
-        </div>
-      ) : (
-        <span className="text-muted">None</span>
-      ),
-  },
-  {
-    key: 'createdAt',
-    label: 'Created',
-    minWidth: 180,
-    renderCell: (event) => formatDate(event.createdAt, true),
-  },
-]
+function humanizeCode(value: string | null | undefined) {
+  if (!value) return 'Not available'
 
-function SummaryMetric({
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  label: string
-  value: number | string
-  tone?: 'danger' | 'info' | 'neutral' | 'success' | 'warning'
-}) {
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function formatDateSafe(value: string | null | undefined) {
+  if (!value) return 'Not available'
+  return formatDate(value, true)
+}
+
+function statusTone(status: NotificationEventStatus): StatusTone {
+  if (status === 'SENT') return 'success'
+  if (status === 'FAILED') return 'danger'
+  if (status === 'QUEUED') return 'warning'
+  return 'neutral'
+}
+
+function metricToneClass(tone: NotificationTone) {
+  if (tone === 'success') return 'text-success'
+  if (tone === 'warning') return 'text-warning'
+  if (tone === 'danger') return 'text-danger'
+  if (tone === 'info') return 'text-primary'
+  return 'text-muted'
+}
+
+function buildLookupOptions<TValue extends string>(values: readonly TValue[]): LookupOption[] {
+  return values.map((value) => ({
+    label: humanizeCode(value),
+    value,
+  }))
+}
+
+function getNotificationColumnDefaultWidth(columnId: NotificationColumnId) {
   return (
-    <div className="rounded-control border border-border bg-background/40 px-3 py-2">
-      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">{label}</p>
-      <div className="mt-1">
-        <Badge tone={tone}>{value}</Badge>
-      </div>
-    </div>
+    notificationDataColumns.find((column) => column.id === columnId)
+      ?.defaultWidth ?? NOTIFICATION_DEFAULT_COLUMN_WIDTH
   )
+}
+
+function getNotificationColumnMinWidth(columnId: NotificationColumnId) {
+  return notificationDataColumns.find((column) => column.id === columnId)?.minWidth ?? 140
+}
+
+function getNotificationColumnWidth(
+  columnWidths: NotificationColumnWidths,
+  columnId: NotificationColumnId,
+) {
+  return columnWidths[columnId] ?? getNotificationColumnDefaultWidth(columnId)
+}
+
+function getNotificationGridTemplate(
+  visibleColumns: NotificationColumnId[],
+  columnWidths: NotificationColumnWidths,
+) {
+  return visibleColumns
+    .map((columnId) => `${getNotificationColumnWidth(columnWidths, columnId)}px`)
+    .join(` ${NOTIFICATION_GRID_COLUMN_GAP}px `)
+}
+
+function getNotificationGridMinWidth(
+  visibleColumns: NotificationColumnId[],
+  columnWidths: NotificationColumnWidths,
+) {
+  const columnsWidth = visibleColumns.reduce(
+    (sum, columnId) => sum + getNotificationColumnWidth(columnWidths, columnId),
+    0,
+  )
+
+  return (
+    columnsWidth +
+    Math.max(visibleColumns.length - 1, 0) * NOTIFICATION_GRID_COLUMN_GAP +
+    NOTIFICATION_GRID_INLINE_PADDING
+  )
+}
+
+function loadColumnWidths(): NotificationColumnWidths {
+  if (typeof window === 'undefined') return {}
+
+  try {
+    const rawValue = window.localStorage.getItem(
+      NOTIFICATION_COLUMN_WIDTH_STORAGE_KEY,
+    )
+
+    if (!rawValue) return {}
+
+    const parsed = JSON.parse(rawValue) as NotificationColumnWidths
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [NotificationColumnId, number] => {
+        const [columnId, value] = entry
+        return (
+          notificationDataColumns.some((column) => column.id === columnId) &&
+          typeof value === 'number' &&
+          Number.isFinite(value)
+        )
+      }),
+    )
+  } catch {
+    return {}
+  }
+}
+
+function recipientLabel(event: NotificationEvent) {
+  return (
+    event.recipient?.mobileNumber ??
+    event.recipient?.email ??
+    event.recipientUserId ??
+    'No recipient'
+  )
+}
+
+function buildNotificationMetrics(
+  events: NotificationEvent[],
+  totalItems: number,
+): NotificationMetric[] {
+  const failed = events.filter((event) => event.status === 'FAILED').length
+  const queued = events.filter((event) => event.status === 'QUEUED').length
+  const sent = events.filter((event) => event.status === 'SENT').length
+
+  return [
+    {
+      label: 'Failed',
+      meta: 'Visible delivery failures',
+      tone: failed > 0 ? 'danger' : 'neutral',
+      value: String(failed),
+    },
+    {
+      label: 'Queued',
+      meta: 'Waiting or retrying',
+      tone: queued > 0 ? 'warning' : 'neutral',
+      value: String(queued),
+    },
+    {
+      label: 'Sent',
+      meta: 'Completed deliveries',
+      tone: 'success',
+      value: String(sent),
+    },
+    {
+      label: 'Visible events',
+      meta: 'Matching current filters',
+      tone: 'info',
+      value: String(totalItems),
+    },
+  ]
+}
+
+interface NotificationQueueCounts {
+  all: number
+  needsReview: number
+  queued: number
+  sent: number
+  skipped: number
+}
+
+function buildQueueItems(counts?: NotificationQueueCounts) {
+  return [
+    {
+      key: 'all' as const,
+      label: 'All events',
+      count: counts?.all,
+    },
+    {
+      key: 'needsReview' as const,
+      label: 'Needs review',
+      count: counts?.needsReview,
+    },
+    {
+      key: 'queued' as const,
+      label: 'Queued',
+      count: counts?.queued,
+    },
+    {
+      key: 'sent' as const,
+      label: 'Sent',
+      count: counts?.sent,
+    },
+    {
+      key: 'skipped' as const,
+      label: 'Skipped',
+      count: counts?.skipped,
+    },
+  ]
 }
 
 function TemplateEditModal({
@@ -223,10 +431,10 @@ function TemplateEditModal({
 
   return (
     <div className="premium-overlay flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-overlay)]">
+      <div className="w-full max-w-2xl rounded-[0.875rem] border border-border bg-surface p-5 shadow-[var(--shadow-overlay)]">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold tracking-[-0.03em] text-foreground">Edit template</h2>
+            <h2 className="text-lg font-semibold text-foreground">Edit template</h2>
             <p className="mt-1 text-sm text-muted">{template.templateCode}</p>
           </div>
           <button
@@ -261,8 +469,13 @@ function TemplateEditModal({
 
           <label className="block space-y-2">
             <span className="text-sm font-semibold text-foreground">Title template</span>
-            <Input value={titleTemplate} onChange={(event) => setTitleTemplate(event.target.value)} />
-            <span className="block text-right text-xs text-muted">{titleTemplate.length}/500</span>
+            <Input
+              value={titleTemplate}
+              onChange={(event) => setTitleTemplate(event.target.value)}
+            />
+            <span className="block text-right text-xs text-muted">
+              {titleTemplate.length}/500
+            </span>
           </label>
 
           <label className="block space-y-2">
@@ -272,7 +485,9 @@ function TemplateEditModal({
               value={bodyTemplate}
               onChange={(event) => setBodyTemplate(event.target.value)}
             />
-            <span className="block text-right text-xs text-muted">{bodyTemplate.length}/1000</span>
+            <span className="block text-right text-xs text-muted">
+              {bodyTemplate.length}/1000
+            </span>
           </label>
 
           <label className="block space-y-2">
@@ -291,7 +506,13 @@ function TemplateEditModal({
           ) : null}
 
           <div className="flex justify-end gap-2 border-t border-border pt-4">
-            <Button disabled={isSubmitting} size="sm" type="button" variant="ghost" onClick={onClose}>
+            <Button
+              disabled={isSubmitting}
+              size="sm"
+              type="button"
+              variant="ghost"
+              onClick={onClose}
+            >
               Cancel
             </Button>
             <Button isLoading={isSubmitting} size="sm" type="submit">
@@ -304,26 +525,203 @@ function TemplateEditModal({
   )
 }
 
+function SummaryCard({ metric }: { metric: NotificationMetric }) {
+  return (
+    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
+      <p className={cn('text-xs font-semibold uppercase tracking-normal', metricToneClass(metric.tone))}>
+        {metric.label}
+      </p>
+      <p className={cn('mt-3 text-2xl font-semibold tracking-normal', metricToneClass(metric.tone))}>
+        {metric.value}
+      </p>
+      <p className="mt-1 text-xs text-muted">{metric.meta}</p>
+    </article>
+  )
+}
+
+function EventCell({
+  columnId,
+  event,
+}: {
+  columnId: NotificationColumnId
+  event: NotificationEvent
+}) {
+  if (columnId === 'event') {
+    return (
+      <div className="min-w-0 space-y-1">
+        <p className="truncate font-semibold text-foreground">{event.templateCode}</p>
+        <p className="truncate text-xs text-muted">{event.eventId}</p>
+      </div>
+    )
+  }
+
+  if (columnId === 'recipient') {
+    return (
+      <div className="min-w-0 space-y-1">
+        <Badge tone="neutral">{humanizeCode(event.recipientType)}</Badge>
+        <p className="truncate text-sm text-foreground">{recipientLabel(event)}</p>
+        <p className="truncate text-xs text-muted">
+          {event.recipient?.status ? humanizeCode(event.recipient.status) : 'Recipient summary unavailable'}
+        </p>
+      </div>
+    )
+  }
+
+  if (columnId === 'status') {
+    return (
+      <div className="space-y-1">
+        <Badge tone={statusTone(event.status)}>{humanizeCode(event.status)}</Badge>
+        {event.failureReason ? (
+          <p className="line-clamp-2 text-xs text-danger">{humanizeCode(event.failureReason)}</p>
+        ) : (
+          <p className="text-xs text-muted">{event.warnings.length} warning signals</p>
+        )}
+      </div>
+    )
+  }
+
+  if (columnId === 'channel') {
+    return (
+      <div className="space-y-1">
+        <Badge tone="info">{event.channel}</Badge>
+        <p className="text-xs text-muted">{event.sentAt ? 'Sent' : 'Not sent yet'}</p>
+      </div>
+    )
+  }
+
+  if (columnId === 'message') {
+    return (
+      <div className="min-w-0 space-y-1">
+        <p className="line-clamp-1 font-medium text-foreground">
+          {event.title ?? 'No title'}
+        </p>
+        <p className="line-clamp-2 text-xs text-muted">{event.body}</p>
+      </div>
+    )
+  }
+
+  if (columnId === 'retry') {
+    const retry = event.deliveryRetry
+
+    if (!retry) {
+      return (
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-foreground">No retry</p>
+          <p className="text-xs text-muted">Current provider state is final or waiting</p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-1">
+        <Badge tone={retry.exhausted ? 'danger' : 'warning'}>
+          {retry.attemptNumber}/{retry.maxAttempts} attempts
+        </Badge>
+        <p className="truncate text-xs text-muted">
+          {retry.nextRetryAt
+            ? `Next ${formatDateSafe(retry.nextRetryAt)}`
+            : humanizeCode(retry.lastProviderStatus)}
+        </p>
+      </div>
+    )
+  }
+
+  if (columnId === 'provider') {
+    return (
+      <div className="min-w-0 space-y-1">
+        <p className="truncate text-sm font-medium text-foreground">
+          {event.providerMessageId ?? 'No provider message'}
+        </p>
+        <p className="truncate text-xs text-muted">
+          {event.deliveryRetry?.lastProviderStatus
+            ? humanizeCode(event.deliveryRetry.lastProviderStatus)
+            : 'Provider status unavailable'}
+        </p>
+      </div>
+    )
+  }
+
+  if (columnId === 'readAt') {
+    return (
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-foreground">{formatDateSafe(event.readAt)}</p>
+        <p className="text-xs text-muted">Push inbox read state</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-1">
+      <p className="text-sm font-medium text-foreground">{formatDateSafe(event.createdAt)}</p>
+      <p className="text-xs text-muted">Updated {formatDateSafe(event.updatedAt)}</p>
+    </div>
+  )
+}
+
 export function NotificationsPage() {
   const can = useAuthStore((state) => state.can)
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [eventChannel, setEventChannel] = useState<'' | NotificationChannel>('')
-  const [eventStatus, setEventStatus] = useState<'' | NotificationEventStatus>('')
+  const [eventChannels, setEventChannels] = useState<NotificationChannel[]>([])
+  const [eventSearch, setEventSearch] = useState('')
+  const [eventStatuses, setEventStatuses] = useState<NotificationEventStatus[]>([])
+  const [isFilterRailCollapsed, setIsFilterRailCollapsed] = useState(false)
+  const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
   const [page, setPage] = useState(1)
-  const [recipientType, setRecipientType] = useState<'' | NotificationRecipientType>('')
+  const [queueKey, setQueueKey] = useState<NotificationQueueKey>('all')
+  const [recipientTypesState, setRecipientTypesState] = useState<NotificationRecipientType[]>([])
   const [recipientUserId, setRecipientUserId] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState<NotificationTemplate | null>(null)
   const [templateActive, setTemplateActive] = useState<ActiveFilter>('')
   const [templateActionError, setTemplateActionError] = useState<string | null>(null)
   const [templateChannel, setTemplateChannel] = useState<'' | NotificationChannel>('')
-  const [templateCode, setTemplateCode] = useState('')
+  const [templateCodes, setTemplateCodes] = useState<string[]>([])
   const [templateSearch, setTemplateSearch] = useState('')
+  const [visibleColumns, setVisibleColumns] = useState<NotificationColumnId[]>(
+    defaultNotificationColumns,
+  )
+  const [columnWidths, setColumnWidths] =
+    useState<NotificationColumnWidths>(() => loadColumnWidths())
+  const columnMenuRef = useRef<HTMLDivElement | null>(null)
 
   const canSendNotifications = can('notifications:send')
   const canUpdateTemplates = can('notifications:update')
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      NOTIFICATION_COLUMN_WIDTH_STORAGE_KEY,
+      JSON.stringify(columnWidths),
+    )
+  }, [columnWidths])
+
+  useEffect(() => {
+    if (!isColumnMenuOpen) return undefined
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+
+      if (target instanceof Node && columnMenuRef.current?.contains(target)) {
+        return
+      }
+
+      setIsColumnMenuOpen(false)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsColumnMenuOpen(false)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isColumnMenuOpen])
 
   const templateQueryParams = useMemo<NotificationTemplatesQueryParams>(
     () => ({
@@ -338,15 +736,30 @@ export function NotificationsPage() {
     () => ({
       page,
       limit,
-      channel: eventChannel || undefined,
-      recipientType: recipientType || undefined,
-      status: eventStatus || undefined,
-      templateCode: templateCode.trim() || undefined,
-      recipientUserId: recipientUserId.trim() || undefined,
+      search: eventSearch.trim() || undefined,
+      channel: eventChannels.length > 0 ? eventChannels : undefined,
+      recipientType:
+        recipientTypesState.length > 0 ? recipientTypesState : undefined,
+      status: eventStatuses.length > 0 ? eventStatuses : undefined,
+      templateCode: templateCodes.length > 0 ? templateCodes : undefined,
+      recipientUserId: recipientUserId.trim()
+        ? [recipientUserId.trim()]
+        : undefined,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
     }),
-    [dateFrom, dateTo, eventChannel, eventStatus, limit, page, recipientType, recipientUserId, templateCode],
+    [
+      dateFrom,
+      dateTo,
+      eventChannels,
+      eventSearch,
+      eventStatuses,
+      limit,
+      page,
+      recipientTypesState,
+      recipientUserId,
+      templateCodes,
+    ],
   )
 
   const templatesQuery = useQuery({
@@ -356,6 +769,47 @@ export function NotificationsPage() {
   const eventsQuery = useQuery({
     queryKey: ['notification-events', eventQueryParams],
     queryFn: () => notificationService.getEvents(eventQueryParams),
+  })
+  const queueCountBaseQuery = useMemo<NotificationEventsQueryParams>(
+    () => ({
+      page: 1,
+      limit: 1,
+      search: eventSearch.trim() || undefined,
+      channel: eventChannels.length > 0 ? eventChannels : undefined,
+      recipientType:
+        recipientTypesState.length > 0 ? recipientTypesState : undefined,
+      templateCode: templateCodes.length > 0 ? templateCodes : undefined,
+      recipientUserId: recipientUserId.trim()
+        ? [recipientUserId.trim()]
+        : undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+    }),
+    [
+      dateFrom,
+      dateTo,
+      eventChannels,
+      eventSearch,
+      recipientTypesState,
+      recipientUserId,
+      templateCodes,
+    ],
+  )
+  const queueCountsQuery = useQuery({
+    queryKey: ['notification-events', 'queue-counts', queueCountBaseQuery],
+    queryFn: async (): Promise<NotificationQueueCounts> => {
+      const response = await notificationService.getEvents(queueCountBaseQuery)
+      const byStatus = response.summary.byStatus
+
+      return {
+        all: response.pagination.totalItems,
+        needsReview: byStatus.FAILED ?? 0,
+        queued: byStatus.QUEUED ?? 0,
+        sent: byStatus.SENT ?? 0,
+        skipped: byStatus.SKIPPED ?? 0,
+      }
+    },
+    placeholderData: (previousData) => previousData,
   })
   const updateTemplateMutation = useMutation({
     mutationFn: ({
@@ -372,248 +826,602 @@ export function NotificationsPage() {
       void queryClient.invalidateQueries({ queryKey: ['notification-events'] })
     },
     onError: (error) => {
-      setTemplateActionError(error instanceof Error ? error.message : 'Template update failed.')
+      setTemplateActionError(
+        error instanceof Error ? error.message : 'Template update failed.',
+      )
     },
   })
 
-  const templates = templatesQuery.data?.data ?? []
-  const events = eventsQuery.data?.data ?? []
-  const eventSummary = eventsQuery.data?.summary
+  const templates = templatesQuery.data?.data ?? EMPTY_NOTIFICATION_TEMPLATES
+  const events = eventsQuery.data?.data ?? EMPTY_NOTIFICATION_EVENTS
   const pagination = eventsQuery.data?.pagination
   const templateSummary = templatesQuery.data?.summary
-  const isEventsLoading = eventsQuery.isLoading || eventsQuery.isFetching
+  const isEventsLoading = eventsQuery.isLoading
+  const isRefreshing = eventsQuery.isFetching || templatesQuery.isFetching
+  const metrics = buildNotificationMetrics(
+    events,
+    pagination?.totalItems ?? events.length,
+  )
+  const queueItems = buildQueueItems(queueCountsQuery.data)
+  const templateCodeOptions = useMemo<LookupOption[]>(() => {
+    const uniqueTemplateCodes = Array.from(
+      new Set(templates.map((template) => template.templateCode)),
+    ).sort()
+
+    return uniqueTemplateCodes.map((templateCode) => ({
+      label: humanizeCode(templateCode),
+      meta: templateCode,
+      value: templateCode,
+    }))
+  }, [templates])
+  const gridStyle = useMemo<NotificationGridStyle>(
+    () => ({
+      '--notification-grid-template': getNotificationGridTemplate(
+        visibleColumns,
+        columnWidths,
+      ),
+      '--notification-grid-min-width': `${getNotificationGridMinWidth(
+        visibleColumns,
+        columnWidths,
+      )}px`,
+    }),
+    [columnWidths, visibleColumns],
+  )
+
   const resetEventsPage = () => setPage(1)
+
+  const applyQueue = (nextQueueKey: NotificationQueueKey) => {
+    setQueueKey(nextQueueKey)
+    setPage(1)
+
+    if (nextQueueKey === 'all') {
+      setEventStatuses([])
+      return
+    }
+
+    if (nextQueueKey === 'needsReview') {
+      setEventStatuses(['FAILED'])
+      return
+    }
+
+    if (nextQueueKey === 'queued') {
+      setEventStatuses(['QUEUED'])
+      return
+    }
+
+    if (nextQueueKey === 'sent') {
+      setEventStatuses(['SENT'])
+      return
+    }
+
+    if (nextQueueKey === 'skipped') {
+      setEventStatuses(['SKIPPED'])
+    }
+  }
+
+  const clearFilters = () => {
+    setEventChannels([])
+    setEventSearch('')
+    setEventStatuses([])
+    setQueueKey('all')
+    setRecipientTypesState([])
+    setRecipientUserId('')
+    setTemplateCodes([])
+    setDateFrom('')
+    setDateTo('')
+    setPage(1)
+  }
+
+  const toggleColumn = (columnId: NotificationColumnId) => {
+    setVisibleColumns((current) => {
+      if (current.includes(columnId)) {
+        return current.length === 1
+          ? current
+          : current.filter((visibleColumn) => visibleColumn !== columnId)
+      }
+
+      const next = [...current, columnId]
+      return notificationDataColumns
+        .map((column) => column.id)
+        .filter((id) => next.includes(id))
+    })
+  }
+
+  const startColumnResize = (
+    columnId: NotificationColumnId,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startX = event.clientX
+    const startWidth = getNotificationColumnWidth(columnWidths, columnId)
+    const minWidth = getNotificationColumnMinWidth(columnId)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextWidth = Math.max(
+        minWidth,
+        Math.min(560, startWidth + moveEvent.clientX - startX),
+      )
+      setColumnWidths((current) => ({
+        ...current,
+        [columnId]: nextWidth,
+      }))
+    }
+
+    const handlePointerUp = () => {
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', handlePointerUp)
+    }
+
+    document.addEventListener('pointermove', handlePointerMove)
+    document.addEventListener('pointerup', handlePointerUp)
+  }
+
+  const refreshData = () => {
+    void Promise.all([eventsQuery.refetch(), templatesQuery.refetch()])
+  }
 
   return (
     <PageContainer>
       <PageContextHeader
-        description="Manage notification templates and delivery events."
+        description="Manage templates, delivery events, retries, and recipient notification history."
         placement="topbar"
         title="Notifications"
       />
 
-      {!canSendNotifications ? <InlineAlert message="Your role can view notifications but cannot send them." /> : null}
+      {!canSendNotifications ? (
+        <InlineAlert message="Your role can view notifications but cannot send them." />
+      ) : null}
 
-      <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-        <div className="mb-4 flex flex-wrap gap-3">
-          <SummaryMetric label="Templates" value={templateSummary?.total ?? 0} />
-          <SummaryMetric label="Active" value={templateSummary?.active ?? 0} tone="success" />
-          <SummaryMetric label="Inactive" value={templateSummary?.inactive ?? 0} tone="warning" />
-          {channels.map((channel) => (
-            <SummaryMetric
-              key={channel}
-              label={channel}
-              value={templateSummary?.byChannel[channel] ?? 0}
-              tone="info"
-            />
-          ))}
-        </div>
-
-        <div className="mb-4">
-          <ListFilterBar
-            actionNode={
-              canSendNotifications ? (
-                <Link to={`${routePaths.notifications}/new`}>
-                  <Button size="sm">
-                    <BellPlus className="mr-2 size-4" />
-                    New Notification
-                  </Button>
-                </Link>
-              ) : (
-                <Button disabled size="sm" title="Requires notifications:send">
-                  <BellPlus className="mr-2 size-4" />
-                  New Notification
-                </Button>
-              )
-            }
-            primaryFilters={
-              <>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-foreground">Template Search</span>
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-                    <Input className="pl-9" placeholder="OTP, order, payout" value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} />
-                  </div>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-foreground">Template Channel</span>
-                  <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={templateChannel} onChange={(event) => setTemplateChannel(event.target.value as '' | NotificationChannel)}>
-                    <option value="">All</option>
-                    {channels.map((channel) => (
-                      <option key={channel} value={channel}>
-                        {channel}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </>
-            }
-            secondaryFilters={
-              <label className="space-y-1">
-                <span className="text-sm font-medium text-foreground">Template State</span>
-                <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={templateActive} onChange={(event) => setTemplateActive(event.target.value as ActiveFilter)}>
-                  <option value="">All</option>
-                  <option value="true">Active</option>
-                  <option value="false">Inactive</option>
-                </select>
-              </label>
-            }
-          />
-        </div>
-
-        {templatesQuery.isError ? (
-          <ErrorState
-            description={
-              templatesQuery.error instanceof Error
-                ? templatesQuery.error.message
-                : 'We could not load notification templates.'
-            }
-            title="Templates unavailable"
-            onRetry={() => void templatesQuery.refetch()}
-          />
-        ) : templatesQuery.isLoading || templatesQuery.isFetching ? (
-          <TableSkeleton columns={templateColumns} hasActions rowCount={5} />
-        ) : templates.length === 0 ? (
-          <EmptyState description="No notification templates matched this filter." title="No templates" />
-        ) : (
-          <DynamicTable
-            actionColumnMinWidth={130}
-            bodyMaxHeight={360}
-            columns={templateColumns}
-            data={templates}
-            inlineActionLimit={1}
-            rowActions={(template) => [
-              {
-                key: 'edit-template',
-                label: 'Edit',
-                icon: <Pencil className="size-4" />,
-                isDisabled: !canUpdateTemplates || !template.availableActions.includes('UPDATE_TEMPLATE'),
-                onClick: (row) => {
-                  setTemplateActionError(null)
-                  setSelectedTemplate(row)
-                },
-                placement: 'inline',
-              },
-            ]}
-            title="Templates"
-            getRowId={(template) => template.templateId}
-          />
-        )}
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((metric) => (
+          <SummaryCard key={metric.label} metric={metric} />
+        ))}
       </section>
 
-      <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
-        <div className="mb-4 flex flex-wrap gap-3">
-          <SummaryMetric label="Events On Page" value={eventSummary?.total ?? 0} />
-          {statuses.map((status) => (
-            <SummaryMetric
-              key={status}
-              label={status}
-              value={eventSummary?.byStatus[status] ?? 0}
-              tone={status === 'FAILED' ? 'danger' : status === 'SENT' ? 'success' : 'neutral'}
-            />
-          ))}
-        </div>
-
-        <div className="mb-4">
-          <ListFilterBar
-            primaryFilters={
-              <>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-foreground">Template Code</span>
-                  <Input placeholder="ORDER_STATUS_UPDATE" value={templateCode} onChange={(event) => { setTemplateCode(event.target.value); resetEventsPage() }} />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-foreground">Status</span>
-                  <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={eventStatus} onChange={(event) => { setEventStatus(event.target.value as '' | NotificationEventStatus); resetEventsPage() }}>
-                    <option value="">All</option>
-                    {statuses.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-foreground">Channel</span>
-                  <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={eventChannel} onChange={(event) => { setEventChannel(event.target.value as '' | NotificationChannel); resetEventsPage() }}>
-                    <option value="">All</option>
-                    {channels.map((channel) => (
-                      <option key={channel} value={channel}>
-                        {channel}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </>
-            }
-            secondaryFilters={
-              <>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-foreground">Recipient User ID</span>
-                  <Input placeholder="UUID" value={recipientUserId} onChange={(event) => { setRecipientUserId(event.target.value); resetEventsPage() }} />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-foreground">Recipient</span>
-                  <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={recipientType} onChange={(event) => { setRecipientType(event.target.value as '' | NotificationRecipientType); resetEventsPage() }}>
-                    <option value="">All</option>
-                    {recipientTypes.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-foreground">Date From</span>
-                  <Input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); resetEventsPage() }} />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-foreground">Date To</span>
-                  <Input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); resetEventsPage() }} />
-                </label>
-              </>
-            }
-          />
-        </div>
-
-        {eventsQuery.isError ? (
-          <ErrorState
-            description={
-              eventsQuery.error instanceof Error
-                ? eventsQuery.error.message
-                : 'We could not load notification delivery events.'
-            }
-            title="Events unavailable"
-            onRetry={() => void eventsQuery.refetch()}
-          />
-        ) : isEventsLoading ? (
-          <TableSkeleton columns={eventColumns} hasFooter={Boolean(pagination)} rowCount={8} />
-        ) : events.length === 0 ? (
-          <EmptyState description="No notification events matched this filter." title="No events" />
-        ) : (
-          <DynamicTable
-            bodyMaxHeight={560}
-            columns={eventColumns}
-            data={events}
-            pagination={
-              pagination
-                ? {
-                    page: pagination.page,
-                    pageSize: pagination.limit,
-                    total: pagination.totalItems,
-                    onPageChange: setPage,
-                    onPageSizeChange: (nextLimit) => {
-                      setLimit(nextLimit)
-                      setPage(1)
-                    },
-                    rowsPerPageOptions: [10, 20, 50, 100],
-                  }
-                : undefined
-            }
-            title="Delivery Events"
-            getRowId={(event) => event.eventId}
-          />
+      <section
+        className={cn(
+          'grid min-h-[calc(100vh-16rem)] gap-3 transition-[grid-template-columns]',
+          isFilterRailCollapsed
+            ? 'lg:grid-cols-[3rem_minmax(0,1fr)]'
+            : 'lg:grid-cols-[18rem_minmax(0,1fr)]',
         )}
+      >
+        <aside className="min-w-0 rounded-[0.875rem] border border-border bg-surface shadow-surface">
+          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
+            {!isFilterRailCollapsed ? (
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-foreground">Review queues</h2>
+                <p className="mt-0.5 text-xs text-muted">Delivery states</p>
+              </div>
+            ) : null}
+            <button
+              aria-label={isFilterRailCollapsed ? 'Expand filters' : 'Collapse filters'}
+              className="inline-flex size-8 items-center justify-center rounded-full text-muted transition hover:bg-surface-muted hover:text-foreground"
+              type="button"
+              onClick={() => setIsFilterRailCollapsed((current) => !current)}
+            >
+              <ChevronLeft
+                className={cn('size-4 transition', isFilterRailCollapsed && 'rotate-180')}
+              />
+            </button>
+          </div>
+
+          {isFilterRailCollapsed ? null : (
+            <div className="space-y-4 p-3">
+              <div className="space-y-2">
+                {queueItems.map((item) => (
+                  <button
+                    className={cn(
+                      'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border border-border bg-surface px-3 text-left text-sm transition hover:border-primary/35 hover:bg-surface-muted/60',
+                      queueKey === item.key &&
+                        'border-primary bg-primary/5 text-primary',
+                    )}
+                    key={item.key}
+                    type="button"
+                    onClick={() => applyQueue(item.key)}
+                    >
+                      <span className="font-medium">{item.label}</span>
+                    <span className="text-xs font-semibold">
+                      {item.count ?? '...'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="border-t border-border pt-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-foreground">Filter stack</h3>
+                  <button
+                    className="text-xs font-semibold text-primary hover:text-primary-hover"
+                    type="button"
+                    onClick={clearFilters}
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="mt-3 space-y-3">
+                  <MultiSelectFilter
+                    label="Status"
+                    options={buildLookupOptions(statuses)}
+                    placeholder="All statuses"
+                    values={eventStatuses}
+                    onChange={(values) => {
+                      setEventStatuses(values as NotificationEventStatus[])
+                      setQueueKey(values.length > 0 ? 'custom' : 'all')
+                      resetEventsPage()
+                    }}
+                  />
+                  <MultiSelectFilter
+                    label="Channel"
+                    options={buildLookupOptions(channels)}
+                    placeholder="All channels"
+                    values={eventChannels}
+                    onChange={(values) => {
+                      setEventChannels(values as NotificationChannel[])
+                      resetEventsPage()
+                    }}
+                  />
+                  <MultiSelectFilter
+                    label="Recipient"
+                    options={buildLookupOptions(recipientTypes)}
+                    placeholder="All recipients"
+                    values={recipientTypesState}
+                    onChange={(values) => {
+                      setRecipientTypesState(values as NotificationRecipientType[])
+                      resetEventsPage()
+                    }}
+                  />
+                  <MultiSelectFilter
+                    emptyLabel="No templates loaded"
+                    label="Template"
+                    options={templateCodeOptions}
+                    placeholder="All templates"
+                    values={templateCodes}
+                    onChange={(values) => {
+                      setTemplateCodes(values)
+                      resetEventsPage()
+                    }}
+                  />
+                  <label className="block space-y-1">
+                    <span className="text-xs font-semibold text-muted">Recipient user ID</span>
+                    <Input
+                      placeholder="UUID"
+                      value={recipientUserId}
+                      onChange={(event) => {
+                        setRecipientUserId(event.target.value)
+                        resetEventsPage()
+                      }}
+                    />
+                  </label>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                    <label className="block space-y-1">
+                      <span className="text-xs font-semibold text-muted">Date from</span>
+                      <Input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(event) => {
+                          setDateFrom(event.target.value)
+                          resetEventsPage()
+                        }}
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-xs font-semibold text-muted">Date to</span>
+                      <Input
+                        type="date"
+                        value={dateTo}
+                        onChange={(event) => {
+                          setDateTo(event.target.value)
+                          resetEventsPage()
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </aside>
+
+        <section className="min-w-0 rounded-[0.875rem] border border-border bg-surface shadow-surface">
+          <div className="flex flex-col gap-3 border-b border-border px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-foreground">Delivery events</h2>
+              <p className="mt-1 text-sm text-muted">
+                {pagination
+                  ? `${pagination.totalItems} events matching current filters`
+                  : `${events.length} events in the current window`}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <ListHeaderSearch
+                className="w-full min-w-[16rem] sm:w-72"
+                placeholder="Search template, recipient, message"
+                value={eventSearch}
+                onChange={(value) => {
+                  setEventSearch(value)
+                  resetEventsPage()
+                }}
+              />
+              <div className="relative" ref={columnMenuRef}>
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setIsColumnMenuOpen((current) => !current)}
+                >
+                  <SlidersHorizontal className="mr-2 size-4" />
+                  Columns
+                  <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                    {visibleColumns.length}
+                  </span>
+                </Button>
+                {isColumnMenuOpen ? (
+                  <div className="absolute right-0 top-[calc(100%+0.35rem)] z-[70] w-64 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface">
+                    {notificationDataColumns.map((column) => (
+                      <button
+                        className="flex min-h-9 w-full items-center justify-between rounded-[0.65rem] px-2 text-sm text-foreground transition hover:bg-surface-muted"
+                        key={column.id}
+                        type="button"
+                        onClick={() => toggleColumn(column.id)}
+                      >
+                        <span>{column.label}</span>
+                        <span
+                          className={cn(
+                            'inline-flex size-4 items-center justify-center rounded border border-border',
+                            visibleColumns.includes(column.id) &&
+                              'border-primary bg-primary',
+                          )}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <Button
+                isLoading={isRefreshing}
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={refreshData}
+              >
+                <RefreshCcw className="mr-2 size-4" />
+                Refresh
+              </Button>
+              {canSendNotifications ? (
+                <Link to={`${routePaths.notifications}/new`}>
+                  <Button size="sm" type="button">
+                    <BellPlus className="mr-2 size-4" />
+                    New
+                  </Button>
+                </Link>
+              ) : null}
+            </div>
+          </div>
+
+          {eventsQuery.isError ? (
+            <div className="p-4">
+              <ErrorState
+                description={
+                  eventsQuery.error instanceof Error
+                    ? eventsQuery.error.message
+                    : 'We could not load notification delivery events.'
+                }
+                title="Events unavailable"
+                onRetry={() => void eventsQuery.refetch()}
+              />
+            </div>
+          ) : isEventsLoading ? (
+            <div className="p-4">
+              <TableSkeleton columnCount={visibleColumns.length} hasFooter rowCount={8} />
+            </div>
+          ) : events.length === 0 ? (
+            <div className="p-4">
+              <EmptyState description="No notification events matched this filter." title="No events" />
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <div
+                  className="min-w-[var(--notification-grid-min-width)]"
+                  style={gridStyle}
+                >
+                  <div className="grid grid-cols-[var(--notification-grid-template)] gap-x-3 border-b border-border bg-surface-muted/60 px-3 py-3 text-xs font-semibold uppercase tracking-normal text-muted">
+                    {visibleColumns.map((columnId) => {
+                      const column = notificationDataColumns.find(
+                        (item) => item.id === columnId,
+                      )
+
+                      return (
+                        <div
+                          className="group relative flex min-w-0 items-center gap-2"
+                          key={columnId}
+                        >
+                          <span className="truncate">{column?.label}</span>
+                          <button
+                            aria-label={`Resize ${column?.label ?? columnId} column`}
+                            className="absolute -right-2 top-1/2 h-6 w-2 -translate-y-1/2 cursor-col-resize rounded-full border-r border-border opacity-60 transition hover:border-primary hover:opacity-100"
+                            type="button"
+                            onPointerDown={(event) => startColumnResize(columnId, event)}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="divide-y divide-border">
+                    {events.map((event) => (
+                      <div
+                        className="grid min-h-[5.5rem] cursor-pointer grid-cols-[var(--notification-grid-template)] gap-x-3 px-3 py-3 text-left transition hover:bg-surface-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        key={event.eventId}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate(`${routePaths.notifications}/${event.eventId}`)}
+                        onKeyDown={(keyboardEvent) => {
+                          if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
+                            keyboardEvent.preventDefault()
+                            navigate(`${routePaths.notifications}/${event.eventId}`)
+                          }
+                        }}
+                      >
+                        {visibleColumns.map((columnId) => (
+                          <div
+                            className="min-w-0 self-center text-sm"
+                            key={`${event.eventId}-${columnId}`}
+                          >
+                            <EventCell columnId={columnId} event={event} />
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {pagination ? (
+                <div className="flex flex-col gap-3 border-t border-border px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+                    <span>
+                      Showing {(pagination.page - 1) * pagination.limit + 1}-
+                      {Math.min(
+                        pagination.page * pagination.limit,
+                        pagination.totalItems,
+                      )}{' '}
+                      of {pagination.totalItems}
+                    </span>
+                    <span>Rows</span>
+                    <select
+                      className="h-9 rounded-[0.75rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
+                      value={limit}
+                      onChange={(event) => {
+                        setLimit(Number(event.target.value))
+                        setPage(1)
+                      }}
+                    >
+                      {[10, 20, 50, 100].map((pageSize) => (
+                        <option key={pageSize} value={pageSize}>
+                          {pageSize}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      disabled={!pagination.hasPreviousPage}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setPage(Math.max(1, page - 1))}
+                    >
+                      <ChevronLeft className="size-4" />
+                    </Button>
+                    <span className="text-sm font-semibold text-foreground">
+                      Page {pagination.page} of {pagination.totalPages}
+                    </span>
+                    <Button
+                      disabled={!pagination.hasNextPage}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setPage(page + 1)}
+                    >
+                      <ChevronRight className="size-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
+        </section>
+      </section>
+
+      <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+        <div className="flex flex-col gap-3 border-b border-border pb-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Templates</h2>
+            <p className="mt-1 text-sm text-muted">
+              {templateSummary
+                ? `${templateSummary.active} active of ${templateSummary.total}`
+                : 'Template copy and channel states'}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <ListHeaderSearch
+              className="w-full min-w-[14rem] sm:w-64"
+              placeholder="Search templates"
+              value={templateSearch}
+              onChange={setTemplateSearch}
+            />
+            <select
+              className="h-10 rounded-[0.75rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
+              value={templateChannel}
+              onChange={(event) =>
+                setTemplateChannel(event.target.value as '' | NotificationChannel)
+              }
+            >
+              <option value="">All channels</option>
+              {channels.map((channel) => (
+                <option key={channel} value={channel}>
+                  {channel}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-10 rounded-[0.75rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
+              value={templateActive}
+              onChange={(event) => setTemplateActive(event.target.value as ActiveFilter)}
+            >
+              <option value="">All states</option>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="pt-4">
+          {templatesQuery.isError ? (
+            <ErrorState
+              description={
+                templatesQuery.error instanceof Error
+                  ? templatesQuery.error.message
+                  : 'We could not load notification templates.'
+              }
+              title="Templates unavailable"
+              onRetry={() => void templatesQuery.refetch()}
+            />
+          ) : templatesQuery.isLoading || templatesQuery.isFetching ? (
+            <TableSkeleton columns={templateColumns} hasActions rowCount={5} />
+          ) : templates.length === 0 ? (
+            <EmptyState description="No notification templates matched this filter." title="No templates" />
+          ) : (
+            <DynamicTable
+              actionColumnMinWidth={130}
+              bodyMaxHeight={360}
+              columns={templateColumns}
+              data={templates}
+              inlineActionLimit={1}
+              rowActions={(template) => [
+                {
+                  key: 'edit-template',
+                  label: 'Edit',
+                  icon: <Pencil className="size-4" />,
+                  isDisabled:
+                    !canUpdateTemplates ||
+                    !template.availableActions.includes('UPDATE_TEMPLATE'),
+                  onClick: (row) => {
+                    setTemplateActionError(null)
+                    setSelectedTemplate(row)
+                  },
+                  placement: 'inline',
+                },
+              ]}
+              title="Templates"
+              getRowId={(template) => template.templateId}
+            />
+          )}
+        </div>
       </section>
 
       {selectedTemplate ? (

@@ -15,5 +15,5 @@ export function ReportDetailPage() {
   const initialReportType = reportKey ? reportKeyMap[reportKey] : undefined
   const reportType = initialReportType ?? 'ORDER_LIFECYCLE'
 
-  return <ReportsPage initialReportType={reportType} key={reportType} />
+  return <ReportsPage initialReportType={reportType} key={reportType} mode="detail" />
 }

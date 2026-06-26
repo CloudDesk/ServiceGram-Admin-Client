@@ -1,5 +1,6 @@
 import { buildApiUrl } from '../../../config/api'
 import {
+  NOTIFICATION_EVENT_DETAIL_PATH,
   NOTIFICATION_EVENTS_PATH,
   NOTIFICATION_SEND_PATH,
   NOTIFICATION_TEMPLATES_PATH,
@@ -10,6 +11,7 @@ import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
   NotificationEventsQueryParams,
   NotificationEventsResponse,
+  NotificationEventDetailResponse,
   NotificationTemplatesQueryParams,
   NotificationTemplatesResponse,
   SendNotificationPayload,
@@ -82,6 +84,13 @@ async function getEvents(
   return parseJsonResponse<NotificationEventsResponse>(response)
 }
 
+async function getEvent(eventId: string): Promise<NotificationEventDetailResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(NOTIFICATION_EVENT_DETAIL_PATH(eventId)),
+  )
+  return parseJsonResponse<NotificationEventDetailResponse>(response)
+}
+
 async function sendNotification(
   payload: SendNotificationPayload,
 ): Promise<SendNotificationResponse> {
@@ -96,5 +105,6 @@ export const notificationService = {
   getTemplates,
   updateTemplate,
   getEvents,
+  getEvent,
   sendNotification,
 }

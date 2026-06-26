@@ -32,6 +32,8 @@ import type {
   ReelUploadStatus,
 } from '../types/reel.types'
 
+type ReelTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+
 const checklistColumns: DynamicTableColumn<AdminReelChecklistItem>[] = [
   {
     key: 'label',
@@ -69,6 +71,48 @@ function DetailField({
         {value === true ? 'Yes' : value === false ? 'No' : value ?? 'Not available'}
       </p>
     </div>
+  )
+}
+
+function toneClasses(tone: ReelTone) {
+  if (tone === 'success') return 'text-success'
+  if (tone === 'warning') return 'text-warning'
+  if (tone === 'danger') return 'text-danger'
+  if (tone === 'info') return 'text-primary'
+  return 'text-muted'
+}
+
+function humanizeCode(value: string | null | undefined) {
+  if (!value) return 'Not available'
+
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function DetailMetricCard({
+  label,
+  meta,
+  tone,
+  value,
+}: {
+  label: string
+  meta: string
+  tone: ReelTone
+  value: string
+}) {
+  return (
+    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
+      <p className={`text-xs font-semibold uppercase tracking-normal ${toneClasses(tone)}`}>
+        {label}
+      </p>
+      <p className={`mt-3 text-xl font-semibold tracking-normal ${toneClasses(tone)}`}>
+        {value}
+      </p>
+      <p className="mt-1 text-xs text-muted">{meta}</p>
+    </article>
   )
 }
 
@@ -138,6 +182,47 @@ function getModerationStatusTone(status: ReelModerationStatus) {
   }
 
   return 'neutral'
+}
+
+function buildReelDetailMetrics(reel: AdminReel) {
+  const riskCount =
+    reel.warnings.length + reel.blockingReasons.length + reel.missingFields.length
+
+  return [
+    {
+      label: 'Moderation',
+      value: humanizeCode(reel.moderation.status),
+      meta: reel.nextRecommendedAction
+        ? `Next: ${humanizeCode(reel.nextRecommendedAction)}`
+        : 'No pending action',
+      tone: getModerationStatusTone(reel.moderation.status),
+    },
+    {
+      label: 'Upload',
+      value: humanizeCode(reel.media.uploadStatus),
+      meta: reel.media.durationSeconds
+        ? `${reel.media.durationSeconds} seconds`
+        : 'Duration unavailable',
+      tone: getUploadStatusTone(reel.media.uploadStatus),
+    },
+    {
+      label: 'Visibility',
+      value: humanizeCode(reel.publish.customerVisibility),
+      meta: reel.publish.isPublished ? 'Published reel' : 'Hidden from customers',
+      tone: reel.publish.customerVisibility === 'VISIBLE' ? 'success' : 'neutral',
+    },
+    {
+      label: 'Signals',
+      value: String(riskCount),
+      meta: 'Warnings, blockers, and missing fields',
+      tone: riskCount > 0 ? 'warning' : 'neutral',
+    },
+  ] satisfies {
+    label: string
+    meta: string
+    tone: ReelTone
+    value: string
+  }[]
 }
 
 function ReelHeaderStatus({ reel }: { reel: AdminReel }) {
@@ -369,6 +454,8 @@ export function ReelDetailPage() {
     )
   }
 
+  const detailMetrics = buildReelDetailMetrics(reel)
+
   return (
     <PageContainer>
       <DetailPageHeader
@@ -386,8 +473,42 @@ export function ReelDetailPage() {
         titleMetaNode={<ReelHeaderStatus reel={reel} />}
       />
 
+      <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+        {detailMetrics.map((metric) => (
+          <DetailMetricCard
+            key={metric.label}
+            label={metric.label}
+            meta={metric.meta}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      {reel.warnings.length > 0 ||
+      reel.blockingReasons.length > 0 ||
+      reel.missingFields.length > 0 ? (
+        <section className="flex flex-wrap gap-2 rounded-[0.875rem] border border-border bg-surface p-3 shadow-surface">
+          {reel.warnings.map((warning) => (
+            <Badge key={`warning-${warning}`} tone="warning">
+              {humanizeCode(warning)}
+            </Badge>
+          ))}
+          {reel.blockingReasons.map((reason) => (
+            <Badge key={`blocker-${reason}`} tone="danger">
+              {humanizeCode(reason)}
+            </Badge>
+          ))}
+          {reel.missingFields.map((field) => (
+            <Badge key={`missing-${field}`} tone="neutral">
+              Missing {humanizeCode(field)}
+            </Badge>
+          ))}
+        </section>
+      ) : null}
+
       <section className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4 lg:col-span-2">
+        <div className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface lg:col-span-2">
           <h2 className="text-base font-semibold text-foreground">
             Reel Information
           </h2>
@@ -432,7 +553,7 @@ export function ReelDetailPage() {
           </div>
         </div>
 
-        <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
+        <div className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
           <h2 className="text-base font-semibold text-foreground">Vendor</h2>
           <DetailField label="Shop" value={reel.vendor.shopName} />
           <DetailField label="Owner" value={reel.vendor.ownerName} />
@@ -451,7 +572,7 @@ export function ReelDetailPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
+        <div className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
           <h2 className="text-base font-semibold text-foreground">Media</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <DetailField
@@ -468,7 +589,7 @@ export function ReelDetailPage() {
           </div>
         </div>
 
-        <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
+        <div className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
           <h2 className="text-base font-semibold text-foreground">
             Moderation & Publish
           </h2>

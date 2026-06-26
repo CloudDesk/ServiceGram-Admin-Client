@@ -13,8 +13,9 @@ export type ContentFormat = 'MARKDOWN' | 'HTML' | 'PLAIN_TEXT'
 export interface ContentPagesQueryParams {
   page?: number
   limit?: number
-  status?: ContentPageStatus
-  pageType?: ContentPageType
+  status?: ContentPageStatus[]
+  pageType?: ContentPageType[]
+  contentFormat?: ContentFormat[]
   isVisibleToCustomers?: boolean
   search?: string
   dateFrom?: string

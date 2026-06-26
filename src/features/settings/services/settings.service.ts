@@ -1,9 +1,12 @@
 import { buildApiUrl } from '../../../config/api'
 import {
   SETTINGS_CATEGORIES_PATH,
+  SETTINGS_CATEGORY_DETAIL_PATH,
   SETTINGS_CATEGORY_UPDATE_PATH,
+  SETTINGS_DETAIL_PATH,
   SETTINGS_LIST_PATH,
   SETTINGS_UPDATE_PATH,
+  SETTINGS_ZONE_DETAIL_PATH,
   SETTINGS_ZONES_PATH,
   SETTINGS_ZONE_UPDATE_PATH,
 } from '../../../config/settingsApiPaths'
@@ -12,8 +15,11 @@ import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
   CreateZonePayload,
   CreateZoneResponse,
+  PlatformSettingResponse,
   PlatformSettingsListResponse,
+  ServiceCategoryResponse,
   ServiceCategoriesListResponse,
+  ServiceZoneResponse,
   ServiceZonesListResponse,
   SettingsCategoriesQueryParams,
   SettingsListQueryParams,
@@ -48,6 +54,13 @@ async function getSettings(
   return parseJsonResponse<PlatformSettingsListResponse>(response)
 }
 
+async function getSetting(settingKey: string): Promise<PlatformSettingResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(SETTINGS_DETAIL_PATH(settingKey)),
+  )
+  return parseJsonResponse<PlatformSettingResponse>(response)
+}
+
 async function updateSetting(
   settingKey: string,
   payload: UpdateSettingPayload,
@@ -67,6 +80,13 @@ async function getCategories(
     buildApiUrl(queryString ? `${SETTINGS_CATEGORIES_PATH}?${queryString}` : SETTINGS_CATEGORIES_PATH),
   )
   return parseJsonResponse<ServiceCategoriesListResponse>(response)
+}
+
+async function getCategory(categoryId: string): Promise<ServiceCategoryResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(SETTINGS_CATEGORY_DETAIL_PATH(categoryId)),
+  )
+  return parseJsonResponse<ServiceCategoryResponse>(response)
 }
 
 async function updateCategory(
@@ -90,6 +110,13 @@ async function getZones(
   return parseJsonResponse<ServiceZonesListResponse>(response)
 }
 
+async function getZone(zoneId: string): Promise<ServiceZoneResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(SETTINGS_ZONE_DETAIL_PATH(zoneId)),
+  )
+  return parseJsonResponse<ServiceZoneResponse>(response)
+}
+
 async function createZone(payload: CreateZonePayload): Promise<CreateZoneResponse> {
   const response = await apiClient.request(
     buildApiUrl(SETTINGS_ZONES_PATH),
@@ -111,10 +138,13 @@ async function updateZone(
 
 export const settingsService = {
   getSettings,
+  getSetting,
   updateSetting,
   getCategories,
+  getCategory,
   updateCategory,
   getZones,
+  getZone,
   createZone,
   updateZone,
 }

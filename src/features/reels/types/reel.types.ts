@@ -11,17 +11,20 @@ export type ReelModerationStatus =
   | 'PAUSED'
   | 'REMOVED'
 
+type AdminReelFilterValue<T extends string> = T | T[]
+type AdminReelIdFilterValue = string | string[]
+
 export interface AdminReelsQueryParams {
   page?: number
   limit?: number
   search?: string
   city?: string
-  categoryId?: string
+  categoryId?: AdminReelIdFilterValue
   zoneId?: string
-  vendorId?: string
-  contentType?: ReelContentType
-  uploadStatus?: ReelUploadStatus
-  moderationStatus?: ReelModerationStatus
+  vendorId?: AdminReelIdFilterValue
+  contentType?: AdminReelFilterValue<ReelContentType>
+  uploadStatus?: AdminReelFilterValue<ReelUploadStatus>
+  moderationStatus?: AdminReelFilterValue<ReelModerationStatus>
 }
 
 export interface ReelOptionalReasonPayload {

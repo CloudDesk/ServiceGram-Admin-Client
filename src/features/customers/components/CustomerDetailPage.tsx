@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock3,
   CreditCard,
+  Edit3,
   Home,
   Mail,
   MapPin,
@@ -30,6 +31,7 @@ import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
+import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -40,12 +42,14 @@ import {
   type CustomerActionKind,
   type CustomerActionSelection,
 } from './CustomerActionModal'
+import { CustomerProfileEditModal } from './CustomerProfileEditModal'
 import type {
   AdminCustomerAddress,
   AdminCustomerDetail,
   AdminCustomerNote,
   AdminCustomerRecentOrder,
   AdminCustomerWalletCredit,
+  CustomerProfileUpdatePayload,
 } from '../types/customer.types'
 
 const addressColumns: DynamicTableColumn<AdminCustomerAddress>[] = [
@@ -411,12 +415,18 @@ function CustomerHeaderStatus({ customer }: { customer: AdminCustomerDetail }) {
 }
 
 function CustomerHeaderActions({
+  canCreditWallet,
+  canUpdateCustomer,
   customer,
   isSubmitting,
+  onEditProfile,
   onSelectAction,
 }: {
+  canCreditWallet: boolean
+  canUpdateCustomer: boolean
   customer: AdminCustomerDetail
   isSubmitting: boolean
+  onEditProfile: () => void
   onSelectAction: (kind: CustomerActionKind) => void
 }) {
   const availableActions = visibleAvailableActions(customer.availableActions)
@@ -424,7 +434,18 @@ function CustomerHeaderActions({
 
   return (
     <div className="flex flex-wrap justify-end gap-2">
-      {hasAction('BLOCK') ? (
+      {canUpdateCustomer && hasAction('EDIT_PROFILE') ? (
+        <Button
+          disabled={isSubmitting}
+          size="sm"
+          variant="secondary"
+          onClick={onEditProfile}
+        >
+          <Edit3 className="mr-2 size-4" />
+          Edit Profile
+        </Button>
+      ) : null}
+      {canUpdateCustomer && hasAction('BLOCK') ? (
         <Button
           disabled={isSubmitting}
           size="sm"
@@ -435,7 +456,7 @@ function CustomerHeaderActions({
           Block
         </Button>
       ) : null}
-      {hasAction('UNBLOCK') ? (
+      {canUpdateCustomer && hasAction('UNBLOCK') ? (
         <Button
           disabled={isSubmitting}
           size="sm"
@@ -446,7 +467,7 @@ function CustomerHeaderActions({
           Unblock
         </Button>
       ) : null}
-      {featureFlags.customerWallet && hasAction('WALLET_CREDIT') ? (
+      {featureFlags.customerWallet && canCreditWallet && hasAction('WALLET_CREDIT') ? (
         <Button
           disabled={isSubmitting}
           size="sm"
@@ -457,15 +478,17 @@ function CustomerHeaderActions({
           Wallet Credit
         </Button>
       ) : null}
-      <Button
-        disabled={isSubmitting}
-        size="sm"
-        variant="secondary"
-        onClick={() => onSelectAction('ADD_NOTE')}
-      >
-        <MessageSquarePlus className="mr-2 size-4" />
-        Add Note
-      </Button>
+      {canUpdateCustomer && hasAction('ADD_NOTE') ? (
+        <Button
+          disabled={isSubmitting}
+          size="sm"
+          variant="secondary"
+          onClick={() => onSelectAction('ADD_NOTE')}
+        >
+          <MessageSquarePlus className="mr-2 size-4" />
+          Add Note
+        </Button>
+      ) : null}
     </div>
   )
 }
@@ -571,12 +594,18 @@ function CustomerIdentityPanel({ customer }: { customer: AdminCustomerDetail }) 
 }
 
 function CustomerActionRail({
+  canCreditWallet,
+  canUpdateCustomer,
   customer,
   isSubmitting,
+  onEditProfile,
   onSelectAction,
 }: {
+  canCreditWallet: boolean
+  canUpdateCustomer: boolean
   customer: AdminCustomerDetail
   isSubmitting: boolean
+  onEditProfile: () => void
   onSelectAction: (kind: CustomerActionKind) => void
 }) {
   const availableActions = visibleAvailableActions(customer.availableActions)
@@ -626,7 +655,19 @@ function CustomerActionRail({
         </div>
 
         <div className="mt-3 space-y-2">
-          {hasAction('BLOCK') ? (
+          {canUpdateCustomer && hasAction('EDIT_PROFILE') ? (
+            <Button
+              className="w-full justify-start"
+              disabled={isSubmitting}
+              size="sm"
+              variant="secondary"
+              onClick={onEditProfile}
+            >
+              <Edit3 className="mr-2 size-4" />
+              Edit profile
+            </Button>
+          ) : null}
+          {canUpdateCustomer && hasAction('BLOCK') ? (
             <Button
               className="w-full justify-start"
               disabled={isSubmitting}
@@ -638,7 +679,7 @@ function CustomerActionRail({
               Block customer
             </Button>
           ) : null}
-          {hasAction('UNBLOCK') ? (
+          {canUpdateCustomer && hasAction('UNBLOCK') ? (
             <Button
               className="w-full justify-start"
               disabled={isSubmitting}
@@ -650,7 +691,7 @@ function CustomerActionRail({
               Unblock customer
             </Button>
           ) : null}
-          {featureFlags.customerWallet && hasAction('WALLET_CREDIT') ? (
+          {featureFlags.customerWallet && canCreditWallet && hasAction('WALLET_CREDIT') ? (
             <Button
               className="w-full justify-start"
               disabled={isSubmitting}
@@ -662,16 +703,18 @@ function CustomerActionRail({
               Wallet credit
             </Button>
           ) : null}
-          <Button
-            className="w-full justify-start"
-            disabled={isSubmitting}
-            size="sm"
-            variant="secondary"
-            onClick={() => onSelectAction('ADD_NOTE')}
-          >
-            <MessageSquarePlus className="mr-2 size-4" />
-            Add note
-          </Button>
+          {canUpdateCustomer && hasAction('ADD_NOTE') ? (
+            <Button
+              className="w-full justify-start"
+              disabled={isSubmitting}
+              size="sm"
+              variant="secondary"
+              onClick={() => onSelectAction('ADD_NOTE')}
+            >
+              <MessageSquarePlus className="mr-2 size-4" />
+              Add note
+            </Button>
+          ) : null}
         </div>
       </DetailPanel>
 
@@ -796,7 +839,11 @@ export function CustomerDetailPage() {
   const { customerId } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const canCreditWallet = usePermission('customers:wallet_credit')
+  const canUpdateCustomer = usePermission('customers:update')
   const [actionError, setActionError] = useState<string | null>(null)
+  const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
   const [selectedAction, setSelectedAction] = useState<CustomerActionSelection | null>(null)
 
   const customerQuery = useQuery({
@@ -891,8 +938,37 @@ export function CustomerDetailPage() {
     },
   })
 
+  const profileMutation = useMutation({
+    mutationFn: async (values: CustomerProfileUpdatePayload) => {
+      if (!customer) {
+        throw new Error('Customer details are unavailable.')
+      }
+
+      return customerService.updateCustomerProfile(customer.customerId, values)
+    },
+    onMutate: () => setProfileError(null),
+    onSuccess: () => {
+      setIsProfileEditorOpen(false)
+      void refreshCustomer()
+    },
+    onError: (error) => {
+      setProfileError(
+        error instanceof Error ? error.message : 'Customer profile update failed.',
+      )
+    },
+  })
+
+  const isSubmitting = actionMutation.isPending || profileMutation.isPending
+
+  const openProfileEditor = () => {
+    setActionError(null)
+    setProfileError(null)
+    setIsProfileEditorOpen(true)
+  }
+
   const openAction = (kind: CustomerActionKind) => {
     setActionError(null)
+    setProfileError(null)
     setSelectedAction({ kind })
   }
 
@@ -905,6 +981,10 @@ export function CustomerDetailPage() {
       action: selectedAction,
       values,
     })
+  }
+
+  const submitProfileUpdate = (values: CustomerProfileUpdatePayload) => {
+    void profileMutation.mutateAsync(values)
   }
 
   if (!customerId) {
@@ -957,8 +1037,11 @@ export function CustomerDetailPage() {
       <DetailPageHeader
         actionNode={
           <CustomerHeaderActions
+            canCreditWallet={canCreditWallet}
+            canUpdateCustomer={canUpdateCustomer}
             customer={customer}
-            isSubmitting={actionMutation.isPending}
+            isSubmitting={isSubmitting}
+            onEditProfile={openProfileEditor}
             onSelectAction={openAction}
           />
         }
@@ -1130,11 +1213,29 @@ export function CustomerDetailPage() {
         </div>
 
         <CustomerActionRail
+          canCreditWallet={canCreditWallet}
+          canUpdateCustomer={canUpdateCustomer}
           customer={customer}
-          isSubmitting={actionMutation.isPending}
+          isSubmitting={isSubmitting}
+          onEditProfile={openProfileEditor}
           onSelectAction={openAction}
         />
       </section>
+
+      {isProfileEditorOpen ? (
+        <CustomerProfileEditModal
+          customer={customer}
+          error={profileError}
+          isSubmitting={profileMutation.isPending}
+          onClose={() => {
+            if (!profileMutation.isPending) {
+              setIsProfileEditorOpen(false)
+              setProfileError(null)
+            }
+          }}
+          onSubmit={submitProfileUpdate}
+        />
+      ) : null}
 
       <CustomerActionModal
         action={selectedAction}

@@ -1,4 +1,5 @@
-import { LogOut, Save } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { CalendarClock, LogOut, Save, ShieldCheck, UserRound } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
@@ -11,6 +12,7 @@ import { Skeleton } from '../../../components/ui/Skeleton'
 import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
+import { formatDate } from '../../../utils/formatDate'
 import { rbacService } from '../../rbac/services/rbac.service'
 import { adminUserService } from '../services/adminUser.service'
 import type { AdminUser, AdminUserStatus } from '../types/adminUser.types'
@@ -23,9 +25,36 @@ function DetailField({
   value: string | number | null | undefined
 }) {
   return (
-    <div className="space-y-1">
-      <p className="text-xs font-semibold uppercase text-muted">{label}</p>
-      <p className="break-words text-sm text-foreground">{value ?? 'Not available'}</p>
+    <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface-muted/60 p-3">
+      <p className="text-xs font-semibold uppercase tracking-normal text-muted">{label}</p>
+      <p className="mt-1 break-words text-sm font-medium text-foreground">
+        {value ?? 'Not available'}
+      </p>
+    </div>
+  )
+}
+
+function SummaryCard({
+  icon,
+  label,
+  meta,
+  value,
+}: {
+  icon: ReactNode
+  label: string
+  meta: string
+  value: ReactNode
+}) {
+  return (
+    <div className="min-h-[4.35rem] rounded-[0.75rem] border border-border bg-surface p-2.5">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-normal text-muted">
+        {icon}
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-semibold tracking-normal text-foreground">
+        {value}
+      </div>
+      <p className="mt-0.5 text-xs leading-4 text-muted">{meta}</p>
     </div>
   )
 }
@@ -54,20 +83,17 @@ export function AdminUserDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
 
-  const usersQuery = useQuery({
+  const userQuery = useQuery({
     enabled: Boolean(adminUserId),
-    queryKey: ['admin-users', 'detail-resolver'],
-    queryFn: () => adminUserService.getAdminUsers({ page: 1, limit: 100 }),
+    queryKey: ['admin-users', adminUserId],
+    queryFn: () => adminUserService.getAdminUser(adminUserId as string),
   })
   const rolesQuery = useQuery({
     queryKey: ['rbac', 'roles'],
     queryFn: () => rbacService.getRoles(),
   })
 
-  const user = useMemo(
-    () => usersQuery.data?.data.find((item) => item.adminId === adminUserId),
-    [adminUserId, usersQuery.data?.data],
-  )
+  const user = userQuery.data?.data
   const roleOptions = useMemo(
     () =>
       rolesQuery.data?.data.filter(
@@ -77,7 +103,10 @@ export function AdminUserDetailPage() {
   )
 
   const refreshUsers = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-users', adminUserId] }),
+    ])
   }
 
   const updateMutation = useMutation({
@@ -153,7 +182,7 @@ export function AdminUserDetailPage() {
     )
   }
 
-  if (usersQuery.isLoading) {
+  if (userQuery.isLoading) {
     return (
       <PageContainer>
         <Skeleton className="h-12 w-full" />
@@ -162,13 +191,13 @@ export function AdminUserDetailPage() {
     )
   }
 
-  if (usersQuery.isError) {
+  if (userQuery.isError) {
     return (
       <PageContainer>
         <ErrorState
           description="We could not load admin user details. Please retry."
           title="Admin user unavailable"
-          onRetry={() => void usersQuery.refetch()}
+          onRetry={() => void userQuery.refetch()}
         />
       </PageContainer>
     )
@@ -216,6 +245,37 @@ export function AdminUserDetailPage() {
         titleMetaNode={<AdminUserHeaderStatus user={user} />}
       />
 
+      <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard
+          icon={<UserRound className="size-4 text-primary" />}
+          label="Admin status"
+          meta="Profile access"
+          value={
+            <Badge tone={user.status === 'ACTIVE' ? 'success' : 'danger'}>
+              {user.status}
+            </Badge>
+          }
+        />
+        <SummaryCard
+          icon={<ShieldCheck className="size-4 text-info" />}
+          label="Role"
+          meta={user.role?.roleCode ?? 'No role'}
+          value={user.role?.roleName ?? 'Unassigned'}
+        />
+        <SummaryCard
+          icon={<ShieldCheck className="size-4 text-warning" />}
+          label="Permission version"
+          meta="Session invalidation marker"
+          value={user.permissionVersion}
+        />
+        <SummaryCard
+          icon={<CalendarClock className="size-4 text-success" />}
+          label="Last login"
+          meta="Admin session activity"
+          value={user.lastLoginAt ? formatDate(user.lastLoginAt, true) : 'Never'}
+        />
+      </section>
+
       {actionError ? (
         <div className="rounded-[1rem] border border-danger/25 bg-danger/10 p-3 text-sm text-danger">
           {actionError}
@@ -227,24 +287,27 @@ export function AdminUserDetailPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4 lg:col-span-2">
+      <section className="grid gap-3 lg:grid-cols-3">
+        <div className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface lg:col-span-2">
           <h2 className="text-base font-semibold text-foreground">
             Admin User Information
           </h2>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             <DetailField label="Admin ID" value={user.adminId} />
             <DetailField label="User ID" value={user.userId} />
             <DetailField label="Email" value={user.email} />
             <DetailField label="User Status" value={user.userStatus} />
             <DetailField label="Permission Version" value={user.permissionVersion} />
-            <DetailField label="Last Login" value={user.lastLoginAt} />
-            <DetailField label="Created At" value={user.createdAt} />
-            <DetailField label="Updated At" value={user.updatedAt} />
+            <DetailField
+              label="Last Login"
+              value={user.lastLoginAt ? formatDate(user.lastLoginAt, true) : 'Never'}
+            />
+            <DetailField label="Created At" value={formatDate(user.createdAt, true)} />
+            <DetailField label="Updated At" value={formatDate(user.updatedAt, true)} />
           </div>
         </div>
 
-        <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
+        <div className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
           <h2 className="text-base font-semibold text-foreground">Role</h2>
           <DetailField label="Role Name" value={user.role?.roleName} />
           <DetailField label="Role Code" value={user.role?.roleCode} />
@@ -262,7 +325,7 @@ export function AdminUserDetailPage() {
         </div>
       </section>
 
-      <section className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
+      <section className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
         <h2 className="text-base font-semibold text-foreground">Update User</h2>
         <div className="grid gap-3 lg:grid-cols-2">
           <label className="space-y-1">

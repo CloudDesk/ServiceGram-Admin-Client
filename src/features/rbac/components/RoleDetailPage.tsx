@@ -1,4 +1,5 @@
-import { Lock, Save, ShieldCheck } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { CalendarClock, KeyRound, Lock, Save, ShieldCheck, ToggleLeft } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
@@ -11,6 +12,7 @@ import { PageContainer } from '../../../components/layout/PageContainer'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { useAuthStore } from '../../../store/authStore'
+import { formatDate } from '../../../utils/formatDate'
 import { rbacService } from '../services/rbac.service'
 import { PermissionMatrix } from './PermissionMatrix'
 import type { RoleDetail } from '../types/rbac.types'
@@ -31,9 +33,36 @@ function DetailField({
   value: string | number | null | undefined
 }) {
   return (
-    <div className="space-y-1">
-      <p className="text-xs font-semibold uppercase text-muted">{label}</p>
-      <p className="break-words text-sm text-foreground">{value ?? 'Not available'}</p>
+    <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface-muted/60 p-3">
+      <p className="text-xs font-semibold uppercase tracking-normal text-muted">{label}</p>
+      <p className="mt-1 break-words text-sm font-medium text-foreground">
+        {value ?? 'Not available'}
+      </p>
+    </div>
+  )
+}
+
+function SummaryCard({
+  icon,
+  label,
+  meta,
+  value,
+}: {
+  icon: ReactNode
+  label: string
+  meta: string
+  value: ReactNode
+}) {
+  return (
+    <div className="min-h-[4.35rem] rounded-[0.75rem] border border-border bg-surface p-2.5">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-normal text-muted">
+        {icon}
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-semibold tracking-normal text-foreground">
+        {value}
+      </div>
+      <p className="mt-0.5 text-xs leading-4 text-muted">{meta}</p>
     </div>
   )
 }
@@ -317,6 +346,37 @@ export function RoleDetailPage() {
         titleMetaNode={<RoleStatus role={role} />}
       />
 
+      <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard
+          icon={<ToggleLeft className="size-4 text-success" />}
+          label="Status"
+          meta="Role availability"
+          value={
+            <Badge tone={role.isActive ? 'success' : 'danger'}>
+              {role.isActive ? 'Active' : 'Inactive'}
+            </Badge>
+          }
+        />
+        <SummaryCard
+          icon={<KeyRound className="size-4 text-info" />}
+          label="Type"
+          meta={role.roleCode}
+          value={role.isSystem ? 'System' : 'Custom'}
+        />
+        <SummaryCard
+          icon={<ShieldCheck className="size-4 text-warning" />}
+          label="Permissions"
+          meta="Assigned to role"
+          value={role.permissions.length}
+        />
+        <SummaryCard
+          icon={<CalendarClock className="size-4 text-primary" />}
+          label="Updated"
+          meta="Backend timestamp"
+          value={formatDate(role.updatedAt, true)}
+        />
+      </section>
+
       {actionError ? (
         <div className="rounded-[1rem] border border-danger/25 bg-danger/10 p-3 text-sm text-danger">
           {actionError}
@@ -328,23 +388,23 @@ export function RoleDetailPage() {
         </div>
       ) : null}
       {role.isSystem ? (
-        <div className="rounded-[1rem] border border-info/25 bg-info/10 p-3 text-sm text-info">
+        <div className="rounded-[0.875rem] border border-info/25 bg-info/10 p-3 text-sm text-info">
           System roles are locked. Create or edit a custom role to change access.
         </div>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
+      <section className="grid gap-3 lg:grid-cols-3">
+        <div className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
           <h2 className="text-base font-semibold text-foreground">Role Summary</h2>
-          <div className="grid gap-4">
+          <div className="grid gap-3">
             <DetailField label="Role ID" value={role.roleId} />
             <DetailField label="Role Code" value={role.roleCode} />
-            <DetailField label="Created At" value={role.createdAt} />
-            <DetailField label="Updated At" value={role.updatedAt} />
+            <DetailField label="Created At" value={formatDate(role.createdAt, true)} />
+            <DetailField label="Updated At" value={formatDate(role.updatedAt, true)} />
           </div>
         </div>
 
-        <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4 lg:col-span-2">
+        <div className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface lg:col-span-2">
           <h2 className="text-base font-semibold text-foreground">Role Details</h2>
           <div className="grid gap-3 lg:grid-cols-2">
             <label className="space-y-1">
@@ -409,7 +469,7 @@ export function RoleDetailPage() {
         </div>
       </section>
 
-      <section className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
+      <section className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-base font-semibold text-foreground">

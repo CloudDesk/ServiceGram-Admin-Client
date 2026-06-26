@@ -20,9 +20,10 @@ export interface ReportQueryParams {
   dateTo?: string
   city?: string
   zoneId?: string
-  vendorId?: string
-  categoryId?: string
-  status?: string
+  vendorId?: string | string[]
+  categoryId?: string | string[]
+  customerId?: string | string[]
+  status?: string | string[]
   limit?: number
 }
 

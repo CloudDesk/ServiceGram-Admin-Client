@@ -4,6 +4,7 @@ import {
   CUSTOMER_BLOCK_PATH,
   CUSTOMER_DETAIL_PATH,
   CUSTOMER_LIST_PATH,
+  CUSTOMER_PROFILE_UPDATE_PATH,
   CUSTOMER_UNBLOCK_PATH,
   CUSTOMER_WALLET_CREDIT_PATH,
 } from '../../../config/customerApiPaths'
@@ -17,23 +18,58 @@ import type {
   BlockCustomerResponse,
   CustomerLifecycleActionPayload,
   CustomerNotePayload,
+  CustomerProfileUpdatePayload,
   CustomerWalletCreditPayload,
   CustomerWalletCreditResponse,
   UnblockCustomerResponse,
+  UpdateCustomerProfileResponse,
 } from '../types/customer.types'
 
-async function parseJsonResponse<T>(response: Response): Promise<T> {
-  return (await response.json()) as T
+interface ErrorEnvelope {
+  message?: string
+  details?: {
+    fieldErrors?: {
+      field: string
+      message: string
+    }[]
+  }
 }
 
-function postJson<TPayload>(payload: TPayload) {
+async function parseJsonResponse<T>(response: Response): Promise<T> {
+  const payload = (await response.json()) as T | ErrorEnvelope
+
+  if (!response.ok) {
+    const fieldMessage =
+      payload && typeof payload === 'object' && 'details' in payload
+        ? payload.details?.fieldErrors?.[0]?.message
+        : undefined
+    const message =
+      payload && typeof payload === 'object' && 'message' in payload
+        ? payload.message
+        : undefined
+
+    throw new Error(fieldMessage ?? message ?? 'Customer request failed.')
+  }
+
+  return payload as T
+}
+
+function jsonRequest<TPayload>(method: 'POST' | 'PUT', payload: TPayload) {
   return {
-    method: 'POST',
+    method,
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
   }
+}
+
+function postJson<TPayload>(payload: TPayload) {
+  return jsonRequest('POST', payload)
+}
+
+function putJson<TPayload>(payload: TPayload) {
+  return jsonRequest('PUT', payload)
 }
 
 async function getCustomerList(
@@ -65,6 +101,18 @@ async function addCustomerNote(
   )
 
   return parseJsonResponse<AddCustomerNoteResponse>(response)
+}
+
+async function updateCustomerProfile(
+  customerId: string,
+  payload: CustomerProfileUpdatePayload,
+): Promise<UpdateCustomerProfileResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_PROFILE_UPDATE_PATH(customerId)),
+    putJson(payload),
+  )
+
+  return parseJsonResponse<UpdateCustomerProfileResponse>(response)
 }
 
 async function blockCustomer(
@@ -106,6 +154,7 @@ async function creditCustomerWallet(
 export const customerService = {
   getCustomerList,
   getCustomerById,
+  updateCustomerProfile,
   addCustomerNote,
   blockCustomer,
   unblockCustomer,

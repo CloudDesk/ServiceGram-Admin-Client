@@ -33,7 +33,9 @@ import type {
   InfluencerStatus,
 } from '../types/influencer.types'
 
-function statusTone(status: InfluencerStatus | string) {
+type InfluencerTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+
+function statusTone(status: InfluencerStatus | string): InfluencerTone {
   if (status === 'APPROVED' || status === 'CONFIRMED' || status === 'READY') {
     return 'success'
   }
@@ -54,6 +56,24 @@ function statusTone(status: InfluencerStatus | string) {
     return 'danger'
   }
   return 'neutral'
+}
+
+function toneClasses(tone: InfluencerTone) {
+  if (tone === 'success') return 'text-success'
+  if (tone === 'warning') return 'text-warning'
+  if (tone === 'danger') return 'text-danger'
+  if (tone === 'info') return 'text-primary'
+  return 'text-muted'
+}
+
+function humanizeCode(value: string | null | undefined) {
+  if (!value) return 'Not available'
+
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function formatPaise(amountPaise: number, currency = 'INR') {
@@ -79,17 +99,24 @@ function DetailField({
 
 function MetricCard({
   label,
+  meta,
+  tone,
   value,
 }: {
   label: string
+  meta: string
+  tone: InfluencerTone
   value: string | number
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
-      <p className="text-xs font-semibold uppercase text-muted">{label}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-foreground">
+    <div className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
+      <p className={`text-xs font-semibold uppercase tracking-normal ${toneClasses(tone)}`}>
+        {label}
+      </p>
+      <p className={`mt-3 text-2xl font-semibold tracking-normal ${toneClasses(tone)}`}>
         {value}
       </p>
+      <p className="mt-1 text-xs text-muted">{meta}</p>
     </div>
   )
 }
@@ -429,32 +456,56 @@ export function InfluencerDetailPage() {
       />
 
       {influencer.warnings.length > 0 ? (
-        <div className="rounded-2xl border border-warning/20 bg-warning/5 p-4 text-sm text-warning">
-          {influencer.warnings.join(', ')}
-        </div>
+        <section className="flex flex-wrap gap-2 rounded-[0.875rem] border border-border bg-surface p-3 shadow-surface">
+          {influencer.warnings.map((warning) => (
+            <Badge key={warning} tone="warning">
+              {humanizeCode(warning)}
+            </Badge>
+          ))}
+        </section>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-4">
-        <MetricCard label="Total Reels" value={influencer.summary.reelCount} />
-        <MetricCard label="Live Reels" value={influencer.summary.liveReelCount} />
+      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          label="Attributed Bookings"
+          label="Total reels"
+          meta={`${influencer.summary.pendingReelCount} pending moderation`}
+          tone={influencer.summary.reelCount > 0 ? 'info' : 'neutral'}
+          value={influencer.summary.reelCount}
+        />
+        <MetricCard
+          label="Live reels"
+          meta="Visible creator content"
+          tone={influencer.summary.liveReelCount > 0 ? 'success' : 'neutral'}
+          value={influencer.summary.liveReelCount}
+        />
+        <MetricCard
+          label="Attributed bookings"
+          meta="Orders connected to creator reels"
+          tone={
+            influencer.summary.attributedBookingCount > 0 ? 'info' : 'neutral'
+          }
           value={influencer.summary.attributedBookingCount}
         />
         <MetricCard
-          label="Confirmed Commission"
+          label="Confirmed commission"
+          meta={`Pending ${formatPaise(influencer.summary.pendingCommissionPaise)}`}
+          tone={
+            influencer.summary.confirmedCommissionPaise > 0
+              ? 'success'
+              : 'neutral'
+          }
           value={formatPaise(influencer.summary.confirmedCommissionPaise)}
         />
       </div>
 
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+        <div className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
           <div className="mb-5 flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-full bg-success/10 text-success">
+            <div className="flex size-11 items-center justify-center rounded-full border border-border bg-surface text-success">
               <BadgeCheck className="size-5" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold tracking-[-0.03em] text-foreground">
+              <h2 className="text-base font-semibold tracking-normal text-foreground">
                 Creator profile
               </h2>
               <p className="text-sm text-muted">
@@ -490,7 +541,7 @@ export function InfluencerDetailPage() {
             />
           </div>
           {influencer.bio ? (
-            <div className="mt-5 rounded-2xl border border-border bg-background/40 p-4">
+            <div className="mt-5 rounded-[0.875rem] border border-border bg-surface-muted/45 p-4">
               <p className="text-xs font-semibold uppercase text-muted">Bio</p>
               <p className="mt-2 text-sm leading-6 text-foreground">
                 {influencer.bio}
@@ -499,8 +550,8 @@ export function InfluencerDetailPage() {
           ) : null}
         </div>
 
-        <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-          <h2 className="text-lg font-semibold tracking-[-0.03em] text-foreground">
+        <div className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+          <h2 className="text-base font-semibold tracking-normal text-foreground">
             Application
           </h2>
           {influencer.application ? (
@@ -532,7 +583,7 @@ export function InfluencerDetailPage() {
                 value={influencer.application.socialHandle}
               />
               {influencer.application.motivation ? (
-                <div className="rounded-2xl border border-border bg-background/40 p-4">
+                <div className="rounded-[0.875rem] border border-border bg-surface-muted/45 p-4">
                   <p className="text-xs font-semibold uppercase text-muted">
                     Motivation
                   </p>
@@ -542,7 +593,7 @@ export function InfluencerDetailPage() {
                 </div>
               ) : null}
               {applicationReason ? (
-                <div className="rounded-2xl border border-border bg-background/40 p-4">
+                <div className="rounded-[0.875rem] border border-border bg-surface-muted/45 p-4">
                   <p className="text-xs font-semibold uppercase text-muted">
                     Review reason
                   </p>
@@ -561,10 +612,10 @@ export function InfluencerDetailPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
+      <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-lg font-semibold tracking-[-0.03em] text-foreground">
+            <h2 className="text-base font-semibold tracking-normal text-foreground">
               Recent creator reels
             </h2>
             <p className="text-sm text-muted">
@@ -591,9 +642,9 @@ export function InfluencerDetailPage() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
+      <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
         <div className="mb-4">
-          <h2 className="text-lg font-semibold tracking-[-0.03em] text-foreground">
+          <h2 className="text-base font-semibold tracking-normal text-foreground">
             Commission ledger
           </h2>
           <p className="text-sm text-muted">

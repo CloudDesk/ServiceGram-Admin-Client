@@ -1,37 +1,54 @@
-import type { ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import type {
+  CSSProperties,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import {
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Download,
   ExternalLink,
   Eye,
   RefreshCcw,
-  Search,
+  SlidersHorizontal,
   TriangleAlert,
   XCircle,
 } from 'lucide-react'
 import { InlineAlert } from '../../../components/feedback/InlineAlert'
-import { ListFilterBar } from '../../../components/layout/ListFilterBar'
+import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
+import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
+import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
+import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import {
   DynamicTable,
   TableSkeleton,
   type DynamicTableColumn,
 } from '../../../components/ui/Table'
+import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { mapApiError } from '../../../services/apiErrorMapper'
+import type { LookupOption } from '../../../types/lookup.types'
 import type { StatusTone } from '../../../types/status.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
+import {
+  searchCategoryLookupOptions,
+  searchCustomerLookupOptions,
+  searchVendorLookupOptions,
+} from '../../lookups/adminLookups'
 import { reportService } from '../services/report.service'
 import type {
   AdminReportType,
@@ -43,6 +60,8 @@ import type {
   ReportRow,
   ReportSummary,
 } from '../types/report.types'
+
+type ReportsPageMode = 'list' | 'detail'
 
 const reportCatalog: Record<
   AdminReportType,
@@ -117,8 +136,26 @@ const reportCatalog: Record<
 }
 
 const reportTypes = Object.keys(reportCatalog) as AdminReportType[]
+const reportSlugByType: Record<AdminReportType, string> = {
+  ORDER_LIFECYCLE: 'order-lifecycle',
+  VENDOR_PERFORMANCE: 'vendor-performance',
+  PAYMENTS: 'payments',
+  PAYOUTS: 'payouts',
+  REFUNDS: 'refunds',
+}
 const exportFormats: ReportExportFormat[] = ['CSV', 'JSON']
 const emptyReportRows: ReportRow[] = []
+const REPORT_DEFAULT_COLUMN_WIDTH = 220
+const REPORT_COLUMN_GAP = 12
+const REPORT_INLINE_PADDING = 24
+const REPORT_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.report.columnWidths.v1'
+
+type ReportColumnWidths = Record<string, number>
+
+interface ReportGridStyle extends CSSProperties {
+  '--report-grid-template': string
+  '--report-grid-min-width': string
+}
 
 function humanize(value: string) {
   return value
@@ -136,7 +173,7 @@ function fieldLabel(key: string) {
     .map((part) => {
       const lowerPart = part.toLowerCase()
 
-      if (['api', 'cod', 'gcs', 'id', 'iam', 'otp', 'sms', 'url'].includes(lowerPart)) {
+      if (['api', 'cod', 'gcs', 'id', 'iam', 'otp', 'sms', 'upi', 'url'].includes(lowerPart)) {
         return part.toUpperCase()
       }
 
@@ -147,8 +184,32 @@ function fieldLabel(key: string) {
     .join(' ')
 }
 
+function humanizeCode(value: string | null | undefined) {
+  if (!value) return 'Not available'
+
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat('en-IN').format(value)
+}
+
+function formatDateSafe(value: string | null | undefined) {
+  if (!value) return 'Not available'
+  return formatDate(value, true)
+}
+
+function formatRefreshTime(value: number) {
+  if (!value) return 'Not refreshed yet'
+
+  return `Last refreshed ${new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value))}`
 }
 
 function isMoneyKey(key: string) {
@@ -229,7 +290,7 @@ function formatValue(key: string, value: unknown): ReactNode {
     }
 
     if (key.toLowerCase().includes('status')) {
-      return <Badge tone={statusTone(value)}>{humanize(value)}</Badge>
+      return <Badge tone={statusTone(value)}>{humanizeCode(value)}</Badge>
     }
 
     if (isDateLikeValue(value)) {
@@ -244,6 +305,23 @@ function formatValue(key: string, value: unknown): ReactNode {
   }
 
   return JSON.stringify(value)
+}
+
+function valueToSearchText(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function rowMatchesSearch(row: ReportRow, search: string) {
+  const term = search.trim().toLowerCase()
+
+  if (!term) return true
+
+  return Object.values(row).some((value) =>
+    valueToSearchText(value).toLowerCase().includes(term),
+  )
 }
 
 function compactId(value: string) {
@@ -282,11 +360,14 @@ function getLimitError(limit: string) {
 
 function toFilterRecord(query: ReportQueryParams): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(query).filter(([, value]) => value !== undefined && value !== null && value !== ''),
+    Object.entries(query).filter(([, value]) => {
+      if (Array.isArray(value)) return value.length > 0
+      return value !== undefined && value !== null && value !== ''
+    }),
   )
 }
 
-function buildColumns(rows: ReportRow[]): DynamicTableColumn<ReportRow>[] {
+function getReportColumnKeys(rows: ReportRow[]) {
   const preferredKeys = [
     'publicOrderId',
     'publicVendorId',
@@ -300,23 +381,34 @@ function buildColumns(rows: ReportRow[]): DynamicTableColumn<ReportRow>[] {
     'totalAmountPaise',
     'grossOrderValuePaise',
     'netEarningsPaise',
+    'city',
     'createdAt',
+    'updatedAt',
     'deliveredAt',
     'paidAt',
   ]
   const discoveredKeys = Array.from(new Set(rows.flatMap((row) => Object.keys(row))))
-  const orderedKeys = [
+
+  return [
     ...preferredKeys.filter((key) => discoveredKeys.includes(key)),
     ...discoveredKeys.filter((key) => !preferredKeys.includes(key)),
-  ].slice(0, 9)
+  ]
+}
 
-  return orderedKeys.map((key) => ({
-    key,
-    label: fieldLabel(key),
-    minWidth: key.toLowerCase().includes('id') ? 220 : 160,
-    align: isMoneyKey(key) ? 'right' : undefined,
-    renderCell: (row) => <span className="line-clamp-2">{formatValue(key, row[key])}</span>,
-  }))
+function defaultVisibleColumns(columns: string[]) {
+  return columns.slice(0, Math.min(columns.length, 6))
+}
+
+function buildPreviewColumns(rows: ReportRow[]): DynamicTableColumn<ReportRow>[] {
+  return getReportColumnKeys(rows)
+    .slice(0, 9)
+    .map((key) => ({
+      key,
+      label: fieldLabel(key),
+      minWidth: key.toLowerCase().includes('id') ? 220 : 160,
+      align: isMoneyKey(key) ? 'right' : undefined,
+      renderCell: (row) => <span className="line-clamp-2">{formatValue(key, row[key])}</span>,
+    }))
 }
 
 function rowId(row: ReportRow, index: number, reportType: AdminReportType) {
@@ -334,39 +426,132 @@ function rowId(row: ReportRow, index: number, reportType: AdminReportType) {
   return typeof candidate === 'string' ? candidate : `${reportType}-${index}`
 }
 
+function reportColumnStorageKey(reportType: AdminReportType, columnId: string) {
+  return `${reportType}:${columnId}`
+}
+
+function getReportColumnMinWidth(columnId: string) {
+  return columnId.toLowerCase().includes('id') ? 210 : 150
+}
+
+function getReportColumnWidth(
+  reportType: AdminReportType,
+  columnWidths: ReportColumnWidths,
+  columnId: string,
+) {
+  return Math.max(
+    getReportColumnMinWidth(columnId),
+    columnWidths[reportColumnStorageKey(reportType, columnId)] ??
+      REPORT_DEFAULT_COLUMN_WIDTH,
+  )
+}
+
+function loadReportColumnWidths() {
+  if (typeof window === 'undefined') return {}
+
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(REPORT_COLUMN_WIDTH_STORAGE_KEY) ?? '{}',
+    ) as Record<string, unknown>
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        ([, value]) => typeof value === 'number' && Number.isFinite(value),
+      ),
+    ) as ReportColumnWidths
+  } catch {
+    return {}
+  }
+}
+
+function getReportGridTemplate(
+  reportType: AdminReportType,
+  visibleColumns: string[],
+  columnWidths: ReportColumnWidths,
+) {
+  return visibleColumns
+    .map((columnId) => `${getReportColumnWidth(reportType, columnWidths, columnId)}px`)
+    .join(' ')
+}
+
+function getReportGridMinWidth(
+  reportType: AdminReportType,
+  visibleColumns: string[],
+  columnWidths: ReportColumnWidths,
+) {
+  const gridGapWidth = Math.max(visibleColumns.length - 1, 0) * REPORT_COLUMN_GAP
+  const visibleWidth = visibleColumns.reduce(
+    (sum, columnId) => sum + getReportColumnWidth(reportType, columnWidths, columnId),
+    0,
+  )
+
+  return `${visibleWidth + gridGapWidth + REPORT_INLINE_PADDING}px`
+}
+
+function reportSupportsCustomerFilter(reportType: AdminReportType) {
+  return ['ORDER_LIFECYCLE', 'PAYMENTS', 'REFUNDS'].includes(reportType)
+}
+
+function statusOptionsForReport(reportType: AdminReportType): LookupOption[] {
+  return reportCatalog[reportType].statusOptions.map((status) => ({
+    label: humanizeCode(status),
+    value: status,
+  }))
+}
+
+function MetricCard({
+  label,
+  meta,
+  value,
+}: {
+  label: string
+  meta?: string
+  value: ReactNode
+}) {
+  return (
+    <div className="min-h-[4.35rem] rounded-[0.75rem] border border-border bg-surface p-2.5">
+      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+        {label}
+      </p>
+      <div className="mt-1 text-lg font-semibold tracking-normal text-foreground">
+        {value}
+      </div>
+      {meta ? <p className="mt-1 text-xs text-muted">{meta}</p> : null}
+    </div>
+  )
+}
+
 function MetricStrip({
   generatedAt,
   rowCount,
   summary,
+  warnings,
 }: {
   generatedAt?: string
   rowCount?: number
   summary: ReportSummary
+  warnings: number
 }) {
-  const entries = Object.entries(summary).slice(0, 7)
+  const entries = Object.entries(summary).slice(0, 3)
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      <div className="rounded-lg border border-border bg-surface p-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">Rows</p>
-        <p className="mt-1 text-xl font-semibold text-foreground">
-          {typeof rowCount === 'number' ? formatNumber(rowCount) : '0'}
-        </p>
-        {generatedAt ? (
-          <p className="mt-1 text-xs text-muted">{formatDate(generatedAt, true)}</p>
-        ) : null}
-      </div>
+    <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+      <MetricCard
+        label="Rows"
+        meta={generatedAt ? formatDateSafe(generatedAt) : 'Generated on refresh'}
+        value={typeof rowCount === 'number' ? formatNumber(rowCount) : '0'}
+      />
       {entries.map(([key, value]) => (
-        <div className="rounded-lg border border-border bg-surface p-3" key={key}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            {fieldLabel(key)}
-          </p>
-          <p className="mt-1 text-xl font-semibold text-foreground">
-            {formatValue(key, value)}
-          </p>
-        </div>
+        <MetricCard key={key} label={fieldLabel(key)} value={formatValue(key, value)} />
       ))}
-    </div>
+      {entries.length < 3 ? (
+        <MetricCard
+          label="Warnings"
+          meta={warnings ? 'Needs review' : 'No warnings'}
+          value={warnings}
+        />
+      ) : null}
+    </section>
   )
 }
 
@@ -376,7 +561,7 @@ function StatusBreakdown({ rows }: { rows: Record<string, unknown>[] }) {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
+    <section className="shrink-0 rounded-[0.875rem] border border-border bg-surface p-3 shadow-surface">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-foreground">Status Breakdown</h2>
         <Badge tone="neutral">{rows.length} states</Badge>
@@ -392,13 +577,13 @@ function StatusBreakdown({ rows }: { rows: Record<string, unknown>[] }) {
           const amountEntry = Object.entries(row).find(([key]) => isMoneyKey(key))
 
           return (
-            <div className="rounded-lg border border-border bg-background/50 p-3" key={status}>
-              <Badge tone={statusTone(status)}>{humanize(status)}</Badge>
-              <p className="mt-2 text-lg font-semibold text-foreground">
+            <div className="rounded-[0.75rem] border border-border bg-surface p-2.5" key={status}>
+              <Badge tone={statusTone(status)}>{humanizeCode(status)}</Badge>
+              <p className="mt-2 text-base font-semibold text-foreground">
                 {countEntry ? formatValue(countEntry[0], countEntry[1]) : '0'}
               </p>
               {amountEntry ? (
-                <p className="text-xs text-muted">
+                <p className="truncate text-xs text-muted">
                   {fieldLabel(amountEntry[0])}: {formatValue(amountEntry[0], amountEntry[1])}
                 </p>
               ) : null}
@@ -406,7 +591,7 @@ function StatusBreakdown({ rows }: { rows: Record<string, unknown>[] }) {
           )
         })}
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -420,7 +605,7 @@ function statusIcon(status: ReportExportStatus) {
   }
 
   if (status === 'PROCESSING') {
-    return <RefreshCcw className="size-4 animate-spin text-info" />
+    return <RefreshCcw className="size-4 animate-spin text-info motion-reduce:animate-none" />
   }
 
   return <Clock3 className="size-4 text-warning" />
@@ -443,7 +628,7 @@ function ExportStatusPanel({
 }) {
   if (isLoading && !exportData) {
     return (
-      <div className="rounded-lg border border-border bg-surface p-4">
+      <div className="rounded-[0.875rem] border border-border bg-surface p-3">
         <TableSkeleton columnCount={4} rowCount={2} />
       </div>
     )
@@ -467,17 +652,17 @@ function ExportStatusPanel({
   const hasInlineRows = Boolean(exportData.result?.rows.length)
 
   return (
-    <section className="space-y-4 rounded-lg border border-border bg-surface p-4">
+    <section className="space-y-3 rounded-[0.875rem] border border-border bg-surface p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             {statusIcon(exportData.status)}
-            <h2 className="text-base font-semibold text-foreground">
+            <h2 className="text-sm font-semibold text-foreground">
               Export {compactId(exportData.exportId)}
             </h2>
-            <Badge tone={statusTone(exportData.status)}>{humanize(exportData.status)}</Badge>
+            <Badge tone={statusTone(exportData.status)}>{humanizeCode(exportData.status)}</Badge>
           </div>
-          <p className="mt-1 text-sm text-muted">
+          <p className="mt-1 text-xs text-muted">
             {reportCatalog[exportData.reportType].label} / {exportData.format}
           </p>
         </div>
@@ -504,33 +689,21 @@ function ExportStatusPanel({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-lg border border-border bg-background/50 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Queued</p>
-          <p className="mt-1 text-sm font-semibold text-foreground">
-            {formatDate(exportData.lifecycle.queuedAt, true)}
-          </p>
-        </div>
-        <div className="rounded-lg border border-border bg-background/50 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Rows</p>
-          <p className="mt-1 text-sm font-semibold text-foreground">
-            {exportData.rowCount === null ? 'Pending' : formatNumber(exportData.rowCount)}
-          </p>
-        </div>
-        <div className="rounded-lg border border-border bg-background/50 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Provider</p>
-          <p className="mt-1 text-sm font-semibold text-foreground">
-            {humanize(exportData.download.providerStatus)}
-          </p>
-        </div>
-        <div className="rounded-lg border border-border bg-background/50 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Expires</p>
-          <p className="mt-1 text-sm font-semibold text-foreground">
-            {exportData.download.expiresAt
-              ? formatDate(exportData.download.expiresAt, true)
-              : 'Not available'}
-          </p>
-        </div>
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Queued" value={formatDateSafe(exportData.lifecycle.queuedAt)} />
+        <MetricCard
+          label="Rows"
+          value={exportData.rowCount === null ? 'Pending' : formatNumber(exportData.rowCount)}
+        />
+        <MetricCard label="Provider" value={humanizeCode(exportData.download.providerStatus)} />
+        <MetricCard
+          label="Expires"
+          value={
+            exportData.download.expiresAt
+              ? formatDateSafe(exportData.download.expiresAt)
+              : 'Not available'
+          }
+        />
       </div>
 
       {exportData.failureReason ? <InlineAlert message={exportData.failureReason} /> : null}
@@ -538,11 +711,11 @@ function ExportStatusPanel({
         <div className="space-y-2">
           {exportData.download.warnings.map((warning) => (
             <div
-              className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/5 p-3 text-sm text-warning"
+              className="flex items-start gap-2 rounded-[0.75rem] border border-warning/20 bg-warning/5 p-3 text-sm text-warning"
               key={warning}
             >
               <TriangleAlert className="mt-0.5 size-4" />
-              <span>{humanize(warning)}</span>
+              <span>{humanizeCode(warning)}</span>
             </div>
           ))}
         </div>
@@ -554,11 +727,12 @@ function ExportStatusPanel({
             generatedAt={exportData.result.generatedAt ?? undefined}
             rowCount={exportData.result.rows.length}
             summary={asSummaryRecord(exportData.result.summary)}
+            warnings={0}
           />
           {hasInlineRows ? (
             <DynamicTable
-              bodyMaxHeight={360}
-              columns={buildColumns(exportData.result.rows as ReportRow[])}
+              bodyMaxHeight={320}
+              columns={buildPreviewColumns(exportData.result.rows as ReportRow[])}
               data={exportData.result.rows as ReportRow[]}
               description="First rows available from the export result."
               title="Inline Preview"
@@ -571,59 +745,124 @@ function ExportStatusPanel({
   )
 }
 
-function OptionalSelect<T extends string>({
-  label,
-  options,
-  value,
-  onChange,
+function ReportRowsTable({
+  columns,
+  rows,
+  reportType,
 }: {
-  label: string
-  options: T[]
-  value: '' | T
-  onChange: (value: '' | T) => void
+  columns: string[]
+  rows: ReportRow[]
+  reportType: AdminReportType
 }) {
   return (
-    <label className="space-y-1">
-      <span className="text-sm font-medium text-foreground">{label}</span>
-      <select
-        className="min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none"
-        value={value}
-        onChange={(event) => onChange(event.target.value as '' | T)}
-      >
-        <option value="">All</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {humanize(option)}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div>
+      {rows.map((row, index) => (
+        <article
+          className="grid min-w-0 gap-3 border-b border-border bg-surface px-3 py-2.5 last:border-b-0 xl:grid-cols-[var(--report-grid-template)] xl:items-center"
+          key={rowId(row, index, reportType)}
+        >
+          {columns.map((columnId) => (
+            <div className="min-w-0 text-sm" key={columnId}>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-normal text-muted xl:hidden">
+                {fieldLabel(columnId)}
+              </span>
+              <div className="line-clamp-2 break-words text-foreground">
+                {formatValue(columnId, row[columnId])}
+              </div>
+            </div>
+          ))}
+        </article>
+      ))}
+    </div>
   )
 }
 
 export function ReportsPage({
   initialReportType = 'ORDER_LIFECYCLE',
+  mode = 'list',
 }: {
   initialReportType?: AdminReportType
+  mode?: ReportsPageMode
 }) {
+  const navigate = useNavigate()
   const canExport = usePermission('reports:export')
   const [reportType, setReportType] = useState<AdminReportType>(initialReportType)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [city, setCity] = useState('')
-  const [vendorId, setVendorId] = useState('')
-  const [zoneId, setZoneId] = useState('')
-  const [categoryId, setCategoryId] = useState('')
-  const [status, setStatus] = useState('')
+  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>([])
+  const [selectedCategories, setSelectedCategories] = useState<LookupOption[]>([])
+  const [selectedCustomers, setSelectedCustomers] = useState<LookupOption[]>([])
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
   const [limit, setLimit] = useState('20')
+  const [rowSearch, setRowSearch] = useState('')
   const [format, setFormat] = useState<ReportExportFormat>('CSV')
   const [reason, setReason] = useState('')
   const [selectedExportId, setSelectedExportId] = useState('')
   const [trackedExportIds, setTrackedExportIds] = useState<string[]>([])
   const [trackingExportId, setTrackingExportId] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
+  const [columnsOpen, setColumnsOpen] = useState(false)
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
+  const [visibleColumnsByReport, setVisibleColumnsByReport] = useState<
+    Partial<Record<AdminReportType, string[]>>
+  >({})
+  const [columnWidths, setColumnWidths] =
+    useState<ReportColumnWidths>(loadReportColumnWidths)
+  const columnsMenuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        REPORT_COLUMN_WIDTH_STORAGE_KEY,
+        JSON.stringify(columnWidths),
+      )
+    } catch {
+      // Width persistence is optional; the table still works without storage.
+    }
+  }, [columnWidths])
+
+  useEffect(() => {
+    if (!columnsOpen) return undefined
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+
+      if (target instanceof Node && columnsMenuRef.current?.contains(target)) {
+        return
+      }
+
+      setColumnsOpen(false)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setColumnsOpen(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [columnsOpen])
 
   const activeReport = reportCatalog[reportType]
+  const categoryIds = useMemo(
+    () => selectedCategories.map((category) => category.value),
+    [selectedCategories],
+  )
+  const vendorIds = useMemo(
+    () => selectedVendors.map((vendor) => vendor.value),
+    [selectedVendors],
+  )
+  const customerIds = useMemo(
+    () => selectedCustomers.map((customer) => customer.value),
+    [selectedCustomers],
+  )
   const dateError = getDateRangeError(dateFrom, dateTo)
   const limitError = getLimitError(limit)
   const parsedLimit = limit.trim() ? Number(limit) : 20
@@ -634,13 +873,26 @@ export function ReportsPage({
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
       city: city.trim() || undefined,
-      vendorId: vendorId.trim() || undefined,
-      zoneId: zoneId.trim() || undefined,
-      categoryId: categoryId.trim() || undefined,
-      status: status || undefined,
+      vendorId: vendorIds.length > 0 ? vendorIds : undefined,
+      categoryId: categoryIds.length > 0 ? categoryIds : undefined,
+      customerId:
+        reportSupportsCustomerFilter(reportType) && customerIds.length > 0
+          ? customerIds
+          : undefined,
+      status: selectedStatuses.length > 0 ? selectedStatuses : undefined,
       limit: Number.isInteger(parsedLimit) ? parsedLimit : 20,
     }),
-    [categoryId, city, dateFrom, dateTo, parsedLimit, status, vendorId, zoneId],
+    [
+      categoryIds,
+      city,
+      customerIds,
+      dateFrom,
+      dateTo,
+      parsedLimit,
+      reportType,
+      selectedStatuses,
+      vendorIds,
+    ],
   )
 
   const reportQuery = useQuery({
@@ -659,6 +911,60 @@ export function ReportsPage({
       return exportStatus === 'QUEUED' || exportStatus === 'PROCESSING' ? 3000 : false
     },
   })
+
+  const reportData: ReportData | undefined = reportQuery.data?.data
+  const rows = reportData?.rows ?? emptyReportRows
+  const filteredRows = useMemo(
+    () => rows.filter((row) => rowMatchesSearch(row, rowSearch)),
+    [rows, rowSearch],
+  )
+  const reportColumns = useMemo(() => getReportColumnKeys(rows), [rows])
+  const visibleColumns = useMemo(() => {
+    const savedColumns =
+      visibleColumnsByReport[reportType]?.filter((column) =>
+        reportColumns.includes(column),
+      ) ?? []
+
+    return savedColumns.length > 0 ? savedColumns : defaultVisibleColumns(reportColumns)
+  }, [reportColumns, reportType, visibleColumnsByReport])
+  const reportGridStyle = useMemo<ReportGridStyle>(
+    () => ({
+      '--report-grid-template': getReportGridTemplate(
+        reportType,
+        visibleColumns,
+        columnWidths,
+      ),
+      '--report-grid-min-width': getReportGridMinWidth(
+        reportType,
+        visibleColumns,
+        columnWidths,
+      ),
+    }),
+    [columnWidths, reportType, visibleColumns],
+  )
+  const exportErrorMessage = exportQuery.error ? mapApiError(exportQuery.error) : undefined
+  const reportErrorMessage = reportQuery.error ? mapApiError(reportQuery.error) : undefined
+  const reasonError =
+    reason.trim() && reason.trim().length < 5
+      ? 'Export reason must be at least 5 characters.'
+      : null
+  const canQueueExport = canExport && !filterError && !reasonError && reason.trim().length >= 5
+  const isInitialLoading = reportQuery.isLoading && !reportQuery.data
+  const isRefreshing = reportQuery.isFetching && Boolean(reportQuery.data)
+  const refreshStatusLabel = isRefreshing
+    ? 'Refreshing now'
+    : formatRefreshTime(reportQuery.dataUpdatedAt)
+  const hasActiveFilters = Boolean(
+    city ||
+      dateFrom ||
+      dateTo ||
+      categoryIds.length > 0 ||
+      vendorIds.length > 0 ||
+      customerIds.length > 0 ||
+      selectedStatuses.length > 0 ||
+      rowSearch ||
+      limit !== '20',
+  )
 
   const rememberExport = (exportId: string) => {
     const trimmedId = exportId.trim()
@@ -689,20 +995,29 @@ export function ReportsPage({
     },
   })
 
-  const reportData: ReportData | undefined = reportQuery.data?.data
-  const rows = reportData?.rows ?? emptyReportRows
-  const columns = useMemo(() => buildColumns(rows), [rows])
-  const exportData =
+  const activeExportData =
     exportQuery.data?.data ??
-    (exportMutation.data?.data.exportId === selectedExportId ? exportMutation.data.data : undefined)
-  const exportErrorMessage = exportQuery.error ? mapApiError(exportQuery.error) : undefined
-  const reportErrorMessage = reportQuery.error ? mapApiError(reportQuery.error) : undefined
-  const exportMutationError = exportMutation.error ? mapApiError(exportMutation.error) : null
-  const reasonError =
-    reason.trim() && reason.trim().length < 5
-      ? 'Export reason must be at least 5 characters.'
-      : null
-  const canQueueExport = canExport && !filterError && !reasonError && reason.trim().length >= 5
+    (exportMutation.data?.data.exportId === selectedExportId
+      ? exportMutation.data.data
+      : undefined)
+  const activeExportMutationError = exportMutation.error
+    ? mapApiError(exportMutation.error)
+    : null
+
+  const selectReportType = (nextReportType: AdminReportType) => {
+    setReportType(nextReportType)
+    setSelectedStatuses([])
+    setRowSearch('')
+    setColumnsOpen(false)
+
+    if (!reportSupportsCustomerFilter(nextReportType)) {
+      setSelectedCustomers([])
+    }
+
+    if (mode === 'detail') {
+      navigate(`${routePaths.reports}/${reportSlugByType[nextReportType]}`)
+    }
+  }
 
   const queueExport = () => {
     const validationError =
@@ -737,226 +1052,631 @@ export function ReportsPage({
     rememberExport(exportId)
   }
 
-  const resetFilters = () => {
+  const clearFilters = () => {
     setDateFrom('')
     setDateTo('')
     setCity('')
-    setVendorId('')
-    setZoneId('')
-    setCategoryId('')
-    setStatus('')
+    setSelectedVendors([])
+    setSelectedCategories([])
+    setSelectedCustomers([])
+    setSelectedStatuses([])
     setLimit('20')
+    setRowSearch('')
     setFormError(null)
   }
 
-  return (
-    <PageContainer>
+  const toggleColumn = (columnId: string) => {
+    setVisibleColumnsByReport((current) => {
+      const currentColumns = current[reportType] ?? defaultVisibleColumns(reportColumns)
+
+      if (currentColumns.includes(columnId)) {
+        if (currentColumns.length === 1) return current
+
+        return {
+          ...current,
+          [reportType]: currentColumns.filter((column) => column !== columnId),
+        }
+      }
+
+      return {
+        ...current,
+        [reportType]: [...currentColumns, columnId],
+      }
+    })
+  }
+
+  const startColumnResize = (
+    columnId: string,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startX = event.clientX
+    const startWidth = getReportColumnWidth(reportType, columnWidths, columnId)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextWidth = startWidth + moveEvent.clientX - startX
+
+      setColumnWidths((currentWidths) => ({
+        ...currentWidths,
+        [reportColumnStorageKey(reportType, columnId)]: Math.max(
+          getReportColumnMinWidth(columnId),
+          Math.round(nextWidth),
+        ),
+      }))
+    }
+
+    const stopResize = () => {
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', stopResize)
+      document.removeEventListener('pointercancel', stopResize)
+    }
+
+    document.addEventListener('pointermove', handlePointerMove)
+    document.addEventListener('pointerup', stopResize)
+    document.addEventListener('pointercancel', stopResize)
+  }
+
+  const resetColumnWidth = (columnId: string) => {
+    setColumnWidths((currentWidths) => ({
+      ...currentWidths,
+      [reportColumnStorageKey(reportType, columnId)]: REPORT_DEFAULT_COLUMN_WIDTH,
+    }))
+  }
+
+  const adjustColumnWidth = (columnId: string, delta: number) => {
+    setColumnWidths((currentWidths) => ({
+      ...currentWidths,
+      [reportColumnStorageKey(reportType, columnId)]: Math.max(
+        getReportColumnMinWidth(columnId),
+        getReportColumnWidth(reportType, currentWidths, columnId) + delta,
+      ),
+    }))
+  }
+
+  const header =
+    mode === 'detail' ? (
+      <DetailPageHeader
+        description="Filter, inspect, and export this operational report."
+        listHref={routePaths.reports}
+        listLabel="Reports"
+        recordName={activeReport.label}
+        title={activeReport.label}
+        titleMetaNode={<Badge tone="info">Report</Badge>}
+      />
+    ) : (
       <PageContextHeader
         description="Operational report views and async export jobs."
         placement="topbar"
         title="Reports"
       />
+    )
 
-      {!canExport ? (
-        <InlineAlert message="Your role can view reports but cannot queue or track exports." />
-      ) : null}
+  return (
+    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
+      {header}
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        {reportTypes.map((type) => (
-          <button
-            className={cn(
-              'rounded-lg border p-3 text-left transition hover:border-primary/60',
-              type === reportType
-                ? 'border-primary bg-primary/10 text-foreground'
-                : 'border-border bg-surface text-muted',
-            )}
-            key={type}
-            type="button"
-            onClick={() => {
-              setReportType(type)
-              setStatus('')
-            }}
-          >
-            <span className="block text-sm font-semibold text-foreground">
-              {reportCatalog[type].label}
-            </span>
-            <span className="mt-1 block text-xs leading-5">{reportCatalog[type].description}</span>
-          </button>
-        ))}
-      </section>
-
-      <section className="space-y-4 rounded-lg border border-border bg-surface p-4">
-        <ListFilterBar
-          actionNode={
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" title="Reset filters" variant="secondary" onClick={resetFilters}>
-                <RefreshCcw className="mr-2 size-4" />
-                Reset
-              </Button>
-              <Button size="sm" title="Reload report" variant="secondary" onClick={() => void reportQuery.refetch()}>
-                <RefreshCcw className="mr-2 size-4" />
-                Refresh
-              </Button>
-              <Button disabled={!canQueueExport} isLoading={exportMutation.isPending} size="sm" title="Queue report export" onClick={queueExport}>
-                <Download className="mr-2 size-4" />
-                Queue Export
-              </Button>
-            </div>
-          }
-          primaryFilters={
-            <>
-              <label className="space-y-1">
-                <span className="text-sm font-medium text-foreground">Date From</span>
-                <Input type="datetime-local" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-              </label>
-              <label className="space-y-1">
-                <span className="text-sm font-medium text-foreground">Date To</span>
-                <Input type="datetime-local" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-              </label>
-              <OptionalSelect label="Status" options={activeReport.statusOptions} value={status} onChange={setStatus} />
-              <label className="space-y-1">
-                <span className="text-sm font-medium text-foreground">City</span>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-                  <Input className="pl-9" value={city} onChange={(event) => setCity(event.target.value)} />
-                </div>
-              </label>
-            </>
-          }
-          secondaryFilters={
-            <>
-              {[
-                ['Zone ID', zoneId, setZoneId],
-                ['Vendor ID', vendorId, setVendorId],
-                ['Category ID', categoryId, setCategoryId],
-                ['Limit', limit, setLimit],
-              ].map(([label, value, setter]) => (
-                <label className="space-y-1" key={label as string}>
-                  <span className="text-sm font-medium text-foreground">{label as string}</span>
-                  <Input max={label === 'Limit' ? 100 : undefined} min={label === 'Limit' ? 1 : undefined} type={label === 'Limit' ? 'number' : 'text'} value={value as string} onChange={(event) => (setter as (nextValue: string) => void)(event.target.value)} />
-                </label>
-              ))}
-              <label className="space-y-1">
-                <span className="text-sm font-medium text-foreground">Export Format</span>
-                <select className="min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none" value={format} onChange={(event) => setFormat(event.target.value as ReportExportFormat)}>
-                  {exportFormats.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="space-y-1">
-                <span className="text-sm font-medium text-foreground">Export Reason</span>
-                <Input value={reason} onChange={(event) => setReason(event.target.value)} />
-              </label>
-            </>
-          }
-        />
-
-        {filterError ? <InlineAlert message={filterError} /> : null}
-        {reasonError ? <InlineAlert message={reasonError} /> : null}
-        {formError ? <InlineAlert message={formError} /> : null}
-        {exportMutationError ? <InlineAlert message={exportMutationError} /> : null}
-        {reportData?.warnings.length ? (
-          <div className="space-y-2">
-            {reportData.warnings.map((warning) => (
-              <div
-                className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/5 p-3 text-sm text-warning"
-                key={warning}
-              >
-                <TriangleAlert className="mt-0.5 size-4" />
-                <span>{warning}</span>
-              </div>
-            ))}
-          </div>
+      <div className="flex flex-col gap-3 xl:min-h-0 xl:flex-1">
+        {!canExport ? (
+          <InlineAlert message="Your role can view reports but cannot queue or track exports." />
         ) : null}
-      </section>
 
-      {reportData ? (
-        <MetricStrip
-          generatedAt={reportData.generatedAt}
-          rowCount={reportData.rowCount}
-          summary={reportData.summary}
-        />
-      ) : null}
-
-      {reportData?.byStatus ? <StatusBreakdown rows={reportData.byStatus} /> : null}
-
-      {reportQuery.isError || filterError ? (
-        <ErrorState
-          description={reportErrorMessage ?? filterError ?? 'We could not load this report.'}
-          title="Report unavailable"
-          onRetry={() => void reportQuery.refetch()}
-        />
-      ) : reportQuery.isLoading || reportQuery.isFetching ? (
-        <TableSkeleton columnCount={6} rowCount={8} />
-      ) : rows.length === 0 ? (
-        <EmptyState description="No report rows matched this filter." title="No report rows" />
-      ) : (
-        <DynamicTable
-          bodyMaxHeight={560}
-          columns={columns}
-          data={rows}
-          description={`${formatNumber(rows.length)} rows returned for ${activeReport.label}.`}
-          title={activeReport.label}
-          getRowId={(row, index) => rowId(row, index, reportType)}
-        />
-      )}
-
-      {canExport ? (
-        <section className="space-y-4 rounded-lg border border-border bg-surface p-4">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">Exports</h2>
-              <p className="text-sm text-muted">Queue, refresh, and download report files.</p>
-            </div>
-            <div className="flex min-w-[min(100%,28rem)] flex-1 items-end gap-2 md:flex-none">
-              <label className="min-w-0 flex-1 space-y-1">
-                <span className="text-sm font-medium text-foreground">Export ID</span>
-                <Input
-                  value={trackingExportId}
-                  onChange={(event) => setTrackingExportId(event.target.value)}
-                />
-              </label>
-              <Button size="sm" title="Track export" variant="secondary" onClick={trackExport}>
-                <Eye className="mr-2 size-4" />
-                Track
-              </Button>
-            </div>
-          </div>
-
-          {trackedExportIds.length ? (
-            <div className="flex flex-wrap gap-2">
-              {trackedExportIds.map((exportId) => (
-                <button
-                  className={cn(
-                    'rounded-lg border px-3 py-2 text-sm font-semibold transition',
-                    exportId === selectedExportId
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border bg-background/50 text-foreground hover:border-primary/60',
-                  )}
-                  title={exportId}
-                  key={exportId}
-                  type="button"
-                  onClick={() => setSelectedExportId(exportId)}
-                >
-                  {compactId(exportId)}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          <ExportStatusPanel
-            errorMessage={exportErrorMessage}
-            exportData={exportData}
-            isError={exportQuery.isError}
-            isLoading={exportQuery.isLoading || exportQuery.isFetching}
-            onOpenDownload={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
-            onRefresh={() => void exportQuery.refetch()}
+        {reportData ? (
+          <MetricStrip
+            generatedAt={reportData.generatedAt}
+            rowCount={reportData.rowCount}
+            summary={reportData.summary}
+            warnings={reportData.warnings.length}
           />
+        ) : null}
+
+        {reportData?.byStatus ? <StatusBreakdown rows={reportData.byStatus} /> : null}
+
+        <section
+          className={cn(
+            'grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[18rem_minmax(0,1fr)] xl:items-stretch xl:overflow-hidden',
+            filtersCollapsed && 'xl:grid-cols-[4.25rem_minmax(0,1fr)]',
+          )}
+        >
+          <aside
+            className={cn(
+              'self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0',
+              filtersCollapsed
+                ? 'flex items-center justify-between gap-3 p-2.5 xl:flex-col xl:justify-start'
+                : 'space-y-3 p-3 xl:overflow-y-auto',
+            )}
+          >
+            {filtersCollapsed ? (
+              <>
+                <button
+                  aria-label="Expand report filters"
+                  className="btn-icon"
+                  title="Expand filters"
+                  type="button"
+                  onClick={() => setFiltersCollapsed(false)}
+                >
+                  <ChevronRight className="size-4" />
+                </button>
+                <span className="text-xs font-semibold uppercase tracking-normal text-muted xl:[writing-mode:vertical-rl] xl:rotate-180">
+                  Reports
+                </span>
+                {hasActiveFilters ? (
+                  <span
+                    aria-label="Active filters"
+                    className="size-2 rounded-full bg-primary"
+                    title="Active filters"
+                  />
+                ) : null}
+              </>
+            ) : (
+              <>
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-sm font-semibold text-foreground">
+                      Report views
+                    </h2>
+                    <button
+                      aria-label="Collapse report filters"
+                      className="btn-icon"
+                      title="Collapse filters"
+                      type="button"
+                      onClick={() => setFiltersCollapsed(true)}
+                    >
+                      <ChevronLeft className="size-4" />
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {reportTypes.map((type) => (
+                      <button
+                        className={cn(
+                          'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border px-3 text-left text-sm transition',
+                          type === reportType
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border bg-surface-muted/50 text-foreground hover:border-primary/35',
+                        )}
+                        key={type}
+                        type="button"
+                        onClick={() => selectReportType(type)}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">
+                            {reportCatalog[type].label}
+                          </span>
+                          <span className="block truncate text-xs text-muted">
+                            {reportCatalog[type].description}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-t border-border pt-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Filter stack
+                    </h3>
+                    {hasActiveFilters ? (
+                      <button
+                        className="text-xs font-semibold text-primary hover:underline"
+                        type="button"
+                        onClick={clearFilters}
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="space-y-2.5">
+                    {activeReport.statusOptions.length ? (
+                      <MultiSelectFilter
+                        label="Status"
+                        options={statusOptionsForReport(reportType)}
+                        placeholder="All statuses"
+                        searchPlaceholder="Search status"
+                        values={selectedStatuses}
+                        onChange={setSelectedStatuses}
+                      />
+                    ) : null}
+
+                    <LookupMultiSelect
+                      fetchOptions={searchCategoryLookupOptions}
+                      label="Category"
+                      placeholder="All categories"
+                      queryKey={['report-category-lookup']}
+                      selectedOptions={selectedCategories}
+                      onChange={(options) => {
+                        setSelectedCategories(options)
+                        setSelectedVendors([])
+                      }}
+                    />
+
+                    <LookupMultiSelect
+                      fetchOptions={(search) =>
+                        searchVendorLookupOptions(search, { categoryIds })
+                      }
+                      label="Vendor"
+                      placeholder={
+                        categoryIds.length ? 'Vendors in selected categories' : 'All vendors'
+                      }
+                      queryKey={['report-vendor-lookup', categoryIds.join(',')]}
+                      selectedOptions={selectedVendors}
+                      onChange={setSelectedVendors}
+                    />
+
+                    {reportSupportsCustomerFilter(reportType) ? (
+                      <LookupMultiSelect
+                        fetchOptions={searchCustomerLookupOptions}
+                        label="Customer"
+                        placeholder="All customers"
+                        queryKey={['report-customer-lookup']}
+                        selectedOptions={selectedCustomers}
+                        onChange={setSelectedCustomers}
+                      />
+                    ) : null}
+
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">City</span>
+                      <Input
+                        className="h-10"
+                        placeholder="City"
+                        value={city}
+                        onChange={(event) => setCity(event.target.value)}
+                      />
+                    </label>
+
+                    <div className="grid grid-cols-1 gap-2">
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-muted">
+                          Date from
+                        </span>
+                        <Input
+                          className="h-10"
+                          type="datetime-local"
+                          value={dateFrom}
+                          onChange={(event) => setDateFrom(event.target.value)}
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-muted">
+                          Date to
+                        </span>
+                        <Input
+                          className="h-10"
+                          type="datetime-local"
+                          value={dateTo}
+                          onChange={(event) => setDateTo(event.target.value)}
+                        />
+                      </label>
+                    </div>
+
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">Limit</span>
+                      <Input
+                        className="h-10"
+                        max={100}
+                        min={1}
+                        type="number"
+                        value={limit}
+                        onChange={(event) => setLimit(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {canExport ? (
+                  <div className="border-t border-border pt-3">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Export
+                    </h3>
+                    <div className="mt-3 space-y-2.5">
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-muted">
+                          Format
+                        </span>
+                        <select
+                          className="form-input h-10"
+                          value={format}
+                          onChange={(event) =>
+                            setFormat(event.target.value as ReportExportFormat)
+                          }
+                        >
+                          {exportFormats.map((item) => (
+                            <option key={item} value={item}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-muted">
+                          Reason
+                        </span>
+                        <Input
+                          className="h-10"
+                          value={reason}
+                          onChange={(event) => setReason(event.target.value)}
+                        />
+                      </label>
+                      <Button
+                        className="w-full justify-center"
+                        disabled={!canQueueExport}
+                        isLoading={exportMutation.isPending}
+                        size="sm"
+                        type="button"
+                        onClick={queueExport}
+                      >
+                        <Download className="mr-2 size-4" />
+                        Queue Export
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </aside>
+
+          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">
+                  {activeReport.label}
+                </h2>
+                <p className="text-sm text-muted">
+                  {reportData
+                    ? `${filteredRows.length} visible of ${reportData.rowCount} rows`
+                    : activeReport.description}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <ListHeaderSearch
+                  className="w-full sm:w-72 lg:w-80"
+                  placeholder="Search report rows"
+                  value={rowSearch}
+                  onChange={setRowSearch}
+                />
+                <span
+                  className={cn(
+                    'text-xs font-medium',
+                    isRefreshing ? 'text-primary' : 'text-muted',
+                  )}
+                >
+                  {refreshStatusLabel}
+                </span>
+                {mode === 'list' ? (
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={() =>
+                      navigate(`${routePaths.reports}/${reportSlugByType[reportType]}`)
+                    }
+                  >
+                    <ExternalLink className="mr-2 size-4" />
+                    Detail
+                  </Button>
+                ) : null}
+                <div className="relative" ref={columnsMenuRef}>
+                  <Button
+                    aria-expanded={columnsOpen}
+                    aria-haspopup="menu"
+                    disabled={reportColumns.length === 0}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setColumnsOpen((current) => !current)}
+                  >
+                    <SlidersHorizontal className="mr-2 size-4" />
+                    Columns
+                    {visibleColumns.length ? (
+                      <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
+                        {visibleColumns.length}
+                      </span>
+                    ) : null}
+                  </Button>
+
+                  {columnsOpen ? (
+                    <div
+                      className="absolute right-0 top-[calc(100%+0.5rem)] z-[60] max-h-80 w-64 overflow-y-auto rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
+                      role="menu"
+                    >
+                      <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
+                        Visible columns
+                      </p>
+                      {reportColumns.map((columnId) => {
+                        const isChecked = visibleColumns.includes(columnId)
+                        const isRequiredLastColumn =
+                          isChecked && visibleColumns.length === 1
+
+                        return (
+                          <label
+                            className={cn(
+                              'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
+                              isRequiredLastColumn && 'cursor-not-allowed opacity-60',
+                            )}
+                            key={columnId}
+                          >
+                            <input
+                              checked={isChecked}
+                              className="size-4 accent-[color:var(--adaptive-primary)]"
+                              disabled={isRequiredLastColumn}
+                              type="checkbox"
+                              onChange={() => toggleColumn(columnId)}
+                            />
+                            <span className="truncate">{fieldLabel(columnId)}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void reportQuery.refetch()}
+                >
+                  <RefreshCcw
+                    className={cn(
+                      'mr-2 size-4',
+                      isRefreshing && 'animate-spin motion-reduce:animate-none',
+                    )}
+                  />
+                  Refresh
+                </Button>
+              </div>
+            </div>
+
+            {filterError ? <InlineAlert message={filterError} /> : null}
+            {reasonError ? <InlineAlert message={reasonError} /> : null}
+            {formError ? <InlineAlert message={formError} /> : null}
+            {activeExportMutationError ? <InlineAlert message={activeExportMutationError} /> : null}
+            {reportData?.warnings.length ? (
+              <div className="space-y-2 p-3">
+                {reportData.warnings.map((warning) => (
+                  <div
+                    className="flex items-start gap-2 rounded-[0.75rem] border border-warning/20 bg-warning/5 p-3 text-sm text-warning"
+                    key={warning}
+                  >
+                    <TriangleAlert className="mt-0.5 size-4" />
+                    <span>{warning}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {reportQuery.isError || filterError ? (
+              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+                <ErrorState
+                  description={reportErrorMessage ?? filterError ?? 'We could not load this report.'}
+                  title="Report unavailable"
+                  onRetry={() => void reportQuery.refetch()}
+                />
+              </div>
+            ) : isInitialLoading ? (
+              <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+                <TableSkeleton columnCount={6} rowCount={8} />
+              </div>
+            ) : rows.length === 0 ? (
+              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+                <EmptyState description="No report rows matched this filter." title="No report rows" />
+              </div>
+            ) : filteredRows.length === 0 ? (
+              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+                <EmptyState description="No visible rows match the table search." title="No matching rows" />
+              </div>
+            ) : (
+              <div className="flex flex-col xl:min-h-0 xl:flex-1">
+                <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
+                  <div
+                    className="min-w-0 xl:min-w-[var(--report-grid-min-width)]"
+                    style={reportGridStyle}
+                  >
+                    <div className="sticky top-0 z-10 hidden gap-3 border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid xl:grid-cols-[var(--report-grid-template)]">
+                      {visibleColumns.map((columnId) => (
+                        <div
+                          className="relative flex min-w-0 items-center pr-3"
+                          key={columnId}
+                        >
+                          <span className="truncate">{fieldLabel(columnId)}</span>
+                          <button
+                            aria-label={`Resize ${fieldLabel(columnId)} column`}
+                            className="group absolute inset-y-0 right-0 flex w-3 cursor-col-resize items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            title="Drag to resize"
+                            type="button"
+                            onDoubleClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              resetColumnWidth(columnId)
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'ArrowLeft') {
+                                event.preventDefault()
+                                adjustColumnWidth(columnId, -16)
+                              }
+
+                              if (event.key === 'ArrowRight') {
+                                event.preventDefault()
+                                adjustColumnWidth(columnId, 16)
+                              }
+                            }}
+                            onPointerDown={(event) =>
+                              startColumnResize(columnId, event)
+                            }
+                          >
+                            <span className="h-4 w-px rounded-full bg-border transition group-hover:bg-primary group-focus-visible:bg-primary" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <ReportRowsTable
+                      columns={visibleColumns}
+                      reportType={reportType}
+                      rows={filteredRows}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </main>
         </section>
-      ) : null}
+
+        {canExport ? (
+          <section className="shrink-0 space-y-3 rounded-[0.875rem] border border-border bg-surface p-3 shadow-surface">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">Exports</h2>
+                <p className="text-sm text-muted">Track and download queued report files.</p>
+              </div>
+              <div className="flex min-w-[min(100%,28rem)] flex-1 items-end gap-2 md:flex-none">
+                <label className="min-w-0 flex-1 space-y-1">
+                  <span className="text-xs font-semibold text-muted">Export ID</span>
+                  <Input
+                    className="h-10"
+                    value={trackingExportId}
+                    onChange={(event) => setTrackingExportId(event.target.value)}
+                  />
+                </label>
+                <Button size="sm" title="Track export" variant="secondary" onClick={trackExport}>
+                  <Eye className="mr-2 size-4" />
+                  Track
+                </Button>
+              </div>
+            </div>
+
+            {trackedExportIds.length ? (
+              <div className="flex flex-wrap gap-2">
+                {trackedExportIds.map((exportId) => (
+                  <button
+                    className={cn(
+                      'rounded-[0.75rem] border px-3 py-2 text-sm font-semibold transition',
+                      exportId === selectedExportId
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-surface-muted/50 text-foreground hover:border-primary/60',
+                    )}
+                    title={exportId}
+                    key={exportId}
+                    type="button"
+                    onClick={() => setSelectedExportId(exportId)}
+                  >
+                    {compactId(exportId)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <ExportStatusPanel
+              errorMessage={exportErrorMessage}
+              exportData={activeExportData}
+              isError={exportQuery.isError}
+              isLoading={exportQuery.isLoading || exportQuery.isFetching}
+              onOpenDownload={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
+              onRefresh={() => void exportQuery.refetch()}
+            />
+          </section>
+        ) : null}
+      </div>
     </PageContainer>
   )
 }

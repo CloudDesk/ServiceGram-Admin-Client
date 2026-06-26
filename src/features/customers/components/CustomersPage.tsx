@@ -854,6 +854,38 @@ export function CustomersPage() {
     queryKey: ['customers', query],
     queryFn: () => customerService.getCustomerList(query),
   })
+  const queueCountBaseQuery = useMemo<AdminCustomersQueryParams>(
+    () => ({
+      page: 1,
+      limit: 1,
+      search: search.trim() || undefined,
+      city: city.trim() || undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+    }),
+    [city, dateFrom, dateTo, search],
+  )
+  const queueCountsQuery = useQuery({
+    queryKey: ['customers', 'queue-counts', queueCountBaseQuery],
+    queryFn: async (): Promise<CustomerQueueCounts> => {
+      const [summaryResponse, incompleteResponse] = await Promise.all([
+        customerService.getCustomerList(queueCountBaseQuery),
+        customerService.getCustomerList({
+          ...queueCountBaseQuery,
+          status: 'INCOMPLETE',
+        }),
+      ])
+
+      return {
+        all: summaryResponse.pagination.totalItems,
+        active: summaryResponse.summary.active,
+        blocked: summaryResponse.summary.blocked,
+        incomplete: incompleteResponse.pagination.totalItems,
+        activeOrders: summaryResponse.summary.withActiveOrders,
+      }
+    },
+    placeholderData: (previousData) => previousData,
+  })
 
   const customers = customersQuery.data?.data ?? []
   const pagination = customersQuery.data?.pagination
@@ -869,10 +901,6 @@ export function CustomersPage() {
     (total, customer) => total + visibleWarnings(customer.warnings).length,
     0,
   )
-  const visibleIncompleteCount = customers.filter(
-    (customer) => customer.status === 'INCOMPLETE',
-  ).length
-
   const metrics = buildMetrics({
     customers,
     summary,
@@ -881,10 +909,7 @@ export function CustomersPage() {
   })
 
   const queueItems = buildQueueItems({
-    customers,
-    pagination,
-    summary,
-    visibleIncompleteCount,
+    counts: queueCountsQuery.data,
   })
 
   const customerGridStyle = useMemo<CustomerGridStyle>(
@@ -1152,7 +1177,7 @@ export function CustomersPage() {
                       >
                         <span className="font-medium">{queue.label}</span>
                         <span className="text-xs font-semibold">
-                          {queue.count}
+                          {queue.count ?? '...'}
                         </span>
                       </button>
                     ))}
@@ -1565,49 +1590,44 @@ function buildMetrics({
 }
 
 function buildQueueItems({
-  customers,
-  pagination,
-  summary,
-  visibleIncompleteCount,
+  counts,
 }: {
-  customers: AdminCustomerListItem[]
-  pagination?: AdminCustomersPagination
-  summary?: AdminCustomersSummary
-  visibleIncompleteCount: number
+  counts?: CustomerQueueCounts
 }) {
   return [
     {
       key: 'all' as const,
       label: 'All customers',
-      count: pagination?.totalItems ?? summary?.visible ?? customers.length,
+      count: counts?.all,
     },
     {
       key: 'active' as const,
       label: 'Active',
-      count:
-        summary?.active ??
-        customers.filter((customer) => customer.status === 'ACTIVE').length,
+      count: counts?.active,
     },
     {
       key: 'blocked' as const,
       label: 'Blocked',
-      count:
-        summary?.blocked ??
-        customers.filter((customer) => customer.status === 'BLOCKED').length,
+      count: counts?.blocked,
     },
     {
       key: 'incomplete' as const,
       label: 'Incomplete',
-      count: visibleIncompleteCount,
+      count: counts?.incomplete,
     },
     {
       key: 'activeOrders' as const,
       label: 'Active orders',
-      count:
-        summary?.withActiveOrders ??
-        customers.filter((customer) => customer.orderSummary.activeOrders > 0)
-          .length,
+      count: counts?.activeOrders,
     },
     // Wallet credit queue can be restored here if the filter is needed again.
   ]
+}
+
+interface CustomerQueueCounts {
+  all: number
+  active: number
+  blocked: number
+  incomplete: number
+  activeOrders: number
 }

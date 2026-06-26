@@ -819,35 +819,40 @@ function buildMetrics(vendors: VendorTableRow[], pagination?: VendorPagination) 
   ]
 }
 
-function buildQueueItems(vendors: VendorTableRow[]) {
+interface VendorQueueCounts {
+  active: number
+  onboarding: number
+  underReview: number
+  documentsPending: number
+  suspended: number
+}
+
+function buildStableQueueItems(counts?: VendorQueueCounts) {
   return [
     {
       key: 'active' as const,
       label: 'Active',
-      count: vendors.filter((vendor) => vendor.vendorStatus === 'ACTIVE').length,
+      count: counts?.active,
     },
     {
       key: 'onboarding' as const,
       label: 'Onboarding',
-      count: vendors.filter((vendor) => vendor.onboardingStatus !== 'APPROVED').length,
+      count: counts?.onboarding,
     },
     {
       key: 'underReview' as const,
       label: 'Under review',
-      count: vendors.filter((vendor) => vendor.onboardingStatus === 'UNDER_REVIEW')
-        .length,
+      count: counts?.underReview,
     },
     {
       key: 'documentsPending' as const,
       label: 'Documents pending',
-      count: vendors.filter(
-        (vendor) => vendor.onboardingStatus === 'DOCUMENTS_PENDING',
-      ).length,
+      count: counts?.documentsPending,
     },
     {
       key: 'suspended' as const,
       label: 'Suspended',
-      count: vendors.filter((vendor) => vendor.vendorStatus === 'SUSPENDED').length,
+      count: counts?.suspended,
     },
   ]
 }
@@ -989,12 +994,62 @@ export function VendorsPage() {
     ],
   )
 
+  const queueCountBaseQuery = useMemo<VendorListQueryParams>(
+    () => ({
+      page: 1,
+      limit: 1,
+      search: search.trim() || undefined,
+      city: city.trim() || undefined,
+      categoryId: categoryId.trim() || undefined,
+    }),
+    [categoryId, city, search],
+  )
+
   const vendorQuery = useQuery({
     queryKey: ['vendors', viewMode, query],
     queryFn: () =>
       viewMode === 'onboarding'
         ? vendorService.getVendorOnboardingQueue(query)
         : vendorService.getVendorList(query),
+  })
+  const queueCountsQuery = useQuery({
+    queryKey: ['vendors', 'queue-counts', queueCountBaseQuery],
+    queryFn: async (): Promise<VendorQueueCounts> => {
+      const [
+        active,
+        onboarding,
+        underReview,
+        documentsPending,
+        suspended,
+      ] = await Promise.all([
+        vendorService.getVendorList({
+          ...queueCountBaseQuery,
+          vendorStatus: 'ACTIVE',
+        }),
+        vendorService.getVendorOnboardingQueue(queueCountBaseQuery),
+        vendorService.getVendorOnboardingQueue({
+          ...queueCountBaseQuery,
+          onboardingStatus: 'UNDER_REVIEW',
+        }),
+        vendorService.getVendorOnboardingQueue({
+          ...queueCountBaseQuery,
+          onboardingStatus: 'DOCUMENTS_PENDING',
+        }),
+        vendorService.getVendorList({
+          ...queueCountBaseQuery,
+          vendorStatus: 'SUSPENDED',
+        }),
+      ])
+
+      return {
+        active: active.pagination.totalItems,
+        onboarding: onboarding.pagination.totalItems,
+        underReview: underReview.pagination.totalItems,
+        documentsPending: documentsPending.pagination.totalItems,
+        suspended: suspended.pagination.totalItems,
+      }
+    },
+    placeholderData: (previousData) => previousData,
   })
 
   const vendors = vendorQuery.data?.data ?? []
@@ -1007,7 +1062,7 @@ export function VendorsPage() {
     : formatRefreshTime(vendorQuery.dataUpdatedAt)
 
   const metrics = buildMetrics(tableVendors, pagination)
-  const queueItems = buildQueueItems(tableVendors)
+  const queueItems = buildStableQueueItems(queueCountsQuery.data)
 
   const vendorGridStyle = useMemo<VendorGridStyle>(
     () => ({
@@ -1286,7 +1341,7 @@ export function VendorsPage() {
                       >
                         <span className="font-medium">{queue.label}</span>
                         <span className="text-xs font-semibold">
-                          {queue.count}
+                          {queue.count ?? '...'}
                         </span>
                       </button>
                     ))}

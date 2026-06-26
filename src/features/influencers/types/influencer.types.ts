@@ -13,13 +13,16 @@ export type InfluencerActionKind =
   | 'SUSPEND'
   | 'REACTIVATE'
 
+type AdminInfluencerFilterValue<T extends string> = T | T[]
+type AdminInfluencerIdFilterValue = string | string[]
+
 export interface AdminInfluencersQueryParams {
   page?: number
   limit?: number
-  status?: InfluencerStatus
+  status?: AdminInfluencerFilterValue<InfluencerStatus>
   search?: string
   city?: string
-  categoryId?: string
+  categoryId?: AdminInfluencerIdFilterValue
 }
 
 export interface InfluencerActionPayload {

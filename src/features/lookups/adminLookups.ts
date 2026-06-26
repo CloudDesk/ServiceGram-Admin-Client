@@ -75,6 +75,23 @@ export async function searchCustomerLookupOptions(
   }))
 }
 
+export async function searchZoneLookupOptions(
+  search: string,
+): Promise<LookupOption[]> {
+  const response = await settingsService.getZones({
+    isActive: true,
+    limit: LOOKUP_PAGE_SIZE,
+    page: 1,
+    search: search || undefined,
+  })
+
+  return response.data.map((zone) => ({
+    label: zone.zoneName,
+    meta: compactMeta([zone.city, zone.zoneId]),
+    value: zone.zoneId,
+  }))
+}
+
 export async function searchOrderLookupOptions(
   search: string,
 ): Promise<LookupOption[]> {

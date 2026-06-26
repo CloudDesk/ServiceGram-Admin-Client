@@ -1,6 +1,7 @@
 import { buildApiUrl } from '../../../config/api'
 import {
   ADMIN_ME_PATH,
+  ADMIN_USER_DETAIL_PATH,
   ADMIN_USER_FORCE_LOGOUT_PATH,
   ADMIN_USER_UPDATE_PATH,
   ADMIN_USERS_CREATE_PATH,
@@ -10,6 +11,7 @@ import { apiClient } from '../../../services/apiClient'
 import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
   AdminUserActionResponse,
+  AdminUserDetailResponse,
   AdminUserErrorResponse,
   AdminUsersListResponse,
   AdminUsersQueryParams,
@@ -86,6 +88,14 @@ async function createAdminUser(
   return parseJsonResponse<AdminUserActionResponse>(response)
 }
 
+async function getAdminUser(adminId: string): Promise<AdminUserDetailResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(ADMIN_USER_DETAIL_PATH(adminId)),
+  )
+
+  return parseJsonResponse<AdminUserDetailResponse>(response)
+}
+
 async function updateAdminUser(
   adminId: string,
   payload: UpdateAdminUserPayload,
@@ -114,6 +124,7 @@ async function forceLogoutAdminUser(
 export const adminUserService = {
   getMe,
   getAdminUsers,
+  getAdminUser,
   createAdminUser,
   updateAdminUser,
   forceLogoutAdminUser,

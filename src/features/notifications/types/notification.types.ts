@@ -25,11 +25,12 @@ export interface NotificationTemplatesQueryParams {
 export interface NotificationEventsQueryParams {
   page?: number
   limit?: number
-  recipientType?: NotificationRecipientType
-  channel?: NotificationChannel
-  status?: NotificationEventStatus
-  templateCode?: string
-  recipientUserId?: string
+  search?: string
+  recipientType?: NotificationRecipientType[]
+  channel?: NotificationChannel[]
+  status?: NotificationEventStatus[]
+  templateCode?: string[]
+  recipientUserId?: string[]
   dateFrom?: string
   dateTo?: string
 }
@@ -86,6 +87,17 @@ export interface NotificationRecipientSummary {
   status: string
 }
 
+export interface NotificationDeliveryRetrySummary {
+  attemptNumber: number
+  maxAttempts: number
+  backoffSeconds: number
+  nextRetryAt: string | null
+  scheduledAt: string | null
+  exhausted: boolean
+  lastProviderStatus: string
+  lastFailureReason: string | null
+}
+
 export interface NotificationEvent {
   eventId: string
   recipientUserId: string | null
@@ -98,6 +110,7 @@ export interface NotificationEvent {
   status: NotificationEventStatus
   providerMessageId: string | null
   failureReason: string | null
+  deliveryRetry: NotificationDeliveryRetrySummary | null
   sentAt: string | null
   readAt: string | null
   warnings: string[]
@@ -145,6 +158,9 @@ export interface NotificationEventsResponse
     byChannel: Record<string, number>
   }
 }
+
+export type NotificationEventDetailResponse =
+  NotificationApiResponse<NotificationEvent>
 
 export type UpdateNotificationTemplateResponse =
   NotificationApiResponse<NotificationTemplate>
