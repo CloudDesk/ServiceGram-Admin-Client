@@ -9,6 +9,7 @@ import {
 import { apiClient } from '../../../services/apiClient'
 import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
+  ContentApiErrorDetails,
   ContentPageActionPayload,
   ContentPageResponse,
   ContentPagesQueryParams,
@@ -17,8 +18,30 @@ import type {
   UpdateContentPagePayload,
 } from '../types/content.types'
 
+interface ErrorEnvelope {
+  message?: string
+  error?: string
+  code?: string
+  details?: ContentApiErrorDetails
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  return (await response.json()) as T
+  const payload = (await response.json().catch(() => null)) as
+    | T
+    | ErrorEnvelope
+    | null
+
+  if (!response.ok) {
+    const errorPayload =
+      payload && typeof payload === 'object' ? (payload as ErrorEnvelope) : null
+    const fieldMessage = errorPayload?.details?.fieldErrors?.[0]?.message
+
+    throw new Error(
+      fieldMessage ?? errorPayload?.message ?? errorPayload?.error ?? 'Request failed.',
+    )
+  }
+
+  return payload as T
 }
 
 function jsonRequest<TPayload>(method: 'POST' | 'PUT', payload: TPayload) {

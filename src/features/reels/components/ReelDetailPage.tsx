@@ -1,12 +1,21 @@
 import {
+  ArrowUpRight,
   CheckCircle2,
+  Eye,
   ExternalLink,
+  Film,
+  ImageIcon,
   PauseCircle,
   PencilLine,
+  ShieldCheck,
+  Store,
+  Tags,
   Trash2,
+  TriangleAlert,
+  Video,
   XCircle,
 } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
@@ -18,7 +27,8 @@ import { DynamicTable, type DynamicTableColumn } from '../../../components/ui/Ta
 import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
-import { useAuthStore } from '../../../store/authStore'
+import { usePermission } from '../../../hooks/usePermission'
+import { formatDate } from '../../../utils/formatDate'
 import { reelService } from '../services/reel.service'
 import {
   ReelActionModal,
@@ -34,6 +44,16 @@ import type {
 } from '../types/reel.types'
 
 type ReelTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+
+const reelActionKinds: ReelActionKind[] = [
+  'APPROVE',
+  'REJECT',
+  'REQUEST_EDIT',
+  'PAUSE',
+  'REMOVE',
+  'SOFT_DELETE',
+  'HARD_DELETE',
+]
 
 const checklistColumns: DynamicTableColumn<AdminReelChecklistItem>[] = [
   {
@@ -93,12 +113,56 @@ function humanizeCode(value: string | null | undefined) {
     .join(' ')
 }
 
+function formatDateSafe(value: string | null | undefined) {
+  if (!value) return 'Not available'
+
+  try {
+    return formatDate(value, true)
+  } catch {
+    return value
+  }
+}
+
+function formatDuration(value: number | null | undefined) {
+  if (value == null) return 'Duration unavailable'
+
+  if (value < 60) return `${value} sec`
+
+  const minutes = Math.floor(value / 60)
+  const seconds = value % 60
+  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`
+}
+
+function isReelActionKind(action: string): action is ReelActionKind {
+  return reelActionKinds.includes(action as ReelActionKind)
+}
+
+function canRunReelAction({
+  action,
+  canDeleteReels,
+  canModerateReels,
+}: {
+  action: string
+  canDeleteReels: boolean
+  canModerateReels: boolean
+}) {
+  if (!isReelActionKind(action)) return false
+
+  if (action === 'SOFT_DELETE' || action === 'HARD_DELETE') {
+    return canDeleteReels
+  }
+
+  return canModerateReels
+}
+
 function DetailMetricCard({
+  icon,
   label,
   meta,
   tone,
   value,
 }: {
+  icon: ReactNode
   label: string
   meta: string
   tone: ReelTone
@@ -106,9 +170,12 @@ function DetailMetricCard({
 }) {
   return (
     <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <p className={`text-xs font-semibold uppercase tracking-normal ${toneClasses(tone)}`}>
-        {label}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className={`text-xs font-semibold uppercase tracking-normal ${toneClasses(tone)}`}>
+          {label}
+        </p>
+        <span className={toneClasses(tone)}>{icon}</span>
+      </div>
       <p className={`mt-3 text-xl font-semibold tracking-normal ${toneClasses(tone)}`}>
         {value}
       </p>
@@ -197,28 +264,31 @@ function buildReelDetailMetrics(reel: AdminReel) {
         ? `Next: ${humanizeCode(reel.nextRecommendedAction)}`
         : 'No pending action',
       tone: getModerationStatusTone(reel.moderation.status),
+      icon: <ShieldCheck className="size-4" />,
     },
     {
       label: 'Upload',
       value: humanizeCode(reel.media.uploadStatus),
-      meta: reel.media.durationSeconds
-        ? `${reel.media.durationSeconds} seconds`
-        : 'Duration unavailable',
+      meta: formatDuration(reel.media.durationSeconds),
       tone: getUploadStatusTone(reel.media.uploadStatus),
+      icon: <Video className="size-4" />,
     },
     {
       label: 'Visibility',
       value: humanizeCode(reel.publish.customerVisibility),
       meta: reel.publish.isPublished ? 'Published reel' : 'Hidden from customers',
       tone: reel.publish.customerVisibility === 'VISIBLE' ? 'success' : 'neutral',
+      icon: <Eye className="size-4" />,
     },
     {
       label: 'Signals',
       value: String(riskCount),
       meta: 'Warnings, blockers, and missing fields',
       tone: riskCount > 0 ? 'warning' : 'neutral',
+      icon: <TriangleAlert className="size-4" />,
     },
   ] satisfies {
+    icon: ReactNode
     label: string
     meta: string
     tone: ReelTone
@@ -244,17 +314,20 @@ function ReelHeaderStatus({ reel }: { reel: AdminReel }) {
 
 function ReelHeaderActions({
   canDeleteReels,
+  canModerateReels,
   isSubmitting,
   onSelectAction,
   reel,
 }: {
   canDeleteReels: boolean
+  canModerateReels: boolean
   isSubmitting: boolean
   onSelectAction: (kind: ReelActionKind) => void
   reel: AdminReel
 }) {
   const hasAction = (action: ReelActionKind) =>
-    reel.availableActions.includes(action)
+    reel.availableActions.includes(action) &&
+    canRunReelAction({ action, canDeleteReels, canModerateReels })
 
   return (
     <div className="flex flex-wrap justify-end gap-2">
@@ -338,11 +411,281 @@ function ReelHeaderActions({
   )
 }
 
+function SectionShell({
+  actionNode,
+  children,
+  description,
+  icon,
+  title,
+}: {
+  actionNode?: ReactNode
+  children: ReactNode
+  description?: string
+  icon?: ReactNode
+  title: string
+}) {
+  return (
+    <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            {icon ? <span className="text-primary">{icon}</span> : null}
+            <h2 className="text-base font-semibold text-foreground">{title}</h2>
+          </div>
+          {description ? (
+            <p className="mt-1 text-sm text-muted">{description}</p>
+          ) : null}
+        </div>
+        {actionNode ? <div className="shrink-0">{actionNode}</div> : null}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function RelatedRecordRow({
+  actionLabel = 'Open',
+  canOpen,
+  icon,
+  label,
+  meta,
+  onOpen,
+  value,
+}: {
+  actionLabel?: string
+  canOpen: boolean
+  icon: ReactNode
+  label: string
+  meta: string
+  onOpen?: () => void
+  value: string
+}) {
+  return (
+    <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 text-primary">{icon}</span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            {label}
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+            {value}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted">{meta}</p>
+        </div>
+      </div>
+      {canOpen && onOpen ? (
+        <Button className="shrink-0" size="sm" variant="secondary" onClick={onOpen}>
+          <ArrowUpRight className="mr-2 size-4" />
+          {actionLabel}
+        </Button>
+      ) : (
+        <Badge tone="neutral">View only</Badge>
+      )}
+    </div>
+  )
+}
+
+function RelatedRecordsPanel({
+  canReadVendors,
+  onNavigate,
+  reel,
+}: {
+  canReadVendors: boolean
+  onNavigate: (path: string) => void
+  reel: AdminReel
+}) {
+  const canOpenPlayback = isOpenableUrl(reel.media.playbackUrl)
+
+  return (
+    <SectionShell
+      description="Primary operational records attached to this reel."
+      icon={<ArrowUpRight className="size-4" />}
+      title="Related records"
+    >
+      <div className="divide-y divide-border">
+        <RelatedRecordRow
+          canOpen={canReadVendors}
+          icon={<Store className="size-4" />}
+          label="Vendor"
+          meta={`${reel.vendor.publicVendorId} · ${reel.vendor.zone?.zoneName ?? reel.vendor.city}`}
+          value={reel.vendor.shopName}
+          onOpen={() => onNavigate(`${routePaths.vendors}/${reel.vendor.vendorId}`)}
+        />
+        <RelatedRecordRow
+          canOpen={false}
+          icon={<Tags className="size-4" />}
+          label="Category"
+          meta={reel.category?.categoryCode ?? 'No category code'}
+          value={reel.category?.name ?? 'Unassigned category'}
+        />
+        <RelatedRecordRow
+          actionLabel="Playback"
+          canOpen={canOpenPlayback}
+          icon={<Film className="size-4" />}
+          label="Media"
+          meta={`${humanizeCode(reel.media.uploadStatus)} · ${formatDuration(
+            reel.media.durationSeconds,
+          )}`}
+          value={reel.media.cloudflareVideoUid ?? reel.publicReelId}
+          onOpen={() => {
+            if (canOpenPlayback) {
+              window.open(reel.media.playbackUrl as string, '_blank', 'noreferrer')
+            }
+          }}
+        />
+      </div>
+    </SectionShell>
+  )
+}
+
+function SignalBadgeGroup({
+  emptyLabel,
+  items,
+  tone,
+}: {
+  emptyLabel: string
+  items: string[]
+  tone: ReelTone
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {items.length ? (
+        items.map((item) => (
+          <Badge key={item} tone={tone}>
+            {humanizeCode(item)}
+          </Badge>
+        ))
+      ) : (
+        <Badge tone="success">{emptyLabel}</Badge>
+      )}
+    </div>
+  )
+}
+
+function OperationalSignalsPanel({
+  canDeleteReels,
+  canModerateReels,
+  reel,
+}: {
+  canDeleteReels: boolean
+  canModerateReels: boolean
+  reel: AdminReel
+}) {
+  const permittedActions = reel.availableActions.filter((action) =>
+    canRunReelAction({ action, canDeleteReels, canModerateReels }),
+  )
+
+  return (
+    <SectionShell
+      description="Backend workflow signals and actions permitted for this admin."
+      icon={<TriangleAlert className="size-4" />}
+      title="Signals"
+    >
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            Warnings
+          </p>
+          <SignalBadgeGroup
+            emptyLabel="No warnings"
+            items={reel.warnings}
+            tone="warning"
+          />
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            Blocking reasons
+          </p>
+          <SignalBadgeGroup
+            emptyLabel="No blockers"
+            items={reel.blockingReasons}
+            tone="danger"
+          />
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            Available to you
+          </p>
+          <SignalBadgeGroup
+            emptyLabel="No permitted actions"
+            items={permittedActions}
+            tone="neutral"
+          />
+        </div>
+        <DetailField
+          label="Recommended next"
+          value={humanizeCode(reel.nextRecommendedAction)}
+        />
+      </div>
+    </SectionShell>
+  )
+}
+
+function ReelMediaPanel({ reel }: { reel: AdminReel }) {
+  const hasThumbnail = isOpenableUrl(reel.media.thumbnailUrl)
+  const hasPlayback = isOpenableUrl(reel.media.playbackUrl)
+
+  return (
+    <SectionShell
+      actionNode={
+        hasPlayback ? (
+          <Button
+            size="sm"
+            type="button"
+            variant="secondary"
+            onClick={() =>
+              window.open(reel.media.playbackUrl as string, '_blank', 'noreferrer')
+            }
+          >
+            <ArrowUpRight className="mr-2 size-4" />
+            Playback
+          </Button>
+        ) : null
+      }
+      description="Cloudflare Stream state and media URLs for review."
+      icon={<Video className="size-4" />}
+      title="Media"
+    >
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.75fr)]">
+        <div className="overflow-hidden rounded-[0.875rem] border border-border bg-surface-muted/40">
+          <div className="flex aspect-video items-center justify-center">
+            {hasThumbnail ? (
+              <img
+                alt={`Thumbnail for ${reel.publicReelId}`}
+                className="h-full w-full object-cover"
+                src={reel.media.thumbnailUrl as string}
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-muted">
+                <ImageIcon className="size-8" />
+                <span className="text-sm">No thumbnail</span>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+          <DetailField
+            label="Cloudflare Video UID"
+            value={reel.media.cloudflareVideoUid}
+          />
+          <DetailField label="Duration" value={formatDuration(reel.media.durationSeconds)} />
+          <DetailField label="Upload Status" value={humanizeCode(reel.media.uploadStatus)} />
+          <UrlDetailField label="Playback URL" value={reel.media.playbackUrl} />
+          <UrlDetailField label="Thumbnail URL" value={reel.media.thumbnailUrl} />
+        </div>
+      </div>
+    </SectionShell>
+  )
+}
+
 export function ReelDetailPage() {
   const { reelId } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const canDeleteReels = useAuthStore((state) => state.can('reels:delete'))
+  const canModerateReels = usePermission('reels:moderate')
+  const canDeleteReels = usePermission('reels:delete')
+  const canReadVendors = usePermission('vendors:read')
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedAction, setSelectedAction] =
     useState<ReelActionSelection | null>(null)
@@ -502,11 +845,12 @@ export function ReelDetailPage() {
   const detailMetrics = buildReelDetailMetrics(reel)
 
   return (
-    <PageContainer>
+    <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
         actionNode={
           <ReelHeaderActions
             canDeleteReels={canDeleteReels}
+            canModerateReels={canModerateReels}
             isSubmitting={actionMutation.isPending}
             reel={reel}
             onSelectAction={openAction}
@@ -522,6 +866,7 @@ export function ReelDetailPage() {
       <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
         {detailMetrics.map((metric) => (
           <DetailMetricCard
+            icon={metric.icon}
             key={metric.label}
             label={metric.label}
             meta={metric.meta}
@@ -531,116 +876,54 @@ export function ReelDetailPage() {
         ))}
       </section>
 
-      {reel.warnings.length > 0 ||
-      reel.blockingReasons.length > 0 ||
-      reel.missingFields.length > 0 ? (
-        <section className="flex flex-wrap gap-2 rounded-[0.875rem] border border-border bg-surface p-3 shadow-surface">
-          {reel.warnings.map((warning) => (
-            <Badge key={`warning-${warning}`} tone="warning">
-              {humanizeCode(warning)}
-            </Badge>
-          ))}
-          {reel.blockingReasons.map((reason) => (
-            <Badge key={`blocker-${reason}`} tone="danger">
-              {humanizeCode(reason)}
-            </Badge>
-          ))}
-          {reel.missingFields.map((field) => (
-            <Badge key={`missing-${field}`} tone="neutral">
-              Missing {humanizeCode(field)}
-            </Badge>
-          ))}
-        </section>
-      ) : null}
-
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface lg:col-span-2">
-          <h2 className="text-base font-semibold text-foreground">
-            Reel Information
-          </h2>
+      <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <SectionShell
+          description="Core content, identity, and lifecycle timestamps."
+          icon={<Film className="size-4" />}
+          title="Reel information"
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             <DetailField label="Reel ID" value={reel.reelId} />
             <DetailField label="Public Reel ID" value={reel.publicReelId} />
-            <DetailField label="Content Type" value={reel.contentType} />
+            <DetailField label="Content Type" value={humanizeCode(reel.contentType)} />
             <DetailField label="Caption" value={reel.caption} />
             <DetailField label="Price Indicator" value={reel.priceIndicator} />
             <DetailField
-              label="Next Recommended Action"
-              value={reel.nextRecommendedAction}
-            />
-            <DetailField
-              label="Available Actions"
-              value={
-                reel.availableActions.length
-                  ? reel.availableActions.join(', ')
-                  : null
-              }
-            />
-            <DetailField
-              label="Warnings"
-              value={reel.warnings.length ? reel.warnings.join(', ') : null}
-            />
-            <DetailField
-              label="Blocking Reasons"
-              value={
-                reel.blockingReasons.length
-                  ? reel.blockingReasons.join(', ')
-                  : null
-              }
-            />
-            <DetailField
               label="Missing Fields"
-              value={
-                reel.missingFields.length ? reel.missingFields.join(', ') : null
-              }
+              value={reel.missingFields.length ? reel.missingFields.join(', ') : null}
             />
-            <DetailField label="Created At" value={reel.createdAt} />
-            <DetailField label="Updated At" value={reel.updatedAt} />
+            <DetailField label="Created At" value={formatDateSafe(reel.createdAt)} />
+            <DetailField label="Updated At" value={formatDateSafe(reel.updatedAt)} />
           </div>
-        </div>
+        </SectionShell>
 
-        <div className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
-          <h2 className="text-base font-semibold text-foreground">Vendor</h2>
-          <DetailField label="Shop" value={reel.vendor.shopName} />
-          <DetailField label="Owner" value={reel.vendor.ownerName} />
-          <DetailField label="Mobile" value={reel.vendor.mobileNumber} />
-          <DetailField label="Vendor ID" value={reel.vendor.vendorId} />
-          <DetailField label="Public Vendor ID" value={reel.vendor.publicVendorId} />
-          <DetailField label="Vendor Status" value={reel.vendor.vendorStatus} />
-          <DetailField
-            label="Onboarding Status"
-            value={reel.vendor.onboardingStatus}
+        <div className="space-y-3">
+          <RelatedRecordsPanel
+            canReadVendors={canReadVendors}
+            reel={reel}
+            onNavigate={navigate}
           />
-          <DetailField label="City" value={reel.vendor.city} />
-          <DetailField label="Zone" value={reel.vendor.zone?.zoneName} />
-          <DetailField label="Category" value={reel.category?.name} />
+          <OperationalSignalsPanel
+            canDeleteReels={canDeleteReels}
+            canModerateReels={canModerateReels}
+            reel={reel}
+          />
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
-          <h2 className="text-base font-semibold text-foreground">Media</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <DetailField
-              label="Cloudflare Video UID"
-              value={reel.media.cloudflareVideoUid}
-            />
-            <DetailField
-              label="Duration Seconds"
-              value={reel.media.durationSeconds}
-            />
-            <DetailField label="Upload Status" value={reel.media.uploadStatus} />
-            <UrlDetailField label="Playback URL" value={reel.media.playbackUrl} />
-            <UrlDetailField label="Thumbnail URL" value={reel.media.thumbnailUrl} />
-          </div>
-        </div>
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
+        <ReelMediaPanel reel={reel} />
 
-        <div className="space-y-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
-          <h2 className="text-base font-semibold text-foreground">
-            Moderation & Publish
-          </h2>
+        <SectionShell
+          description="Review decision state and customer visibility."
+          icon={<ShieldCheck className="size-4" />}
+          title="Moderation & publish"
+        >
           <div className="grid gap-4 sm:grid-cols-2">
-            <DetailField label="Moderation Status" value={reel.moderation.status} />
+            <DetailField
+              label="Moderation Status"
+              value={humanizeCode(reel.moderation.status)}
+            />
             <DetailField
               label="Rejection Reason"
               value={reel.moderation.rejectionReason}
@@ -649,16 +932,50 @@ export function ReelDetailPage() {
               label="Approved By Admin ID"
               value={reel.moderation.approvedByAdminId}
             />
-            <DetailField label="Approved At" value={reel.moderation.approvedAt} />
+            <DetailField
+              label="Approved At"
+              value={formatDateSafe(reel.moderation.approvedAt)}
+            />
             <DetailField label="Published" value={reel.publish.isPublished} />
-            <DetailField label="Published At" value={reel.publish.publishedAt} />
+            <DetailField
+              label="Published At"
+              value={formatDateSafe(reel.publish.publishedAt)}
+            />
             <DetailField
               label="Customer Visibility"
-              value={reel.publish.customerVisibility}
+              value={humanizeCode(reel.publish.customerVisibility)}
             />
           </div>
-        </div>
+        </SectionShell>
       </section>
+
+      <SectionShell
+        description="Vendor, zone, and category context used by moderation and customer discovery."
+        icon={<Store className="size-4" />}
+        title="Service context"
+      >
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <DetailField label="Shop" value={reel.vendor.shopName} />
+          <DetailField label="Owner" value={reel.vendor.ownerName} />
+          <DetailField label="Mobile" value={reel.vendor.mobileNumber} />
+          <DetailField label="Vendor ID" value={reel.vendor.vendorId} />
+          <DetailField label="Public Vendor ID" value={reel.vendor.publicVendorId} />
+          <DetailField
+            label="Vendor Status"
+            value={humanizeCode(reel.vendor.vendorStatus)}
+          />
+          <DetailField
+            label="Onboarding Status"
+            value={humanizeCode(reel.vendor.onboardingStatus)}
+          />
+          <DetailField label="City" value={reel.vendor.city} />
+          <DetailField label="Zone" value={reel.vendor.zone?.zoneName} />
+          <DetailField label="Zone City" value={reel.vendor.zone?.city} />
+          <DetailField label="Category" value={reel.category?.name} />
+          <DetailField label="Category Code" value={reel.category?.categoryCode} />
+          <DetailField label="Category Active" value={reel.category?.isActive} />
+        </div>
+      </SectionShell>
 
       <DynamicTable
         bodyMaxHeight={360}

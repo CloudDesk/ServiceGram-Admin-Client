@@ -1,10 +1,14 @@
 import { buildApiUrl } from '../../../config/api'
 import {
   CUSTOMER_ADD_NOTE_PATH,
+  CUSTOMER_ADDRESS_DETAIL_PATH,
+  CUSTOMER_ADDRESS_LIST_PATH,
+  CUSTOMER_ADDRESS_SET_DEFAULT_PATH,
   CUSTOMER_BLOCK_PATH,
   CUSTOMER_DETAIL_PATH,
   CUSTOMER_LIST_PATH,
   CUSTOMER_PROFILE_UPDATE_PATH,
+  CUSTOMER_RELATED_VENDORS_PATH,
   CUSTOMER_UNBLOCK_PATH,
   CUSTOMER_WALLET_CREDIT_PATH,
 } from '../../../config/customerApiPaths'
@@ -13,10 +17,16 @@ import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
   AddCustomerNoteResponse,
   AdminCustomerDetailResponse,
+  AdminCustomerRelatedVendorsQueryParams,
+  AdminCustomerRelatedVendorsResponse,
   AdminCustomersListResponse,
   AdminCustomersQueryParams,
   BlockCustomerResponse,
+  CustomerAddressPayload,
+  CustomerAddressReasonPayload,
+  CustomerAddressResponse,
   CustomerLifecycleActionPayload,
+  DeleteCustomerAddressResponse,
   CustomerNotePayload,
   CustomerProfileUpdatePayload,
   CustomerWalletCreditPayload,
@@ -54,7 +64,7 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
   return payload as T
 }
 
-function jsonRequest<TPayload>(method: 'POST' | 'PUT', payload: TPayload) {
+function jsonRequest<TPayload>(method: 'POST' | 'PUT' | 'DELETE', payload: TPayload) {
   return {
     method,
     headers: {
@@ -70,6 +80,10 @@ function postJson<TPayload>(payload: TPayload) {
 
 function putJson<TPayload>(payload: TPayload) {
   return jsonRequest('PUT', payload)
+}
+
+function deleteJson<TPayload>(payload: TPayload) {
+  return jsonRequest('DELETE', payload)
 }
 
 async function getCustomerList(
@@ -89,6 +103,22 @@ async function getCustomerById(
   const response = await apiClient.request(buildApiUrl(CUSTOMER_DETAIL_PATH(customerId)))
 
   return parseJsonResponse<AdminCustomerDetailResponse>(response)
+}
+
+async function getCustomerRelatedVendors(
+  customerId: string,
+  query: AdminCustomerRelatedVendorsQueryParams = {},
+): Promise<AdminCustomerRelatedVendorsResponse> {
+  const queryString = buildQueryParams(query)
+  const response = await apiClient.request(
+    buildApiUrl(
+      queryString
+        ? `${CUSTOMER_RELATED_VENDORS_PATH(customerId)}?${queryString}`
+        : CUSTOMER_RELATED_VENDORS_PATH(customerId),
+    ),
+  )
+
+  return parseJsonResponse<AdminCustomerRelatedVendorsResponse>(response)
 }
 
 async function addCustomerNote(
@@ -113,6 +143,57 @@ async function updateCustomerProfile(
   )
 
   return parseJsonResponse<UpdateCustomerProfileResponse>(response)
+}
+
+async function createCustomerAddress(
+  customerId: string,
+  payload: CustomerAddressPayload,
+): Promise<CustomerAddressResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_ADDRESS_LIST_PATH(customerId)),
+    postJson(payload),
+  )
+
+  return parseJsonResponse<CustomerAddressResponse>(response)
+}
+
+async function updateCustomerAddress(
+  customerId: string,
+  addressId: string,
+  payload: CustomerAddressPayload,
+): Promise<CustomerAddressResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_ADDRESS_DETAIL_PATH(customerId, addressId)),
+    putJson(payload),
+  )
+
+  return parseJsonResponse<CustomerAddressResponse>(response)
+}
+
+async function setDefaultCustomerAddress(
+  customerId: string,
+  addressId: string,
+  payload: CustomerAddressReasonPayload,
+): Promise<CustomerAddressResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_ADDRESS_SET_DEFAULT_PATH(customerId, addressId)),
+    postJson(payload),
+  )
+
+  return parseJsonResponse<CustomerAddressResponse>(response)
+}
+
+async function deleteCustomerAddress(
+  customerId: string,
+  addressId: string,
+  payload: CustomerAddressReasonPayload,
+): Promise<DeleteCustomerAddressResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_ADDRESS_DETAIL_PATH(customerId, addressId)),
+    deleteJson(payload),
+  )
+
+  return parseJsonResponse<DeleteCustomerAddressResponse>(response)
 }
 
 async function blockCustomer(
@@ -154,7 +235,12 @@ async function creditCustomerWallet(
 export const customerService = {
   getCustomerList,
   getCustomerById,
+  getCustomerRelatedVendors,
   updateCustomerProfile,
+  createCustomerAddress,
+  updateCustomerAddress,
+  setDefaultCustomerAddress,
+  deleteCustomerAddress,
   addCustomerNote,
   blockCustomer,
   unblockCustomer,

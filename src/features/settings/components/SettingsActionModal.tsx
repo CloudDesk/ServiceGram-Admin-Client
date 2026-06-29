@@ -5,8 +5,8 @@ import type {
   CategoryBookingTemplate,
   PlatformSetting,
   ServiceCategory,
+  ServiceType,
   ServiceZone,
-  SettingsRecordType,
 } from "../types/settings.types";
 
 export type SettingsActionSelection =
@@ -15,6 +15,12 @@ export type SettingsActionSelection =
       type: "categories";
       action: "EDIT" | "ACTIVATE" | "DEACTIVATE";
       record: ServiceCategory;
+    }
+  | { type: "serviceTypes"; action: "CREATE"; category: ServiceCategory }
+  | {
+      type: "serviceTypes";
+      action: "EDIT" | "ACTIVATE" | "DEACTIVATE";
+      record: ServiceType;
     }
   | { type: "zones"; action: "CREATE"; record?: undefined }
   | {
@@ -25,6 +31,7 @@ export type SettingsActionSelection =
 
 export interface SettingsActionFormValues {
   value?: unknown;
+  serviceTypeCode?: string;
   name?: string;
   description?: string | null;
   iconAssetId?: string | null;
@@ -47,9 +54,10 @@ interface SettingsActionModalProps {
 }
 
 function title(action: SettingsActionSelection) {
-  const typeLabel: Record<SettingsRecordType, string> = {
+  const typeLabel: Record<SettingsActionSelection["type"], string> = {
     settings: "setting",
     categories: "category",
+    serviceTypes: "service type",
     zones: "zone",
   };
   return `${action.action.replace("_", " ").toLowerCase()} ${typeLabel[action.type]}`;
@@ -78,8 +86,21 @@ function parseJsonArray(raw: string) {
   return value as Record<string, unknown>[];
 }
 
+function parseJsonObject(raw: string) {
+  if (!raw.trim()) return {};
+  const value = JSON.parse(raw) as unknown;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Expected an object.");
+  }
+  return value as Record<string, unknown>;
+}
+
 function formatJson(value: unknown) {
   return JSON.stringify(value ?? [], null, 2);
+}
+
+function formatJsonObject(value: unknown) {
+  return JSON.stringify(value ?? {}, null, 2);
 }
 
 export function SettingsActionModal({
@@ -96,7 +117,13 @@ export function SettingsActionModal({
       ? `${action.type}:${action.record.settingKey}:${action.action}`
       : action.type === "categories"
         ? `${action.type}:${action.record.categoryId}:${action.action}`
-        : `${action.type}:${action.record?.zoneId ?? "new"}:${action.action}`;
+        : action.type === "serviceTypes"
+          ? `${action.type}:${
+              action.action === "CREATE"
+                ? action.category.categoryId
+                : action.record.serviceTypeId
+            }:${action.action}`
+          : `${action.type}:${action.record?.zoneId ?? "new"}:${action.action}`;
 
   return (
     <SettingsActionModalContent
@@ -135,7 +162,27 @@ function SettingsActionModalContent({
     action.type === "categories" ? (action.record.iconAssetId ?? "") : "",
   );
   const [name, setName] = useState(
-    action.type === "categories" ? action.record.name : "",
+    action.type === "categories"
+      ? action.record.name
+      : action.type === "serviceTypes" && action.action !== "CREATE"
+        ? action.record.name
+        : "",
+  );
+  const [serviceTypeCode, setServiceTypeCode] = useState("");
+  const [serviceTypeDescription, setServiceTypeDescription] = useState(
+    action.type === "serviceTypes" && action.action !== "CREATE"
+      ? (action.record.description ?? "")
+      : "",
+  );
+  const [serviceTypeDisplayOrder, setServiceTypeDisplayOrder] = useState(
+    action.type === "serviceTypes" && action.action !== "CREATE"
+      ? String(action.record.displayOrder)
+      : "0",
+  );
+  const [serviceTypeMetadataJson, setServiceTypeMetadataJson] = useState(
+    action.type === "serviceTypes" && action.action !== "CREATE"
+      ? formatJsonObject(action.record.metadata)
+      : "{}",
   );
   const [pincodeList, setPincodeList] = useState(
     action.type === "zones"
@@ -185,11 +232,21 @@ function SettingsActionModalContent({
     formatJson(template.addOnTemplates),
   );
   const isCategoryAction = action.type === "categories";
-  const modalWidthClass = isCategoryAction ? "max-w-6xl" : "max-w-xl";
+  const isServiceTypeForm =
+    action.type === "serviceTypes" &&
+    (action.action === "CREATE" || action.action === "EDIT");
+  const modalWidthClass =
+    isCategoryAction || isServiceTypeForm ? "max-w-6xl" : "max-w-xl";
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(null);
+    const trimmedReason = reason.trim();
+    if (trimmedReason.length < 3) {
+      setFormError("Reason must be at least 3 characters.");
+      return;
+    }
+
     try {
       if (action.type === "settings") {
         onSubmit({
@@ -197,7 +254,7 @@ function SettingsActionModalContent({
             settingValue,
             action.record.valueType.toLowerCase(),
           ),
-          reason: reason.trim() || undefined,
+          reason: trimmedReason,
         });
         return;
       }
@@ -232,7 +289,35 @@ function SettingsActionModalContent({
               : action.action === "DEACTIVATE"
                 ? false
                 : undefined,
-          reason: reason.trim() || undefined,
+          reason: trimmedReason,
+        });
+        return;
+      }
+      if (action.type === "serviceTypes") {
+        if (action.action === "CREATE" || action.action === "EDIT") {
+          onSubmit({
+            serviceTypeCode:
+              action.action === "CREATE"
+                ? serviceTypeCode.trim().toUpperCase()
+                : undefined,
+            name: name.trim() || undefined,
+            description: serviceTypeDescription.trim() || null,
+            displayOrder: serviceTypeDisplayOrder
+              ? Number(serviceTypeDisplayOrder)
+              : undefined,
+            metadata: parseJsonObject(serviceTypeMetadataJson),
+            isActive:
+              action.action === "CREATE"
+                ? true
+                : action.record.isActive,
+            reason: trimmedReason,
+          });
+          return;
+        }
+
+        onSubmit({
+          isActive: action.action === "ACTIVATE",
+          reason: trimmedReason,
         });
         return;
       }
@@ -251,7 +336,7 @@ function SettingsActionModalContent({
             : action.action === "DEACTIVATE"
               ? false
               : undefined,
-        reason: reason.trim() || undefined,
+        reason: trimmedReason,
       });
     } catch {
       setFormError("Value must match the expected type.");
@@ -515,6 +600,72 @@ function SettingsActionModalContent({
                   </div>
                 </div>
               ) : null}
+              {isServiceTypeForm ? (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  {action.action === "CREATE" ? (
+                    <label className="block space-y-2">
+                      <span className="text-sm font-semibold text-foreground">
+                        Service type code
+                      </span>
+                      <input
+                        className="form-input"
+                        placeholder="WASH_AND_FOLD"
+                        value={serviceTypeCode}
+                        onChange={(event) =>
+                          setServiceTypeCode(event.target.value)
+                        }
+                      />
+                    </label>
+                  ) : null}
+                  <label className="block space-y-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      Name
+                    </span>
+                    <input
+                      className="form-input"
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                    />
+                  </label>
+                  <label className="block space-y-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      Display order
+                    </span>
+                    <input
+                      className="form-input"
+                      type="number"
+                      value={serviceTypeDisplayOrder}
+                      onChange={(event) =>
+                        setServiceTypeDisplayOrder(event.target.value)
+                      }
+                    />
+                  </label>
+                  <label className="block space-y-2 md:col-span-2 xl:col-span-4">
+                    <span className="text-sm font-semibold text-foreground">
+                      Description
+                    </span>
+                    <textarea
+                      className="form-input min-h-20 resize-y"
+                      value={serviceTypeDescription}
+                      onChange={(event) =>
+                        setServiceTypeDescription(event.target.value)
+                      }
+                    />
+                  </label>
+                  <label className="block space-y-2 md:col-span-2 xl:col-span-4">
+                    <span className="text-sm font-semibold text-foreground">
+                      Metadata JSON
+                    </span>
+                    <textarea
+                      className="form-input min-h-32 resize-y font-mono text-xs"
+                      value={serviceTypeMetadataJson}
+                      onChange={(event) =>
+                        setServiceTypeMetadataJson(event.target.value)
+                      }
+                    />
+                  </label>
+                </div>
+              ) : null}
               {action.type === "zones" ? (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block space-y-2">
@@ -552,10 +703,11 @@ function SettingsActionModalContent({
               ) : null}
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-foreground">
-                  Reason
+                  Reason <span className="text-danger">*</span>
                 </span>
                 <textarea
                   className="form-input min-h-20 resize-y"
+                  placeholder="Required for audit history"
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
                 />

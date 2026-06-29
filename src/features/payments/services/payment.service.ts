@@ -1,9 +1,11 @@
 import { buildApiUrl } from '../../../config/api'
 import {
+  PAYMENT_CUSTOMER_LIST_PATH,
   PAYMENT_DETAIL_PATH,
   PAYMENT_LIST_PATH,
   PAYMENT_RECONCILE_PATH,
   REFUND_APPROVE_PATH,
+  REFUND_CUSTOMER_LIST_PATH,
   REFUND_DETAIL_PATH,
   REFUND_LIST_PATH,
   REFUND_REJECT_PATH,
@@ -11,6 +13,8 @@ import {
 import { apiClient } from '../../../services/apiClient'
 import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
+  AdminCustomerPaymentsListResponse,
+  AdminCustomerRefundsListResponse,
   AdminPaymentDetailResponse,
   AdminPaymentsListResponse,
   AdminPaymentsQueryParams,
@@ -29,16 +33,28 @@ interface ErrorEnvelope {
   message?: string
   error?: string
   code?: string
+  details?: {
+    fieldErrors?: {
+      field: string
+      message: string
+    }[]
+  }
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as T | ErrorEnvelope
+  const payload = (await response.json().catch(() => null)) as
+    | T
+    | ErrorEnvelope
+    | null
 
   if (!response.ok) {
     const errorPayload =
       payload && typeof payload === 'object' ? (payload as ErrorEnvelope) : null
+    const fieldMessage = errorPayload?.details?.fieldErrors?.[0]?.message
 
-    throw new Error(errorPayload?.message ?? 'Request failed.')
+    throw new Error(
+      fieldMessage ?? errorPayload?.message ?? errorPayload?.error ?? 'Finance request failed.',
+    )
   }
 
   return payload as T
@@ -63,6 +79,19 @@ async function getPaymentList(
   )
 
   return parseJsonResponse<AdminPaymentsListResponse>(response)
+}
+
+async function getCustomerPayments(
+  customerId: string,
+  query: AdminPaymentsQueryParams = {},
+): Promise<AdminCustomerPaymentsListResponse> {
+  const queryString = buildQueryParams(query)
+  const path = PAYMENT_CUSTOMER_LIST_PATH(customerId)
+  const response = await apiClient.request(
+    buildApiUrl(queryString ? `${path}?${queryString}` : path),
+  )
+
+  return parseJsonResponse<AdminCustomerPaymentsListResponse>(response)
 }
 
 async function getPaymentById(paymentId: string): Promise<AdminPaymentDetailResponse> {
@@ -92,6 +121,19 @@ async function getRefundList(
   )
 
   return parseJsonResponse<AdminRefundsListResponse>(response)
+}
+
+async function getCustomerRefunds(
+  customerId: string,
+  query: AdminRefundsQueryParams = {},
+): Promise<AdminCustomerRefundsListResponse> {
+  const queryString = buildQueryParams(query)
+  const path = REFUND_CUSTOMER_LIST_PATH(customerId)
+  const response = await apiClient.request(
+    buildApiUrl(queryString ? `${path}?${queryString}` : path),
+  )
+
+  return parseJsonResponse<AdminCustomerRefundsListResponse>(response)
 }
 
 async function getRefundById(refundId: string): Promise<AdminRefundDetailResponse> {
@@ -126,9 +168,11 @@ async function rejectRefund(
 
 export const paymentService = {
   getPaymentList,
+  getCustomerPayments,
   getPaymentById,
   reconcilePayment,
   getRefundList,
+  getCustomerRefunds,
   getRefundById,
   approveRefund,
   rejectRefund,

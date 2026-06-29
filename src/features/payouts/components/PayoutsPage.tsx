@@ -8,6 +8,7 @@ import {
   Plus,
   RefreshCcw,
   SlidersHorizontal,
+  Store,
   XCircle,
 } from 'lucide-react'
 import type {
@@ -17,7 +18,7 @@ import type {
 } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
@@ -36,7 +37,7 @@ import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
-import { useAuthStore } from '../../../store/authStore'
+import { usePermission } from '../../../hooks/usePermission'
 import type { LookupOption } from '../../../types/lookup.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -218,26 +219,26 @@ function buildPayoutMetrics(
 
   return [
     {
-      label: 'Needs review',
-      meta: 'Pending, under-review, or held payouts',
+      label: 'Visible review',
+      meta: 'Pending, under-review, or held payouts in visible rows',
       tone: needsReview > 0 ? 'warning' : 'neutral',
       value: String(needsReview),
     },
     {
       label: 'Ready to pay',
-      meta: 'Approved payouts in current result window',
+      meta: 'Approved payouts in visible rows',
       tone: approved > 0 ? 'info' : 'neutral',
       value: String(approved),
     },
     {
       label: 'Paid value',
-      meta: 'Paid amount in current result window',
+      meta: 'Paid amount in visible rows',
       tone: paidValue > 0 ? 'success' : 'neutral',
       value: formatPaise(paidValue),
     },
     {
-      label: 'Visible payouts',
-      meta: 'Matching current filters',
+      label: 'Matched payouts',
+      meta: 'Total matching current filters',
       tone: 'info',
       value: String(total),
     },
@@ -248,7 +249,7 @@ function buildPayoutQueueItems(payouts: AdminPayoutSummary[]) {
   return [
     {
       key: 'all' as const,
-      label: 'All payouts',
+      label: 'All visible',
       count: payouts.length,
     },
     {
@@ -413,8 +414,12 @@ function PayoutCell({
 
 export function PayoutsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
-  const canApprovePayouts = useAuthStore((state) => state.can('payouts:approve'))
+  const canReadVendors = usePermission('vendors:read')
+  const canApprovePayouts = usePermission('payouts:approve')
+  const initialVendorId = searchParams.get('vendorId') ?? ''
+  const initialVendorLabel = searchParams.get('vendorLabel') ?? initialVendorId
   const [selectedAction, setSelectedAction] =
     useState<PayoutActionSelection | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -425,7 +430,16 @@ export function PayoutsPage() {
   const [selectedStatuses, setSelectedStatuses] = useState<AdminPayoutStatus[]>([])
   const [selectedMethods, setSelectedMethods] = useState<AdminPayoutMethod[]>([])
   const [city, setCity] = useState('')
-  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>([])
+  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>(() =>
+    initialVendorId
+      ? [
+          {
+            label: initialVendorLabel,
+            value: initialVendorId,
+          },
+        ]
+      : [],
+  )
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [minAmountPaise, setMinAmountPaise] = useState('')
@@ -500,6 +514,15 @@ export function PayoutsPage() {
   )
 
   const resetToFirstPage = () => setPage(1)
+
+  const clearSeededVendorFilter = () => {
+    if (!searchParams.has('vendorId') && !searchParams.has('vendorLabel')) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('vendorId')
+    nextParams.delete('vendorLabel')
+    setSearchParams(nextParams, { replace: true })
+  }
 
   const query = useMemo<AdminPayoutsQueryParams>(
     () => ({
@@ -579,6 +602,7 @@ export function PayoutsPage() {
     setSelectedMethods([])
     setCity('')
     setSelectedVendors([])
+    clearSeededVendorFilter()
     setDateFrom('')
     setDateTo('')
     setMinAmountPaise('')
@@ -672,6 +696,10 @@ export function PayoutsPage() {
     navigate(`${routePaths.payouts}/${payout.payoutId}`)
   }
 
+  const viewVendor = (payout: AdminPayoutSummary) => {
+    navigate(`${routePaths.vendors}/${payout.vendor.vendorId}`)
+  }
+
   const mutation = useMutation({
     mutationFn: async ({
       action,
@@ -760,6 +788,11 @@ export function PayoutsPage() {
     event?: ReactMouseEvent<HTMLButtonElement>,
   ) => {
     event?.stopPropagation()
+    if (!canApprovePayouts) return
+    if (action.kind !== 'CREATE') {
+      if (!action.payout?.availableActions.includes(action.kind)) return
+    }
+
     setActionError(null)
     setSelectedAction(action)
   }
@@ -787,7 +820,23 @@ export function PayoutsPage() {
       ) : null}
       {showColumn('vendor') ? (
         <PayoutCell label="Vendor">
-          <p className="truncate font-semibold">{payout.vendor.shopName}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate font-semibold">{payout.vendor.shopName}</p>
+            {canReadVendors ? (
+              <button
+                aria-label={`Open vendor ${payout.vendor.shopName}`}
+                className="btn-icon size-7 shrink-0"
+                title="Open vendor"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  viewVendor(payout)
+                }}
+              >
+                <Store className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
           <p className="mt-1 truncate text-xs text-muted">
             {payout.vendor.publicVendorId} · {payout.vendor.city}
           </p>
@@ -850,6 +899,7 @@ export function PayoutsPage() {
           size="sm"
           type="button"
           variant="secondary"
+          disabled={mutation.isPending}
           onClick={(event) =>
             openPayoutAction({ kind: 'APPROVE', payout }, event)
           }
@@ -863,6 +913,7 @@ export function PayoutsPage() {
           size="sm"
           type="button"
           variant="secondary"
+          disabled={mutation.isPending}
           onClick={(event) => openPayoutAction({ kind: 'HOLD', payout }, event)}
         >
           <PauseCircle className="mr-2 size-4" />
@@ -874,6 +925,7 @@ export function PayoutsPage() {
           size="sm"
           type="button"
           variant="secondary"
+          disabled={mutation.isPending}
           onClick={(event) =>
             openPayoutAction({ kind: 'RELEASE_HOLD', payout }, event)
           }
@@ -887,6 +939,7 @@ export function PayoutsPage() {
           size="sm"
           type="button"
           variant="secondary"
+          disabled={mutation.isPending}
           onClick={(event) =>
             openPayoutAction({ kind: 'MARK_PAID', payout }, event)
           }
@@ -900,6 +953,7 @@ export function PayoutsPage() {
           size="sm"
           type="button"
           variant="danger"
+          disabled={mutation.isPending}
           onClick={(event) =>
             openPayoutAction({ kind: 'MARK_FAILED', payout }, event)
           }
@@ -990,9 +1044,12 @@ export function PayoutsPage() {
               <>
                 <div>
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-semibold text-foreground">
-                      Review queues
-                    </h2>
+                    <div>
+                      <h2 className="text-sm font-semibold text-foreground">
+                        Visible queues
+                      </h2>
+                      <p className="text-xs text-muted">Counts are loaded rows.</p>
+                    </div>
                     <button
                       aria-label="Collapse payout filters"
                       className="btn-icon"
@@ -1084,6 +1141,7 @@ export function PayoutsPage() {
                       selectedOptions={selectedVendors}
                       onChange={(options) => {
                         setSelectedVendors(options)
+                        clearSeededVendorFilter()
                         resetToFirstPage()
                       }}
                     />
@@ -1186,6 +1244,7 @@ export function PayoutsPage() {
                     size="sm"
                     type="button"
                     variant="secondary"
+                    disabled={mutation.isPending}
                     onClick={() => setSelectedAction({ kind: 'CREATE' })}
                   >
                     <Plus className="mr-2 size-4" />

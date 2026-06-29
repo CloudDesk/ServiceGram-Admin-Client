@@ -35,13 +35,19 @@ const reportPathByType: Record<AdminReportType, string> = {
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as T | ErrorEnvelope
+  const payload = (await response.json().catch(() => null)) as
+    | T
+    | ErrorEnvelope
+    | null
 
   if (!response.ok) {
     const errorPayload =
       payload && typeof payload === 'object' ? (payload as ErrorEnvelope) : null
+    const fieldMessage = errorPayload?.details?.fieldErrors?.[0]?.message
 
-    throw new Error(errorPayload?.message ?? 'Request failed.')
+    throw new Error(
+      fieldMessage ?? errorPayload?.message ?? errorPayload?.error ?? 'Request failed.',
+    )
   }
 
   return payload as T

@@ -1,15 +1,19 @@
 import {
+  ArrowUpRight,
   BellPlus,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
+  ListFilter,
   Pencil,
   RefreshCcw,
   SlidersHorizontal,
+  UserRound,
   X,
 } from 'lucide-react'
 import type { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { InlineAlert } from '../../../components/feedback/InlineAlert'
 import { PageContainer } from '../../../components/layout/PageContainer'
@@ -29,7 +33,7 @@ import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
-import { useAuthStore } from '../../../store/authStore'
+import { usePermission } from '../../../hooks/usePermission'
 import type { LookupOption } from '../../../types/lookup.types'
 import type { StatusTone } from '../../../types/status.types'
 import { cn } from '../../../utils/cn'
@@ -149,6 +153,14 @@ interface NotificationMetric {
   value: string
 }
 
+interface NotificationQueueCounts {
+  all: number
+  needsReview: number
+  queued: number
+  sent: number
+  skipped: number
+}
+
 const templateColumns: DynamicTableColumn<NotificationTemplate>[] = [
   {
     key: 'templateCode',
@@ -242,6 +254,50 @@ function buildLookupOptions<TValue extends string>(values: readonly TValue[]): L
   }))
 }
 
+function readSearchList(searchParams: URLSearchParams, key: string) {
+  return searchParams
+    .getAll(key)
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .filter(Boolean)
+}
+
+function readSearchEnumList<TValue extends string>(
+  searchParams: URLSearchParams,
+  key: string,
+  allowedValues: readonly TValue[],
+) {
+  const allowed = new Set<string>(allowedValues)
+
+  return readSearchList(searchParams, key).filter((value): value is TValue =>
+    allowed.has(value),
+  )
+}
+
+function readSearchEnum<TValue extends string>(
+  searchParams: URLSearchParams,
+  key: string,
+  allowedValues: readonly TValue[],
+) {
+  return readSearchEnumList(searchParams, key, allowedValues)[0] ?? ''
+}
+
+function queueKeyForStatuses(
+  selectedStatuses: NotificationEventStatus[],
+): NotificationQueueKey {
+  if (selectedStatuses.length === 0) return 'all'
+  if (selectedStatuses.length > 1) return 'custom'
+
+  const [status] = selectedStatuses
+
+  if (status === 'FAILED') return 'needsReview'
+  if (status === 'QUEUED') return 'queued'
+  if (status === 'SENT') return 'sent'
+  if (status === 'SKIPPED') return 'skipped'
+
+  return 'custom'
+}
+
 function getNotificationColumnDefaultWidth(columnId: NotificationColumnId) {
   return (
     notificationDataColumns.find((column) => column.id === columnId)
@@ -328,45 +384,47 @@ function recipientLabel(event: NotificationEvent) {
 function buildNotificationMetrics(
   events: NotificationEvent[],
   totalItems: number,
+  queueCounts?: NotificationQueueCounts,
 ): NotificationMetric[] {
-  const failed = events.filter((event) => event.status === 'FAILED').length
-  const queued = events.filter((event) => event.status === 'QUEUED').length
-  const sent = events.filter((event) => event.status === 'SENT').length
+  const failed =
+    queueCounts?.needsReview ??
+    events.filter((event) => event.status === 'FAILED').length
+  const queued =
+    queueCounts?.queued ??
+    events.filter((event) => event.status === 'QUEUED').length
+  const sent =
+    queueCounts?.sent ??
+    events.filter((event) => event.status === 'SENT').length
+  const matched = queueCounts?.all ?? totalItems
 
   return [
     {
       label: 'Failed',
-      meta: 'Visible delivery failures',
+      meta: queueCounts ? 'Failures under base filters' : 'Visible delivery failures',
       tone: failed > 0 ? 'danger' : 'neutral',
       value: String(failed),
     },
     {
       label: 'Queued',
-      meta: 'Waiting or retrying',
+      meta: queueCounts ? 'Queued under base filters' : 'Visible queued events',
       tone: queued > 0 ? 'warning' : 'neutral',
       value: String(queued),
     },
     {
       label: 'Sent',
-      meta: 'Completed deliveries',
+      meta: queueCounts ? 'Sent under base filters' : 'Visible sent events',
       tone: 'success',
       value: String(sent),
     },
     {
-      label: 'Visible events',
-      meta: 'Matching current filters',
+      label: 'Matched events',
+      meta: queueCounts
+        ? 'Total matching base filters'
+        : 'Total matching current filters',
       tone: 'info',
-      value: String(totalItems),
+      value: String(matched),
     },
   ]
-}
-
-interface NotificationQueueCounts {
-  all: number
-  needsReview: number
-  queued: number
-  sent: number
-  skipped: number
 }
 
 function buildQueueItems(counts?: NotificationQueueCounts) {
@@ -553,15 +611,47 @@ function SummaryCard({ metric }: { metric: NotificationMetric }) {
 function EventCell({
   columnId,
   event,
+  onFilterRecipient,
+  onFilterTemplate,
+  onOpen,
 }: {
   columnId: NotificationColumnId
   event: NotificationEvent
+  onFilterRecipient: (recipientUserId: string) => void
+  onFilterTemplate: (templateCode: string) => void
+  onOpen: (event: NotificationEvent) => void
 }) {
   if (columnId === 'event') {
     return (
       <div className="min-w-0 space-y-1">
         <p className="truncate font-semibold text-foreground">{event.templateCode}</p>
         <p className="truncate text-xs text-muted">{event.eventId}</p>
+        <div className="flex items-center gap-1 pt-1">
+          <button
+            aria-label={`Open notification event ${event.eventId}`}
+            className="btn-icon size-7"
+            title="Open event"
+            type="button"
+            onClick={(clickEvent) => {
+              clickEvent.stopPropagation()
+              onOpen(event)
+            }}
+          >
+            <ArrowUpRight className="size-3.5" />
+          </button>
+          <button
+            aria-label={`Filter events by template ${event.templateCode}`}
+            className="btn-icon size-7"
+            title="Filter by template"
+            type="button"
+            onClick={(clickEvent) => {
+              clickEvent.stopPropagation()
+              onFilterTemplate(event.templateCode)
+            }}
+          >
+            <ListFilter className="size-3.5" />
+          </button>
+        </div>
       </div>
     )
   }
@@ -570,7 +660,25 @@ function EventCell({
     return (
       <div className="min-w-0 space-y-1">
         <Badge tone="neutral">{humanizeCode(event.recipientType)}</Badge>
-        <p className="truncate text-sm text-foreground">{recipientLabel(event)}</p>
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="truncate text-sm text-foreground">
+            {recipientLabel(event)}
+          </p>
+          {event.recipientUserId ? (
+            <button
+              aria-label={`Filter events by recipient ${event.recipientUserId}`}
+              className="btn-icon size-7 shrink-0"
+              title="Filter by recipient"
+              type="button"
+              onClick={(clickEvent) => {
+                clickEvent.stopPropagation()
+                onFilterRecipient(event.recipientUserId ?? '')
+              }}
+            >
+              <UserRound className="size-3.5" />
+            </button>
+          ) : null}
+        </div>
         <p className="truncate text-xs text-muted">
           {event.recipient?.status ? humanizeCode(event.recipient.status) : 'Recipient summary unavailable'}
         </p>
@@ -670,36 +778,58 @@ function EventCell({
 }
 
 export function NotificationsPage() {
-  const can = useAuthStore((state) => state.can)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [eventChannels, setEventChannels] = useState<NotificationChannel[]>([])
-  const [eventSearch, setEventSearch] = useState('')
-  const [eventStatuses, setEventStatuses] = useState<NotificationEventStatus[]>([])
+  const [searchParams, setSearchParams] = useSearchParams()
+  const canReadAudit = usePermission('audit:read')
+  const canSendNotifications = usePermission('notifications:send')
+  const canUpdateTemplates = usePermission('notifications:update')
+  const seededEventChannels = readSearchEnumList(searchParams, 'channel', channels)
+  const seededEventStatuses = readSearchEnumList(searchParams, 'status', statuses)
+  const seededRecipientTypes = readSearchEnumList(
+    searchParams,
+    'recipientType',
+    recipientTypes,
+  )
+  const seededTemplateCodes = readSearchList(searchParams, 'templateCode')
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get('dateFrom') ?? '')
+  const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') ?? '')
+  const [eventChannels, setEventChannels] =
+    useState<NotificationChannel[]>(() => seededEventChannels)
+  const [eventSearch, setEventSearch] = useState(
+    () => searchParams.get('search') ?? '',
+  )
+  const [eventStatuses, setEventStatuses] =
+    useState<NotificationEventStatus[]>(() => seededEventStatuses)
   const [isFilterRailCollapsed, setIsFilterRailCollapsed] = useState(false)
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
   const [page, setPage] = useState(1)
-  const [queueKey, setQueueKey] = useState<NotificationQueueKey>('all')
-  const [recipientTypesState, setRecipientTypesState] = useState<NotificationRecipientType[]>([])
-  const [recipientUserId, setRecipientUserId] = useState('')
+  const [queueKey, setQueueKey] = useState<NotificationQueueKey>(() =>
+    queueKeyForStatuses(seededEventStatuses),
+  )
+  const [recipientTypesState, setRecipientTypesState] =
+    useState<NotificationRecipientType[]>(() => seededRecipientTypes)
+  const [recipientUserId, setRecipientUserId] = useState(
+    () => searchParams.get('recipientUserId') ?? '',
+  )
   const [selectedTemplate, setSelectedTemplate] = useState<NotificationTemplate | null>(null)
   const [templateActive, setTemplateActive] = useState<ActiveFilter>('')
   const [templateActionError, setTemplateActionError] = useState<string | null>(null)
-  const [templateChannel, setTemplateChannel] = useState<'' | NotificationChannel>('')
-  const [templateCodes, setTemplateCodes] = useState<string[]>([])
-  const [templateSearch, setTemplateSearch] = useState('')
+  const [templateChannel, setTemplateChannel] = useState<'' | NotificationChannel>(
+    () => readSearchEnum(searchParams, 'templateChannel', channels),
+  )
+  const [templateCodes, setTemplateCodes] =
+    useState<string[]>(() => seededTemplateCodes)
+  const [templateSearch, setTemplateSearch] = useState(
+    () => searchParams.get('templateSearch') ?? seededTemplateCodes[0] ?? '',
+  )
   const [visibleColumns, setVisibleColumns] = useState<NotificationColumnId[]>(
     defaultNotificationColumns,
   )
   const [columnWidths, setColumnWidths] =
     useState<NotificationColumnWidths>(() => loadColumnWidths())
   const columnMenuRef = useRef<HTMLDivElement | null>(null)
-
-  const canSendNotifications = can('notifications:send')
-  const canUpdateTemplates = can('notifications:update')
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -831,6 +961,12 @@ export function NotificationsPage() {
       templateId: string
     }) => notificationService.updateTemplate(templateId, payload),
     onSuccess: () => {
+      if (searchParams.has('templateEditor')) {
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.delete('templateEditor')
+        setSearchParams(nextParams, { replace: true })
+      }
+
       setSelectedTemplate(null)
       setTemplateActionError(null)
       void queryClient.invalidateQueries({ queryKey: ['notification-templates'] })
@@ -845,6 +981,14 @@ export function NotificationsPage() {
 
   const templates = templatesQuery.data?.data ?? EMPTY_NOTIFICATION_TEMPLATES
   const events = eventsQuery.data?.data ?? EMPTY_NOTIFICATION_EVENTS
+  const seededTemplateEditorCode =
+    searchParams.get('templateEditor') === '1'
+      ? readSearchList(searchParams, 'templateCode')[0]
+      : ''
+  const urlSelectedTemplate = seededTemplateEditorCode
+    ? templates.find((template) => template.templateCode === seededTemplateEditorCode) ?? null
+    : null
+  const activeTemplate = selectedTemplate ?? urlSelectedTemplate
   const pagination = eventsQuery.data?.pagination
   const eventSelection = useListSelection(events, (event) => event.eventId)
   const templateSummary = templatesQuery.data?.summary
@@ -853,6 +997,7 @@ export function NotificationsPage() {
   const metrics = buildNotificationMetrics(
     events,
     pagination?.totalItems ?? events.length,
+    queueCountsQuery.data,
   )
   const queueItems = buildQueueItems(queueCountsQuery.data)
   const templateCodeOptions = useMemo<LookupOption[]>(() => {
@@ -882,7 +1027,38 @@ export function NotificationsPage() {
 
   const resetEventsPage = () => setPage(1)
 
+  const clearSeededNotificationParams = () => {
+    const seededKeys = [
+      'channel',
+      'dateFrom',
+      'dateTo',
+      'recipientType',
+      'recipientUserId',
+      'search',
+      'status',
+      'templateChannel',
+      'templateCode',
+      'templateEditor',
+      'templateSearch',
+    ]
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    seededKeys.forEach((key) => nextParams.delete(key))
+    setSearchParams(nextParams, { replace: true })
+  }
+
+  const clearTemplateEditorParam = () => {
+    if (!searchParams.has('templateEditor')) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('templateEditor')
+    setSearchParams(nextParams, { replace: true })
+  }
+
   const applyQueue = (nextQueueKey: NotificationQueueKey) => {
+    clearSeededNotificationParams()
     setQueueKey(nextQueueKey)
     setPage(1)
 
@@ -912,6 +1088,7 @@ export function NotificationsPage() {
   }
 
   const clearFilters = () => {
+    clearSeededNotificationParams()
     setEventChannels([])
     setEventSearch('')
     setEventStatuses([])
@@ -974,6 +1151,26 @@ export function NotificationsPage() {
     void Promise.all([eventsQuery.refetch(), templatesQuery.refetch()])
   }
 
+  const openEventDetail = (event: NotificationEvent) => {
+    navigate(`${routePaths.notifications}/${event.eventId}`)
+  }
+
+  const focusTemplateEvents = (templateCode: string) => {
+    clearSeededNotificationParams()
+    setTemplateCodes([templateCode])
+    setEventStatuses([])
+    setQueueKey('all')
+    setPage(1)
+  }
+
+  const focusRecipientEvents = (nextRecipientUserId: string) => {
+    if (!nextRecipientUserId) return
+
+    clearSeededNotificationParams()
+    setRecipientUserId(nextRecipientUserId)
+    setPage(1)
+  }
+
   return (
     <PageContainer>
       <PageContextHeader
@@ -1004,8 +1201,8 @@ export function NotificationsPage() {
           <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
             {!isFilterRailCollapsed ? (
               <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-foreground">Review queues</h2>
-                <p className="mt-0.5 text-xs text-muted">Delivery states</p>
+                <h2 className="text-sm font-semibold text-foreground">Queue totals</h2>
+                <p className="mt-0.5 text-xs text-muted">Counts match base filters.</p>
               </div>
             ) : null}
             <button
@@ -1060,6 +1257,7 @@ export function NotificationsPage() {
                     placeholder="All statuses"
                     values={eventStatuses}
                     onChange={(values) => {
+                      clearSeededNotificationParams()
                       setEventStatuses(values as NotificationEventStatus[])
                       setQueueKey(values.length > 0 ? 'custom' : 'all')
                       resetEventsPage()
@@ -1071,6 +1269,7 @@ export function NotificationsPage() {
                     placeholder="All channels"
                     values={eventChannels}
                     onChange={(values) => {
+                      clearSeededNotificationParams()
                       setEventChannels(values as NotificationChannel[])
                       resetEventsPage()
                     }}
@@ -1081,6 +1280,7 @@ export function NotificationsPage() {
                     placeholder="All recipients"
                     values={recipientTypesState}
                     onChange={(values) => {
+                      clearSeededNotificationParams()
                       setRecipientTypesState(values as NotificationRecipientType[])
                       resetEventsPage()
                     }}
@@ -1092,6 +1292,7 @@ export function NotificationsPage() {
                     placeholder="All templates"
                     values={templateCodes}
                     onChange={(values) => {
+                      clearSeededNotificationParams()
                       setTemplateCodes(values)
                       resetEventsPage()
                     }}
@@ -1102,6 +1303,7 @@ export function NotificationsPage() {
                       placeholder="UUID"
                       value={recipientUserId}
                       onChange={(event) => {
+                        clearSeededNotificationParams()
                         setRecipientUserId(event.target.value)
                         resetEventsPage()
                       }}
@@ -1114,6 +1316,7 @@ export function NotificationsPage() {
                         type="date"
                         value={dateFrom}
                         onChange={(event) => {
+                          clearSeededNotificationParams()
                           setDateFrom(event.target.value)
                           resetEventsPage()
                         }}
@@ -1125,6 +1328,7 @@ export function NotificationsPage() {
                         type="date"
                         value={dateTo}
                         onChange={(event) => {
+                          clearSeededNotificationParams()
                           setDateTo(event.target.value)
                           resetEventsPage()
                         }}
@@ -1137,7 +1341,7 @@ export function NotificationsPage() {
           )}
         </aside>
 
-        <section className="min-w-0 rounded-[0.875rem] border border-border bg-surface shadow-surface">
+        <section id="notification-events" className="scroll-mt-4 min-w-0 rounded-[0.875rem] border border-border bg-surface shadow-surface">
           <div className="flex flex-col gap-3 border-b border-border px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <h2 className="text-base font-semibold text-foreground">Delivery events</h2>
@@ -1153,6 +1357,7 @@ export function NotificationsPage() {
                 placeholder="Search template, recipient, message"
                 value={eventSearch}
                 onChange={(value) => {
+                  clearSeededNotificationParams()
                   setEventSearch(value)
                   resetEventsPage()
                 }}
@@ -1207,6 +1412,14 @@ export function NotificationsPage() {
                   <Button size="sm" type="button">
                     <BellPlus className="mr-2 size-4" />
                     New
+                  </Button>
+                </Link>
+              ) : null}
+              {canReadAudit ? (
+                <Link to={routePaths.audit}>
+                  <Button size="sm" type="button" variant="secondary">
+                    <ClipboardList className="mr-2 size-4" />
+                    Audit
                   </Button>
                 </Link>
               ) : null}
@@ -1290,13 +1503,13 @@ export function NotificationsPage() {
                         key={event.eventId}
                         role="button"
                         tabIndex={0}
-                        onClick={() => navigate(`${routePaths.notifications}/${event.eventId}`)}
+                        onClick={() => openEventDetail(event)}
                         onKeyDown={(keyboardEvent) => {
                           if (keyboardEvent.target !== keyboardEvent.currentTarget) return
 
                           if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
                             keyboardEvent.preventDefault()
-                            navigate(`${routePaths.notifications}/${event.eventId}`)
+                            openEventDetail(event)
                           }
                         }}
                       >
@@ -1314,7 +1527,13 @@ export function NotificationsPage() {
                             className="min-w-0 self-center text-sm"
                             key={`${event.eventId}-${columnId}`}
                           >
-                            <EventCell columnId={columnId} event={event} />
+                            <EventCell
+                              columnId={columnId}
+                              event={event}
+                              onFilterRecipient={focusRecipientEvents}
+                              onFilterTemplate={focusTemplateEvents}
+                              onOpen={openEventDetail}
+                            />
                           </div>
                         ))}
                       </div>
@@ -1380,7 +1599,7 @@ export function NotificationsPage() {
         </section>
       </section>
 
-      <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+      <section id="notification-templates" className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
         <div className="flex flex-col gap-3 border-b border-border pb-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-base font-semibold text-foreground">Templates</h2>
@@ -1395,14 +1614,18 @@ export function NotificationsPage() {
               className="w-full min-w-[14rem] sm:w-64"
               placeholder="Search templates"
               value={templateSearch}
-              onChange={setTemplateSearch}
+              onChange={(value) => {
+                clearSeededNotificationParams()
+                setTemplateSearch(value)
+              }}
             />
             <select
               className="h-10 rounded-[0.75rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
               value={templateChannel}
-              onChange={(event) =>
+              onChange={(event) => {
+                clearSeededNotificationParams()
                 setTemplateChannel(event.target.value as '' | NotificationChannel)
-              }
+              }}
             >
               <option value="">All channels</option>
               {channels.map((channel) => (
@@ -1414,7 +1637,10 @@ export function NotificationsPage() {
             <select
               className="h-10 rounded-[0.75rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
               value={templateActive}
-              onChange={(event) => setTemplateActive(event.target.value as ActiveFilter)}
+              onChange={(event) => {
+                clearSeededNotificationParams()
+                setTemplateActive(event.target.value as ActiveFilter)
+              }}
             >
               <option value="">All states</option>
               <option value="true">Active</option>
@@ -1440,18 +1666,26 @@ export function NotificationsPage() {
             <EmptyState description="No notification templates matched this filter." title="No templates" />
           ) : (
             <DynamicTable
-              actionColumnMinWidth={130}
+              actionColumnMinWidth={190}
               bodyMaxHeight={360}
               columns={templateColumns}
               data={templates}
-              inlineActionLimit={1}
+              inlineActionLimit={2}
               rowActions={(template) => [
+                {
+                  key: 'filter-template-events',
+                  label: 'Events',
+                  icon: <ListFilter className="size-4" />,
+                  onClick: (row) => focusTemplateEvents(row.templateCode),
+                  placement: 'inline',
+                },
                 {
                   key: 'edit-template',
                   label: 'Edit',
                   icon: <Pencil className="size-4" />,
                   isDisabled:
                     !canUpdateTemplates ||
+                    updateTemplateMutation.isPending ||
                     !template.availableActions.includes('UPDATE_TEMPLATE'),
                   onClick: (row) => {
                     setTemplateActionError(null)
@@ -1467,14 +1701,15 @@ export function NotificationsPage() {
         </div>
       </section>
 
-      {selectedTemplate ? (
+      {activeTemplate ? (
         <TemplateEditModal
-          key={selectedTemplate.templateId}
+          key={activeTemplate.templateId}
           error={templateActionError}
           isSubmitting={updateTemplateMutation.isPending}
-          template={selectedTemplate}
+          template={activeTemplate}
           onClose={() => {
             if (!updateTemplateMutation.isPending) {
+              clearTemplateEditorParam()
               setSelectedTemplate(null)
               setTemplateActionError(null)
             }
@@ -1482,7 +1717,7 @@ export function NotificationsPage() {
           onSubmit={(payload) =>
             updateTemplateMutation.mutate({
               payload,
-              templateId: selectedTemplate.templateId,
+              templateId: activeTemplate.templateId,
             })
           }
         />

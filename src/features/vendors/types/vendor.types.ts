@@ -21,11 +21,74 @@ export type VendorOnboardingStatus =
 
 export type VendorStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'INACTIVE'
 
+export type VendorServicePriceType =
+  | 'FIXED'
+  | 'STARTING_FROM'
+  | 'RANGE'
+  | 'INSPECTION_REQUIRED'
+
+export type VendorServicePricingUnit =
+  | 'KG'
+  | 'PIECE'
+  | 'BAG'
+  | 'LOT'
+  | 'SQFT'
+  | 'PAIR'
+  | 'HOUR'
+  | 'VISIT'
+  | 'DEVICE'
+
 export interface VendorOptionalReasonPayload {
   reason?: string
 }
 
 export interface VendorRequiredReasonPayload {
+  reason: string
+}
+
+export interface VendorProfileUpdatePayload {
+  shopName?: string
+  ownerName?: string | null
+  categoryId?: string
+  addressLine1?: string
+  addressLine2?: string | null
+  city?: string
+  zoneId?: string | null
+  pincode?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  referralId?: string | null
+  reason: string
+}
+
+export interface VendorServicePayload {
+  categoryId?: string
+  serviceTypeId?: string | null
+  serviceName?: string
+  description?: string | null
+  basePricePaise?: number
+  priceType?: VendorServicePriceType
+  minPricePaise?: number | null
+  maxPricePaise?: number | null
+  isActive?: boolean
+  reason: string
+}
+
+export interface VendorServiceCatalogItemPayload {
+  itemCode?: string
+  itemName: string
+  pricingUnit: VendorServicePricingUnit
+  unitPricePaise: number
+  minQuantity: number
+  maxQuantity: number
+  isPopular: boolean
+  isActive: boolean
+  displayOrder: number
+  metadata?: Record<string, unknown>
+}
+
+export interface VendorServiceCatalogPayload {
+  items: VendorServiceCatalogItemPayload[]
   reason: string
 }
 
@@ -175,6 +238,68 @@ export interface VendorBankAccountSummary {
   nextRecommendedAction: string | null
 }
 
+export interface VendorServiceType {
+  serviceTypeId: string
+  serviceTypeCode: string
+  name: string
+}
+
+export interface VendorServiceCatalogItem {
+  catalogItemId?: string
+  itemCode?: string
+  itemName: string
+  pricingUnit: VendorServicePricingUnit
+  unitPricePaise: number
+  minQuantity: number
+  maxQuantity: number
+  isPopular: boolean
+  isActive: boolean
+  displayOrder: number
+  metadata?: Record<string, unknown>
+}
+
+export interface VendorServiceCatalog {
+  items: VendorServiceCatalogItem[]
+  isConfigured: boolean
+  configuredItemCount: number
+  activeItemCount: number
+  [key: string]: unknown
+}
+
+export interface VendorServicePricing {
+  basePricePaise: number
+  priceType: VendorServicePriceType
+  minPricePaise: number | null
+  maxPricePaise: number | null
+  currency: string
+  catalog: VendorServiceCatalog
+  suggestedCatalog?: VendorServiceCatalog
+}
+
+export interface VendorServiceRecord {
+  vendorServiceId: string
+  serviceName: string
+  description: string | null
+  category: VendorCategory
+  serviceType: VendorServiceType | null
+  pricing: VendorServicePricing
+  isActive: boolean
+  warnings: string[]
+  availableActions: string[]
+  nextRecommendedAction: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface VendorServicesSummary {
+  total: number
+  active: number
+  inactive: number
+  configuredCatalogs: number
+  missingCatalogs: number
+  availableActions: string[]
+}
+
 export interface VendorDetail extends VendorListItem {
   documents: VendorDocument[]
   bankAccounts: VendorBankAccount[]
@@ -225,7 +350,9 @@ export interface VendorApiResponse<TData> {
   }
 }
 
-export interface VendorListResponse extends VendorApiResponse<VendorListItem[]> {
+export interface VendorListResponse extends VendorApiResponse<
+  VendorListItem[]
+> {
   data: VendorListItem[]
   pagination: VendorPagination
 }
@@ -235,6 +362,18 @@ export type VendorOnboardingQueueResponse = VendorListResponse
 export type VendorDetailResponse = VendorApiResponse<VendorDetail>
 
 export type VendorActionResponse = VendorApiResponse<VendorActionResult>
+
+export interface VendorServicesResponse extends VendorApiResponse<{
+  summary: VendorServicesSummary
+  services: VendorServiceRecord[]
+}> {
+  data: {
+    summary: VendorServicesSummary
+    services: VendorServiceRecord[]
+  }
+}
+
+export type VendorServiceActionResponse = VendorApiResponse<VendorServiceRecord>
 
 export interface VendorApiErrorDetails extends ApiErrorDetails {
   fieldErrors?: {

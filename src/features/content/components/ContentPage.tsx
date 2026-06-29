@@ -1,14 +1,24 @@
 import {
+  Archive,
+  ArrowUpRight,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   FilePlus2,
   RefreshCcw,
+  Send,
   SlidersHorizontal,
+  X,
 } from 'lucide-react'
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import type {
+  CSSProperties,
+  FormEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
@@ -26,7 +36,7 @@ import { PageContainer } from '../../../components/layout/PageContainer'
 import { TableSkeleton } from '../../../components/ui/Table'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
-import { useAuthStore } from '../../../store/authStore'
+import { usePermission } from '../../../hooks/usePermission'
 import type { LookupOption } from '../../../types/lookup.types'
 import type { StatusTone } from '../../../types/status.types'
 import { cn } from '../../../utils/cn'
@@ -45,6 +55,7 @@ const CONTENT_DEFAULT_COLUMN_WIDTH = 220
 const CONTENT_GRID_COLUMN_GAP = 12
 const CONTENT_GRID_INLINE_PADDING = 24
 const CONTENT_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.content.columnWidths.v1'
+const CONTENT_ACTION_COLUMN_WIDTH = 310
 
 const statuses: ContentPageStatus[] = ['DRAFT', 'PUBLISHED', 'ARCHIVED']
 const pageTypes: ContentPageType[] = [
@@ -71,6 +82,7 @@ const contentDataColumns = [
 type ContentColumnId = (typeof contentDataColumns)[number]['id']
 type ContentColumnWidths = Partial<Record<ContentColumnId, number>>
 type ContentQueueKey = 'all' | 'custom' | 'draft' | 'published' | 'hidden' | 'archived'
+type ContentActionKind = 'PUBLISH' | 'ARCHIVE'
 type ContentTone = 'danger' | 'info' | 'neutral' | 'success' | 'warning'
 
 const defaultContentColumns: ContentColumnId[] = [
@@ -128,6 +140,64 @@ function buildLookupOptions<TValue extends string>(values: readonly TValue[]): L
   return values.map((value) => ({ label: humanizeCode(value), value }))
 }
 
+function readSearchList(searchParams: URLSearchParams, key: string) {
+  return searchParams
+    .getAll(key)
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .filter(Boolean)
+}
+
+function readSearchEnumList<TValue extends string>(
+  searchParams: URLSearchParams,
+  key: string,
+  allowedValues: readonly TValue[],
+) {
+  const allowed = new Set<string>(allowedValues)
+
+  return readSearchList(searchParams, key).filter((value): value is TValue =>
+    allowed.has(value),
+  )
+}
+
+function readSearchVisibility(searchParams: URLSearchParams) {
+  const rawVisibility =
+    searchParams.get('isVisibleToCustomers') ?? searchParams.get('visibility')
+
+  if (rawVisibility === 'true' || rawVisibility === 'visible') return 'visible'
+  if (rawVisibility === 'false' || rawVisibility === 'hidden') return 'hidden'
+
+  return 'all'
+}
+
+function queueKeyForFilters(
+  selectedStatuses: ContentPageStatus[],
+  selectedVisibility: 'all' | 'hidden' | 'visible',
+): ContentQueueKey {
+  if (selectedVisibility === 'hidden' && selectedStatuses.length === 0) return 'hidden'
+  if (selectedVisibility !== 'all') return 'custom'
+  if (selectedStatuses.length === 0) return 'all'
+  if (selectedStatuses.length > 1) return 'custom'
+
+  const [status] = selectedStatuses
+
+  if (status === 'DRAFT') return 'draft'
+  if (status === 'PUBLISHED') return 'published'
+  if (status === 'ARCHIVED') return 'archived'
+
+  return 'custom'
+}
+
+function buildContentAuditPath(page: ContentPageRecord) {
+  const params = new URLSearchParams({
+    moduleCode: 'content',
+    entityType: 'content_page',
+    entityId: page.pageId,
+  })
+
+  return `${routePaths.audit}?${params.toString()}`
+}
+
 function getContentColumnDefaultWidth(columnId: ContentColumnId) {
   return (
     contentDataColumns.find((column) => column.id === columnId)?.defaultWidth ??
@@ -155,6 +225,7 @@ function getContentGridTemplate(
     ...visibleColumns.map(
       (columnId) => `${getContentColumnWidth(columnWidths, columnId)}px`,
     ),
+    `${CONTENT_ACTION_COLUMN_WIDTH}px`,
   ]
     .join(` ${CONTENT_GRID_COLUMN_GAP}px `)
 }
@@ -171,7 +242,8 @@ function getContentGridMinWidth(
   return (
     columnsWidth +
     LIST_SELECTION_COLUMN_WIDTH +
-    Math.max(visibleColumns.length, 0) * CONTENT_GRID_COLUMN_GAP +
+    CONTENT_ACTION_COLUMN_WIDTH +
+    Math.max(visibleColumns.length + 1, 0) * CONTENT_GRID_COLUMN_GAP +
     CONTENT_GRID_INLINE_PADDING
   )
 }
@@ -203,35 +275,46 @@ function loadColumnWidths(): ContentColumnWidths {
 function buildContentMetrics(
   pages: ContentPageRecord[],
   totalItems: number,
+  queueCounts?: ContentQueueCounts,
 ): ContentMetric[] {
-  const drafts = pages.filter((page) => page.status === 'DRAFT').length
-  const published = pages.filter((page) => page.status === 'PUBLISHED').length
-  const hidden = pages.filter((page) => !page.isVisibleToCustomers).length
+  const drafts =
+    queueCounts?.draft ?? pages.filter((page) => page.status === 'DRAFT').length
+  const published =
+    queueCounts?.published ??
+    pages.filter((page) => page.status === 'PUBLISHED').length
+  const hidden =
+    queueCounts?.hidden ??
+    pages.filter((page) => !page.isVisibleToCustomers).length
+  const matched = queueCounts?.all ?? totalItems
 
   return [
     {
       label: 'Drafts',
-      meta: 'Visible draft pages',
+      meta: queueCounts ? 'Drafts under base filters' : 'Visible draft pages',
       tone: drafts > 0 ? 'warning' : 'neutral',
       value: String(drafts),
     },
     {
       label: 'Published',
-      meta: 'Customer-ready pages',
+      meta: queueCounts
+        ? 'Published under base filters'
+        : 'Visible published pages',
       tone: 'success',
       value: String(published),
     },
     {
       label: 'Hidden',
-      meta: 'Not visible to customers',
+      meta: queueCounts ? 'Hidden under base filters' : 'Visible hidden pages',
       tone: hidden > 0 ? 'danger' : 'neutral',
       value: String(hidden),
     },
     {
-      label: 'Visible pages',
-      meta: 'Matching current filters',
+      label: 'Matched pages',
+      meta: queueCounts
+        ? 'Total matching base filters'
+        : 'Total matching current filters',
       tone: 'info',
-      value: String(totalItems),
+      value: String(matched),
     },
   ]
 }
@@ -281,6 +364,119 @@ function SummaryCard({ metric }: { metric: ContentMetric }) {
       </p>
       <p className="mt-1 text-xs text-muted">{metric.meta}</p>
     </article>
+  )
+}
+
+function canRunContentListAction({
+  action,
+  canPublishContent,
+  canUpdateContent,
+  page,
+}: {
+  action: 'ARCHIVE' | 'PUBLISH' | 'UPDATE'
+  canPublishContent: boolean
+  canUpdateContent: boolean
+  page: ContentPageRecord
+}) {
+  if (!page.availableActions.includes(action)) return false
+  if (action === 'PUBLISH') return canPublishContent
+  return canUpdateContent
+}
+
+function ContentActionModal({
+  action,
+  error,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}: {
+  action: { kind: ContentActionKind; page: ContentPageRecord }
+  error: string | null
+  isSubmitting: boolean
+  onClose: () => void
+  onSubmit: (reason: string) => void
+}) {
+  const [reason, setReason] = useState('')
+  const [formError, setFormError] = useState<string | null>(null)
+  const isArchive = action.kind === 'ARCHIVE'
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const trimmedReason = reason.trim()
+    setFormError(null)
+
+    if (trimmedReason.length < 5) {
+      setFormError('Reason must be at least 5 characters.')
+      return
+    }
+
+    onSubmit(trimmedReason)
+  }
+
+  return (
+    <div className="premium-overlay flex items-center justify-center p-4">
+      <div className="w-full max-w-lg rounded-[0.875rem] border border-border bg-surface p-5 shadow-[var(--shadow-overlay)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">
+              {isArchive ? 'Archive content' : 'Publish content'}
+            </h2>
+            <p className="mt-1 text-sm text-muted">{action.page.title}</p>
+          </div>
+          <button
+            aria-label="Close content action"
+            className="rounded-full p-2 text-muted transition hover:bg-surface-muted hover:text-foreground"
+            disabled={isSubmitting}
+            type="button"
+            onClick={onClose}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <form onSubmit={submit}>
+          <label className="mt-5 block space-y-2">
+            <span className="text-sm font-semibold text-foreground">Reason *</span>
+            <textarea
+              className="form-input min-h-28 resize-y"
+              placeholder={
+                isArchive
+                  ? 'Replacing this page with updated content.'
+                  : 'Approved after final content review.'
+              }
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </label>
+
+          {formError || error ? (
+            <div className="mt-4 rounded-[0.75rem] border border-danger/20 bg-danger/5 p-3 text-sm text-danger">
+              {formError ?? error}
+            </div>
+          ) : null}
+
+          <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
+            <Button
+              disabled={isSubmitting}
+              size="sm"
+              type="button"
+              variant="ghost"
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+            <Button
+              isLoading={isSubmitting}
+              size="sm"
+              type="submit"
+              variant={isArchive ? 'danger' : 'primary'}
+            >
+              {isArchive ? 'Archive' : 'Publish'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
   )
 }
 
@@ -377,27 +573,47 @@ function ContentCell({
 
 export function ContentPage() {
   const navigate = useNavigate()
-  const can = useAuthStore((state) => state.can)
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [formatsFilter, setFormatsFilter] = useState<ContentFormat[]>([])
+  const [searchParams, setSearchParams] = useSearchParams()
+  const queryClient = useQueryClient()
+  const canCreateContent = usePermission('content:update')
+  const canPublishContent = usePermission('content:publish')
+  const canReadAudit = usePermission('audit:read')
+  const canUpdateContent = usePermission('content:update')
+  const initialStatuses = readSearchEnumList(searchParams, 'status', statuses)
+  const initialVisibility = readSearchVisibility(searchParams)
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get('dateFrom') ?? '')
+  const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') ?? '')
+  const [formatsFilter, setFormatsFilter] = useState<ContentFormat[]>(() =>
+    readSearchEnumList(searchParams, 'contentFormat', formats),
+  )
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false)
   const [isFilterRailCollapsed, setIsFilterRailCollapsed] = useState(false)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
   const [page, setPage] = useState(1)
-  const [pageTypesFilter, setPageTypesFilter] = useState<ContentPageType[]>([])
-  const [queueKey, setQueueKey] = useState<ContentQueueKey>('all')
-  const [search, setSearch] = useState('')
-  const [statusesFilter, setStatusesFilter] = useState<ContentPageStatus[]>([])
-  const [visibility, setVisibility] = useState<'all' | 'hidden' | 'visible'>('all')
+  const [pageTypesFilter, setPageTypesFilter] = useState<ContentPageType[]>(() =>
+    readSearchEnumList(searchParams, 'pageType', pageTypes),
+  )
+  const [queueKey, setQueueKey] = useState<ContentQueueKey>(() =>
+    queueKeyForFilters(initialStatuses, initialVisibility),
+  )
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [statusesFilter, setStatusesFilter] =
+    useState<ContentPageStatus[]>(initialStatuses)
+  const [visibility, setVisibility] = useState<'all' | 'hidden' | 'visible'>(
+    initialVisibility,
+  )
   const [visibleColumns, setVisibleColumns] = useState<ContentColumnId[]>(
     defaultContentColumns,
   )
   const [columnWidths, setColumnWidths] =
     useState<ContentColumnWidths>(() => loadColumnWidths())
+  const [selectedAction, setSelectedAction] = useState<{
+    kind: ContentActionKind
+    page: ContentPageRecord
+  } | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
   const columnMenuRef = useRef<HTMLDivElement | null>(null)
-
-  const canCreateContent = can('content:update')
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -507,8 +723,12 @@ export function ContentPage() {
   const contentSelection = useListSelection(pages, (pageRecord) => pageRecord.pageId)
   const isLoading = contentQuery.isLoading
   const isRefreshing = contentQuery.isFetching
-  const metrics = buildContentMetrics(pages, pagination?.totalItems ?? pages.length)
   const queueItems = buildQueueItems(queueCountsQuery.data)
+  const metrics = buildContentMetrics(
+    pages,
+    pagination?.totalItems ?? pages.length,
+    queueCountsQuery.data,
+  )
   const gridStyle = useMemo<ContentGridStyle>(
     () => ({
       '--content-grid-template': getContentGridTemplate(visibleColumns, columnWidths),
@@ -522,7 +742,27 @@ export function ContentPage() {
 
   const resetToFirstPage = () => setPage(1)
 
+  const clearSeededContentParams = () => {
+    const seededKeys = [
+      'contentFormat',
+      'dateFrom',
+      'dateTo',
+      'isVisibleToCustomers',
+      'pageType',
+      'search',
+      'status',
+      'visibility',
+    ]
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    seededKeys.forEach((key) => nextParams.delete(key))
+    setSearchParams(nextParams, { replace: true })
+  }
+
   const applyQueue = (nextQueueKey: ContentQueueKey) => {
+    clearSeededContentParams()
     setQueueKey(nextQueueKey)
     setPage(1)
 
@@ -557,6 +797,7 @@ export function ContentPage() {
   }
 
   const clearFilters = () => {
+    clearSeededContentParams()
     setDateFrom('')
     setDateTo('')
     setFormatsFilter([])
@@ -611,6 +852,145 @@ export function ContentPage() {
     document.addEventListener('pointerup', handlePointerUp)
   }
 
+  const actionMutation = useMutation({
+    mutationFn: async ({
+      action,
+      pageRecord,
+      reason,
+    }: {
+      action: ContentActionKind
+      pageRecord: ContentPageRecord
+      reason: string
+    }) => {
+      if (action === 'PUBLISH') {
+        return contentService.publishPage(pageRecord.pageId, { reason })
+      }
+
+      return contentService.archivePage(pageRecord.pageId, { reason })
+    },
+    onMutate: () => {
+      setActionError(null)
+      setActionMessage(null)
+    },
+    onSuccess: (response, variables) => {
+      setSelectedAction(null)
+      setActionMessage(
+        response.message ??
+          (variables.action === 'PUBLISH'
+            ? 'Content page published.'
+            : 'Content page archived.'),
+      )
+      void queryClient.invalidateQueries({ queryKey: ['content-pages'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['content-page-detail', variables.pageRecord.pageId],
+      })
+    },
+    onError: (error) => {
+      setActionError(
+        error instanceof Error ? error.message : 'Content action failed.',
+      )
+    },
+  })
+
+  const openContentAction = (
+    kind: ContentActionKind,
+    pageRecord: ContentPageRecord,
+    event?: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    event?.stopPropagation()
+
+    if (
+      !canRunContentListAction({
+        action: kind,
+        canPublishContent,
+        canUpdateContent,
+        page: pageRecord,
+      })
+    ) {
+      return
+    }
+
+    setActionError(null)
+    setSelectedAction({ kind, page: pageRecord })
+  }
+
+  const openContentDetail = (pageRecord: ContentPageRecord) => {
+    navigate(`${routePaths.content}/${pageRecord.pageId}`)
+  }
+
+  const renderRowActions = (pageRecord: ContentPageRecord) => {
+    const canPublish = canRunContentListAction({
+      action: 'PUBLISH',
+      canPublishContent,
+      canUpdateContent,
+      page: pageRecord,
+    })
+    const canArchive = canRunContentListAction({
+      action: 'ARCHIVE',
+      canPublishContent,
+      canUpdateContent,
+      page: pageRecord,
+    })
+
+    return (
+      <div className="flex min-w-0 flex-wrap justify-start gap-1.5 xl:justify-end">
+        <Button
+          size="sm"
+          title="Open content detail"
+          type="button"
+          variant="secondary"
+          onClick={(event) => {
+            event.stopPropagation()
+            openContentDetail(pageRecord)
+          }}
+        >
+          <ArrowUpRight className="mr-2 size-4" />
+          Open
+        </Button>
+        {canPublish ? (
+          <Button
+            disabled={actionMutation.isPending}
+            size="sm"
+            title="Publish content page"
+            type="button"
+            onClick={(event) => openContentAction('PUBLISH', pageRecord, event)}
+          >
+            <Send className="mr-2 size-4" />
+            Publish
+          </Button>
+        ) : null}
+        {canArchive ? (
+          <Button
+            disabled={actionMutation.isPending}
+            size="sm"
+            title="Archive content page"
+            type="button"
+            variant="secondary"
+            onClick={(event) => openContentAction('ARCHIVE', pageRecord, event)}
+          >
+            <Archive className="mr-2 size-4" />
+            Archive
+          </Button>
+        ) : null}
+        {canReadAudit ? (
+          <Button
+            size="sm"
+            title="Open audit logs"
+            type="button"
+            variant="ghost"
+            onClick={(event) => {
+              event.stopPropagation()
+              navigate(buildContentAuditPath(pageRecord))
+            }}
+          >
+            <ClipboardList className="mr-2 size-4" />
+            Audit
+          </Button>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <PageContainer>
       <PageContextHeader
@@ -625,6 +1005,12 @@ export function ContentPage() {
         ))}
       </section>
 
+      {actionMessage ? (
+        <div className="rounded-[0.875rem] border border-success/25 bg-success/10 p-3 text-sm text-success">
+          {actionMessage}
+        </div>
+      ) : null}
+
       <section
         className={cn(
           'grid min-h-[calc(100vh-16rem)] gap-3 transition-[grid-template-columns]',
@@ -637,8 +1023,8 @@ export function ContentPage() {
           <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
             {!isFilterRailCollapsed ? (
               <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-foreground">Review queues</h2>
-                <p className="mt-0.5 text-xs text-muted">Publishing states</p>
+                <h2 className="text-sm font-semibold text-foreground">Queue totals</h2>
+                <p className="mt-0.5 text-xs text-muted">Counts match base filters.</p>
               </div>
             ) : null}
             <button
@@ -693,6 +1079,7 @@ export function ContentPage() {
                     placeholder="All statuses"
                     values={statusesFilter}
                     onChange={(values) => {
+                      clearSeededContentParams()
                       setStatusesFilter(values as ContentPageStatus[])
                       setQueueKey(values.length > 0 ? 'custom' : 'all')
                       resetToFirstPage()
@@ -704,6 +1091,7 @@ export function ContentPage() {
                     placeholder="All types"
                     values={pageTypesFilter}
                     onChange={(values) => {
+                      clearSeededContentParams()
                       setPageTypesFilter(values as ContentPageType[])
                       resetToFirstPage()
                     }}
@@ -714,6 +1102,7 @@ export function ContentPage() {
                     placeholder="All formats"
                     values={formatsFilter}
                     onChange={(values) => {
+                      clearSeededContentParams()
                       setFormatsFilter(values as ContentFormat[])
                       resetToFirstPage()
                     }}
@@ -724,6 +1113,7 @@ export function ContentPage() {
                       className="h-10 w-full rounded-[0.75rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
                       value={visibility}
                       onChange={(event) => {
+                        clearSeededContentParams()
                         setVisibility(event.target.value as 'all' | 'hidden' | 'visible')
                         setQueueKey(event.target.value === 'all' ? 'all' : 'custom')
                         resetToFirstPage()
@@ -741,6 +1131,7 @@ export function ContentPage() {
                         type="date"
                         value={dateFrom}
                         onChange={(event) => {
+                          clearSeededContentParams()
                           setDateFrom(event.target.value)
                           resetToFirstPage()
                         }}
@@ -752,6 +1143,7 @@ export function ContentPage() {
                         type="date"
                         value={dateTo}
                         onChange={(event) => {
+                          clearSeededContentParams()
                           setDateTo(event.target.value)
                           resetToFirstPage()
                         }}
@@ -764,7 +1156,10 @@ export function ContentPage() {
           )}
         </aside>
 
-        <section className="min-w-0 rounded-[0.875rem] border border-border bg-surface shadow-surface">
+        <section
+          className="min-w-0 scroll-mt-4 rounded-[0.875rem] border border-border bg-surface shadow-surface"
+          id="content-pages"
+        >
           <div className="flex flex-col gap-3 border-b border-border px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <h2 className="text-base font-semibold text-foreground">Content pages</h2>
@@ -780,6 +1175,7 @@ export function ContentPage() {
                 placeholder="Search title, slug, excerpt"
                 value={search}
                 onChange={(value) => {
+                  clearSeededContentParams()
                   setSearch(value)
                   resetToFirstPage()
                 }}
@@ -850,7 +1246,7 @@ export function ContentPage() {
             </div>
           ) : isLoading ? (
             <div className="p-4">
-              <TableSkeleton columnCount={visibleColumns.length + 1} hasFooter rowCount={8} />
+              <TableSkeleton columnCount={visibleColumns.length + 2} hasFooter rowCount={8} />
             </div>
           ) : pages.length === 0 ? (
             <div className="p-4">
@@ -887,6 +1283,9 @@ export function ContentPage() {
                         </div>
                       )
                     })}
+                    <div className="flex min-w-0 items-center justify-end">
+                      <span>Actions</span>
+                    </div>
                   </div>
                   <ListSelectionToolbar
                     allVisibleSelected={contentSelection.allVisibleSelected}
@@ -908,13 +1307,13 @@ export function ContentPage() {
                         key={contentPage.pageId}
                         role="button"
                         tabIndex={0}
-                        onClick={() => navigate(`${routePaths.content}/${contentPage.pageId}`)}
+                        onClick={() => openContentDetail(contentPage)}
                         onKeyDown={(keyboardEvent) => {
                           if (keyboardEvent.target !== keyboardEvent.currentTarget) return
 
                           if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
                             keyboardEvent.preventDefault()
-                            navigate(`${routePaths.content}/${contentPage.pageId}`)
+                            openContentDetail(contentPage)
                           }
                         }}
                       >
@@ -938,6 +1337,12 @@ export function ContentPage() {
                             <ContentCell columnId={columnId} page={contentPage} />
                           </div>
                         ))}
+                        <div className="min-w-0 self-center text-sm">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-normal text-muted xl:hidden">
+                            Actions
+                          </span>
+                          {renderRowActions(contentPage)}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1000,6 +1405,28 @@ export function ContentPage() {
           )}
         </section>
       </section>
+
+      {selectedAction ? (
+        <ContentActionModal
+          action={selectedAction}
+          error={actionError}
+          isSubmitting={actionMutation.isPending}
+          key={`${selectedAction.kind}-${selectedAction.page.pageId}`}
+          onClose={() => {
+            if (!actionMutation.isPending) {
+              setSelectedAction(null)
+              setActionError(null)
+            }
+          }}
+          onSubmit={(reason) =>
+            actionMutation.mutate({
+              action: selectedAction.kind,
+              pageRecord: selectedAction.page,
+              reason,
+            })
+          }
+        />
+      ) : null}
     </PageContainer>
   )
 }

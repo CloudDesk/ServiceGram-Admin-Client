@@ -168,6 +168,37 @@ export interface AdminPayoutsListResponse
   pagination: AdminPayoutPagination
 }
 
+export interface AdminPayoutChildSummary {
+  total: number
+  pending: number
+  underReview: number
+  held: number
+  approved: number
+  paid: number
+  failed: number
+  adjusted: number
+  cancelled: number
+  active: number
+  needsAttention: number
+  totalAmountPaise: number
+  activeAmountPaise: number
+  paidAmountPaise: number
+  heldAmountPaise: number
+  failedAmountPaise: number
+  itemCount: number
+  netPayablePaise: number
+  currency: string
+  byStatus: Partial<Record<AdminPayoutStatus, number>>
+  byPayoutMethod: Partial<Record<AdminPayoutMethod, number>>
+}
+
+export interface AdminVendorPayoutsListResponse
+  extends AdminPayoutApiResponse<AdminPayoutSummary[]> {
+  data: AdminPayoutSummary[]
+  pagination: AdminPayoutPagination
+  summary: AdminPayoutChildSummary
+}
+
 export type AdminPayoutDetailResponse = AdminPayoutApiResponse<AdminPayoutDetail>
 export type CreatePayoutResponse = AdminPayoutApiResponse<AdminPayoutDetail>
 export type ApprovePayoutResponse = AdminPayoutApiResponse<ApprovePayoutResult>

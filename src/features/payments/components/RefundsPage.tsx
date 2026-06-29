@@ -3,8 +3,12 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
+  ReceiptText,
   RefreshCcw,
   SlidersHorizontal,
+  Store,
+  UserRound,
   XCircle,
 } from 'lucide-react'
 import type {
@@ -14,7 +18,7 @@ import type {
 } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
@@ -33,7 +37,7 @@ import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
-import { useAuthStore } from '../../../store/authStore'
+import { usePermission } from '../../../hooks/usePermission'
 import type { LookupOption } from '../../../types/lookup.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -221,25 +225,25 @@ function buildRefundMetrics(
   return [
     {
       label: 'Needs review',
-      meta: 'Requested refunds in current result window',
+      meta: 'Requested refunds in visible rows',
       tone: requested > 0 ? 'warning' : 'neutral',
       value: String(requested),
     },
     {
       label: 'Approved value',
-      meta: 'Approved, processing, or completed value',
+      meta: 'Approved, processing, or completed value in visible rows',
       tone: approvedValue > 0 ? 'success' : 'neutral',
       value: formatPaise(approvedValue),
     },
     {
       label: 'In process',
-      meta: 'Approved or processing refunds',
+      meta: 'Approved or processing refunds in visible rows',
       tone: processing > 0 ? 'info' : 'neutral',
       value: String(processing),
     },
     {
-      label: 'Visible refunds',
-      meta: 'Matching current filters',
+      label: 'Matched refunds',
+      meta: 'Total matching current filters',
       tone: 'info',
       value: String(total),
     },
@@ -250,7 +254,7 @@ function buildRefundQueueItems(refunds: AdminRefundSummary[]) {
   return [
     {
       key: 'all' as const,
-      label: 'All refunds',
+      label: 'All visible',
       count: refunds.length,
     },
     {
@@ -413,8 +417,15 @@ function RefundCell({
 
 export function RefundsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
-  const canReviewRefunds = useAuthStore((state) => state.can('payments:refund'))
+  const canReadPayments = usePermission('payments:read')
+  const canReadOrders = usePermission('orders:read')
+  const canReadCustomers = usePermission('customers:read')
+  const canReadVendors = usePermission('vendors:read')
+  const canReviewRefunds = usePermission('payments:refund')
+  const initialPaymentId = searchParams.get('paymentId') ?? ''
+  const initialPaymentLabel = searchParams.get('paymentLabel') ?? initialPaymentId
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
   const [search, setSearch] = useState('')
@@ -422,7 +433,16 @@ export function RefundsPage() {
     'REQUESTED',
   ])
   const [city, setCity] = useState('')
-  const [selectedPayments, setSelectedPayments] = useState<LookupOption[]>([])
+  const [selectedPayments, setSelectedPayments] = useState<LookupOption[]>(() =>
+    initialPaymentId
+      ? [
+          {
+            label: initialPaymentLabel,
+            value: initialPaymentId,
+          },
+        ]
+      : [],
+  )
   const [selectedOrders, setSelectedOrders] = useState<LookupOption[]>([])
   const [selectedCustomers, setSelectedCustomers] = useState<LookupOption[]>([])
   const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>([])
@@ -508,6 +528,15 @@ export function RefundsPage() {
   )
 
   const resetToFirstPage = () => setPage(1)
+
+  const clearSeededPaymentFilter = () => {
+    if (!searchParams.has('paymentId') && !searchParams.has('paymentLabel')) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('paymentId')
+    nextParams.delete('paymentLabel')
+    setSearchParams(nextParams, { replace: true })
+  }
 
   const query = useMemo<AdminRefundsQueryParams>(
     () => ({
@@ -601,6 +630,7 @@ export function RefundsPage() {
     setMinAmountPaise('')
     setMaxAmountPaise('')
     setPage(1)
+    clearSeededPaymentFilter()
   }
 
   const applyQueue = (nextQueue: RefundQueueKey) => {
@@ -689,6 +719,22 @@ export function RefundsPage() {
     navigate(`${routePaths.refunds}/${refund.refundId}`)
   }
 
+  const viewPayment = (refund: AdminRefundSummary) => {
+    navigate(`${routePaths.payments}/${refund.payment.paymentId}`)
+  }
+
+  const viewOrder = (refund: AdminRefundSummary) => {
+    navigate(`${routePaths.orders}/${refund.order.orderId}`)
+  }
+
+  const viewCustomer = (refund: AdminRefundSummary) => {
+    navigate(`${routePaths.customers}/${refund.customer.customerId}`)
+  }
+
+  const viewVendor = (refund: AdminRefundSummary) => {
+    navigate(`${routePaths.vendors}/${refund.vendor.vendorId}`)
+  }
+
   const mutation = useMutation({
     mutationFn: async ({
       action,
@@ -748,6 +794,8 @@ export function RefundsPage() {
     event?: ReactMouseEvent<HTMLButtonElement>,
   ) => {
     event?.stopPropagation()
+    if (!canReviewRefunds) return
+
     setActionError(null)
     setSelectedAction(action)
   }
@@ -777,7 +825,23 @@ export function RefundsPage() {
       ) : null}
       {showColumn('payment') ? (
         <RefundCell label="Payment">
-          <p className="truncate font-semibold">{refund.publicPaymentId}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate font-semibold">{refund.publicPaymentId}</p>
+            {canReadPayments ? (
+              <button
+                aria-label={`Open payment ${refund.publicPaymentId}`}
+                className="btn-icon size-7 shrink-0"
+                title="Open payment"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  viewPayment(refund)
+                }}
+              >
+                <CreditCard className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
           <p className="mt-1 truncate text-xs text-muted">
             {humanizeCode(refund.payment.status)} · {humanizeCode(refund.payment.gateway)}
           </p>
@@ -785,7 +849,23 @@ export function RefundsPage() {
       ) : null}
       {showColumn('order') ? (
         <RefundCell label="Order">
-          <p className="truncate font-semibold">{refund.order.publicOrderId}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate font-semibold">{refund.order.publicOrderId}</p>
+            {canReadOrders ? (
+              <button
+                aria-label={`Open order ${refund.order.publicOrderId}`}
+                className="btn-icon size-7 shrink-0"
+                title="Open order"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  viewOrder(refund)
+                }}
+              >
+                <ReceiptText className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
           <p className="mt-1 truncate text-xs text-muted">
             {humanizeCode(refund.order.orderStatus)}
           </p>
@@ -793,10 +873,42 @@ export function RefundsPage() {
       ) : null}
       {showColumn('parties') ? (
         <RefundCell label="Customer / Vendor">
-          <p className="truncate font-semibold">{refund.customer.fullName}</p>
-          <p className="mt-1 truncate text-xs text-muted">
-            {refund.vendor.shopName}
-          </p>
+          <div className="space-y-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate font-semibold">{refund.customer.fullName}</p>
+              {canReadCustomers ? (
+                <button
+                  aria-label={`Open customer ${refund.customer.fullName}`}
+                  className="btn-icon size-7 shrink-0"
+                  title="Open customer"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    viewCustomer(refund)
+                  }}
+                >
+                  <UserRound className="size-3.5" />
+                </button>
+              ) : null}
+            </div>
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate text-xs text-muted">{refund.vendor.shopName}</p>
+              {canReadVendors ? (
+                <button
+                  aria-label={`Open vendor ${refund.vendor.shopName}`}
+                  className="btn-icon size-7 shrink-0"
+                  title="Open vendor"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    viewVendor(refund)
+                  }}
+                >
+                  <Store className="size-3.5" />
+                </button>
+              ) : null}
+            </div>
+          </div>
         </RefundCell>
       ) : null}
       {showColumn('amount') ? (
@@ -843,6 +955,7 @@ export function RefundsPage() {
           size="sm"
           type="button"
           variant="secondary"
+          disabled={mutation.isPending}
           onClick={(event) =>
             openRefundAction({ kind: 'APPROVE_REFUND', refund }, event)
           }
@@ -856,6 +969,7 @@ export function RefundsPage() {
           size="sm"
           type="button"
           variant="danger"
+          disabled={mutation.isPending}
           onClick={(event) =>
             openRefundAction({ kind: 'REJECT_REFUND', refund }, event)
           }
@@ -946,9 +1060,12 @@ export function RefundsPage() {
               <>
                 <div>
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-semibold text-foreground">
-                      Review queues
-                    </h2>
+                    <div>
+                      <h2 className="text-sm font-semibold text-foreground">
+                        Visible queues
+                      </h2>
+                      <p className="text-xs text-muted">Counts are loaded rows.</p>
+                    </div>
                     <button
                       aria-label="Collapse refund filters"
                       className="btn-icon"
@@ -1030,6 +1147,7 @@ export function RefundsPage() {
                       selectedOptions={selectedPayments}
                       onChange={(options) => {
                         setSelectedPayments(options)
+                        clearSeededPaymentFilter()
                         resetToFirstPage()
                       }}
                     />

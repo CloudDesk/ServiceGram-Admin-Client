@@ -1,22 +1,30 @@
 import {
+  ArrowUpRight,
   ArrowRight,
   Ban,
   CalendarClock,
   CircleCheck,
+  ClipboardList,
   CreditCard,
+  FileText,
   FileUp,
+  Film,
+  ImageIcon,
   KeyRound,
   MessageSquarePlus,
   PackageCheck,
+  ReceiptText,
   RotateCcw,
   Route,
   ShieldCheck,
+  Store,
   TriangleAlert,
   Truck,
+  UserRound,
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
@@ -26,6 +34,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -49,60 +58,311 @@ import type {
 } from '../types/order.types'
 
 const itemColumns: DynamicTableColumn<AdminOrderItem>[] = [
-  { key: 'itemName', label: 'Item', minWidth: 180 },
-  { key: 'quantity', label: 'Qty', minWidth: 80 },
+  {
+    key: 'itemName',
+    label: 'Item',
+    minWidth: 220,
+    renderCell: (item) => (
+      <div>
+        <p className="font-semibold text-foreground">{item.itemName}</p>
+        <p className="mt-1 text-xs text-muted">
+          {item.serviceTypeId ?? 'Custom item'}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: 'quantity',
+    label: 'Qty',
+    minWidth: 90,
+    renderCell: (item) => (
+      <span className="font-semibold text-foreground">{item.quantity}</span>
+    ),
+  },
+  {
+    key: 'unitPricePaise',
+    label: 'Unit',
+    align: 'right',
+    minWidth: 140,
+    renderCell: (item) =>
+      item.unitPricePaise == null
+        ? 'Not available'
+        : formatPaise(item.unitPricePaise),
+  },
   {
     key: 'totalPricePaise',
     label: 'Total',
     align: 'right',
-    renderCell: (item) => item.totalPricePaise == null ? 'Not available' : formatMoney(item.totalPricePaise / 100),
+    minWidth: 140,
+    renderCell: (item) =>
+      item.totalPricePaise == null
+        ? 'Not available'
+        : formatPaise(item.totalPricePaise),
   },
 ]
 
 const statusColumns: DynamicTableColumn<AdminOrderStatusHistoryItem>[] = [
-  { key: 'fromStatus', label: 'From', minWidth: 170 },
-  { key: 'toStatus', label: 'To', minWidth: 170, format: 'status', statusTone: 'info' },
-  { key: 'actorType', label: 'Actor', minWidth: 120 },
-  { key: 'createdAt', label: 'Created', format: 'date', minWidth: 180 },
+  {
+    key: 'transition',
+    label: 'Transition',
+    minWidth: 300,
+    renderCell: (event) => (
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="neutral">{formatStatusLabel(event.fromStatus)}</Badge>
+          <ArrowRight className="size-3 text-muted" />
+          <Badge tone={statusTone(event.toStatus)}>
+            {formatStatusLabel(event.toStatus)}
+          </Badge>
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          {event.note ?? 'No transition note'}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: 'actor',
+    label: 'Actor',
+    minWidth: 190,
+    renderCell: (event) => (
+      <div>
+        <p className="font-medium text-foreground">
+          {formatStatusLabel(event.actorType)}
+        </p>
+        <p className="mt-1 truncate text-xs text-muted">
+          {event.changedByAdminId ?? event.changedByUserId ?? 'System'}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: 'createdAt',
+    label: 'Created',
+    minWidth: 190,
+    renderCell: (event) => formatDateSafe(event.createdAt),
+  },
 ]
 
 const logisticsColumns: DynamicTableColumn<AdminOrderLogisticsTimelineItem>[] = [
-  { key: 'eventType', label: 'Event', minWidth: 190 },
-  { key: 'packageCondition', label: 'Condition', minWidth: 140 },
-  { key: 'issueType', label: 'Issue', minWidth: 140 },
-  { key: 'internalNote', label: 'Note', minWidth: 240, placeholder: 'No note' },
   {
-    key: 'proofMediaAssetId',
-    label: 'Proof',
-    minWidth: 160,
-    renderCell: (event) => event.proofMediaAssetId ? 'Attached' : 'Not attached',
+    key: 'event',
+    label: 'Event',
+    minWidth: 260,
+    renderCell: (event) => (
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="info">{formatStatusLabel(event.eventType)}</Badge>
+          {event.proofMediaAssetId ? (
+            <Badge tone="success">Proof attached</Badge>
+          ) : (
+            <Badge tone="neutral">No proof</Badge>
+          )}
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          {formatDateSafe(event.eventTime)}
+        </p>
+      </div>
+    ),
   },
-  { key: 'eventTime', label: 'Event Time', format: 'date', minWidth: 180 },
+  {
+    key: 'condition',
+    label: 'Condition / Issue',
+    minWidth: 220,
+    renderCell: (event) => (
+      <div>
+        <p className="font-medium text-foreground">
+          {formatStatusLabel(event.packageCondition)}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          {formatStatusLabel(event.issueType)}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    minWidth: 190,
+    renderCell: (event) => (
+      <div className="flex flex-wrap gap-1.5">
+        <Badge tone={event.customerNotificationSent ? 'success' : 'neutral'}>
+          Customer
+        </Badge>
+        <Badge tone={event.vendorNotificationSent ? 'success' : 'neutral'}>
+          Vendor
+        </Badge>
+      </div>
+    ),
+  },
+  {
+    key: 'internalNote',
+    label: 'Note',
+    minWidth: 260,
+    renderCell: (event) => event.internalNote ?? 'No note',
+  },
 ]
 
 const noteColumns: DynamicTableColumn<AdminOrderNote>[] = [
-  { key: 'note', label: 'Note', minWidth: 280 },
-  { key: 'isPinned', label: 'Pinned', renderCell: (note) => note.isPinned ? 'Yes' : 'No' },
-  { key: 'createdAt', label: 'Created', format: 'date', minWidth: 180 },
+  {
+    key: 'note',
+    label: 'Note',
+    minWidth: 320,
+    renderCell: (note) => (
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          {note.isPinned ? <Badge tone="warning">Pinned</Badge> : null}
+          <p className="font-medium text-foreground">{note.note}</p>
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          {note.adminId ?? 'System'} · {formatDateSafe(note.createdAt)}
+        </p>
+      </div>
+    ),
+  },
 ]
 
 const paymentColumns: DynamicTableColumn<AdminOrderPayment>[] = [
-  { key: 'publicPaymentId', label: 'Payment', minWidth: 180 },
-  { key: 'status', label: 'Status', format: 'status', statusTone: (value) => value === 'PAID' ? 'success' : 'warning' },
-  { key: 'amountPaise', label: 'Amount', align: 'right', renderCell: (payment) => formatMoney(payment.amountPaise / 100) },
+  {
+    key: 'payment',
+    label: 'Payment',
+    minWidth: 240,
+    renderCell: (payment) => (
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold text-foreground">
+            {payment.publicPaymentId}
+          </p>
+          <Badge tone={financePaymentTone(payment.status)}>
+            {formatStatusLabel(payment.status)}
+          </Badge>
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          {formatStatusLabel(payment.gateway)} · {formatStatusLabel(payment.method)}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: 'amountPaise',
+    label: 'Amount',
+    align: 'right',
+    minWidth: 160,
+    renderCell: (payment) => (
+      <div>
+        <p className="font-semibold text-foreground">
+          {formatPaise(payment.amountPaise, payment.currency)}
+        </p>
+        <p className="mt-1 text-xs text-muted">{payment.currency}</p>
+      </div>
+    ),
+  },
+  {
+    key: 'verifiedAt',
+    label: 'Verified',
+    minWidth: 190,
+    renderCell: (payment) => formatDateSafe(payment.verifiedAt),
+  },
+  {
+    key: 'updatedAt',
+    label: 'Updated',
+    minWidth: 190,
+    renderCell: (payment) => formatDateSafe(payment.updatedAt),
+  },
 ]
 
 const refundColumns: DynamicTableColumn<AdminOrderRefund>[] = [
-  { key: 'refundId', label: 'Refund', minWidth: 220 },
-  { key: 'status', label: 'Status', format: 'status', statusTone: 'warning' },
-  { key: 'amountPaise', label: 'Amount', align: 'right', renderCell: (refund) => formatMoney(refund.amountPaise / 100) },
-  { key: 'reason', label: 'Reason', minWidth: 220 },
+  {
+    key: 'refund',
+    label: 'Refund',
+    minWidth: 260,
+    renderCell: (refund) => (
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold text-foreground">{refund.refundId}</p>
+          <Badge tone={refundTone(refund.status)}>
+            {formatStatusLabel(refund.status)}
+          </Badge>
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Payment {refund.paymentId}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: 'amountPaise',
+    label: 'Amount',
+    align: 'right',
+    minWidth: 160,
+    renderCell: (refund) => (
+      <p className="font-semibold text-foreground">
+        {formatPaise(refund.amountPaise)}
+      </p>
+    ),
+  },
+  {
+    key: 'reason',
+    label: 'Reason',
+    minWidth: 260,
+    renderCell: (refund) => (
+      <p className="line-clamp-2 text-sm text-foreground">{refund.reason}</p>
+    ),
+  },
+  {
+    key: 'processedAt',
+    label: 'Processed',
+    minWidth: 190,
+    renderCell: (refund) => formatDateSafe(refund.processedAt),
+  },
 ]
 
 const mediaColumns: DynamicTableColumn<AdminOrderMediaAsset>[] = [
-  { key: 'purpose', label: 'Purpose', minWidth: 180 },
-  { key: 'fileName', label: 'File', minWidth: 220 },
-  { key: 'status', label: 'Status', format: 'status', statusTone: 'info' },
+  {
+    key: 'purpose',
+    label: 'Purpose',
+    minWidth: 210,
+    renderCell: (asset) => (
+      <div>
+        <Badge tone="info">{formatStatusLabel(asset.purpose)}</Badge>
+        <p className="mt-2 text-xs text-muted">{asset.mediaAssetId}</p>
+      </div>
+    ),
+  },
+  {
+    key: 'fileName',
+    label: 'File',
+    minWidth: 260,
+    renderCell: (asset) => (
+      <div>
+        <p className="font-semibold text-foreground">{asset.fileName}</p>
+        <p className="mt-1 text-xs text-muted">
+          {asset.mimeType} · {formatFileSize(asset.sizeBytes)}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    minWidth: 180,
+    renderCell: (asset) => (
+      <div>
+        <Badge tone={asset.status === 'CONFIRMED' ? 'success' : 'warning'}>
+          {formatStatusLabel(asset.status)}
+        </Badge>
+        <p className="mt-2 text-xs text-muted">
+          {formatStatusLabel(asset.accessLevel)}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: 'createdAt',
+    label: 'Created',
+    minWidth: 190,
+    renderCell: (asset) => formatDateSafe(asset.createdAt),
+  },
 ]
 
 function DetailField({ label, value }: { label: string; value: string | number | null | undefined }) {
@@ -114,7 +374,76 @@ function DetailField({ label, value }: { label: string; value: string | number |
   )
 }
 
+function DetailPanel({
+  children,
+  description,
+  id,
+  icon,
+  title,
+}: {
+  children: ReactNode
+  description?: string
+  id?: string
+  icon?: ReactNode
+  title: string
+}) {
+  return (
+    <section id={id} className="scroll-mt-4 rounded-[1rem] border border-border bg-surface p-4">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            {icon ? <span className="text-primary">{icon}</span> : null}
+            <h2 className="text-base font-semibold text-foreground">{title}</h2>
+          </div>
+          {description ? (
+            <p className="mt-1 text-sm leading-5 text-muted">{description}</p>
+          ) : null}
+        </div>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function TableToolbar({
+  actionNode,
+  count,
+  description,
+  icon,
+  title,
+}: {
+  actionNode?: ReactNode
+  count: number
+  description: string
+  icon: ReactNode
+  title: string
+}) {
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-primary">{icon}</span>
+          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+          <Badge tone="neutral">{count}</Badge>
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
+      </div>
+      {actionNode ? <div className="shrink-0">{actionNode}</div> : null}
+    </div>
+  )
+}
+
 type OrderTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+
+const orderSectionIds = {
+  finance: 'order-finance',
+  history: 'order-history',
+  items: 'order-items',
+  notes: 'order-notes',
+  proofMedia: 'order-proof-media',
+} as const
+
+type OrderSectionId = (typeof orderSectionIds)[keyof typeof orderSectionIds]
 
 function toneClasses(tone: OrderTone) {
   if (tone === 'success') return 'border-border bg-surface text-success'
@@ -173,6 +502,23 @@ function orderDisplayValue(order: AdminOrderDetail) {
     order.pricing.priceEstimatePaise
 
   return formatMoney(amountPaise / 100)
+}
+
+function formatPaise(value: number | null | undefined, currency = 'INR') {
+  if (value == null) return 'Not available'
+  return formatMoney(value / 100, currency)
+}
+
+function formatDateSafe(value: string | null | undefined) {
+  if (!value) return 'Not available'
+  return formatDate(value, true)
+}
+
+function formatFileSize(value: number | null | undefined) {
+  if (value == null) return 'Size unknown'
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
 const logisticsStatusOrder: AdminOrderStatus[] = [
@@ -262,8 +608,45 @@ function paymentTone(status: string) {
   return 'warning' as const
 }
 
+function financePaymentTone(status: string) {
+  if (['SUCCESS', 'PAID', 'REFUNDED'].includes(status)) return 'success' as const
+  if (['FAILED', 'CANCELLED'].includes(status)) return 'danger' as const
+  if (['PARTIALLY_REFUNDED', 'AUTHORIZED'].includes(status)) return 'info' as const
+  return 'warning' as const
+}
+
+function refundTone(status: string) {
+  if (status === 'SUCCESS') return 'success' as const
+  if (['FAILED', 'REJECTED'].includes(status)) return 'danger' as const
+  if (['APPROVED', 'PROCESSING'].includes(status)) return 'info' as const
+  return 'warning' as const
+}
+
 function actionTargetStatus(action: string) {
   return action.replace(/^MARK_/, '') as AdminOrderStatus
+}
+
+function hasOrderAction(order: AdminOrderDetail, action: string) {
+  return order.availableActions.includes(action)
+}
+
+function buildOrderAuditPath(order: AdminOrderDetail) {
+  const params = new URLSearchParams({
+    moduleCode: 'orders',
+    entityType: 'order',
+    entityId: order.orderId,
+  })
+
+  return `${routePaths.audit}?${params.toString()}`
+}
+
+function canRunOrderAction(
+  kind: OrderActionKind,
+  canUpdateOrders: boolean,
+  canRefundPayments: boolean,
+) {
+  if (kind === 'INITIATE_REFUND') return canRefundPayments
+  return canUpdateOrders
 }
 
 function OrderHeaderStatus({ order }: { order: AdminOrderDetail }) {
@@ -316,47 +699,55 @@ function PriceRevisionNotice({ order }: { order: AdminOrderDetail }) {
 }
 
 function OrderHeaderActions({
+  canRefundPayments,
+  canUpdateOrders,
   isSubmitting,
   onSelectAction,
   order,
 }: {
+  canRefundPayments: boolean
+  canUpdateOrders: boolean
   isSubmitting: boolean
   onSelectAction: (kind: OrderActionKind, targetStatus?: AdminOrderStatus) => void
   order: AdminOrderDetail
 }) {
   return (
     <div className="flex flex-wrap justify-end gap-2">
-      {order.availableActions.includes('INITIATE_REFUND') ? (
+      {canRefundPayments && hasOrderAction(order, 'INITIATE_REFUND') ? (
         <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('INITIATE_REFUND')}>
           <RotateCcw className="mr-2 size-4" />
           Refund
         </Button>
       ) : null}
-      {order.availableActions.includes('CREATE_PROOF_UPLOAD_INTENT') ? (
+      {canUpdateOrders && hasOrderAction(order, 'CREATE_PROOF_UPLOAD_INTENT') ? (
         <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('CREATE_PROOF_UPLOAD_INTENT')}>
           <FileUp className="mr-2 size-4" />
           Proof Upload
         </Button>
       ) : null}
-      {order.availableActions.includes('CANCEL') ? (
+      {canUpdateOrders && hasOrderAction(order, 'CANCEL') ? (
         <Button disabled={isSubmitting} size="sm" variant="danger" onClick={() => onSelectAction('CANCEL')}>
           <Ban className="mr-2 size-4" />
           Cancel
         </Button>
       ) : null}
-      <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('ADD_NOTE')}>
-        <MessageSquarePlus className="mr-2 size-4" />
-        Add Note
-      </Button>
+      {canUpdateOrders && hasOrderAction(order, 'ADD_NOTE') ? (
+        <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('ADD_NOTE')}>
+          <MessageSquarePlus className="mr-2 size-4" />
+          Add Note
+        </Button>
+      ) : null}
     </div>
   )
 }
 
 function ManualLogisticsPanel({
+  canUpdateOrders,
   isSubmitting,
   onSelectAction,
   order,
 }: {
+  canUpdateOrders: boolean
   isSubmitting: boolean
   onSelectAction: (kind: OrderActionKind, targetStatus?: AdminOrderStatus) => void
   order: AdminOrderDetail
@@ -419,25 +810,29 @@ function ManualLogisticsPanel({
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
-          {primaryTarget ? (
+          {primaryTarget && canUpdateOrders ? (
             <Button disabled={isSubmitting} size="sm" onClick={() => onSelectAction('UPDATE_STATUS', primaryTarget)}>
               <Truck className="mr-2 size-4" />
               {manualStatusCopy[primaryTarget]?.label ?? formatStatusLabel(primaryTarget)}
             </Button>
+          ) : !canUpdateOrders ? (
+            <div className="rounded-[0.85rem] border border-border bg-surface-muted/50 px-3 py-2 text-sm text-muted">
+              Your role can view logistics, but cannot update order status.
+            </div>
           ) : (
             <div className="rounded-[0.85rem] border border-border bg-surface-muted/50 px-3 py-2 text-sm text-muted">
               No valid manual transition is available for this status.
             </div>
           )}
 
-          {secondaryActions.map((action) => {
+          {canUpdateOrders ? secondaryActions.map((action) => {
             const targetStatus = actionTargetStatus(action)
             return (
               <Button disabled={isSubmitting} key={action} size="sm" variant="secondary" onClick={() => onSelectAction('UPDATE_STATUS', targetStatus)}>
                 {manualStatusCopy[targetStatus]?.label ?? formatStatusLabel(targetStatus)}
               </Button>
             )
-          })}
+          }) : null}
         </div>
 
         {primaryTarget ? (
@@ -479,19 +874,19 @@ function ManualLogisticsPanel({
         )}
 
         <div className="mt-4 flex flex-wrap gap-2">
-          {order.availableActions.includes('GENERATE_DELIVERY_OTP') ? (
+          {canUpdateOrders && hasOrderAction(order, 'GENERATE_DELIVERY_OTP') ? (
             <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('GENERATE_DELIVERY_OTP')}>
               <ShieldCheck className="mr-2 size-4" />
               Generate OTP
             </Button>
           ) : null}
-          {order.availableActions.includes('CONFIRM_DELIVERY_OTP') ? (
+          {canUpdateOrders && hasOrderAction(order, 'CONFIRM_DELIVERY_OTP') ? (
             <Button disabled={isSubmitting} size="sm" onClick={() => onSelectAction('CONFIRM_DELIVERY_OTP')}>
               <CircleCheck className="mr-2 size-4" />
               Confirm OTP
             </Button>
           ) : null}
-          {order.availableActions.includes('CREATE_PROOF_UPLOAD_INTENT') ? (
+          {canUpdateOrders && hasOrderAction(order, 'CREATE_PROOF_UPLOAD_INTENT') ? (
             <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('CREATE_PROOF_UPLOAD_INTENT')}>
               <PackageCheck className="mr-2 size-4" />
               Proof Upload
@@ -508,6 +903,217 @@ function ManualLogisticsPanel({
   )
 }
 
+function RelatedRecordRow({
+  actionLabel = 'Open',
+  canOpen,
+  icon,
+  label,
+  meta,
+  onOpen,
+  value,
+}: {
+  actionLabel?: string
+  canOpen: boolean
+  icon: ReactNode
+  label: string
+  meta: string
+  onOpen?: () => void
+  value: string
+}) {
+  return (
+    <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 text-primary">{icon}</span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            {label}
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+            {value}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted">{meta}</p>
+        </div>
+      </div>
+      {canOpen && onOpen ? (
+        <Button className="shrink-0" size="sm" variant="secondary" onClick={onOpen}>
+          <ArrowUpRight className="mr-2 size-4" />
+          {actionLabel}
+        </Button>
+      ) : (
+        <Badge tone="neutral">View only</Badge>
+      )}
+    </div>
+  )
+}
+
+function RelatedRecordsPanel({
+  canReadAudit,
+  canReadCustomers,
+  canReadPayments,
+  canReadReels,
+  canReadVendors,
+  onNavigate,
+  onOpenSection,
+  order,
+}: {
+  canReadAudit: boolean
+  canReadCustomers: boolean
+  canReadPayments: boolean
+  canReadReels: boolean
+  canReadVendors: boolean
+  onNavigate: (path: string) => void
+  onOpenSection: (sectionId: OrderSectionId) => void
+  order: AdminOrderDetail
+}) {
+  const historyCount = order.statusHistory.length + order.logisticsTimeline.length
+
+  return (
+    <DetailPanel
+      description="Primary records and child sections linked to this order."
+      icon={<ArrowUpRight className="size-4" />}
+      title="Related records"
+    >
+      <div className="divide-y divide-border">
+        <RelatedRecordRow
+          canOpen={canReadCustomers}
+          icon={<UserRound className="size-4" />}
+          label="Customer"
+          meta={order.customer.mobileNumber ?? order.customer.email ?? order.customer.status}
+          value={order.customer.fullName}
+          onOpen={() => onNavigate(`${routePaths.customers}/${order.customer.customerId}`)}
+        />
+        <RelatedRecordRow
+          canOpen={canReadVendors}
+          icon={<Store className="size-4" />}
+          label="Vendor"
+          meta={`${order.vendor.publicVendorId} · ${order.vendor.zone?.zoneName ?? order.vendor.city}`}
+          value={order.vendor.shopName}
+          onOpen={() => onNavigate(`${routePaths.vendors}/${order.vendor.vendorId}`)}
+        />
+        {order.sourceReelId ? (
+          <RelatedRecordRow
+            canOpen={canReadReels}
+            icon={<Film className="size-4" />}
+            label="Source reel"
+            meta="Attributed booking source"
+            value={order.sourceReelId}
+            onOpen={() => onNavigate(`${routePaths.reels}/${order.sourceReelId}`)}
+          />
+        ) : null}
+        <RelatedRecordRow
+          actionLabel="Review"
+          canOpen
+          icon={<CreditCard className="size-4" />}
+          label="Finance"
+          meta={
+            canReadPayments
+              ? 'Payment and refund detail links enabled'
+              : 'Order-scoped finance rows'
+          }
+          value={formatStatusLabel(order.paymentStatus)}
+          onOpen={() => onOpenSection(orderSectionIds.finance)}
+        />
+        <RelatedRecordRow
+          actionLabel="Timeline"
+          canOpen
+          icon={<Truck className="size-4" />}
+          label="Status & logistics"
+          meta={`${order.statusHistory.length} status events · ${order.logisticsTimeline.length} logistics events`}
+          value={`${historyCount} total events`}
+          onOpen={() => onOpenSection(orderSectionIds.history)}
+        />
+        <RelatedRecordRow
+          actionLabel="Proofs"
+          canOpen
+          icon={<ImageIcon className="size-4" />}
+          label="Proof media"
+          meta="Upload intents and delivery proof assets"
+          value={`${order.mediaAssets.length} media assets`}
+          onOpen={() => onOpenSection(orderSectionIds.proofMedia)}
+        />
+        <RelatedRecordRow
+          actionLabel="Items"
+          canOpen
+          icon={<PackageCheck className="size-4" />}
+          label="Line items"
+          meta="Booked services and item-level pricing"
+          value={`${order.items.length} items`}
+          onOpen={() => onOpenSection(orderSectionIds.items)}
+        />
+        <RelatedRecordRow
+          actionLabel="Notes"
+          canOpen
+          icon={<MessageSquarePlus className="size-4" />}
+          label="Admin notes"
+          meta="Pinned and regular internal notes"
+          value={`${order.counts?.noteCount ?? order.notes.length} notes`}
+          onOpen={() => onOpenSection(orderSectionIds.notes)}
+        />
+        <RelatedRecordRow
+          actionLabel="Audit"
+          canOpen={canReadAudit}
+          icon={<ClipboardList className="size-4" />}
+          label="Audit trail"
+          meta="Filtered by module, entity type, and order id"
+          value={order.orderId}
+          onOpen={() => onNavigate(buildOrderAuditPath(order))}
+        />
+      </div>
+    </DetailPanel>
+  )
+}
+
+function OperationalSignalsPanel({ order }: { order: AdminOrderDetail }) {
+  return (
+    <DetailPanel
+      description="Backend workflow signals that should drive admin attention."
+      icon={<TriangleAlert className="size-4" />}
+      title="Signals"
+    >
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            Warnings
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {order.warnings.length ? (
+              order.warnings.map((warning) => (
+                <Badge key={warning} tone="warning">
+                  {formatStatusLabel(warning)}
+                </Badge>
+              ))
+            ) : (
+              <Badge tone="success">No warnings</Badge>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            Available actions
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {order.availableActions.length ? (
+              order.availableActions.map((action) => (
+                <Badge key={action} tone="neutral">
+                  {formatStatusLabel(action)}
+                </Badge>
+              ))
+            ) : (
+              <Badge tone="neutral">No actions</Badge>
+            )}
+          </div>
+        </div>
+
+        <DetailField
+          label="Recommended next"
+          value={formatStatusLabel(order.nextRecommendedAction)}
+        />
+      </div>
+    </DetailPanel>
+  )
+}
+
 interface OrderDetailPageProps {
   listHref?: string
   listLabel?: string
@@ -518,7 +1124,15 @@ export function OrderDetailPage({
   listLabel = 'Orders',
 }: OrderDetailPageProps = {}) {
   const { orderId } = useParams()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const canReadCustomers = usePermission('customers:read')
+  const canReadVendors = usePermission('vendors:read')
+  const canReadPayments = usePermission('payments:read')
+  const canReadReels = usePermission('reels:read')
+  const canReadAudit = usePermission('audit:read')
+  const canUpdateOrders = usePermission('orders:update_status')
+  const canRefundPayments = usePermission('payments:refund')
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedAction, setSelectedAction] = useState<OrderActionSelection | null>(null)
 
@@ -535,6 +1149,8 @@ export function OrderDetailPage({
       queryClient.invalidateQueries({ queryKey: ['order-detail', orderId] }),
       queryClient.invalidateQueries({ queryKey: ['orders'] }),
       queryClient.invalidateQueries({ queryKey: ['manual-logistics'] }),
+      queryClient.invalidateQueries({ queryKey: ['payments'] }),
+      queryClient.invalidateQueries({ queryKey: ['refunds'] }),
     ])
   }
 
@@ -640,8 +1256,22 @@ export function OrderDetailPage({
   })
 
   const openAction = (kind: OrderActionKind, targetStatus?: AdminOrderStatus) => {
+    if (!canRunOrderAction(kind, canUpdateOrders, canRefundPayments)) {
+      return
+    }
+
     setActionError(null)
     setSelectedAction({ kind, targetStatus })
+  }
+
+  const openSection = (sectionId: OrderSectionId) => {
+    const section = document.getElementById(sectionId)
+
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    if (section) {
+      window.history.replaceState(null, '', `#${sectionId}`)
+    }
   }
 
   if (!orderId) {
@@ -663,7 +1293,15 @@ export function OrderDetailPage({
   return (
     <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
-        actionNode={<OrderHeaderActions isSubmitting={actionMutation.isPending} order={order} onSelectAction={openAction} />}
+        actionNode={
+          <OrderHeaderActions
+            canRefundPayments={canRefundPayments}
+            canUpdateOrders={canUpdateOrders}
+            isSubmitting={actionMutation.isPending}
+            order={order}
+            onSelectAction={openAction}
+          />
+        }
         description={`${order.customer.fullName} · ${order.vendor.shopName}`}
         listHref={listHref}
         listLabel={listLabel}
@@ -705,14 +1343,19 @@ export function OrderDetailPage({
       </section>
 
       <ManualLogisticsPanel
+        canUpdateOrders={canUpdateOrders}
         isSubmitting={actionMutation.isPending}
         order={order}
         onSelectAction={openAction}
       />
 
       <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
-          <h2 className="text-base font-semibold text-foreground">Order Information</h2>
+        <DetailPanel
+          description="Core booking, schedule, customer, vendor, and pricing fields."
+          id="order-information"
+          icon={<ReceiptText className="size-4" />}
+          title="Order information"
+        >
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <DetailField label="Order ID" value={order.orderId} />
             <DetailField label="Public Order ID" value={order.publicOrderId} />
@@ -722,33 +1365,290 @@ export function OrderDetailPage({
             <DetailField label="Category" value={order.category?.name} />
             <DetailField label="Payment Method" value={order.paymentMethod} />
             <DetailField label="Value" value={orderDisplayValue(order)} />
-            <DetailField label="Pickup Date" value={order.schedule.pickupDate} />
-            <DetailField label="Expected Delivery" value={order.schedule.expectedDeliveryAt} />
+            <DetailField label="Pickup Date" value={formatDateSafe(order.schedule.pickupDate)} />
+            <DetailField label="Expected Delivery" value={formatDateSafe(order.schedule.expectedDeliveryAt)} />
+            <DetailField label="Delivered At" value={formatDateSafe(order.schedule.deliveredAt)} />
             <DetailField label="Cancellation Reason" value={order.cancellationReason} />
-            <DetailField label="Warnings" value={order.warnings.length ? order.warnings.join(', ') : null} />
             <DetailField label="Active Delivery OTP" value={order.activeDeliveryOtp?.status} />
-            <DetailField label="Created At" value={order.createdAt} />
+            <DetailField label="Created At" value={formatDateSafe(order.createdAt)} />
+            <DetailField label="Updated At" value={formatDateSafe(order.updatedAt)} />
           </div>
-        </div>
-        <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
-          <h2 className="text-base font-semibold text-foreground">Operational Counts</h2>
-          <DetailField label="Items" value={order.counts?.itemCount} />
-          <DetailField label="Notes" value={order.counts?.noteCount} />
-          <DetailField label="Logistics Events" value={order.counts?.logisticsEventCount} />
-          <DetailField label="Refunds" value={order.counts?.refundCount} />
-          <DetailField label="Active OTPs" value={order.counts?.activeOtpCount} />
-          <DetailField label="Next Action" value={order.nextRecommendedAction} />
+        </DetailPanel>
+
+        <div className="space-y-3">
+          <RelatedRecordsPanel
+            canReadAudit={canReadAudit}
+            canReadCustomers={canReadCustomers}
+            canReadPayments={canReadPayments}
+            canReadReels={canReadReels}
+            canReadVendors={canReadVendors}
+            order={order}
+            onNavigate={navigate}
+            onOpenSection={openSection}
+          />
+          <OperationalSignalsPanel order={order} />
         </div>
       </section>
 
       <section className="space-y-3">
-        <DynamicTable columns={itemColumns} data={order.items} emptyTitle="No items" getRowId={(row) => row.orderItemId} title="Items" />
-        <DynamicTable columns={statusColumns} data={order.statusHistory} emptyTitle="No status history" getRowId={(row) => row.statusHistoryId} title="Status History" />
-        <DynamicTable columns={logisticsColumns} data={order.logisticsTimeline} emptyTitle="No logistics timeline" getRowId={(row) => row.logisticsEventId} title="Logistics Timeline" />
-        <DynamicTable columns={paymentColumns} data={order.payments} emptyTitle="No payments" getRowId={(row) => row.paymentId} title="Payments" />
-        <DynamicTable columns={refundColumns} data={order.refunds} emptyTitle="No refunds" getRowId={(row) => row.refundId} title="Refunds" />
-        <DynamicTable columns={noteColumns} data={order.notes} emptyTitle="No notes" getRowId={(row) => row.orderNoteId} title="Notes" />
-        <DynamicTable columns={mediaColumns} data={order.mediaAssets} emptyTitle="No media assets" getRowId={(row) => row.orderMediaAssetId} title="Media Assets" />
+        <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+          <DetailMetricCard
+            icon={<PackageCheck className="size-4" />}
+            label="Items"
+            meta="Service line items"
+            tone={order.items.length ? 'info' : 'neutral'}
+            value={String(order.counts?.itemCount ?? order.items.length)}
+          />
+          <DetailMetricCard
+            icon={<CreditCard className="size-4" />}
+            label="Payments"
+            meta={`${order.refunds.length} linked refunds`}
+            tone={order.payments.length ? 'success' : 'neutral'}
+            value={String(order.payments.length)}
+          />
+          <DetailMetricCard
+            icon={<ImageIcon className="size-4" />}
+            label="Proofs"
+            meta="Order media assets"
+            tone={order.mediaAssets.length ? 'info' : 'neutral'}
+            value={String(order.mediaAssets.length)}
+          />
+          <DetailMetricCard
+            icon={<FileText className="size-4" />}
+            label="Notes"
+            meta="Internal admin notes"
+            tone={order.notes.length ? 'warning' : 'neutral'}
+            value={String(order.counts?.noteCount ?? order.notes.length)}
+          />
+        </div>
+
+        <div id={orderSectionIds.finance} className="grid scroll-mt-4 gap-3 2xl:grid-cols-2">
+          <DynamicTable
+            actionColumnLabel="Payment Actions"
+            actionColumnMinWidth={180}
+            bodyMaxHeight={320}
+            columns={paymentColumns}
+            data={order.payments}
+            emptyDescription="This order does not have payment records yet."
+            emptyTitle="No payments"
+            getRowId={(row) => row.paymentId}
+            stickyHeader
+            title="Payments"
+            toolbar={
+              <TableToolbar
+                count={order.payments.length}
+                description="Payment attempts and verification state linked to this order."
+                icon={<CreditCard className="size-4" />}
+                title="Payments"
+              />
+            }
+            rowActions={
+              canReadPayments
+                ? (payment) => [
+                    {
+                      icon: <ArrowUpRight className="size-4" />,
+                      key: 'open-payment',
+                      label: 'Open',
+                      onClick: () => navigate(`${routePaths.payments}/${payment.paymentId}`),
+                      variant: 'ghost',
+                    },
+                  ]
+                : undefined
+            }
+            onRowClick={
+              canReadPayments
+                ? (payment) => navigate(`${routePaths.payments}/${payment.paymentId}`)
+                : undefined
+            }
+          />
+
+          <DynamicTable
+            actionColumnLabel="Refund Actions"
+            actionColumnMinWidth={180}
+            bodyMaxHeight={320}
+            columns={refundColumns}
+            data={order.refunds}
+            emptyDescription="This order does not have refund records yet."
+            emptyTitle="No refunds"
+            getRowId={(row) => row.refundId}
+            stickyHeader
+            title="Refunds"
+            toolbar={
+              <TableToolbar
+                actionNode={
+                  canRefundPayments && hasOrderAction(order, 'INITIATE_REFUND') ? (
+                    <Button
+                      disabled={actionMutation.isPending}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => openAction('INITIATE_REFUND')}
+                    >
+                      <RotateCcw className="mr-2 size-4" />
+                      Refund
+                    </Button>
+                  ) : null
+                }
+                count={order.refunds.length}
+                description="Refund requests created for this order payment."
+                icon={<RotateCcw className="size-4" />}
+                title="Refunds"
+              />
+            }
+            rowActions={
+              canReadPayments
+                ? (refund) => [
+                    {
+                      icon: <ArrowUpRight className="size-4" />,
+                      key: 'open-refund',
+                      label: 'Open',
+                      onClick: () => navigate(`${routePaths.refunds}/${refund.refundId}`),
+                      variant: 'ghost',
+                    },
+                  ]
+                : undefined
+            }
+            onRowClick={
+              canReadPayments
+                ? (refund) => navigate(`${routePaths.refunds}/${refund.refundId}`)
+                : undefined
+            }
+          />
+        </div>
+
+        <div id={orderSectionIds.history} className="grid scroll-mt-4 gap-3 2xl:grid-cols-2">
+          <DynamicTable
+            bodyMaxHeight={340}
+            columns={statusColumns}
+            data={order.statusHistory}
+            emptyDescription="No status transitions were returned for this order."
+            emptyTitle="No status history"
+            getRowId={(row) => row.statusHistoryId}
+            stickyHeader
+            title="Status history"
+            toolbar={
+              <TableToolbar
+                count={order.statusHistory.length}
+                description="Lifecycle status transitions with actors and notes."
+                icon={<Route className="size-4" />}
+                title="Status history"
+              />
+            }
+          />
+
+          <DynamicTable
+            bodyMaxHeight={340}
+            columns={logisticsColumns}
+            data={order.logisticsTimeline}
+            emptyDescription="No manual logistics events were returned for this order."
+            emptyTitle="No logistics timeline"
+            getRowId={(row) => row.logisticsEventId}
+            stickyHeader
+            title="Logistics timeline"
+            toolbar={
+              <TableToolbar
+                count={order.logisticsTimeline.length}
+                description="Pickup, handover, delivery, proof, and notification events."
+                icon={<Truck className="size-4" />}
+                title="Logistics timeline"
+              />
+            }
+          />
+        </div>
+
+        <div id={orderSectionIds.proofMedia} className="scroll-mt-4">
+          <DynamicTable
+            actionColumnLabel="Proof Actions"
+            actionColumnMinWidth={210}
+            bodyMaxHeight={300}
+            columns={mediaColumns}
+            data={order.mediaAssets}
+            emptyDescription="No proof media assets were returned for this order."
+            emptyTitle="No media assets"
+            getRowId={(row) => row.orderMediaAssetId}
+            stickyHeader
+            title="Media assets"
+            toolbar={
+              <TableToolbar
+                actionNode={
+                  canUpdateOrders && hasOrderAction(order, 'CREATE_PROOF_UPLOAD_INTENT') ? (
+                    <Button
+                      disabled={actionMutation.isPending}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => openAction('CREATE_PROOF_UPLOAD_INTENT')}
+                    >
+                      <FileUp className="mr-2 size-4" />
+                      Proof Upload
+                    </Button>
+                  ) : null
+                }
+                count={order.mediaAssets.length}
+                description="Order proof files and upload intents linked to manual logistics."
+                icon={<ImageIcon className="size-4" />}
+                title="Media assets"
+              />
+            }
+          />
+        </div>
+
+        <div className="grid gap-3 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+          <div id={orderSectionIds.items} className="scroll-mt-4">
+            <DynamicTable
+              bodyMaxHeight={300}
+              columns={itemColumns}
+              data={order.items}
+              emptyDescription="This order does not have item rows yet."
+              emptyTitle="No items"
+              getRowId={(row) => row.orderItemId}
+              stickyHeader
+              title="Items"
+              toolbar={
+                <TableToolbar
+                  count={order.items.length}
+                  description="Booked services and item-level pricing."
+                  icon={<PackageCheck className="size-4" />}
+                  title="Items"
+                />
+              }
+            />
+          </div>
+
+          <div id={orderSectionIds.notes} className="scroll-mt-4">
+            <DynamicTable
+              actionColumnLabel="Note Actions"
+              actionColumnMinWidth={190}
+              bodyMaxHeight={300}
+              columns={noteColumns}
+              data={order.notes}
+              emptyDescription="No internal notes were returned for this order."
+              emptyTitle="No notes"
+              getRowId={(row) => row.orderNoteId}
+              stickyHeader
+              title="Internal notes"
+              toolbar={
+                <TableToolbar
+                  actionNode={
+                    canUpdateOrders && hasOrderAction(order, 'ADD_NOTE') ? (
+                      <Button
+                        disabled={actionMutation.isPending}
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => openAction('ADD_NOTE')}
+                      >
+                        <MessageSquarePlus className="mr-2 size-4" />
+                        Add Note
+                      </Button>
+                    ) : null
+                  }
+                  count={order.notes.length}
+                  description="Pinned and regular admin notes for this order."
+                  icon={<MessageSquarePlus className="size-4" />}
+                  title="Internal notes"
+                />
+              }
+            />
+          </div>
+        </div>
       </section>
 
       <OrderActionModal

@@ -1,13 +1,22 @@
 import {
+  ArrowUpRight,
   BadgeCheck,
+  CalendarClock,
   CheckCircle2,
+  CircleDollarSign,
+  Film,
+  HandCoins,
+  ReceiptText,
   PauseCircle,
   RotateCcw,
+  Store,
+  TriangleAlert,
+  UserRound,
   XCircle,
 } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { DynamicTable, type DynamicTableColumn } from '../../../components/ui/Table'
@@ -17,6 +26,7 @@ import { Skeleton } from '../../../components/ui/Skeleton'
 import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
+import { usePermission } from '../../../hooks/usePermission'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
 import { influencerService } from '../services/influencer.service'
@@ -34,6 +44,13 @@ import type {
 } from '../types/influencer.types'
 
 type InfluencerTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+
+const influencerActionKinds: InfluencerActionKind[] = [
+  'APPROVE',
+  'REJECT',
+  'SUSPEND',
+  'REACTIVATE',
+]
 
 function statusTone(status: InfluencerStatus | string): InfluencerTone {
   if (status === 'APPROVED' || status === 'CONFIRMED' || status === 'READY') {
@@ -80,6 +97,30 @@ function formatPaise(amountPaise: number, currency = 'INR') {
   return formatMoney(amountPaise / 100, currency)
 }
 
+function formatDateSafe(value: string | null | undefined) {
+  if (!value) return 'Not available'
+
+  try {
+    return formatDate(value, true)
+  } catch {
+    return value
+  }
+}
+
+function isInfluencerActionKind(action: string): action is InfluencerActionKind {
+  return influencerActionKinds.includes(action as InfluencerActionKind)
+}
+
+function canRunInfluencerAction({
+  action,
+  canReviewInfluencers,
+}: {
+  action: string
+  canReviewInfluencers: boolean
+}) {
+  return isInfluencerActionKind(action) && canReviewInfluencers
+}
+
 function DetailField({
   label,
   value,
@@ -98,11 +139,13 @@ function DetailField({
 }
 
 function MetricCard({
+  icon,
   label,
   meta,
   tone,
   value,
 }: {
+  icon: ReactNode
   label: string
   meta: string
   tone: InfluencerTone
@@ -110,9 +153,12 @@ function MetricCard({
 }) {
   return (
     <div className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <p className={`text-xs font-semibold uppercase tracking-normal ${toneClasses(tone)}`}>
-        {label}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className={`text-xs font-semibold uppercase tracking-normal ${toneClasses(tone)}`}>
+          {label}
+        </p>
+        <span className={toneClasses(tone)}>{icon}</span>
+      </div>
       <p className={`mt-3 text-2xl font-semibold tracking-normal ${toneClasses(tone)}`}>
         {value}
       </p>
@@ -142,16 +188,19 @@ function InfluencerHeaderStatus({
 }
 
 function InfluencerHeaderActions({
+  canReviewInfluencers,
   influencer,
   isSubmitting,
   onSelectAction,
 }: {
+  canReviewInfluencers: boolean
   influencer: AdminInfluencer
   isSubmitting: boolean
   onSelectAction: (kind: InfluencerActionKind) => void
 }) {
   const hasAction = (kind: InfluencerActionKind) =>
-    influencer.availableActions.includes(kind)
+    influencer.availableActions.includes(kind) &&
+    canRunInfluencerAction({ action: kind, canReviewInfluencers })
 
   return (
     <div className="flex flex-wrap justify-end gap-2">
@@ -308,9 +357,234 @@ const commissionColumns: DynamicTableColumn<AdminInfluencerCommission>[] = [
   },
 ]
 
+function SectionShell({
+  actionNode,
+  children,
+  description,
+  icon,
+  title,
+}: {
+  actionNode?: ReactNode
+  children: ReactNode
+  description?: string
+  icon?: ReactNode
+  title: string
+}) {
+  return (
+    <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            {icon ? <span className="text-primary">{icon}</span> : null}
+            <h2 className="text-base font-semibold tracking-normal text-foreground">
+              {title}
+            </h2>
+          </div>
+          {description ? (
+            <p className="mt-1 text-sm text-muted">{description}</p>
+          ) : null}
+        </div>
+        {actionNode ? <div className="shrink-0">{actionNode}</div> : null}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function RelatedRecordRow({
+  actionLabel = 'Open',
+  canOpen,
+  icon,
+  label,
+  meta,
+  onOpen,
+  value,
+}: {
+  actionLabel?: string
+  canOpen: boolean
+  icon: ReactNode
+  label: string
+  meta: string
+  onOpen?: () => void
+  value: string
+}) {
+  return (
+    <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 text-primary">{icon}</span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            {label}
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+            {value}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted">{meta}</p>
+        </div>
+      </div>
+      {canOpen && onOpen ? (
+        <Button className="shrink-0" size="sm" variant="secondary" onClick={onOpen}>
+          <ArrowUpRight className="mr-2 size-4" />
+          {actionLabel}
+        </Button>
+      ) : (
+        <Badge tone="neutral">View only</Badge>
+      )}
+    </div>
+  )
+}
+
+function RelatedRecordsPanel({
+  canReadCustomers,
+  canReadOrders,
+  canReadReels,
+  influencer,
+  onNavigate,
+}: {
+  canReadCustomers: boolean
+  canReadOrders: boolean
+  canReadReels: boolean
+  influencer: AdminInfluencer
+  onNavigate: (path: string) => void
+}) {
+  return (
+    <SectionShell
+      description="Primary records connected to this creator profile."
+      icon={<ArrowUpRight className="size-4" />}
+      title="Related records"
+    >
+      <div className="divide-y divide-border">
+        <RelatedRecordRow
+          canOpen={canReadCustomers}
+          icon={<UserRound className="size-4" />}
+          label="Customer"
+          meta={influencer.customer.mobileNumber ?? influencer.customer.email ?? influencer.customer.status}
+          value={influencer.customer.fullName ?? influencer.publicInfluencerId}
+          onOpen={() => onNavigate(`${routePaths.customers}/${influencer.customer.customerId}`)}
+        />
+        <RelatedRecordRow
+          actionLabel="Reels"
+          canOpen={canReadReels}
+          icon={<Film className="size-4" />}
+          label="Creator reels"
+          meta={`${influencer.summary.liveReelCount} live · ${influencer.summary.pendingReelCount} pending`}
+          value={`${influencer.summary.reelCount} reels`}
+          onOpen={() => onNavigate(routePaths.reels)}
+        />
+        <RelatedRecordRow
+          actionLabel="Orders"
+          canOpen={canReadOrders}
+          icon={<ReceiptText className="size-4" />}
+          label="Attributed bookings"
+          meta={`${formatPaise(influencer.summary.confirmedCommissionPaise)} confirmed commission`}
+          value={`${influencer.summary.attributedBookingCount} bookings`}
+          onOpen={() => onNavigate(routePaths.orders)}
+        />
+      </div>
+    </SectionShell>
+  )
+}
+
+function SignalBadgeGroup({
+  emptyLabel,
+  items,
+  tone,
+}: {
+  emptyLabel: string
+  items: string[]
+  tone: InfluencerTone
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {items.length ? (
+        items.map((item) => (
+          <Badge key={item} tone={tone}>
+            {humanizeCode(item)}
+          </Badge>
+        ))
+      ) : (
+        <Badge tone="success">{emptyLabel}</Badge>
+      )}
+    </div>
+  )
+}
+
+function OperationalSignalsPanel({
+  canReviewInfluencers,
+  influencer,
+}: {
+  canReviewInfluencers: boolean
+  influencer: AdminInfluencer
+}) {
+  const permittedActions = influencer.availableActions.filter((action) =>
+    canRunInfluencerAction({ action, canReviewInfluencers }),
+  )
+
+  return (
+    <SectionShell
+      description="Backend workflow signals and actions permitted for this admin."
+      icon={<TriangleAlert className="size-4" />}
+      title="Signals"
+    >
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            Warnings
+          </p>
+          <SignalBadgeGroup
+            emptyLabel="No warnings"
+            items={influencer.warnings}
+            tone="warning"
+          />
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            Available to you
+          </p>
+          <SignalBadgeGroup
+            emptyLabel="No permitted actions"
+            items={permittedActions}
+            tone="neutral"
+          />
+        </div>
+        <DetailField
+          label="Recommended next"
+          value={humanizeCode(influencer.nextRecommendedAction)}
+        />
+      </div>
+    </SectionShell>
+  )
+}
+
+function LifecyclePanel({ influencer }: { influencer: AdminInfluencer }) {
+  return (
+    <SectionShell
+      description="Creator profile lifecycle timestamps and ledger activity."
+      icon={<CalendarClock className="size-4" />}
+      title="Lifecycle"
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <DetailField label="Created" value={formatDateSafe(influencer.createdAt)} />
+        <DetailField label="Updated" value={formatDateSafe(influencer.updatedAt)} />
+        <DetailField label="Approved at" value={formatDateSafe(influencer.approvedAt)} />
+        <DetailField
+          label="Last commission"
+          value={formatDateSafe(influencer.summary.lastCommissionAt)}
+        />
+      </div>
+    </SectionShell>
+  )
+}
+
 export function InfluencerDetailPage() {
   const { profileId } = useParams()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const canReadCustomers = usePermission('customers:read')
+  const canReadOrders = usePermission('orders:read')
+  const canReadReels = usePermission('reels:read')
+  const canReadVendors = usePermission('vendors:read')
+  const canReviewInfluencers = usePermission('influencers:review')
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedAction, setSelectedAction] =
     useState<InfluencerActionSelection | null>(null)
@@ -435,10 +709,11 @@ export function InfluencerDetailPage() {
     influencer.suspensionReason
 
   return (
-    <PageContainer>
+    <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
         actionNode={
           <InfluencerHeaderActions
+            canReviewInfluencers={canReviewInfluencers}
             influencer={influencer}
             isSubmitting={actionMutation.isPending}
             onSelectAction={(kind) =>
@@ -455,30 +730,23 @@ export function InfluencerDetailPage() {
         titleMetaNode={<InfluencerHeaderStatus influencer={influencer} />}
       />
 
-      {influencer.warnings.length > 0 ? (
-        <section className="flex flex-wrap gap-2 rounded-[0.875rem] border border-border bg-surface p-3 shadow-surface">
-          {influencer.warnings.map((warning) => (
-            <Badge key={warning} tone="warning">
-              {humanizeCode(warning)}
-            </Badge>
-          ))}
-        </section>
-      ) : null}
-
       <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
+          icon={<Film className="size-4" />}
           label="Total reels"
           meta={`${influencer.summary.pendingReelCount} pending moderation`}
           tone={influencer.summary.reelCount > 0 ? 'info' : 'neutral'}
           value={influencer.summary.reelCount}
         />
         <MetricCard
+          icon={<BadgeCheck className="size-4" />}
           label="Live reels"
           meta="Visible creator content"
           tone={influencer.summary.liveReelCount > 0 ? 'success' : 'neutral'}
           value={influencer.summary.liveReelCount}
         />
         <MetricCard
+          icon={<ReceiptText className="size-4" />}
           label="Attributed bookings"
           meta="Orders connected to creator reels"
           tone={
@@ -487,6 +755,7 @@ export function InfluencerDetailPage() {
           value={influencer.summary.attributedBookingCount}
         />
         <MetricCard
+          icon={<CircleDollarSign className="size-4" />}
           label="Confirmed commission"
           meta={`Pending ${formatPaise(influencer.summary.pendingCommissionPaise)}`}
           tone={
@@ -498,21 +767,30 @@ export function InfluencerDetailPage() {
         />
       </div>
 
+      <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <LifecyclePanel influencer={influencer} />
+
+        <div className="space-y-3">
+          <RelatedRecordsPanel
+            canReadCustomers={canReadCustomers}
+            canReadOrders={canReadOrders}
+            canReadReels={canReadReels}
+            influencer={influencer}
+            onNavigate={navigate}
+          />
+          <OperationalSignalsPanel
+            canReviewInfluencers={canReviewInfluencers}
+            influencer={influencer}
+          />
+        </div>
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
-          <div className="mb-5 flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-full border border-border bg-surface text-success">
-              <BadgeCheck className="size-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold tracking-normal text-foreground">
-                Creator profile
-              </h2>
-              <p className="text-sm text-muted">
-                Customer identity stays active while creator capabilities are managed here.
-              </p>
-            </div>
-          </div>
+        <SectionShell
+          description="Customer identity stays active while creator capabilities are managed here."
+          icon={<BadgeCheck className="size-4" />}
+          title="Creator profile"
+        >
           <div className="grid gap-4 md:grid-cols-2">
             <DetailField label="Display name" value={influencer.displayName} />
             <DetailField label="Social handle" value={influencer.socialHandle} />
@@ -525,19 +803,11 @@ export function InfluencerDetailPage() {
             <DetailField label="Email" value={influencer.customer.email} />
             <DetailField
               label="Approved at"
-              value={
-                influencer.approvedAt
-                  ? formatDate(influencer.approvedAt, true)
-                  : null
-              }
+              value={formatDateSafe(influencer.approvedAt)}
             />
             <DetailField
               label="Last commission"
-              value={
-                influencer.summary.lastCommissionAt
-                  ? formatDate(influencer.summary.lastCommissionAt, true)
-                  : null
-              }
+              value={formatDateSafe(influencer.summary.lastCommissionAt)}
             />
           </div>
           {influencer.bio ? (
@@ -548,27 +818,24 @@ export function InfluencerDetailPage() {
               </p>
             </div>
           ) : null}
-        </div>
+        </SectionShell>
 
-        <div className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
-          <h2 className="text-base font-semibold tracking-normal text-foreground">
-            Application
-          </h2>
+        <SectionShell
+          description="Submitted creator application and latest review context."
+          icon={<UserRound className="size-4" />}
+          title="Application"
+        >
           {influencer.application ? (
             <div className="mt-5 space-y-4">
               <DetailField label="Status" value={influencer.application.status} />
               <DetailField label="City" value={influencer.application.city} />
               <DetailField
                 label="Submitted"
-                value={formatDate(influencer.application.createdAt, true)}
+                value={formatDateSafe(influencer.application.createdAt)}
               />
               <DetailField
                 label="Reviewed"
-                value={
-                  influencer.application.reviewedAt
-                    ? formatDate(influencer.application.reviewedAt, true)
-                    : null
-                }
+                value={formatDateSafe(influencer.application.reviewedAt)}
               />
               <DetailField
                 label="Preferred categories"
@@ -609,25 +876,27 @@ export function InfluencerDetailPage() {
               description="This creator profile does not have an application payload."
             />
           )}
-        </div>
+        </SectionShell>
       </section>
 
-      <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-base font-semibold tracking-normal text-foreground">
-              Recent creator reels
-            </h2>
-            <p className="text-sm text-muted">
-              Influencer reels still use the normal admin reel moderation queue.
-            </p>
-          </div>
-          <Link to={routePaths.reels}>
-            <Button size="sm" variant="secondary">
+      <SectionShell
+        actionNode={
+          canReadReels ? (
+            <Button
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => navigate(routePaths.reels)}
+            >
+              <ArrowUpRight className="mr-2 size-4" />
               Open reels queue
             </Button>
-          </Link>
-        </div>
+          ) : null
+        }
+        description="Influencer reels still use the normal admin reel moderation queue."
+        icon={<Film className="size-4" />}
+        title="Recent creator reels"
+      >
         {influencer.reels.length === 0 ? (
           <EmptyState
             title="No reels yet"
@@ -635,22 +904,44 @@ export function InfluencerDetailPage() {
           />
         ) : (
           <DynamicTable
+            actionColumnLabel="Reel Actions"
+            actionColumnMinWidth={260}
             columns={reelColumns}
             data={influencer.reels}
             getRowId={(row) => row.reelId}
+            rowActions={(reel) => [
+              {
+                icon: <ArrowUpRight className="size-4" />,
+                isVisible: canReadReels,
+                key: 'open-reel',
+                label: 'Open Reel',
+                onClick: () => navigate(`${routePaths.reels}/${reel.reelId}`),
+                variant: 'ghost',
+              },
+              {
+                icon: <Store className="size-4" />,
+                isVisible: canReadVendors,
+                key: 'open-vendor',
+                label: 'Open Vendor',
+                onClick: () =>
+                  navigate(`${routePaths.vendors}/${reel.taggedVendor.vendorId}`),
+                variant: 'secondary',
+              },
+            ]}
+            onRowClick={
+              canReadReels
+                ? (reel) => navigate(`${routePaths.reels}/${reel.reelId}`)
+                : undefined
+            }
           />
         )}
-      </section>
+      </SectionShell>
 
-      <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
-        <div className="mb-4">
-          <h2 className="text-base font-semibold tracking-normal text-foreground">
-            Commission ledger
-          </h2>
-          <p className="text-sm text-muted">
-            Phase 1 records manual commission entries; payout automation is not enabled.
-          </p>
-        </div>
+      <SectionShell
+        description="Phase 1 records manual commission entries; payout automation is not enabled."
+        icon={<HandCoins className="size-4" />}
+        title="Commission ledger"
+      >
         {influencer.commissions.length === 0 ? (
           <EmptyState
             title="No commissions yet"
@@ -658,12 +949,48 @@ export function InfluencerDetailPage() {
           />
         ) : (
           <DynamicTable
+            actionColumnLabel="Ledger Actions"
+            actionColumnMinWidth={300}
             columns={commissionColumns}
             data={influencer.commissions}
             getRowId={(row) => row.commissionId}
+            rowActions={(commission) => [
+              {
+                icon: <ReceiptText className="size-4" />,
+                isVisible: canReadOrders,
+                key: 'open-order',
+                label: 'Open Order',
+                onClick: () =>
+                  navigate(`${routePaths.orders}/${commission.orderId}`),
+                variant: 'ghost',
+              },
+              {
+                icon: <Film className="size-4" />,
+                isVisible: canReadReels,
+                key: 'open-reel',
+                label: 'Open Reel',
+                onClick: () => navigate(`${routePaths.reels}/${commission.reelId}`),
+                variant: 'secondary',
+              },
+              {
+                icon: <Store className="size-4" />,
+                isVisible: canReadVendors,
+                key: 'open-vendor',
+                label: 'Open Vendor',
+                onClick: () =>
+                  navigate(`${routePaths.vendors}/${commission.vendor.vendorId}`),
+                variant: 'secondary',
+              },
+            ]}
+            onRowClick={
+              canReadOrders
+                ? (commission) =>
+                    navigate(`${routePaths.orders}/${commission.orderId}`)
+                : undefined
+            }
           />
         )}
-      </section>
+      </SectionShell>
 
       <InfluencerActionModal
         action={selectedAction}

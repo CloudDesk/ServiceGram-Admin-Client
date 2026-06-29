@@ -40,6 +40,23 @@ export interface SettingsZonesQueryParams extends SettingsCategoriesQueryParams 
   city?: string;
 }
 
+export type PolicyFamily =
+  | "CUSTOMER_CATEGORY_PLACEMENT"
+  | "NOTIFICATION_WORKFLOW"
+  | "MEDIA_REEL_RULE"
+  | "PRICING_RULE"
+  | "COMMISSION_RULE";
+
+export type PolicyStatus = "DRAFT" | "ACTIVE" | "ARCHIVED";
+
+export type PolicyScopeType = "GLOBAL" | "CATEGORY" | "CITY" | "ZONE" | "VENDOR";
+
+export interface PolicyRulesQueryParams {
+  family?: PolicyFamily;
+  status?: PolicyStatus;
+  scopeType?: PolicyScopeType;
+}
+
 export interface UpdateSettingPayload {
   value: unknown;
   reason?: string;
@@ -55,6 +72,38 @@ export interface UpdateCategoryPayload {
   reason?: string;
 }
 
+export type SettingsServiceTypesQueryParams = SettingsCategoriesQueryParams;
+
+export interface ServiceTypeUsage {
+  vendorServiceCount: number;
+  activeVendorServiceCount: number;
+}
+
+export interface ServiceTypeSummary extends ServiceTypeUsage {
+  total: number;
+  active: number;
+  inactive: number;
+}
+
+export interface CreateServiceTypePayload {
+  serviceTypeCode: string;
+  name: string;
+  description?: string | null;
+  isActive?: boolean;
+  displayOrder?: number;
+  metadata?: Record<string, unknown>;
+  reason: string;
+}
+
+export interface UpdateServiceTypePayload {
+  name?: string;
+  description?: string | null;
+  isActive?: boolean;
+  displayOrder?: number;
+  metadata?: Record<string, unknown>;
+  reason: string;
+}
+
 export interface CreateZonePayload {
   city: string;
   zoneName: string;
@@ -65,6 +114,33 @@ export interface CreateZonePayload {
 }
 
 export type UpdateZonePayload = Partial<CreateZonePayload>;
+
+export interface UpsertPolicyRulePayload {
+  family: PolicyFamily;
+  ruleKey: string;
+  displayName: string;
+  description?: string | null;
+  status?: PolicyStatus;
+  priority?: number;
+  scopeType?: PolicyScopeType;
+  categoryId?: string | null;
+  city?: string | null;
+  zoneId?: string | null;
+  vendorId?: string | null;
+  config?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  reason: string;
+}
+
+export interface PricingPolicyPreviewPayload {
+  categoryId?: string;
+  city?: string;
+  zoneId?: string;
+  vendorId?: string;
+  subtotalPaise: number;
+}
 
 export interface SettingsPagination {
   page: number;
@@ -122,6 +198,82 @@ export interface ServiceZone {
   updatedAt: string;
 }
 
+export interface ServiceType {
+  serviceTypeId: string;
+  categoryId: string;
+  serviceTypeCode: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  displayOrder: number;
+  metadata: Record<string, unknown>;
+  usage: ServiceTypeUsage;
+  warnings: string[];
+  availableActions: string[];
+  nextRecommendedAction: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PolicyRule {
+  policyRuleId: string;
+  family: PolicyFamily;
+  ruleKey: string;
+  displayName: string;
+  description: string | null;
+  status: PolicyStatus;
+  priority: number;
+  scope: {
+    scopeType: PolicyScopeType;
+    categoryId: string | null;
+    city: string | null;
+    zoneId: string | null;
+    vendorId: string | null;
+  };
+  config: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  version: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  updatedAt: string;
+  availableActions: string[];
+}
+
+export interface PricingPolicyPreview {
+  context: {
+    categoryId?: string;
+    city?: string;
+    zoneId?: string;
+    vendorId?: string;
+  };
+  subtotalPaise: number;
+  customerPayablePaise: number;
+  vendorNetPayablePaise: number;
+  commissionAmountPaise: number;
+  fees: {
+    platformFeePaise: number;
+    pickupFeePaise: number;
+    deliveryFeePaise: number;
+    taxPaise: number;
+    discountPaise: number;
+  };
+  appliedRules: {
+    pricing: {
+      ruleId: string | null;
+      ruleKey: string;
+      version: number;
+      providerStatus: string;
+    };
+    commission: {
+      ruleId: string | null;
+      ruleKey: string;
+      version: number;
+      providerStatus: string;
+    };
+  };
+  warnings: string[];
+}
+
 export type SettingsRecord = PlatformSetting | ServiceCategory | ServiceZone;
 
 export interface SettingsApiResponse<TData> {
@@ -160,9 +312,24 @@ export interface ServiceZonesListResponse extends SettingsApiResponse<
   pagination: SettingsPagination;
 }
 
+export interface ServiceTypesListResponse extends SettingsApiResponse<ServiceType[]> {
+  data: ServiceType[];
+  category: ServiceCategory;
+  pagination: SettingsPagination;
+  summary: ServiceTypeSummary;
+}
+
+export interface PolicyRulesListResponse extends SettingsApiResponse<PolicyRule[]> {
+  data: PolicyRule[];
+}
+
 export type PlatformSettingResponse = SettingsApiResponse<PlatformSetting>;
 export type ServiceCategoryResponse = SettingsApiResponse<ServiceCategory>;
 export type ServiceZoneResponse = SettingsApiResponse<ServiceZone>;
+export type ServiceTypeResponse = SettingsApiResponse<ServiceType>;
+export type PolicyRuleResponse = SettingsApiResponse<PolicyRule>;
+export type PricingPolicyPreviewResponse =
+  SettingsApiResponse<PricingPolicyPreview>;
 export type UpdateSettingResponse = SettingsApiResponse<PlatformSetting>;
 export type UpdateCategoryResponse = SettingsApiResponse<ServiceCategory>;
 export type CreateZoneResponse = SettingsApiResponse<ServiceZone>;

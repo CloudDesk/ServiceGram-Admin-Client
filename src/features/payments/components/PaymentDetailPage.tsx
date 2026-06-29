@@ -1,4 +1,14 @@
-import { ArrowUpRight, CheckCircle2, RefreshCcw, XCircle } from 'lucide-react'
+import {
+  ArrowUpRight,
+  CheckCircle2,
+  ClipboardList,
+  ReceiptText,
+  RefreshCcw,
+  RotateCcw,
+  Store,
+  UserRound,
+  XCircle,
+} from 'lucide-react'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -11,7 +21,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
-import { useAuthStore } from '../../../store/authStore'
+import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -27,31 +37,70 @@ import type {
   AdminRefundCore,
 } from '../types/payment.types'
 
+const paymentSectionIds = {
+  information: 'payment-information',
+  metadata: 'payment-metadata',
+  refunds: 'payment-refunds',
+} as const
+
+type PaymentSectionId = (typeof paymentSectionIds)[keyof typeof paymentSectionIds]
+
 const refundColumns: DynamicTableColumn<AdminRefundCore>[] = [
-  { key: 'refundId', label: 'Refund', minWidth: 220 },
   {
-    key: 'status',
-    label: 'Status',
-    format: 'status',
-    statusTone: (value) =>
-      value === 'SUCCESS'
-        ? 'success'
-        : value === 'REJECTED' || value === 'FAILED'
-          ? 'danger'
-          : 'warning',
+    key: 'refund',
+    label: 'Refund',
+    minWidth: 260,
+    renderCell: (refund) => (
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold text-foreground">{refund.refundId}</p>
+          <Badge tone={refundTone(refund.status)}>
+            {humanizeCode(refund.status)}
+          </Badge>
+        </div>
+        <p className="mt-1 truncate text-xs text-muted">
+          Created {formatDateSafe(refund.createdAt)}
+        </p>
+      </div>
+    ),
   },
   {
     key: 'amountPaise',
     label: 'Amount',
     align: 'right',
-    renderCell: (refund) => formatPaise(refund.amountPaise),
+    minWidth: 160,
+    renderCell: (refund) => (
+      <p className="font-semibold text-foreground">
+        {formatPaise(refund.amountPaise, refund.currency)}
+      </p>
+    ),
   },
-  { key: 'reason', label: 'Reason', minWidth: 240 },
   {
-    key: 'processedAt',
-    label: 'Processed',
-    minWidth: 170,
-    renderCell: (refund) => formatDateSafe(refund.processedAt),
+    key: 'reason',
+    label: 'Reason',
+    minWidth: 280,
+    renderCell: (refund) => (
+      <p className="line-clamp-2 text-sm text-foreground">{refund.reason}</p>
+    ),
+  },
+  {
+    key: 'review',
+    label: 'Review',
+    minWidth: 220,
+    renderCell: (refund) => (
+      <div>
+        <p className="font-medium text-foreground">
+          {refund.reviewedAt
+            ? `Reviewed ${formatDateSafe(refund.reviewedAt)}`
+            : 'Awaiting review'}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          {refund.processedAt
+            ? `Processed ${formatDateSafe(refund.processedAt)}`
+            : refund.razorpayRefundId ?? 'Provider pending'}
+        </p>
+      </div>
+    ),
   },
 ]
 
@@ -65,8 +114,9 @@ function humanizeCode(value: string | null | undefined) {
     .join(' ')
 }
 
-function formatPaise(value: number | null | undefined) {
-  return formatMoney((value ?? 0) / 100)
+function formatPaise(value: number | null | undefined, currency = 'INR') {
+  if (value == null) return 'Not available'
+  return formatMoney(value / 100, currency)
 }
 
 function formatDateSafe(value: string | null | undefined) {
@@ -79,6 +129,25 @@ function paymentTone(status: AdminPaymentStatus) {
   if (status === 'FAILED' || status === 'CANCELLED') return 'danger'
   if (status === 'CREATED' || status === 'PENDING') return 'warning'
   return 'neutral'
+}
+
+function refundTone(status: string) {
+  if (status === 'SUCCESS') return 'success'
+  if (status === 'FAILED' || status === 'REJECTED') return 'danger'
+  if (status === 'APPROVED' || status === 'PROCESSING') return 'info'
+  return 'warning'
+}
+
+function metadataText(value: unknown) {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') return value
+
+  try {
+    const text = JSON.stringify(value, null, 2)
+    return text === '{}' ? null : text
+  } catch {
+    return String(value)
+  }
 }
 
 function DetailField({
@@ -142,17 +211,47 @@ function SummaryCard({
   )
 }
 
+function TableToolbar({
+  actionNode,
+  count,
+  description,
+  icon,
+  title,
+}: {
+  actionNode?: React.ReactNode
+  count: number
+  description: string
+  icon: React.ReactNode
+  title: string
+}) {
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-primary">{icon}</span>
+          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+          <Badge tone="neutral">{count}</Badge>
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
+      </div>
+      {actionNode ? <div className="shrink-0">{actionNode}</div> : null}
+    </div>
+  )
+}
+
 function SectionShell({
   children,
   description,
+  id,
   title,
 }: {
   children: React.ReactNode
   description?: string
+  id?: string
   title: string
 }) {
   return (
-    <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+    <section id={id} className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
       <div className="mb-4">
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
         {description ? (
@@ -162,6 +261,68 @@ function SectionShell({
       {children}
     </section>
   )
+}
+
+function RelatedRecordRow({
+  actionLabel = 'Open',
+  canOpen,
+  icon,
+  label,
+  meta,
+  onOpen,
+  value,
+}: {
+  actionLabel?: string
+  canOpen: boolean
+  icon: React.ReactNode
+  label: string
+  meta: string
+  onOpen?: () => void
+  value: string
+}) {
+  return (
+    <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 text-primary">{icon}</span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            {label}
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+            {value}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted">{meta}</p>
+        </div>
+      </div>
+      {canOpen && onOpen ? (
+        <Button className="shrink-0" size="sm" variant="secondary" onClick={onOpen}>
+          <ArrowUpRight className="mr-2 size-4" />
+          {actionLabel}
+        </Button>
+      ) : (
+        <Badge tone="neutral">View only</Badge>
+      )}
+    </div>
+  )
+}
+
+function buildPaymentAuditPath(payment: AdminPaymentDetail) {
+  const params = new URLSearchParams({
+    moduleCode: 'payments',
+    entityType: 'payment',
+    entityId: payment.paymentId,
+  })
+
+  return `${routePaths.audit}?${params.toString()}`
+}
+
+function buildPaymentRefundsPath(payment: AdminPaymentDetail) {
+  const params = new URLSearchParams({
+    paymentId: payment.paymentId,
+    paymentLabel: payment.publicPaymentId,
+  })
+
+  return `${routePaths.refunds}?${params.toString()}`
 }
 
 function HeaderStatus({ payment }: { payment: AdminPaymentDetail }) {
@@ -177,12 +338,14 @@ function HeaderStatus({ payment }: { payment: AdminPaymentDetail }) {
 }
 
 function HeaderActions({
+  canReadOrders,
   canReconcile,
   isSubmitting,
   onSelect,
   onViewOrder,
   payment,
 }: {
+  canReadOrders: boolean
   canReconcile: boolean
   isSubmitting: boolean
   onSelect: (action: PaymentActionSelection) => void
@@ -191,10 +354,12 @@ function HeaderActions({
 }) {
   return (
     <div className="flex flex-wrap justify-end gap-2">
-      <Button size="sm" type="button" variant="secondary" onClick={onViewOrder}>
-        <ArrowUpRight className="mr-2 size-4" />
-        View Order
-      </Button>
+      {canReadOrders ? (
+        <Button size="sm" type="button" variant="secondary" onClick={onViewOrder}>
+          <ArrowUpRight className="mr-2 size-4" />
+          View Order
+        </Button>
+      ) : null}
       {canReconcile && payment.availableActions.includes('RECONCILE') ? (
         <Button
           disabled={isSubmitting}
@@ -215,13 +380,17 @@ export function PaymentDetailPage() {
   const { paymentId } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const can = useAuthStore((state) => state.can)
   const [selectedAction, setSelectedAction] =
     useState<PaymentActionSelection | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
-  const canReconcile = can('payments:reconcile')
-  const canReviewRefunds = can('payments:refund')
+  const canReadOrders = usePermission('orders:read')
+  const canReadCustomers = usePermission('customers:read')
+  const canReadVendors = usePermission('vendors:read')
+  const canReadRefunds = usePermission('payments:read')
+  const canReadAudit = usePermission('audit:read')
+  const canReconcile = usePermission('payments:reconcile')
+  const canReviewRefunds = usePermission('payments:refund')
 
   const paymentQuery = useQuery({
     enabled: Boolean(paymentId),
@@ -229,6 +398,17 @@ export function PaymentDetailPage() {
     queryFn: () => paymentService.getPaymentById(paymentId as string),
   })
   const payment = paymentQuery.data?.data
+  const metadata = metadataText(payment?.metadata)
+
+  const openSection = (sectionId: PaymentSectionId) => {
+    const section = document.getElementById(sectionId)
+
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    if (section) {
+      window.history.replaceState(null, '', `#${sectionId}`)
+    }
+  }
 
   const mutation = useMutation({
     mutationFn: async ({
@@ -267,6 +447,12 @@ export function PaymentDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ['payment-detail', paymentId] })
       void queryClient.invalidateQueries({ queryKey: ['payments'] })
       void queryClient.invalidateQueries({ queryKey: ['refunds'] })
+
+      if (payment?.order.orderId) {
+        void queryClient.invalidateQueries({
+          queryKey: ['order-detail', payment.order.orderId],
+        })
+      }
     },
     onError: (error) =>
       setActionError(
@@ -322,6 +508,7 @@ export function PaymentDetailPage() {
       <DetailPageHeader
         actionNode={
           <HeaderActions
+            canReadOrders={canReadOrders}
             canReconcile={canReconcile}
             isSubmitting={mutation.isPending}
             payment={payment}
@@ -373,22 +560,115 @@ export function PaymentDetailPage() {
         />
       </section>
 
-      {payment.warnings.length > 0 ? (
-        <section className="rounded-[0.875rem] border border-warning/25 bg-surface p-4 shadow-surface">
-          <h2 className="text-base font-semibold text-warning">Warning signals</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {payment.warnings.map((warning) => (
-              <Badge key={warning} tone="warning">
-                {humanizeCode(warning)}
-              </Badge>
-            ))}
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <SectionShell
+          description="Primary records and child finance views linked to this payment."
+          title="Related records"
+        >
+          <div className="divide-y divide-border">
+            <RelatedRecordRow
+              canOpen={canReadOrders}
+              icon={<ReceiptText className="size-4" />}
+              label="Order"
+              meta={`${humanizeCode(payment.order.orderStatus)} · ${humanizeCode(payment.order.paymentStatus)}`}
+              value={payment.order.publicOrderId}
+              onOpen={() => navigate(`${routePaths.orders}/${payment.order.orderId}`)}
+            />
+            <RelatedRecordRow
+              canOpen={canReadCustomers}
+              icon={<UserRound className="size-4" />}
+              label="Customer"
+              meta={payment.customer.mobileNumber ?? payment.customer.email ?? payment.customer.status}
+              value={payment.customer.fullName}
+              onOpen={() => navigate(`${routePaths.customers}/${payment.customer.customerId}`)}
+            />
+            <RelatedRecordRow
+              canOpen={canReadVendors}
+              icon={<Store className="size-4" />}
+              label="Vendor"
+              meta={`${payment.vendor.publicVendorId} · ${payment.vendor.zone?.zoneName ?? payment.vendor.city}`}
+              value={payment.vendor.shopName}
+              onOpen={() => navigate(`${routePaths.vendors}/${payment.vendor.vendorId}`)}
+            />
+            <RelatedRecordRow
+              actionLabel="Review"
+              canOpen
+              icon={<RotateCcw className="size-4" />}
+              label="Refund records"
+              meta={`${payment.refundSummary.requestedCount} requested · ${formatPaise(payment.refundSummary.remainingRefundableAmountPaise, payment.currency)} refundable`}
+              value={`${payment.refunds.length} records on this payment`}
+              onOpen={() => openSection(paymentSectionIds.refunds)}
+            />
+            <RelatedRecordRow
+              actionLabel="Queue"
+              canOpen={canReadRefunds}
+              icon={<RotateCcw className="size-4" />}
+              label="Refund queue"
+              meta="Filtered by this payment id"
+              value={payment.publicPaymentId}
+              onOpen={() => navigate(buildPaymentRefundsPath(payment))}
+            />
+            <RelatedRecordRow
+              actionLabel="Audit"
+              canOpen={canReadAudit}
+              icon={<ClipboardList className="size-4" />}
+              label="Audit trail"
+              meta="Filtered by module, entity type, and payment id"
+              value={payment.paymentId}
+              onOpen={() => navigate(buildPaymentAuditPath(payment))}
+            />
           </div>
-        </section>
-      ) : null}
+        </SectionShell>
+
+        <SectionShell
+          description="Backend workflow signals and permitted finance actions."
+          title="Signals"
+        >
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                Warnings
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {payment.warnings.length ? (
+                  payment.warnings.map((warning) => (
+                    <Badge key={warning} tone="warning">
+                      {humanizeCode(warning)}
+                    </Badge>
+                  ))
+                ) : (
+                  <Badge tone="success">No warnings</Badge>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                Available actions
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {payment.availableActions.length ? (
+                  payment.availableActions.map((action) => (
+                    <Badge key={action} tone="neutral">
+                      {humanizeCode(action)}
+                    </Badge>
+                  ))
+                ) : (
+                  <Badge tone="neutral">No actions</Badge>
+                )}
+              </div>
+            </div>
+            <DetailField
+              label="Recommended next"
+              value={humanizeCode(payment.nextRecommendedAction)}
+            />
+          </div>
+        </SectionShell>
+      </section>
 
       <section className="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
         <SectionShell
           description="Provider and reconciliation metadata from backend data."
+          id={paymentSectionIds.information}
           title="Payment Information"
         >
           <div className="grid gap-3 sm:grid-cols-2">
@@ -437,42 +717,9 @@ export function PaymentDetailPage() {
         </SectionShell>
       </section>
 
-      <section className="grid gap-3 xl:grid-cols-3">
-        <SectionShell title="Order">
-          <div className="grid gap-3">
-            <DetailField label="Order" value={payment.order.publicOrderId} />
-            <DetailField label="Order Status" value={humanizeCode(payment.order.orderStatus)} />
-            <DetailField label="Payment Status" value={humanizeCode(payment.order.paymentStatus)} />
-            <DetailField label="Final Price" value={formatPaise(payment.order.finalPricePaise)} />
-          </div>
-        </SectionShell>
-        <SectionShell title="Customer">
-          <div className="grid gap-3">
-            <DetailField label="Name" value={payment.customer.fullName} />
-            <DetailField label="Mobile" value={payment.customer.mobileNumber} />
-            <DetailField label="Email" value={payment.customer.email} />
-            <DetailField label="City" value={payment.customer.city} />
-          </div>
-        </SectionShell>
-        <SectionShell title="Vendor">
-          <div className="grid gap-3">
-            <DetailField label="Shop" value={payment.vendor.shopName} />
-            <DetailField label="Public Vendor ID" value={payment.vendor.publicVendorId} />
-            <DetailField label="Status" value={humanizeCode(payment.vendor.vendorStatus)} />
-            <DetailField
-              label="Zone"
-              value={
-                payment.vendor.zone
-                  ? `${payment.vendor.zone.city} · ${payment.vendor.zone.zoneName}`
-                  : null
-              }
-            />
-          </div>
-        </SectionShell>
-      </section>
-
       <SectionShell
         description="Refund records and review actions attached to this payment."
+        id={paymentSectionIds.refunds}
         title="Refunds"
       >
         {payment.refunds.length === 0 ? (
@@ -483,11 +730,30 @@ export function PaymentDetailPage() {
         ) : (
           <DynamicTable
             actionColumnLabel="Refund Actions"
+            actionColumnMinWidth={260}
+            bodyMaxHeight={360}
             columns={refundColumns}
             data={payment.refunds}
             getRowId={(row) => row.refundId}
+            stickyHeader
             title="Refunds"
+            toolbar={
+              <TableToolbar
+                count={payment.refunds.length}
+                description="Refund requests, provider state, and permitted review actions."
+                icon={<RotateCcw className="size-4" />}
+                title="Refunds"
+              />
+            }
             rowActions={(refund) => [
+              {
+                icon: <ArrowUpRight className="size-4" />,
+                isVisible: canReadRefunds,
+                key: 'open',
+                label: 'Open',
+                onClick: () => navigate(`${routePaths.refunds}/${refund.refundId}`),
+                variant: 'ghost',
+              },
               {
                 icon: <CheckCircle2 className="size-4" />,
                 isVisible: canReviewRefunds && refund.status === 'REQUESTED',
@@ -506,9 +772,26 @@ export function PaymentDetailPage() {
                 variant: 'danger',
               },
             ]}
+            onRowClick={
+              canReadRefunds
+                ? (refund) => navigate(`${routePaths.refunds}/${refund.refundId}`)
+                : undefined
+            }
           />
         )}
       </SectionShell>
+
+      {metadata ? (
+        <SectionShell
+          description="Provider and workflow metadata returned by the API."
+          id={paymentSectionIds.metadata}
+          title="Metadata"
+        >
+          <pre className="max-h-80 overflow-auto rounded-[0.75rem] border border-border bg-surface-muted/35 p-3 text-xs text-foreground">
+            {metadata}
+          </pre>
+        </SectionShell>
+      ) : null}
 
       <PaymentActionModal
         action={selectedAction}

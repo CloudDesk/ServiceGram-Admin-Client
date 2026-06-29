@@ -2,8 +2,12 @@ import {
   ArrowUpRight,
   ChevronLeft,
   ChevronRight,
+  ReceiptText,
   RefreshCcw,
+  RotateCcw,
   SlidersHorizontal,
+  Store,
+  UserRound,
 } from 'lucide-react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -28,7 +32,7 @@ import { Skeleton } from '../../../components/ui/Skeleton'
 import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
-import { useAuthStore } from '../../../store/authStore'
+import { usePermission } from '../../../hooks/usePermission'
 import type { LookupOption } from '../../../types/lookup.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -230,26 +234,26 @@ function buildPaymentMetrics(
 
   return [
     {
-      label: 'Needs review',
-      meta: 'Pending, failed, or warning payments',
+      label: 'Visible review',
+      meta: 'Pending, failed, or warning payments in visible rows',
       tone: needsReview > 0 ? 'warning' : 'neutral',
       value: String(needsReview),
     },
     {
       label: 'Successful value',
-      meta: 'Successful amount in current result window',
+      meta: 'Successful amount in visible rows',
       tone: 'success',
       value: formatPaise(successfulAmount),
     },
     {
       label: 'Refund requests',
-      meta: 'Open refund requests in current result window',
+      meta: 'Open refund requests in visible rows',
       tone: refundRequests > 0 ? 'danger' : 'neutral',
       value: String(refundRequests),
     },
     {
-      label: 'Visible payments',
-      meta: 'Matching current filters',
+      label: 'Matched payments',
+      meta: 'Total matching current filters',
       tone: 'info',
       value: String(total),
     },
@@ -260,7 +264,7 @@ function buildPaymentQueueItems(payments: AdminPaymentSummary[]) {
   return [
     {
       key: 'all' as const,
-      label: 'All payments',
+      label: 'All visible',
       count: payments.length,
     },
     {
@@ -426,7 +430,11 @@ function PaymentCell({
 export function PaymentsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const canReconcile = useAuthStore((state) => state.can('payments:reconcile'))
+  const canReadOrders = usePermission('orders:read')
+  const canReadCustomers = usePermission('customers:read')
+  const canReadVendors = usePermission('vendors:read')
+  const canReadRefunds = usePermission('payments:read')
+  const canReconcile = usePermission('payments:reconcile')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
   const [search, setSearch] = useState('')
@@ -710,6 +718,27 @@ export function PaymentsPage() {
     navigate(`${routePaths.payments}/${payment.paymentId}`)
   }
 
+  const viewOrder = (payment: AdminPaymentSummary) => {
+    navigate(`${routePaths.orders}/${payment.order.orderId}`)
+  }
+
+  const viewCustomer = (payment: AdminPaymentSummary) => {
+    navigate(`${routePaths.customers}/${payment.customer.customerId}`)
+  }
+
+  const viewVendor = (payment: AdminPaymentSummary) => {
+    navigate(`${routePaths.vendors}/${payment.vendor.vendorId}`)
+  }
+
+  const viewRefunds = (payment: AdminPaymentSummary) => {
+    const params = new URLSearchParams({
+      paymentId: payment.paymentId,
+      paymentLabel: payment.publicPaymentId,
+    })
+
+    navigate(`${routePaths.refunds}?${params.toString()}`)
+  }
+
   const actionMutation = useMutation({
     mutationFn: async ({
       action,
@@ -748,6 +777,8 @@ export function PaymentsPage() {
     event?: React.MouseEvent<HTMLButtonElement>,
   ) => {
     event?.stopPropagation()
+    if (!canReconcile || !payment.availableActions.includes('RECONCILE')) return
+
     setActionError(null)
     setActionTarget({
       action: { kind: 'RECONCILE_PAYMENT', payment },
@@ -765,7 +796,23 @@ export function PaymentsPage() {
       ) : null}
       {showColumn('order') ? (
         <PaymentCell label="Order">
-          <p className="truncate font-semibold">{payment.order.publicOrderId}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate font-semibold">{payment.order.publicOrderId}</p>
+            {canReadOrders ? (
+              <button
+                aria-label={`Open order ${payment.order.publicOrderId}`}
+                className="btn-icon size-7 shrink-0"
+                title="Open order"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  viewOrder(payment)
+                }}
+              >
+                <ReceiptText className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
           <p className="mt-1 truncate text-xs text-muted">
             {humanizeCode(payment.order.orderStatus)}
           </p>
@@ -792,10 +839,42 @@ export function PaymentsPage() {
       ) : null}
       {showColumn('parties') ? (
         <PaymentCell label="Customer / Vendor">
-          <p className="truncate font-semibold">{payment.customer.fullName}</p>
-          <p className="mt-1 truncate text-xs text-muted">
-            {payment.vendor.shopName}
-          </p>
+          <div className="space-y-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate font-semibold">{payment.customer.fullName}</p>
+              {canReadCustomers ? (
+                <button
+                  aria-label={`Open customer ${payment.customer.fullName}`}
+                  className="btn-icon size-7 shrink-0"
+                  title="Open customer"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    viewCustomer(payment)
+                  }}
+                >
+                  <UserRound className="size-3.5" />
+                </button>
+              ) : null}
+            </div>
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate text-xs text-muted">{payment.vendor.shopName}</p>
+              {canReadVendors ? (
+                <button
+                  aria-label={`Open vendor ${payment.vendor.shopName}`}
+                  className="btn-icon size-7 shrink-0"
+                  title="Open vendor"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    viewVendor(payment)
+                  }}
+                >
+                  <Store className="size-3.5" />
+                </button>
+              ) : null}
+            </div>
+          </div>
         </PaymentCell>
       ) : null}
       {showColumn('amount') ? (
@@ -806,18 +885,34 @@ export function PaymentsPage() {
       ) : null}
       {showColumn('refunds') ? (
         <PaymentCell label="Refunds">
-          <Badge
-            tone={
-              payment.refundSummary.requestedCount > 0
-                ? 'warning'
-                : payment.refundSummary.refundCount > 0
-                  ? 'info'
-                  : 'neutral'
-            }
-          >
-            {payment.refundSummary.refundCount} refund
-            {payment.refundSummary.refundCount === 1 ? '' : 's'}
-          </Badge>
+          <div className="flex min-w-0 items-center gap-2">
+            <Badge
+              tone={
+                payment.refundSummary.requestedCount > 0
+                  ? 'warning'
+                  : payment.refundSummary.refundCount > 0
+                    ? 'info'
+                    : 'neutral'
+              }
+            >
+              {payment.refundSummary.refundCount} refund
+              {payment.refundSummary.refundCount === 1 ? '' : 's'}
+            </Badge>
+            {canReadRefunds && payment.refundSummary.refundCount > 0 ? (
+              <button
+                aria-label={`Open refunds for ${payment.publicPaymentId}`}
+                className="btn-icon size-7 shrink-0"
+                title="Open refunds"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  viewRefunds(payment)
+                }}
+              >
+                <RotateCcw className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
           <p className="mt-1 text-xs text-muted">
             {formatPaise(payment.refundSummary.remainingRefundableAmountPaise)} left
           </p>
@@ -849,6 +944,7 @@ export function PaymentsPage() {
           size="sm"
           type="button"
           variant="secondary"
+          disabled={actionMutation.isPending}
           onClick={(event) => openReconcile(payment, event)}
         >
           <RefreshCcw className="mr-2 size-4" />
@@ -931,9 +1027,12 @@ export function PaymentsPage() {
               <>
                 <div>
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-semibold text-foreground">
-                      Review queues
-                    </h2>
+                    <div>
+                      <h2 className="text-sm font-semibold text-foreground">
+                        Visible queues
+                      </h2>
+                      <p className="text-xs text-muted">Counts are loaded rows.</p>
+                    </div>
                     <button
                       aria-label="Collapse payment filters"
                       className="btn-icon"

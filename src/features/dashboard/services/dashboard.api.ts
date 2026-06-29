@@ -1,17 +1,11 @@
 import { buildApiUrl } from '../../../config/api'
-import {
-  DASHBOARD_FINANCE_PATH,
-  DASHBOARD_REVIEW_QUEUES_PATH,
-  DASHBOARD_SUMMARY_PATH,
-} from '../../../config/dashboardApiPaths'
+import { DASHBOARD_OVERVIEW_PATH } from '../../../config/dashboardApiPaths'
 import { apiClient } from '../../../services/apiClient'
 import type {
   DashboardApiResponse,
   DashboardData,
-  DashboardFinanceResponse,
+  DashboardOverviewResponse,
   DashboardQueue,
-  DashboardReviewQueuesResponse,
-  DashboardSummaryResponse,
 } from '../types/dashboard.types'
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
@@ -35,18 +29,19 @@ function queueSubtitle(queue: DashboardQueue) {
 
 export const dashboardApiService = {
   async getDashboard(): Promise<DashboardData> {
-    const [summaryResponse, queueResponse, financeResponse] = await Promise.all([
-      get<DashboardSummaryResponse>(DASHBOARD_SUMMARY_PATH),
-      get<DashboardReviewQueuesResponse>(DASHBOARD_REVIEW_QUEUES_PATH),
-      get<DashboardFinanceResponse>(DASHBOARD_FINANCE_PATH),
-    ])
+    const overviewResponse = await get<DashboardOverviewResponse>(
+      `${DASHBOARD_OVERVIEW_PATH}?range=30d&bucket=day`,
+    )
 
-    const summary = summaryResponse.data
-    const queues = queueResponse.data.queues
-    const finance = financeResponse.data
-    const updatedAt = new Date().toISOString()
+    const overview = overviewResponse.data
+    const summary = overview.summary
+    const queues = overview.reviewQueues.queues
+    const finance = overview.finance
+    const updatedAt = overview.loadedAt || new Date().toISOString()
 
     return {
+      ...overview,
+      loadedAt: updatedAt,
       metrics: [
         ...summary.cards.map((card) => ({
           label: card.label,

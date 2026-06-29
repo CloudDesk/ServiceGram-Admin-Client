@@ -1,5 +1,21 @@
-import { BellPlus } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import type { ReactNode } from 'react'
+import {
+  ArrowUpRight,
+  BellPlus,
+  CalendarClock,
+  CheckCircle2,
+  ClipboardList,
+  Mail,
+  MessageSquareText,
+  Radio,
+  ReceiptText,
+  RotateCcw,
+  Send,
+  Smartphone,
+  TriangleAlert,
+  UserRound,
+} from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
@@ -8,12 +24,13 @@ import { Button } from '../../../components/ui/Button'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
-import { useAuthStore } from '../../../store/authStore'
+import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { notificationService } from '../services/notification.service'
 import type {
+  NotificationChannel,
   NotificationEvent,
   NotificationEventStatus,
 } from '../types/notification.types'
@@ -30,7 +47,12 @@ function humanizeCode(value: string | null | undefined) {
 
 function formatDateSafe(value: string | null | undefined) {
   if (!value) return 'Not available'
-  return formatDate(value, true)
+
+  try {
+    return formatDate(value, true)
+  } catch {
+    return 'Not available'
+  }
 }
 
 function statusTone(status: NotificationEventStatus): StatusTone {
@@ -39,6 +61,22 @@ function statusTone(status: NotificationEventStatus): StatusTone {
   if (status === 'QUEUED') return 'warning'
   return 'neutral'
 }
+
+function channelIcon(channel: NotificationChannel) {
+  if (channel === 'EMAIL') return <Mail className="size-4" />
+  if (channel === 'SMS') return <MessageSquareText className="size-4" />
+  return <Smartphone className="size-4" />
+}
+
+const notificationSectionIds = {
+  timeline: 'notification-timeline',
+  payload: 'notification-payload',
+  recipient: 'notification-recipient',
+  retry: 'notification-retry',
+} as const
+
+type NotificationSectionId =
+  (typeof notificationSectionIds)[keyof typeof notificationSectionIds]
 
 function toneClass(tone: 'danger' | 'info' | 'neutral' | 'success' | 'warning') {
   if (tone === 'success') return 'text-success'
@@ -62,26 +100,28 @@ function DetailField({
   value,
 }: {
   label: string
-  value: string | number | null | undefined
+  value: ReactNode
 }) {
   return (
     <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface-muted/35 px-3 py-3">
       <p className="text-xs font-semibold uppercase tracking-normal text-muted">
         {label}
       </p>
-      <p className="mt-2 break-words text-sm font-medium text-foreground">
+      <div className="mt-2 break-words text-sm font-medium text-foreground">
         {value ?? 'Not available'}
-      </p>
+      </div>
     </div>
   )
 }
 
 function SummaryCard({
+  icon,
   label,
   meta,
   tone,
   value,
 }: {
+  icon: ReactNode
   label: string
   meta: string
   tone: 'danger' | 'info' | 'neutral' | 'success' | 'warning'
@@ -89,9 +129,12 @@ function SummaryCard({
 }) {
   return (
     <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <p className={cn('text-xs font-semibold uppercase tracking-normal', toneClass(tone))}>
-        {label}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className={cn('text-xs font-semibold uppercase tracking-normal', toneClass(tone))}>
+          {label}
+        </p>
+        <span className={toneClass(tone)}>{icon}</span>
+      </div>
       <p className={cn('mt-3 text-2xl font-semibold tracking-normal', toneClass(tone))}>
         {value}
       </p>
@@ -101,19 +144,33 @@ function SummaryCard({
 }
 
 function SectionShell({
+  actionNode,
   children,
   description,
+  id,
+  icon,
   title,
 }: {
-  children: React.ReactNode
+  actionNode?: ReactNode
+  children: ReactNode
   description?: string
+  id?: string
+  icon?: ReactNode
   title: string
 }) {
   return (
-    <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
-      <div className="mb-4">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
+    <section id={id} className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            {icon ? <span className="text-primary">{icon}</span> : null}
+            <h2 className="text-base font-semibold text-foreground">{title}</h2>
+          </div>
+          {description ? (
+            <p className="mt-1 text-sm leading-5 text-muted">{description}</p>
+          ) : null}
+        </div>
+        {actionNode ? <div className="shrink-0">{actionNode}</div> : null}
       </div>
       {children}
     </section>
@@ -135,6 +192,19 @@ function HeaderStatus({ event }: { event: NotificationEvent }) {
   )
 }
 
+function HeaderActions({ canSendNotifications }: { canSendNotifications: boolean }) {
+  if (!canSendNotifications) return null
+
+  return (
+    <Link to={`${routePaths.notifications}/new`}>
+      <Button size="sm" type="button" variant="secondary">
+        <BellPlus className="mr-2 size-4" />
+        New
+      </Button>
+    </Link>
+  )
+}
+
 function DetailSkeleton() {
   return (
     <PageContainer>
@@ -149,16 +219,397 @@ function DetailSkeleton() {
   )
 }
 
+function SignalBadgeGroup({
+  emptyLabel,
+  items,
+  tone,
+}: {
+  emptyLabel: string
+  items: string[]
+  tone: StatusTone
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {items.length ? (
+        items.map((item) => (
+          <Badge key={item} tone={tone}>
+            {humanizeCode(item)}
+          </Badge>
+        ))
+      ) : (
+        <Badge tone="success">{emptyLabel}</Badge>
+      )}
+    </div>
+  )
+}
+
+function RelatedRecordRow({
+  actionLabel = 'Open',
+  canOpen,
+  icon,
+  label,
+  meta,
+  onOpen,
+  value,
+}: {
+  actionLabel?: string
+  canOpen: boolean
+  icon: ReactNode
+  label: string
+  meta: string
+  onOpen?: () => void
+  value: string
+}) {
+  return (
+    <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 text-primary">{icon}</span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            {label}
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+            {value}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted">{meta}</p>
+        </div>
+      </div>
+      {canOpen && onOpen ? (
+        <Button className="shrink-0" size="sm" type="button" variant="secondary" onClick={onOpen}>
+          <ArrowUpRight className="mr-2 size-4" />
+          {actionLabel}
+        </Button>
+      ) : (
+        <Badge tone="neutral">View only</Badge>
+      )}
+    </div>
+  )
+}
+
+function RelatedRecordsPanel({
+  canReadAudit,
+  canSendNotifications,
+  canUpdateTemplates,
+  event,
+  onNavigate,
+  onOpenSection,
+}: {
+  canReadAudit: boolean
+  canSendNotifications: boolean
+  canUpdateTemplates: boolean
+  event: NotificationEvent
+  onNavigate: (path: string) => void
+  onOpenSection: (sectionId: NotificationSectionId) => void
+}) {
+  return (
+    <SectionShell
+      description="Records and tools connected to this delivery event."
+      icon={<ArrowUpRight className="size-4" />}
+      title="Related records"
+    >
+      <div className="divide-y divide-border">
+        <RelatedRecordRow
+          actionLabel="Events"
+          canOpen
+          icon={<ReceiptText className="size-4" />}
+          label="Filtered event queue"
+          meta={`${event.channel} · ${humanizeCode(event.status)} · ${humanizeCode(event.recipientType)}`}
+          value={event.templateCode}
+          onOpen={() => onNavigate(buildNotificationEventsPath(event))}
+        />
+        <RelatedRecordRow
+          actionLabel="Edit"
+          canOpen={canUpdateTemplates}
+          icon={<Radio className="size-4" />}
+          label="Template"
+          meta="Opens the template editor with this template selected"
+          value={event.templateCode}
+          onOpen={() => onNavigate(buildTemplateEditorPath(event))}
+        />
+        <RelatedRecordRow
+          actionLabel="History"
+          canOpen={Boolean(event.recipientUserId)}
+          icon={<UserRound className="size-4" />}
+          label="Recipient delivery history"
+          meta={`${humanizeCode(event.recipientType)} event filter`}
+          value={recipientLabel(event)}
+          onOpen={() => onNavigate(buildRecipientNotificationsPath(event))}
+        />
+        <RelatedRecordRow
+          actionLabel="Payload"
+          canOpen
+          icon={channelIcon(event.channel)}
+          label="Rendered payload"
+          meta="Jump to rendered body and provider message"
+          value={event.title ?? event.templateCode}
+          onOpen={() => onOpenSection(notificationSectionIds.payload)}
+        />
+        <RelatedRecordRow
+          actionLabel="Retry"
+          canOpen
+          icon={<RotateCcw className="size-4" />}
+          label="Retry state"
+          meta="Jump to delivery retry metadata"
+          value={event.deliveryRetry ? 'Retry metadata available' : 'No retry metadata'}
+          onOpen={() => onOpenSection(notificationSectionIds.retry)}
+        />
+        <RelatedRecordRow
+          actionLabel="Audit"
+          canOpen={canReadAudit}
+          icon={<ClipboardList className="size-4" />}
+          label="Audit trail"
+          meta="Filtered by notification event id"
+          value={event.eventId}
+          onOpen={() => onNavigate(buildNotificationAuditPath(event))}
+        />
+        <RelatedRecordRow
+          actionLabel="Compose"
+          canOpen={canSendNotifications}
+          icon={<Send className="size-4" />}
+          label="Manual send"
+          meta="Prefilled with this event channel and recipient"
+          value={event.channel}
+          onOpen={() => onNavigate(buildNotificationComposerPath(event))}
+        />
+      </div>
+    </SectionShell>
+  )
+}
+
+function buildNotificationEventsPath(event: NotificationEvent) {
+  const params = new URLSearchParams({
+    channel: event.channel,
+    recipientType: event.recipientType,
+    status: event.status,
+    templateCode: event.templateCode,
+  })
+
+  if (event.recipientUserId) {
+    params.set('recipientUserId', event.recipientUserId)
+  }
+
+  return `${routePaths.notifications}?${params.toString()}#notification-events`
+}
+
+function buildRecipientNotificationsPath(event: NotificationEvent) {
+  const params = new URLSearchParams({
+    recipientType: event.recipientType,
+  })
+
+  if (event.recipientUserId) {
+    params.set('recipientUserId', event.recipientUserId)
+  }
+
+  return `${routePaths.notifications}?${params.toString()}#notification-events`
+}
+
+function buildTemplateEditorPath(event: NotificationEvent) {
+  const params = new URLSearchParams({
+    templateChannel: event.channel,
+    templateCode: event.templateCode,
+    templateEditor: '1',
+  })
+
+  return `${routePaths.notifications}?${params.toString()}#notification-templates`
+}
+
+function buildNotificationAuditPath(event: NotificationEvent) {
+  const params = new URLSearchParams({
+    moduleCode: 'notifications',
+    entityType: 'notification_event',
+    entityId: event.eventId,
+  })
+
+  return `${routePaths.audit}?${params.toString()}`
+}
+
+function buildNotificationComposerPath(event: NotificationEvent) {
+  const params = new URLSearchParams({
+    channel: event.channel,
+    recipientType: event.recipientType,
+    targetType: 'USER',
+    templateCode: event.templateCode,
+  })
+
+  if (event.recipientUserId) {
+    params.set('recipientUserId', event.recipientUserId)
+  }
+
+  return `${routePaths.notifications}/new?${params.toString()}`
+}
+
+function RecipientPanel({ event }: { event: NotificationEvent }) {
+  return (
+    <SectionShell
+      description="Recipient summary returned with the event."
+      id={notificationSectionIds.recipient}
+      icon={<UserRound className="size-4" />}
+      title="Recipient"
+    >
+      <div className="grid gap-3 md:grid-cols-2">
+        <DetailField label="Recipient type" value={humanizeCode(event.recipientType)} />
+        <DetailField label="Recipient user ID" value={event.recipientUserId} />
+        <DetailField label="Mobile" value={event.recipient?.mobileNumber} />
+        <DetailField label="Email" value={event.recipient?.email} />
+        <DetailField label="User status" value={humanizeCode(event.recipient?.status)} />
+        <DetailField label="User type" value={humanizeCode(event.recipient?.userType)} />
+      </div>
+    </SectionShell>
+  )
+}
+
+function PayloadPanel({ event }: { event: NotificationEvent }) {
+  return (
+    <SectionShell
+      description="Rendered notification payload and provider tracking."
+      id={notificationSectionIds.payload}
+      icon={channelIcon(event.channel)}
+      title="Delivery payload"
+    >
+      <div className="grid gap-3 md:grid-cols-2">
+        <DetailField label="Template code" value={event.templateCode} />
+        <DetailField label="Provider message ID" value={event.providerMessageId} />
+        <DetailField label="Title" value={event.title ?? 'Not available'} />
+        <DetailField label="Failure reason" value={event.failureReason} />
+      </div>
+      <pre className="mt-3 max-h-[24rem] overflow-auto whitespace-pre-wrap rounded-[0.75rem] border border-border bg-surface-muted/35 p-3 text-sm leading-6 text-foreground">
+        {event.body}
+      </pre>
+    </SectionShell>
+  )
+}
+
+function LifecyclePanel({ event }: { event: NotificationEvent }) {
+  return (
+    <SectionShell
+      description="Delivery lifecycle timestamps returned by the admin API."
+      id={notificationSectionIds.timeline}
+      icon={<CalendarClock className="size-4" />}
+      title="Timeline"
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <DetailField label="Created" value={formatDateSafe(event.createdAt)} />
+        <DetailField label="Updated" value={formatDateSafe(event.updatedAt)} />
+        <DetailField label="Sent" value={formatDateSafe(event.sentAt)} />
+        <DetailField label="Read" value={formatDateSafe(event.readAt)} />
+      </div>
+    </SectionShell>
+  )
+}
+
+function RetryPanel({ event }: { event: NotificationEvent }) {
+  const retry = event.deliveryRetry
+
+  return (
+    <SectionShell
+      description="Retry metadata is provider-controlled; no manual retry API is exposed here."
+      id={notificationSectionIds.retry}
+      icon={<RotateCcw className="size-4" />}
+      title="Retry state"
+    >
+      {retry ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <DetailField label="Attempt" value={`${retry.attemptNumber}/${retry.maxAttempts}`} />
+          <DetailField
+            label="State"
+            value={retry.exhausted ? 'Exhausted' : 'Scheduled'}
+          />
+          <DetailField label="Next retry" value={formatDateSafe(retry.nextRetryAt)} />
+          <DetailField label="Scheduled" value={formatDateSafe(retry.scheduledAt)} />
+          <DetailField
+            label="Last provider status"
+            value={humanizeCode(retry.lastProviderStatus)}
+          />
+          <DetailField
+            label="Last failure"
+            value={humanizeCode(retry.lastFailureReason)}
+          />
+          <DetailField label="Backoff seconds" value={retry.backoffSeconds} />
+        </div>
+      ) : (
+        <p className="rounded-[0.75rem] border border-border bg-surface-muted/35 p-3 text-sm text-muted">
+          No retry metadata is attached to this delivery event.
+        </p>
+      )}
+    </SectionShell>
+  )
+}
+
+function SignalsPanel({
+  canSendNotifications,
+  event,
+}: {
+  canSendNotifications: boolean
+  event: NotificationEvent
+}) {
+  const adminControls = canSendNotifications ? ['SEND_NEW_NOTIFICATION'] : []
+
+  return (
+    <SectionShell
+      description="Backend delivery hints and controls available for this admin."
+      icon={<TriangleAlert className="size-4" />}
+      title="Signals"
+    >
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            Warnings
+          </p>
+          <SignalBadgeGroup
+            emptyLabel="No warnings"
+            items={event.warnings}
+            tone={event.status === 'FAILED' ? 'danger' : 'warning'}
+          />
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            Backend hints
+          </p>
+          <SignalBadgeGroup
+            emptyLabel="No backend action"
+            items={event.availableActions}
+            tone="info"
+          />
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            Available to you
+          </p>
+          <SignalBadgeGroup
+            emptyLabel="No permitted controls"
+            items={adminControls}
+            tone="neutral"
+          />
+        </div>
+      </div>
+    </SectionShell>
+  )
+}
+
 export function NotificationDetailPage() {
   const { notificationId } = useParams()
-  const can = useAuthStore((state) => state.can)
-  const canSendNotifications = can('notifications:send')
+  const navigate = useNavigate()
+  const canReadAudit = usePermission('audit:read')
+  const canSendNotifications = usePermission('notifications:send')
+  const canUpdateTemplates = usePermission('notifications:update')
 
   const eventQuery = useQuery({
     enabled: Boolean(notificationId),
     queryKey: ['notification-event', notificationId],
     queryFn: () => notificationService.getEvent(notificationId ?? ''),
   })
+
+  const openSection = (sectionId: NotificationSectionId) => {
+    const section = document.getElementById(sectionId)
+
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    if (section) {
+      window.history.replaceState(null, '', `#${sectionId}`)
+    }
+  }
 
   if (!notificationId) {
     return (
@@ -196,18 +647,9 @@ export function NotificationDetailPage() {
   const failed = event.status === 'FAILED'
 
   return (
-    <PageContainer>
+    <PageContainer className="!px-3 !py-4 sm:!px-4 lg:!px-6">
       <DetailPageHeader
-        actionNode={
-          canSendNotifications ? (
-            <Link to={`${routePaths.notifications}/new`}>
-              <Button size="sm" type="button" variant="secondary">
-                <BellPlus className="mr-2 size-4" />
-                New Notification
-              </Button>
-            </Link>
-          ) : null
-        }
+        actionNode={<HeaderActions canSendNotifications={canSendNotifications} />}
         description={`${humanizeCode(event.recipientType)} notification delivery event`}
         listHref={routePaths.notifications}
         listLabel="Notifications"
@@ -217,130 +659,69 @@ export function NotificationDetailPage() {
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
+          icon={<CheckCircle2 className="size-4" />}
           label="Status"
-          meta={event.failureReason ? humanizeCode(event.failureReason) : 'Current delivery state'}
-          tone={failed ? 'danger' : event.status === 'SENT' ? 'success' : 'warning'}
+          meta={
+            event.failureReason
+              ? humanizeCode(event.failureReason)
+              : 'Current delivery state'
+          }
+          tone={
+            failed
+              ? 'danger'
+              : event.status === 'SENT'
+                ? 'success'
+                : event.status === 'SKIPPED'
+                  ? 'neutral'
+                  : 'warning'
+          }
           value={humanizeCode(event.status)}
         />
         <SummaryCard
+          icon={channelIcon(event.channel)}
           label="Channel"
           meta={event.providerMessageId ?? 'Provider message unavailable'}
           tone="info"
           value={event.channel}
         />
         <SummaryCard
+          icon={<UserRound className="size-4" />}
           label="Recipient"
           meta={recipientLabel(event)}
           tone="neutral"
           value={humanizeCode(event.recipientType)}
         />
         <SummaryCard
+          icon={<RotateCcw className="size-4" />}
           label="Retry"
-          meta={retry?.nextRetryAt ? `Next ${formatDateSafe(retry.nextRetryAt)}` : 'No active retry'}
+          meta={
+            retry?.nextRetryAt ? `Next ${formatDateSafe(retry.nextRetryAt)}` : 'No active retry'
+          }
           tone={retry?.exhausted ? 'danger' : retry ? 'warning' : 'neutral'}
           value={retry ? `${retry.attemptNumber}/${retry.maxAttempts}` : 'None'}
         />
       </section>
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(21rem,0.65fr)]">
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
+        <LifecyclePanel event={event} />
+        <SignalsPanel canSendNotifications={canSendNotifications} event={event} />
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
         <div className="space-y-3">
-          <SectionShell
-            description="Rendered notification payload and provider tracking."
-            title="Delivery payload"
-          >
-            <div className="grid gap-3 md:grid-cols-2">
-              <DetailField label="Template code" value={event.templateCode} />
-              <DetailField label="Provider message ID" value={event.providerMessageId} />
-              <DetailField label="Title" value={event.title} />
-              <DetailField label="Failure reason" value={event.failureReason} />
-              <div className="md:col-span-2">
-                <DetailField label="Body" value={event.body} />
-              </div>
-            </div>
-          </SectionShell>
-
-          <SectionShell
-            description="Recipient summary returned with the event."
-            title="Recipient"
-          >
-            <div className="grid gap-3 md:grid-cols-2">
-              <DetailField label="Recipient type" value={humanizeCode(event.recipientType)} />
-              <DetailField label="Recipient user ID" value={event.recipientUserId} />
-              <DetailField label="Mobile" value={event.recipient?.mobileNumber} />
-              <DetailField label="Email" value={event.recipient?.email} />
-              <DetailField label="User status" value={humanizeCode(event.recipient?.status)} />
-              <DetailField label="User type" value={humanizeCode(event.recipient?.userType)} />
-            </div>
-          </SectionShell>
+          <PayloadPanel event={event} />
+          <RecipientPanel event={event} />
+          <RetryPanel event={event} />
         </div>
-
-        <div className="space-y-3">
-          <SectionShell title="Timeline">
-            <div className="grid gap-3">
-              <DetailField label="Created" value={formatDateSafe(event.createdAt)} />
-              <DetailField label="Updated" value={formatDateSafe(event.updatedAt)} />
-              <DetailField label="Sent" value={formatDateSafe(event.sentAt)} />
-              <DetailField label="Read" value={formatDateSafe(event.readAt)} />
-            </div>
-          </SectionShell>
-
-          <SectionShell
-            description="Operational warnings, available next actions, and retry metadata."
-            title="Signals"
-          >
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-                  Warnings
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {event.warnings.length > 0 ? (
-                    event.warnings.map((warning) => (
-                      <Badge key={warning} tone={failed ? 'danger' : 'warning'}>
-                        {humanizeCode(warning)}
-                      </Badge>
-                    ))
-                  ) : (
-                    <Badge tone="success">No warnings</Badge>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-                  Available actions
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {event.availableActions.length > 0 ? (
-                    event.availableActions.map((action) => (
-                      <Badge key={action} tone="info">
-                        {humanizeCode(action)}
-                      </Badge>
-                    ))
-                  ) : (
-                    <Badge tone="neutral">No action</Badge>
-                  )}
-                </div>
-              </div>
-
-              {retry ? (
-                <div className="grid gap-3">
-                  <DetailField
-                    label="Last provider status"
-                    value={humanizeCode(retry.lastProviderStatus)}
-                  />
-                  <DetailField
-                    label="Last failure"
-                    value={humanizeCode(retry.lastFailureReason)}
-                  />
-                  <DetailField label="Scheduled" value={formatDateSafe(retry.scheduledAt)} />
-                  <DetailField label="Backoff seconds" value={retry.backoffSeconds} />
-                </div>
-              ) : null}
-            </div>
-          </SectionShell>
-        </div>
-      </div>
+        <RelatedRecordsPanel
+          canReadAudit={canReadAudit}
+          canSendNotifications={canSendNotifications}
+          canUpdateTemplates={canUpdateTemplates}
+          event={event}
+          onNavigate={navigate}
+          onOpenSection={openSection}
+        />
+      </section>
     </PageContainer>
   )
 }

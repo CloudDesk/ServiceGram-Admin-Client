@@ -8,6 +8,7 @@ import {
   RotateCcw,
   Settings2,
   SlidersHorizontal,
+  UserRound,
   XCircle,
 } from 'lucide-react'
 import type {
@@ -37,7 +38,7 @@ import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
-import { useAuthStore } from '../../../store/authStore'
+import { usePermission } from '../../../hooks/usePermission'
 import type { LookupOption } from '../../../types/lookup.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -222,6 +223,15 @@ function formatCommissionValue(value: unknown) {
   return `${basisPoints / 100}% per booking`
 }
 
+function getInfluencerCustomerLabel(influencer: AdminInfluencer) {
+  return (
+    influencer.customer.fullName ??
+    influencer.customer.mobileNumber ??
+    influencer.customer.email ??
+    influencer.customer.customerId
+  )
+}
+
 function buildInfluencerMetrics(
   influencers: AdminInfluencer[],
   pagination?: InfluencersPagination,
@@ -259,8 +269,8 @@ function buildInfluencerMetrics(
       value: String(suspended),
     },
     {
-      label: 'Visible creators',
-      meta: 'Matching current filters',
+      label: 'Matched creators',
+      meta: 'Total matching current filters',
       tone: 'info',
       value: String(total),
     },
@@ -436,9 +446,8 @@ function InfluencerCell({
 export function InfluencersPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const canReviewInfluencers = useAuthStore((state) =>
-    state.can('influencers:review'),
-  )
+  const canReadCustomers = usePermission('customers:read')
+  const canReviewInfluencers = usePermission('influencers:review')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
   const [search, setSearch] = useState('')
@@ -692,6 +701,10 @@ export function InfluencersPage() {
     navigate(`${routePaths.influencers}/${influencer.influencerProfileId}`)
   }
 
+  const viewCustomer = (influencer: AdminInfluencer) => {
+    navigate(`${routePaths.customers}/${influencer.customer.customerId}`)
+  }
+
   const actionMutation = useMutation({
     mutationFn: async ({
       action,
@@ -763,6 +776,11 @@ export function InfluencersPage() {
     event?: ReactMouseEvent<HTMLButtonElement>,
   ) => {
     event?.stopPropagation()
+
+    if (!canReviewInfluencers || !influencer.availableActions.includes(kind)) {
+      return
+    }
+
     setActionError(null)
     setSelectedAction({ kind, influencer })
   }
@@ -780,9 +798,25 @@ export function InfluencersPage() {
       ) : null}
       {showColumn('customer') ? (
         <InfluencerCell label="Customer">
-          <p className="truncate font-semibold">
-            {influencer.customer.fullName ?? 'Unnamed customer'}
-          </p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate font-semibold">
+              {getInfluencerCustomerLabel(influencer)}
+            </p>
+            {canReadCustomers ? (
+              <button
+                aria-label={`Open customer ${getInfluencerCustomerLabel(influencer)}`}
+                className="btn-icon size-7 shrink-0"
+                title="Open customer"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  viewCustomer(influencer)
+                }}
+              >
+                <UserRound className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
           <p className="mt-1 truncate text-xs text-muted">
             {influencer.customer.mobileNumber ??
               influencer.customer.email ??
@@ -868,6 +902,7 @@ export function InfluencersPage() {
       <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
         {canReviewInfluencers && hasAction('APPROVE') ? (
           <Button
+            disabled={actionMutation.isPending}
             size="sm"
             type="button"
             variant="secondary"
@@ -879,6 +914,7 @@ export function InfluencersPage() {
         ) : null}
         {canReviewInfluencers && hasAction('REJECT') ? (
           <Button
+            disabled={actionMutation.isPending}
             size="sm"
             type="button"
             variant="danger"
@@ -890,6 +926,7 @@ export function InfluencersPage() {
         ) : null}
         {canReviewInfluencers && hasAction('SUSPEND') ? (
           <Button
+            disabled={actionMutation.isPending}
             size="sm"
             type="button"
             variant="danger"
@@ -903,6 +940,7 @@ export function InfluencersPage() {
         ) : null}
         {canReviewInfluencers && hasAction('REACTIVATE') ? (
           <Button
+            disabled={actionMutation.isPending}
             size="sm"
             type="button"
             variant="secondary"
@@ -997,9 +1035,14 @@ export function InfluencersPage() {
               <>
                 <div>
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-semibold text-foreground">
-                      Review queues
-                    </h2>
+                    <div>
+                      <h2 className="text-sm font-semibold text-foreground">
+                        Queue totals
+                      </h2>
+                      <p className="text-xs text-muted">
+                        Counts match base filters.
+                      </p>
+                    </div>
                     <button
                       aria-label="Collapse influencer filters"
                       className="btn-icon"

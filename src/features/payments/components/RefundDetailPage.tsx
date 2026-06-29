@@ -1,4 +1,14 @@
-import { ArrowUpRight, CheckCircle2, XCircle } from 'lucide-react'
+import {
+  ArrowUpRight,
+  CheckCircle2,
+  ClipboardList,
+  CreditCard,
+  ReceiptText,
+  RotateCcw,
+  Store,
+  UserRound,
+  XCircle,
+} from 'lucide-react'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -10,7 +20,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
-import { useAuthStore } from '../../../store/authStore'
+import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -22,6 +32,14 @@ import {
 } from './PaymentActionModal'
 import type { AdminRefundDetail, AdminRefundStatus } from '../types/payment.types'
 
+const refundSectionIds = {
+  financialContext: 'refund-financial-context',
+  information: 'refund-information',
+  metadata: 'refund-metadata',
+} as const
+
+type RefundSectionId = (typeof refundSectionIds)[keyof typeof refundSectionIds]
+
 function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
 
@@ -32,8 +50,9 @@ function humanizeCode(value: string | null | undefined) {
     .join(' ')
 }
 
-function formatPaise(value: number | null | undefined) {
-  return formatMoney((value ?? 0) / 100)
+function formatPaise(value: number | null | undefined, currency = 'INR') {
+  if (value == null) return 'Not available'
+  return formatMoney(value / 100, currency)
 }
 
 function formatDateSafe(value: string | null | undefined) {
@@ -127,14 +146,16 @@ function SummaryCard({
 function SectionShell({
   children,
   description,
+  id,
   title,
 }: {
   children: React.ReactNode
   description?: string
+  id?: string
   title: string
 }) {
   return (
-    <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+    <section id={id} className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
       <div className="mb-4">
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
         {description ? (
@@ -144,6 +165,68 @@ function SectionShell({
       {children}
     </section>
   )
+}
+
+function RelatedRecordRow({
+  actionLabel = 'Open',
+  canOpen,
+  icon,
+  label,
+  meta,
+  onOpen,
+  value,
+}: {
+  actionLabel?: string
+  canOpen: boolean
+  icon: React.ReactNode
+  label: string
+  meta: string
+  onOpen?: () => void
+  value: string
+}) {
+  return (
+    <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 text-primary">{icon}</span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            {label}
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+            {value}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted">{meta}</p>
+        </div>
+      </div>
+      {canOpen && onOpen ? (
+        <Button className="shrink-0" size="sm" variant="secondary" onClick={onOpen}>
+          <ArrowUpRight className="mr-2 size-4" />
+          {actionLabel}
+        </Button>
+      ) : (
+        <Badge tone="neutral">View only</Badge>
+      )}
+    </div>
+  )
+}
+
+function buildRefundAuditPath(refund: AdminRefundDetail) {
+  const params = new URLSearchParams({
+    moduleCode: 'payments',
+    entityType: 'refund',
+    entityId: refund.refundId,
+  })
+
+  return `${routePaths.audit}?${params.toString()}`
+}
+
+function buildPaymentRefundsPath(refund: AdminRefundDetail) {
+  const params = new URLSearchParams({
+    paymentId: refund.payment.paymentId,
+    paymentLabel: refund.payment.publicPaymentId,
+  })
+
+  return `${routePaths.refunds}?${params.toString()}`
 }
 
 function HeaderStatus({ refund }: { refund: AdminRefundDetail }) {
@@ -159,6 +242,8 @@ function HeaderStatus({ refund }: { refund: AdminRefundDetail }) {
 }
 
 function HeaderActions({
+  canReadOrders,
+  canReadPayments,
   canReviewRefunds,
   isSubmitting,
   onSelect,
@@ -166,6 +251,8 @@ function HeaderActions({
   onViewPayment,
   refund,
 }: {
+  canReadOrders: boolean
+  canReadPayments: boolean
   canReviewRefunds: boolean
   isSubmitting: boolean
   onSelect: (action: PaymentActionSelection) => void
@@ -175,14 +262,18 @@ function HeaderActions({
 }) {
   return (
     <div className="flex flex-wrap justify-end gap-2">
-      <Button size="sm" type="button" variant="secondary" onClick={onViewPayment}>
-        <ArrowUpRight className="mr-2 size-4" />
-        View Payment
-      </Button>
-      <Button size="sm" type="button" variant="secondary" onClick={onViewOrder}>
-        <ArrowUpRight className="mr-2 size-4" />
-        View Order
-      </Button>
+      {canReadPayments ? (
+        <Button size="sm" type="button" variant="secondary" onClick={onViewPayment}>
+          <ArrowUpRight className="mr-2 size-4" />
+          View Payment
+        </Button>
+      ) : null}
+      {canReadOrders ? (
+        <Button size="sm" type="button" variant="secondary" onClick={onViewOrder}>
+          <ArrowUpRight className="mr-2 size-4" />
+          View Order
+        </Button>
+      ) : null}
       {canReviewRefunds && refund.availableActions.includes('APPROVE') ? (
         <Button
           disabled={isSubmitting}
@@ -215,7 +306,12 @@ export function RefundDetailPage() {
   const { refundId } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const canReviewRefunds = useAuthStore((state) => state.can('payments:refund'))
+  const canReadOrders = usePermission('orders:read')
+  const canReadPayments = usePermission('payments:read')
+  const canReadCustomers = usePermission('customers:read')
+  const canReadVendors = usePermission('vendors:read')
+  const canReadAudit = usePermission('audit:read')
+  const canReviewRefunds = usePermission('payments:refund')
   const [selectedAction, setSelectedAction] =
     useState<PaymentActionSelection | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -228,6 +324,16 @@ export function RefundDetailPage() {
   })
   const refund = refundQuery.data?.data
   const metadata = metadataText(refund?.metadata)
+
+  const openSection = (sectionId: RefundSectionId) => {
+    const section = document.getElementById(sectionId)
+
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    if (section) {
+      window.history.replaceState(null, '', `#${sectionId}`)
+    }
+  }
 
   const mutation = useMutation({
     mutationFn: async ({
@@ -268,6 +374,12 @@ export function RefundDetailPage() {
       if (refund?.paymentId) {
         void queryClient.invalidateQueries({
           queryKey: ['payment-detail', refund.paymentId],
+        })
+      }
+
+      if (refund?.orderId) {
+        void queryClient.invalidateQueries({
+          queryKey: ['order-detail', refund.orderId],
         })
       }
     },
@@ -325,6 +437,8 @@ export function RefundDetailPage() {
       <DetailPageHeader
         actionNode={
           <HeaderActions
+            canReadOrders={canReadOrders}
+            canReadPayments={canReadPayments}
             canReviewRefunds={canReviewRefunds}
             isSubmitting={mutation.isPending}
             refund={refund}
@@ -379,22 +493,123 @@ export function RefundDetailPage() {
         />
       </section>
 
-      {refund.warnings.length > 0 ? (
-        <section className="rounded-[0.875rem] border border-warning/25 bg-surface p-4 shadow-surface">
-          <h2 className="text-base font-semibold text-warning">Warning signals</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {refund.warnings.map((warning) => (
-              <Badge key={warning} tone="warning">
-                {humanizeCode(warning)}
-              </Badge>
-            ))}
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <SectionShell
+          description="Primary records and finance context linked to this refund."
+          title="Related records"
+        >
+          <div className="divide-y divide-border">
+            <RelatedRecordRow
+              canOpen={canReadPayments}
+              icon={<CreditCard className="size-4" />}
+              label="Payment"
+              meta={`${humanizeCode(refund.payment.status)} · ${humanizeCode(refund.payment.gateway)}`}
+              value={refund.payment.publicPaymentId}
+              onOpen={() => navigate(`${routePaths.payments}/${refund.payment.paymentId}`)}
+            />
+            <RelatedRecordRow
+              canOpen={canReadOrders}
+              icon={<ReceiptText className="size-4" />}
+              label="Order"
+              meta={`${humanizeCode(refund.order.orderStatus)} · ${humanizeCode(refund.order.paymentStatus)}`}
+              value={refund.order.publicOrderId}
+              onOpen={() => navigate(`${routePaths.orders}/${refund.order.orderId}`)}
+            />
+            <RelatedRecordRow
+              canOpen={canReadCustomers}
+              icon={<UserRound className="size-4" />}
+              label="Customer"
+              meta={refund.customer.mobileNumber ?? refund.customer.email ?? refund.customer.status}
+              value={refund.customer.fullName}
+              onOpen={() => navigate(`${routePaths.customers}/${refund.customer.customerId}`)}
+            />
+            <RelatedRecordRow
+              canOpen={canReadVendors}
+              icon={<Store className="size-4" />}
+              label="Vendor"
+              meta={`${refund.vendor.publicVendorId} · ${refund.vendor.zone?.zoneName ?? refund.vendor.city}`}
+              value={refund.vendor.shopName}
+              onOpen={() => navigate(`${routePaths.vendors}/${refund.vendor.vendorId}`)}
+            />
+            <RelatedRecordRow
+              actionLabel="Context"
+              canOpen
+              icon={<CreditCard className="size-4" />}
+              label="Financial context"
+              meta="Payment amount, committed refunds, and remaining refundable value"
+              value={formatPaise(refund.refundSummary.remainingRefundableAmountPaise, refund.currency)}
+              onOpen={() => openSection(refundSectionIds.financialContext)}
+            />
+            <RelatedRecordRow
+              actionLabel="Queue"
+              canOpen={canReadPayments}
+              icon={<RotateCcw className="size-4" />}
+              label="Sibling refunds"
+              meta="Filtered by this payment id"
+              value={`${refund.refundSummary.refundCount} refunds on payment`}
+              onOpen={() => navigate(buildPaymentRefundsPath(refund))}
+            />
+            <RelatedRecordRow
+              actionLabel="Audit"
+              canOpen={canReadAudit}
+              icon={<ClipboardList className="size-4" />}
+              label="Audit trail"
+              meta="Filtered by module, entity type, and refund id"
+              value={refund.refundId}
+              onOpen={() => navigate(buildRefundAuditPath(refund))}
+            />
           </div>
-        </section>
-      ) : null}
+        </SectionShell>
+
+        <SectionShell
+          description="Backend warning signals and permitted refund actions."
+          title="Signals"
+        >
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                Warnings
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {refund.warnings.length ? (
+                  refund.warnings.map((warning) => (
+                    <Badge key={warning} tone="warning">
+                      {humanizeCode(warning)}
+                    </Badge>
+                  ))
+                ) : (
+                  <Badge tone="success">No warnings</Badge>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                Available actions
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {refund.availableActions.length ? (
+                  refund.availableActions.map((action) => (
+                    <Badge key={action} tone="neutral">
+                      {humanizeCode(action)}
+                    </Badge>
+                  ))
+                ) : (
+                  <Badge tone="neutral">No actions</Badge>
+                )}
+              </div>
+            </div>
+            <DetailField
+              label="Recommended next"
+              value={humanizeCode(refund.nextRecommendedAction)}
+            />
+          </div>
+        </SectionShell>
+      </section>
 
       <section className="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
         <SectionShell
           description="Refund lifecycle, provider reference, and review metadata."
+          id={refundSectionIds.information}
           title="Refund Information"
         >
           <div className="grid gap-3 sm:grid-cols-2">
@@ -424,39 +639,48 @@ export function RefundDetailPage() {
         </SectionShell>
       </section>
 
-      <section className="grid gap-3 xl:grid-cols-3">
-        <SectionShell title="Payment">
-          <div className="grid gap-3">
-            <DetailField label="Payment" value={refund.payment.publicPaymentId} />
-            <DetailField label="Status" value={humanizeCode(refund.payment.status)} />
-            <DetailField label="Method" value={humanizeCode(refund.payment.method)} />
-            <DetailField label="Gateway" value={humanizeCode(refund.payment.gateway)} />
-            <DetailField label="Amount" value={formatPaise(refund.payment.amountPaise)} />
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <SectionShell
+          description="Payment and order values used to evaluate this refund."
+          id={refundSectionIds.financialContext}
+          title="Financial context"
+        >
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <DetailField label="Payment Amount" value={formatPaise(refund.payment.amountPaise, refund.payment.currency)} />
+            <DetailField label="Payment Status" value={humanizeCode(refund.payment.status)} />
+            <DetailField label="Payment Method" value={humanizeCode(refund.payment.method)} />
+            <DetailField label="Order Final Price" value={formatPaise(refund.order.finalPricePaise, refund.order.currency)} />
+            <DetailField label="Committed Refunds" value={formatPaise(refund.refundSummary.committedAmountPaise, refund.currency)} />
+            <DetailField label="Successful Refunds" value={formatPaise(refund.refundSummary.successfulAmountPaise, refund.currency)} />
           </div>
         </SectionShell>
-        <SectionShell title="Order">
+
+        <SectionShell
+          description="Remaining amount after committed refund activity."
+          title="Refund summary"
+        >
           <div className="grid gap-3">
-            <DetailField label="Order" value={refund.order.publicOrderId} />
-            <DetailField label="Order Status" value={humanizeCode(refund.order.orderStatus)} />
-            <DetailField label="Payment Status" value={humanizeCode(refund.order.paymentStatus)} />
-            <DetailField label="Final Price" value={formatPaise(refund.order.finalPricePaise)} />
-          </div>
-        </SectionShell>
-        <SectionShell title="Customer">
-          <div className="grid gap-3">
-            <DetailField label="Name" value={refund.customer.fullName} />
-            <DetailField label="Mobile" value={refund.customer.mobileNumber} />
-            <DetailField label="Email" value={refund.customer.email} />
-            <DetailField label="City" value={refund.customer.city} />
+            <DetailField label="Refund Records" value={refund.refundSummary.refundCount} />
+            <DetailField label="Requested" value={refund.refundSummary.requestedCount} />
+            <DetailField label="Approved" value={refund.refundSummary.approvedCount} />
+            <DetailField label="Processing" value={refund.refundSummary.processingCount} />
+            <DetailField
+              label="Remaining Refundable"
+              value={formatPaise(refund.refundSummary.remainingRefundableAmountPaise, refund.currency)}
+            />
           </div>
         </SectionShell>
       </section>
 
-      <SectionShell title="Vendor">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <DetailField label="Shop" value={refund.vendor.shopName} />
+      <SectionShell
+        description="Vendor and category context for this refund."
+        title="Service context"
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <DetailField label="Vendor" value={refund.vendor.shopName} />
           <DetailField label="Public Vendor ID" value={refund.vendor.publicVendorId} />
-          <DetailField label="Status" value={humanizeCode(refund.vendor.vendorStatus)} />
+          <DetailField label="Vendor Status" value={humanizeCode(refund.vendor.vendorStatus)} />
+          <DetailField label="Category" value={refund.category?.name} />
           <DetailField
             label="Zone"
             value={
@@ -469,7 +693,7 @@ export function RefundDetailPage() {
       </SectionShell>
 
       {metadata ? (
-        <SectionShell title="Metadata">
+        <SectionShell id={refundSectionIds.metadata} title="Metadata">
           <pre className="max-h-80 overflow-auto rounded-[0.75rem] border border-border bg-surface-muted/35 p-3 text-xs text-foreground">
             {metadata}
           </pre>

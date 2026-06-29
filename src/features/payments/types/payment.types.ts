@@ -70,6 +70,40 @@ export interface AdminFinancePagination {
   hasPreviousPage: boolean
 }
 
+export interface AdminPaymentChildSummary {
+  total: number
+  successful: number
+  pending: number
+  failed: number
+  cancelled: number
+  refundable: number
+  refundActivity: number
+  requestedRefunds: number
+  totalAmountPaise: number
+  successfulAmountPaise: number
+  refundableAmountPaise: number
+  currency: string
+  byStatus: Record<string, number>
+  byMethod: Record<string, number>
+  byGateway: Record<string, number>
+}
+
+export interface AdminRefundChildSummary {
+  total: number
+  requested: number
+  approved: number
+  processing: number
+  successful: number
+  failed: number
+  rejected: number
+  pendingReview: number
+  totalAmountPaise: number
+  committedAmountPaise: number
+  successfulAmountPaise: number
+  currency: string
+  byStatus: Record<string, number>
+}
+
 export interface AdminPaymentOrderSummary {
   orderId: string
   publicOrderId: string
@@ -236,10 +270,20 @@ export interface AdminPaymentsListResponse
   pagination: AdminFinancePagination
 }
 
+export interface AdminCustomerPaymentsListResponse
+  extends AdminPaymentsListResponse {
+  summary: AdminPaymentChildSummary
+}
+
 export interface AdminRefundsListResponse
   extends AdminFinanceApiResponse<AdminRefundSummary[]> {
   data: AdminRefundSummary[]
   pagination: AdminFinancePagination
+}
+
+export interface AdminCustomerRefundsListResponse
+  extends AdminRefundsListResponse {
+  summary: AdminRefundChildSummary
 }
 
 export type AdminPaymentDetailResponse = AdminFinanceApiResponse<AdminPaymentDetail>

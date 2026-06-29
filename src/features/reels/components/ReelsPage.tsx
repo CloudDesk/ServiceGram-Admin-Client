@@ -7,6 +7,7 @@ import {
   PencilLine,
   RefreshCcw,
   SlidersHorizontal,
+  Store,
   Trash2,
   XCircle,
 } from 'lucide-react'
@@ -37,7 +38,7 @@ import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
-import { useAuthStore } from '../../../store/authStore'
+import { usePermission } from '../../../hooks/usePermission'
 import type { LookupOption } from '../../../types/lookup.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -252,8 +253,8 @@ function buildReelMetrics(
       value: String(live),
     },
     {
-      label: 'Visible reels',
-      meta: 'Matching current filters',
+      label: 'Matched reels',
+      meta: 'Total matching current filters',
       tone: 'info',
       value: String(total),
     },
@@ -411,8 +412,9 @@ function ReelCell({
 export function ReelsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const canModerateReels = useAuthStore((state) => state.can('reels:moderate'))
-  const canDeleteReels = useAuthStore((state) => state.can('reels:delete'))
+  const canReadVendors = usePermission('vendors:read')
+  const canModerateReels = usePermission('reels:moderate')
+  const canDeleteReels = usePermission('reels:delete')
   const [viewMode, setViewMode] = useState<ReelViewMode>('pending')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
@@ -700,6 +702,10 @@ export function ReelsPage() {
     navigate(`${routePaths.reels}/${reel.reelId}`)
   }
 
+  const viewVendor = (reel: AdminReel) => {
+    navigate(`${routePaths.vendors}/${reel.vendor.vendorId}`)
+  }
+
   const actionMutation = useMutation({
     mutationFn: async ({
       action,
@@ -772,6 +778,13 @@ export function ReelsPage() {
     event?: ReactMouseEvent<HTMLButtonElement>,
   ) => {
     event?.stopPropagation()
+    if (!reel.availableActions.includes(kind)) return
+    if (kind === 'SOFT_DELETE' || kind === 'HARD_DELETE') {
+      if (!canDeleteReels) return
+    } else if (!canModerateReels) {
+      return
+    }
+
     setActionError(null)
     setSelectedAction({ kind, reel })
   }
@@ -788,7 +801,23 @@ export function ReelsPage() {
       ) : null}
       {showColumn('vendor') ? (
         <ReelCell label="Vendor">
-          <p className="truncate font-semibold">{reel.vendor.shopName}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate font-semibold">{reel.vendor.shopName}</p>
+            {canReadVendors ? (
+              <button
+                aria-label={`Open vendor ${reel.vendor.shopName}`}
+                className="btn-icon size-7 shrink-0"
+                title="Open vendor"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  viewVendor(reel)
+                }}
+              >
+                <Store className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
           <p className="mt-1 truncate text-xs text-muted">
             {reel.vendor.publicVendorId} · {reel.vendor.city}
           </p>
@@ -881,6 +910,7 @@ export function ReelsPage() {
             size="sm"
             type="button"
             variant="secondary"
+            disabled={actionMutation.isPending}
             onClick={(event) => openReelAction('APPROVE', reel, event)}
           >
             <CheckCircle2 className="mr-2 size-4" />
@@ -892,6 +922,7 @@ export function ReelsPage() {
             size="sm"
             type="button"
             variant="danger"
+            disabled={actionMutation.isPending}
             onClick={(event) => openReelAction('REJECT', reel, event)}
           >
             <XCircle className="mr-2 size-4" />
@@ -903,6 +934,7 @@ export function ReelsPage() {
             size="sm"
             type="button"
             variant="secondary"
+            disabled={actionMutation.isPending}
             onClick={(event) => openReelAction('REQUEST_EDIT', reel, event)}
           >
             <PencilLine className="mr-2 size-4" />
@@ -914,6 +946,7 @@ export function ReelsPage() {
             size="sm"
             type="button"
             variant="secondary"
+            disabled={actionMutation.isPending}
             onClick={(event) => openReelAction('PAUSE', reel, event)}
           >
             <PauseCircle className="mr-2 size-4" />
@@ -925,6 +958,7 @@ export function ReelsPage() {
             size="sm"
             type="button"
             variant="danger"
+            disabled={actionMutation.isPending}
             onClick={(event) => openReelAction('REMOVE', reel, event)}
           >
             <Trash2 className="mr-2 size-4" />
@@ -936,6 +970,7 @@ export function ReelsPage() {
             size="sm"
             type="button"
             variant="danger"
+            disabled={actionMutation.isPending}
             onClick={(event) => openReelAction('SOFT_DELETE', reel, event)}
           >
             <Trash2 className="mr-2 size-4" />
@@ -947,6 +982,7 @@ export function ReelsPage() {
             size="sm"
             type="button"
             variant="danger"
+            disabled={actionMutation.isPending}
             onClick={(event) => openReelAction('HARD_DELETE', reel, event)}
           >
             <Trash2 className="mr-2 size-4" />
@@ -1040,9 +1076,12 @@ export function ReelsPage() {
               <>
                 <div>
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-semibold text-foreground">
-                      Review queues
-                    </h2>
+                    <div>
+                      <h2 className="text-sm font-semibold text-foreground">
+                        Queue totals
+                      </h2>
+                      <p className="text-xs text-muted">Counts match base filters.</p>
+                    </div>
                     <button
                       aria-label="Collapse reel filters"
                       className="btn-icon"

@@ -43,6 +43,7 @@ export type PermissionKey =
   | 'customers:update'
   | 'customers:wallet_credit'
   | 'vendors:read'
+  | 'vendors:update'
   | 'vendors:approve'
   | 'orders:read'
   | 'orders:update_status'

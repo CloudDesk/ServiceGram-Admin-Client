@@ -38,6 +38,7 @@ import { PayoutsPage } from '../features/payouts/components/PayoutsPage'
 import { ReelDetailPage } from '../features/reels/components/ReelDetailPage'
 import { ReelsPage } from '../features/reels/components/ReelsPage'
 import { ReportDetailPage } from '../features/reports/components/ReportDetailPage'
+import { ReportExportDetailPage } from '../features/reports/components/ReportExportDetailPage'
 import { ReportsPage } from '../features/reports/components/ReportsPage'
 import { SettingsDetailPage } from '../features/settings/components/SettingsDetailPage'
 import { SettingsPage } from '../features/settings/components/SettingsPage'
@@ -285,6 +286,10 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: routePaths.reports,
                     element: <ReportsPage />,
+                  },
+                  {
+                    path: `${routePaths.reports}/exports/:exportId`,
+                    element: <ReportExportDetailPage />,
                   },
                   {
                     path: `${routePaths.reports}/:reportKey`,

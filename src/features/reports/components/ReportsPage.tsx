@@ -5,7 +5,7 @@ import type {
 } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   CheckCircle2,
   ChevronLeft,
@@ -17,6 +17,7 @@ import {
   RefreshCcw,
   SlidersHorizontal,
   TriangleAlert,
+  X,
   XCircle,
 } from 'lucide-react'
 import { InlineAlert } from '../../../components/feedback/InlineAlert'
@@ -159,8 +160,15 @@ const REPORT_DEFAULT_COLUMN_WIDTH = 220
 const REPORT_COLUMN_GAP = 12
 const REPORT_INLINE_PADDING = 24
 const REPORT_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.report.columnWidths.v1'
+const REPORT_ACTION_COLUMN_WIDTH = 230
 
 type ReportColumnWidths = Record<string, number>
+
+interface ReportRowHandoff {
+  key: string
+  label: string
+  path: string
+}
 
 interface ReportGridStyle extends CSSProperties {
   '--report-grid-template': string
@@ -482,7 +490,11 @@ function getReportGridTemplate(
   const selectedWidths = visibleColumns
     .map((columnId) => `${getReportColumnWidth(reportType, columnWidths, columnId)}px`)
 
-  return [`${LIST_SELECTION_COLUMN_WIDTH}px`, ...selectedWidths].join(' ')
+  return [
+    `${LIST_SELECTION_COLUMN_WIDTH}px`,
+    ...selectedWidths,
+    `${REPORT_ACTION_COLUMN_WIDTH}px`,
+  ].join(' ')
 }
 
 function getReportGridMinWidth(
@@ -490,7 +502,7 @@ function getReportGridMinWidth(
   visibleColumns: string[],
   columnWidths: ReportColumnWidths,
 ) {
-  const gridColumnCount = visibleColumns.length + 1
+  const gridColumnCount = visibleColumns.length + 2
   const gridGapWidth = Math.max(gridColumnCount - 1, 0) * REPORT_COLUMN_GAP
   const visibleWidth = visibleColumns.reduce(
     (sum, columnId) => sum + getReportColumnWidth(reportType, columnWidths, columnId),
@@ -500,6 +512,7 @@ function getReportGridMinWidth(
   return `${
     visibleWidth +
     LIST_SELECTION_COLUMN_WIDTH +
+    REPORT_ACTION_COLUMN_WIDTH +
     gridGapWidth +
     REPORT_INLINE_PADDING
   }px`
@@ -507,6 +520,118 @@ function getReportGridMinWidth(
 
 function reportSupportsCustomerFilter(reportType: AdminReportType) {
   return ['ORDER_LIFECYCLE', 'PAYMENTS', 'REFUNDS'].includes(reportType)
+}
+
+function readSearchList(searchParams: URLSearchParams, key: string) {
+  return searchParams
+    .getAll(key)
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .filter(Boolean)
+}
+
+function readLookupOptions(
+  searchParams: URLSearchParams,
+  valueKey: string,
+  labelKey: string,
+) {
+  const values = readSearchList(searchParams, valueKey)
+  const labels = readSearchList(searchParams, labelKey)
+
+  return values.map((value, index) => ({
+    label: labels[index] ?? value,
+    value,
+  }))
+}
+
+function readReportStatuses(searchParams: URLSearchParams, reportType: AdminReportType) {
+  const allowedStatuses = new Set(reportCatalog[reportType].statusOptions)
+
+  return readSearchList(searchParams, 'status').filter((status) =>
+    allowedStatuses.has(status),
+  )
+}
+
+function readReportFormat(searchParams: URLSearchParams) {
+  const format = searchParams.get('format')
+
+  return exportFormats.includes(format as ReportExportFormat)
+    ? (format as ReportExportFormat)
+    : 'CSV'
+}
+
+function getStringField(row: ReportRow, key: string) {
+  const value = row[key]
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+function buildReportRowHandoffs(
+  row: ReportRow,
+  access: {
+    canReadCustomers: boolean
+    canReadOrders: boolean
+    canReadPayments: boolean
+    canReadPayouts: boolean
+    canReadVendors: boolean
+  },
+): ReportRowHandoff[] {
+  const handoffs: ReportRowHandoff[] = []
+  const orderId = getStringField(row, 'orderId')
+  const vendorId = getStringField(row, 'vendorId')
+  const customerId = getStringField(row, 'customerId')
+  const paymentId = getStringField(row, 'paymentId')
+  const refundId = getStringField(row, 'refundId')
+  const payoutId = getStringField(row, 'payoutId')
+
+  if (orderId && access.canReadOrders) {
+    handoffs.push({
+      key: 'order',
+      label: 'Order',
+      path: `${routePaths.orders}/${orderId}`,
+    })
+  }
+
+  if (vendorId && access.canReadVendors) {
+    handoffs.push({
+      key: 'vendor',
+      label: 'Vendor',
+      path: `${routePaths.vendors}/${vendorId}`,
+    })
+  }
+
+  if (customerId && access.canReadCustomers) {
+    handoffs.push({
+      key: 'customer',
+      label: 'Customer',
+      path: `${routePaths.customers}/${customerId}`,
+    })
+  }
+
+  if (paymentId && access.canReadPayments) {
+    handoffs.push({
+      key: 'payment',
+      label: 'Payment',
+      path: `${routePaths.payments}/${paymentId}`,
+    })
+  }
+
+  if (refundId && access.canReadPayments) {
+    handoffs.push({
+      key: 'refund',
+      label: 'Refund',
+      path: `${routePaths.refunds}/${refundId}`,
+    })
+  }
+
+  if (payoutId && access.canReadPayouts) {
+    handoffs.push({
+      key: 'payout',
+      label: 'Payout',
+      path: `${routePaths.payouts}/${payoutId}`,
+    })
+  }
+
+  return handoffs
 }
 
 function statusOptionsForReport(reportType: AdminReportType): LookupOption[] {
@@ -573,40 +698,69 @@ function MetricStrip({
 }
 
 function StatusBreakdown({ rows }: { rows: Record<string, unknown>[] }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
   if (rows.length === 0) {
     return null
   }
 
-  return (
-    <section className="shrink-0 rounded-[0.875rem] border border-border bg-surface p-3 shadow-surface">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-foreground">Status Breakdown</h2>
-        <Badge tone="neutral">{rows.length} states</Badge>
-      </div>
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-        {rows.map((row, index) => {
-          const status = typeof row.status === 'string' ? row.status : `STATE_${index + 1}`
-          const countEntry = Object.entries(row).find(
-            ([key, value]) =>
-              key.toLowerCase().includes('count') &&
-              (typeof value === 'number' || typeof value === 'string'),
-          )
-          const amountEntry = Object.entries(row).find(([key]) => isMoneyKey(key))
+  const breakdownRows = rows
+    .map((row, index) => {
+      const status = typeof row.status === 'string' ? row.status : `STATE_${index + 1}`
+      const countEntry = Object.entries(row).find(
+        ([key, value]) =>
+          key.toLowerCase().includes('count') &&
+          (typeof value === 'number' || typeof value === 'string'),
+      )
+      const amountEntry = Object.entries(row).find(([key]) => isMoneyKey(key))
+      const numericCount = countEntry ? Number(countEntry[1]) : 0
 
-          return (
-            <div className="rounded-[0.75rem] border border-border bg-surface p-2.5" key={status}>
-              <Badge tone={statusTone(status)}>{humanizeCode(status)}</Badge>
-              <p className="mt-2 text-base font-semibold text-foreground">
-                {countEntry ? formatValue(countEntry[0], countEntry[1]) : '0'}
+      return {
+        amountEntry,
+        countEntry,
+        numericCount: Number.isFinite(numericCount) ? numericCount : 0,
+        status,
+      }
+    })
+    .sort((left, right) => right.numericCount - left.numericCount)
+  const visibleRows = isExpanded ? breakdownRows : breakdownRows.slice(0, 5)
+  const hiddenCount = Math.max(breakdownRows.length - visibleRows.length, 0)
+
+  return (
+    <section className="shrink-0 rounded-[0.875rem] border border-border bg-surface px-3 py-2.5 shadow-surface">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-foreground">Status Breakdown</h2>
+        <div className="flex items-center gap-2">
+          <Badge tone="neutral">{rows.length} states</Badge>
+          {breakdownRows.length > 5 ? (
+            <Button
+              size="sm"
+              type="button"
+              variant="ghost"
+              onClick={() => setIsExpanded((current) => !current)}
+            >
+              {isExpanded ? 'Less' : `+${hiddenCount}`}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {visibleRows.map(({ amountEntry, countEntry, status }) => (
+          <div
+            className="min-h-[5.15rem] rounded-[0.75rem] border border-border bg-surface-muted/35 px-2.5 py-2"
+            key={status}
+          >
+            <Badge tone={statusTone(status)}>{humanizeCode(status)}</Badge>
+            <p className="mt-1.5 text-base font-semibold text-foreground">
+              {countEntry ? formatValue(countEntry[0], countEntry[1]) : '0'}
+            </p>
+            {amountEntry ? (
+              <p className="truncate text-xs text-muted">
+                {fieldLabel(amountEntry[0])}: {formatValue(amountEntry[0], amountEntry[1])}
               </p>
-              {amountEntry ? (
-                <p className="truncate text-xs text-muted">
-                  {fieldLabel(amountEntry[0])}: {formatValue(amountEntry[0], amountEntry[1])}
-                </p>
-              ) : null}
-            </div>
-          )
-        })}
+            ) : null}
+          </div>
+        ))}
       </div>
     </section>
   )
@@ -633,6 +787,7 @@ function ExportStatusPanel({
   isLoading,
   isError,
   errorMessage,
+  onOpenDetail,
   onRefresh,
   onOpenDownload,
 }: {
@@ -640,6 +795,7 @@ function ExportStatusPanel({
   isLoading: boolean
   isError: boolean
   errorMessage?: string
+  onOpenDetail: (exportId: string) => void
   onRefresh: () => void
   onOpenDownload: (url: string) => void
 }) {
@@ -667,6 +823,9 @@ function ExportStatusPanel({
 
   const downloadUrl = exportData.download.downloadUrl
   const hasInlineRows = Boolean(exportData.result?.rows.length)
+  const canDownload =
+    Boolean(downloadUrl) && exportData.availableActions.includes('DOWNLOAD_FILE')
+  const canRefresh = exportData.availableActions.includes('REFRESH_STATUS')
 
   return (
     <section className="space-y-3 rounded-[0.875rem] border border-border bg-surface p-3">
@@ -685,7 +844,16 @@ function ExportStatusPanel({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
-            disabled={isLoading}
+            size="sm"
+            title="Open export detail"
+            variant="secondary"
+            onClick={() => onOpenDetail(exportData.exportId)}
+          >
+            <ExternalLink className="mr-2 size-4" />
+            Detail
+          </Button>
+          <Button
+            disabled={isLoading || !canRefresh}
             size="sm"
             title="Refresh export status"
             variant="secondary"
@@ -695,10 +863,10 @@ function ExportStatusPanel({
             Refresh
           </Button>
           <Button
-            disabled={!downloadUrl}
+            disabled={!canDownload}
             size="sm"
             title="Open signed download"
-            onClick={() => downloadUrl && onOpenDownload(downloadUrl)}
+            onClick={() => canDownload && downloadUrl && onOpenDownload(downloadUrl)}
           >
             <ExternalLink className="mr-2 size-4" />
             Download
@@ -763,46 +931,78 @@ function ExportStatusPanel({
 }
 
 function ReportRowsTable({
+  getRowActions,
   columns,
   isSelected,
+  onOpenAction,
   onSelect,
   rows,
 }: {
+  getRowActions: (row: ReportRow) => ReportRowHandoff[]
   columns: string[]
   isSelected: (id: string) => boolean
+  onOpenAction: (path: string) => void
   onSelect: (id: string, selected: boolean) => void
   rows: SelectableReportRow[]
 }) {
   return (
     <div>
-      {rows.map(({ id, row }, index) => (
-        <article
-          aria-selected={isSelected(id)}
-          className={cn(
-            'grid min-w-0 gap-3 border-b border-border bg-surface px-3 py-2.5 last:border-b-0 xl:grid-cols-[var(--report-grid-template)] xl:items-center',
-            isSelected(id) && 'bg-primary/5',
-          )}
-          key={id}
-        >
-          <div className="flex min-w-0 items-start xl:items-center">
-            <ListSelectionCheckbox
-              checked={isSelected(id)}
-              label={`Select report row ${index + 1}`}
-              onChange={(selected) => onSelect(id, selected)}
-            />
-          </div>
-          {columns.map((columnId) => (
-            <div className="min-w-0 text-sm" key={columnId}>
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-normal text-muted xl:hidden">
-                {fieldLabel(columnId)}
-              </span>
-              <div className="line-clamp-2 break-words text-foreground">
-                {formatValue(columnId, row[columnId])}
-              </div>
+      {rows.map(({ id, row }, index) => {
+        const rowActions = getRowActions(row)
+
+        return (
+          <article
+            aria-selected={isSelected(id)}
+            className={cn(
+              'grid min-w-0 gap-3 border-b border-border bg-surface px-3 py-2.5 last:border-b-0 xl:grid-cols-[var(--report-grid-template)] xl:items-center',
+              isSelected(id) && 'bg-primary/5',
+            )}
+            key={id}
+          >
+            <div className="flex min-w-0 items-start xl:items-center">
+              <ListSelectionCheckbox
+                checked={isSelected(id)}
+                label={`Select report row ${index + 1}`}
+                onChange={(selected) => onSelect(id, selected)}
+              />
             </div>
-          ))}
-        </article>
-      ))}
+            {columns.map((columnId) => (
+              <div className="min-w-0 text-sm" key={columnId}>
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-normal text-muted xl:hidden">
+                  {fieldLabel(columnId)}
+                </span>
+                <div className="line-clamp-2 break-words text-foreground">
+                  {formatValue(columnId, row[columnId])}
+                </div>
+              </div>
+            ))}
+            <div className="min-w-0 text-sm">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-normal text-muted xl:hidden">
+                Related
+              </span>
+              {rowActions.length ? (
+                <div className="flex min-w-0 flex-wrap gap-1.5">
+                  {rowActions.map((action) => (
+                    <Button
+                      key={action.key}
+                      size="sm"
+                      title={`Open ${action.label}`}
+                      type="button"
+                      variant="secondary"
+                      onClick={() => onOpenAction(action.path)}
+                    >
+                      <ExternalLink className="mr-2 size-4" />
+                      {action.label}
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <Badge tone="neutral">No direct link</Badge>
+              )}
+            </div>
+          </article>
+        )
+      })}
     </div>
   )
 }
@@ -815,24 +1015,46 @@ export function ReportsPage({
   mode?: ReportsPageMode
 }) {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialExportId = searchParams.get('exportId') ?? ''
   const canExport = usePermission('reports:export')
+  const canReadCustomers = usePermission('customers:read')
+  const canReadOrders = usePermission('orders:read')
+  const canReadPayments = usePermission('payments:read')
+  const canReadPayouts = usePermission('payouts:read')
+  const canReadVendors = usePermission('vendors:read')
   const [reportType, setReportType] = useState<AdminReportType>(initialReportType)
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [city, setCity] = useState('')
-  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>([])
-  const [selectedCategories, setSelectedCategories] = useState<LookupOption[]>([])
-  const [selectedCustomers, setSelectedCustomers] = useState<LookupOption[]>([])
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
-  const [limit, setLimit] = useState('20')
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get('dateFrom') ?? '')
+  const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') ?? '')
+  const [city, setCity] = useState(() => searchParams.get('city') ?? '')
+  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>(() =>
+    readLookupOptions(searchParams, 'vendorId', 'vendorLabel'),
+  )
+  const [selectedCategories, setSelectedCategories] = useState<LookupOption[]>(() =>
+    readLookupOptions(searchParams, 'categoryId', 'categoryLabel'),
+  )
+  const [selectedCustomers, setSelectedCustomers] = useState<LookupOption[]>(() =>
+    reportSupportsCustomerFilter(initialReportType)
+      ? readLookupOptions(searchParams, 'customerId', 'customerLabel')
+      : [],
+  )
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(() =>
+    readReportStatuses(searchParams, initialReportType),
+  )
+  const [limit, setLimit] = useState(() => searchParams.get('limit') ?? '20')
   const [rowSearch, setRowSearch] = useState('')
-  const [format, setFormat] = useState<ReportExportFormat>('CSV')
+  const [format, setFormat] = useState<ReportExportFormat>(() =>
+    readReportFormat(searchParams),
+  )
   const [reason, setReason] = useState('')
-  const [selectedExportId, setSelectedExportId] = useState('')
-  const [trackedExportIds, setTrackedExportIds] = useState<string[]>([])
+  const [selectedExportId, setSelectedExportId] = useState(initialExportId)
+  const [trackedExportIds, setTrackedExportIds] = useState<string[]>(() =>
+    initialExportId ? [initialExportId] : [],
+  )
   const [trackingExportId, setTrackingExportId] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
+  const [exportPanelOpen, setExportPanelOpen] = useState(() => Boolean(initialExportId))
   const [filtersCollapsed, setFiltersCollapsed] = useState(false)
   const [visibleColumnsByReport, setVisibleColumnsByReport] = useState<
     Partial<Record<AdminReportType, string[]>>
@@ -840,6 +1062,7 @@ export function ReportsPage({
   const [columnWidths, setColumnWidths] =
     useState<ReportColumnWidths>(loadReportColumnWidths)
   const columnsMenuRef = useRef<HTMLDivElement | null>(null)
+  const exportPanelRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     try {
@@ -879,6 +1102,22 @@ export function ReportsPage({
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [columnsOpen])
+
+  useEffect(() => {
+    if (!exportPanelOpen) return undefined
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setExportPanelOpen(false)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [exportPanelOpen])
 
   const activeReport = reportCatalog[reportType]
   const categoryIds = useMemo(
@@ -981,6 +1220,22 @@ export function ReportsPage({
     }),
     [columnWidths, reportType, visibleColumns],
   )
+  const rowHandoffAccess = useMemo(
+    () => ({
+      canReadCustomers,
+      canReadOrders,
+      canReadPayments,
+      canReadPayouts,
+      canReadVendors,
+    }),
+    [
+      canReadCustomers,
+      canReadOrders,
+      canReadPayments,
+      canReadPayouts,
+      canReadVendors,
+    ],
+  )
   const exportErrorMessage = exportQuery.error ? mapApiError(exportQuery.error) : undefined
   const reportErrorMessage = reportQuery.error ? mapApiError(reportQuery.error) : undefined
   const reasonError =
@@ -1005,6 +1260,30 @@ export function ReportsPage({
       limit !== '20',
   )
 
+  const clearSeededReportParams = () => {
+    const seededKeys = [
+      'categoryId',
+      'categoryLabel',
+      'city',
+      'customerId',
+      'customerLabel',
+      'dateFrom',
+      'dateTo',
+      'exportId',
+      'format',
+      'limit',
+      'status',
+      'vendorId',
+      'vendorLabel',
+    ]
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    seededKeys.forEach((key) => nextParams.delete(key))
+    setSearchParams(nextParams, { replace: true })
+  }
+
   const rememberExport = (exportId: string) => {
     const trimmedId = exportId.trim()
 
@@ -1013,6 +1292,7 @@ export function ReportsPage({
     }
 
     setSelectedExportId(trimmedId)
+    setExportPanelOpen(true)
     setTrackedExportIds((current) => [
       trimmedId,
       ...current.filter((item) => item !== trimmedId),
@@ -1044,6 +1324,7 @@ export function ReportsPage({
     : null
 
   const selectReportType = (nextReportType: AdminReportType) => {
+    clearSeededReportParams()
     setReportType(nextReportType)
     setSelectedStatuses([])
     setRowSearch('')
@@ -1091,7 +1372,12 @@ export function ReportsPage({
     rememberExport(exportId)
   }
 
+  const openReportRowAction = (path: string) => {
+    navigate(path)
+  }
+
   const clearFilters = () => {
+    clearSeededReportParams()
     setDateFrom('')
     setDateTo('')
     setCity('')
@@ -1455,7 +1741,7 @@ export function ReportsPage({
             )}
           </aside>
 
-          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
+          <main id="report-rows" className="scroll-mt-4 flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
               <div>
                 <h2 className="text-base font-semibold text-foreground">
@@ -1463,7 +1749,7 @@ export function ReportsPage({
                 </h2>
                 <p className="text-sm text-muted">
                   {reportData
-                    ? `${filteredRows.length} visible of ${reportData.rowCount} rows`
+                    ? `${filteredRows.length} visible rows of ${reportData.rowCount} report rows`
                     : activeReport.description}
                 </p>
               </div>
@@ -1493,6 +1779,23 @@ export function ReportsPage({
                   >
                     <ExternalLink className="mr-2 size-4" />
                     Detail
+                  </Button>
+                ) : null}
+                {canExport ? (
+                  <Button
+                    aria-expanded={exportPanelOpen}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setExportPanelOpen(true)}
+                  >
+                    <Eye className="mr-2 size-4" />
+                    Exports
+                    {trackedExportIds.length ? (
+                      <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
+                        {trackedExportIds.length}
+                      </span>
+                    ) : null}
                   </Button>
                 ) : null}
                 <div className="relative" ref={columnsMenuRef}>
@@ -1655,6 +1958,9 @@ export function ReportsPage({
                           </button>
                         </div>
                       ))}
+                      <div className="flex min-w-0 items-center justify-end">
+                        <span>Related</span>
+                      </div>
                     </div>
                     <ListSelectionToolbar
                       allVisibleSelected={reportSelection.allVisibleSelected}
@@ -1666,7 +1972,11 @@ export function ReportsPage({
 
                     <ReportRowsTable
                       columns={visibleColumns}
+                      getRowActions={(row) =>
+                        buildReportRowHandoffs(row, rowHandoffAccess)
+                      }
                       isSelected={reportSelection.isSelected}
+                      onOpenAction={openReportRowAction}
                       rows={selectableRows}
                       onSelect={reportSelection.setItemSelected}
                     />
@@ -1677,61 +1987,93 @@ export function ReportsPage({
           </main>
         </section>
 
-        {canExport ? (
-          <section className="shrink-0 space-y-3 rounded-[0.875rem] border border-border bg-surface p-3 shadow-surface">
-            <div className="flex flex-wrap items-end justify-between gap-3">
+      </div>
+
+      {canExport && exportPanelOpen ? (
+        <div className="fixed inset-0 z-[90]">
+          <button
+            aria-label="Close exports"
+            className="absolute inset-0 bg-foreground/20"
+            type="button"
+            onClick={() => setExportPanelOpen(false)}
+          />
+          <aside
+            aria-label="Report exports"
+            aria-modal="true"
+            className="absolute inset-y-0 right-0 flex w-full max-w-[34rem] flex-col border-l border-border bg-surface shadow-surface"
+            ref={exportPanelRef}
+            role="dialog"
+          >
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3">
               <div>
                 <h2 className="text-base font-semibold text-foreground">Exports</h2>
                 <p className="text-sm text-muted">Track and download queued report files.</p>
               </div>
-              <div className="flex min-w-[min(100%,28rem)] flex-1 items-end gap-2 md:flex-none">
-                <label className="min-w-0 flex-1 space-y-1">
-                  <span className="text-xs font-semibold text-muted">Export ID</span>
-                  <Input
-                    className="h-10"
-                    value={trackingExportId}
-                    onChange={(event) => setTrackingExportId(event.target.value)}
-                  />
-                </label>
-                <Button size="sm" title="Track export" variant="secondary" onClick={trackExport}>
-                  <Eye className="mr-2 size-4" />
-                  Track
-                </Button>
-              </div>
+              <button
+                aria-label="Close exports"
+                className="btn-icon"
+                title="Close"
+                type="button"
+                onClick={() => setExportPanelOpen(false)}
+              >
+                <X className="size-4" />
+              </button>
             </div>
 
-            {trackedExportIds.length ? (
-              <div className="flex flex-wrap gap-2">
-                {trackedExportIds.map((exportId) => (
-                  <button
-                    className={cn(
-                      'rounded-[0.75rem] border px-3 py-2 text-sm font-semibold transition',
-                      exportId === selectedExportId
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-surface-muted/50 text-foreground hover:border-primary/60',
-                    )}
-                    title={exportId}
-                    key={exportId}
-                    type="button"
-                    onClick={() => setSelectedExportId(exportId)}
-                  >
-                    {compactId(exportId)}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+              <div className="rounded-[0.875rem] border border-border bg-surface-muted/35 p-3">
+                <div className="flex items-end gap-2">
+                  <label className="min-w-0 flex-1 space-y-1">
+                    <span className="text-xs font-semibold text-muted">Export ID</span>
+                    <Input
+                      className="h-10"
+                      value={trackingExportId}
+                      onChange={(event) => setTrackingExportId(event.target.value)}
+                    />
+                  </label>
+                  <Button size="sm" title="Track export" variant="secondary" onClick={trackExport}>
+                    <Eye className="mr-2 size-4" />
+                    Track
+                  </Button>
+                </div>
 
-            <ExportStatusPanel
-              errorMessage={exportErrorMessage}
-              exportData={activeExportData}
-              isError={exportQuery.isError}
-              isLoading={exportQuery.isLoading || exportQuery.isFetching}
-              onOpenDownload={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
-              onRefresh={() => void exportQuery.refetch()}
-            />
-          </section>
-        ) : null}
-      </div>
+                {trackedExportIds.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {trackedExportIds.map((exportId) => (
+                      <button
+                        className={cn(
+                          'rounded-[0.75rem] border px-3 py-2 text-sm font-semibold transition',
+                          exportId === selectedExportId
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border bg-surface text-foreground hover:border-primary/60',
+                        )}
+                        title={exportId}
+                        key={exportId}
+                        type="button"
+                        onClick={() => setSelectedExportId(exportId)}
+                      >
+                        {compactId(exportId)}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <ExportStatusPanel
+                errorMessage={exportErrorMessage}
+                exportData={activeExportData}
+                isError={exportQuery.isError}
+                isLoading={exportQuery.isLoading || exportQuery.isFetching}
+                onOpenDetail={(exportId) =>
+                  navigate(`${routePaths.reports}/exports/${exportId}`)
+                }
+                onOpenDownload={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
+                onRefresh={() => void exportQuery.refetch()}
+              />
+            </div>
+          </aside>
+        </div>
+      ) : null}
     </PageContainer>
   )
 }

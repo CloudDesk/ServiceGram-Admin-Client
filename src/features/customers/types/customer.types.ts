@@ -38,6 +38,27 @@ export interface CustomerProfileUpdatePayload {
   reason: string
 }
 
+export interface CustomerAddressPayload {
+  label?: string
+  contactName?: string
+  contactMobile?: string
+  addressLine1?: string
+  addressLine2?: string
+  landmark?: string
+  city?: string
+  state?: string
+  pincode?: string
+  latitude?: number
+  longitude?: number
+  zoneId?: string | null
+  isDefault?: boolean
+  reason: string
+}
+
+export interface CustomerAddressReasonPayload {
+  reason: string
+}
+
 export interface AdminCustomerZone {
   zoneId: string
   city: string
@@ -128,6 +149,92 @@ export interface AdminCustomerRecentOrder {
   updatedAt: string
 }
 
+export type AdminCustomerRelatedVendorRelationshipFilter =
+  | 'ALL'
+  | 'SAVED'
+  | 'ORDERED'
+  | 'BOTH'
+
+export type AdminCustomerRelatedVendorRelationshipType =
+  | 'SAVED'
+  | 'ORDERED'
+  | 'SAVED_AND_ORDERED'
+
+export type AdminCustomerRelatedVendorStatus =
+  | 'PENDING'
+  | 'ACTIVE'
+  | 'SUSPENDED'
+  | 'INACTIVE'
+
+export interface AdminCustomerRelatedVendorsQueryParams {
+  page?: number
+  limit?: number
+  search?: string
+  relationship?: AdminCustomerRelatedVendorRelationshipFilter
+  vendorStatus?: AdminCustomerRelatedVendorStatus
+  categoryId?: string
+  city?: string
+}
+
+export interface AdminCustomerRelatedVendor {
+  vendor: {
+    vendorId: string
+    publicVendorId: string
+    shopName: string
+    ownerName: string
+    mobileNumber: string
+    vendorStatus: AdminCustomerRelatedVendorStatus
+    onboardingStatus: string
+    city: string
+    zone: AdminCustomerZone | null
+    category: AdminCustomerRecentOrderCategory | null
+  }
+  relationship: {
+    type: AdminCustomerRelatedVendorRelationshipType
+    isSaved: boolean
+    savedVendorId: string | null
+    savedAt: string | null
+    lastInteractionAt: string | null
+  }
+  orderSummary: {
+    totalOrders: number
+    activeOrders: number
+    deliveredOrders: number
+    cancelledOrders: number
+    totalOrderValuePaise: number
+    currency: string
+    lastOrderAt: string | null
+    latestOrder: {
+      orderId: string
+      publicOrderId: string
+      orderStatus: string
+      paymentStatus: string | null
+      finalPricePaise: number | null
+      priceEstimatePaise: number | null
+      createdAt: string
+      updatedAt: string
+    } | null
+  }
+  warnings: string[]
+  availableActions: string[]
+  nextRecommendedAction: string | null
+}
+
+export interface AdminCustomerRelatedVendorsSummary {
+  total: number
+  saved: number
+  ordered: number
+  savedAndOrdered: number
+  activeVendors: number
+  inactiveOrBlockedVendors: number
+  activeOrders: number
+  totalOrders: number
+  totalOrderValuePaise: number
+  currency: string
+  byRelationship: Record<AdminCustomerRelatedVendorRelationshipType, number>
+  byVendorStatus: Record<AdminCustomerRelatedVendorStatus, number>
+}
+
 export interface AdminCustomerNote {
   noteId: string
   adminId: string | null
@@ -205,10 +312,23 @@ export interface AdminCustomersListResponse
   summary: AdminCustomersSummary
 }
 
+export interface AdminCustomerRelatedVendorsResponse
+  extends AdminCustomerApiResponse<AdminCustomerRelatedVendor[]> {
+  data: AdminCustomerRelatedVendor[]
+  pagination: AdminCustomersPagination
+  summary: AdminCustomerRelatedVendorsSummary
+}
+
 export type AdminCustomerDetailResponse =
   AdminCustomerApiResponse<AdminCustomerDetail>
 export type UpdateCustomerProfileResponse =
   AdminCustomerApiResponse<AdminCustomerListItem>
+export type CustomerAddressResponse =
+  AdminCustomerApiResponse<AdminCustomerAddress>
+export type DeleteCustomerAddressResponse = AdminCustomerApiResponse<{
+  addressId: string
+  deleted: boolean
+}>
 export type AddCustomerNoteResponse = AdminCustomerApiResponse<AdminCustomerNote>
 export type BlockCustomerResponse =
   AdminCustomerApiResponse<AdminCustomerListItem>

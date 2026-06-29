@@ -1,7 +1,8 @@
-import { buildApiUrl } from '../../../config/api'
+import { buildApiUrl } from "../../../config/api";
 import {
   ORDER_ADD_NOTE_PATH,
   ORDER_CANCEL_PATH,
+  ORDER_CUSTOMER_LIST_PATH,
   ORDER_CONFIRM_DELIVERY_OTP_PATH,
   ORDER_DETAIL_PATH,
   ORDER_GENERATE_DELIVERY_OTP_PATH,
@@ -9,9 +10,10 @@ import {
   ORDER_PROOF_UPLOAD_INTENT_PATH,
   ORDER_REFUND_PATH,
   ORDER_UPDATE_STATUS_PATH,
-} from '../../../config/orderApiPaths'
-import { apiClient } from '../../../services/apiClient'
-import { buildQueryParams } from '../../../utils/buildQueryParams'
+  ORDER_VENDOR_LIST_PATH,
+} from "../../../config/orderApiPaths";
+import { apiClient } from "../../../services/apiClient";
+import { buildQueryParams } from "../../../utils/buildQueryParams";
 import type {
   AddOrderNotePayload,
   AddOrderNoteResponse,
@@ -30,37 +32,102 @@ import type {
   InitiateOrderRefundResponse,
   UpdateOrderStatusPayload,
   UpdateOrderStatusResponse,
-} from '../types/order.types'
+} from "../types/order.types";
+
+interface ErrorEnvelope {
+  message?: string;
+  error?: string;
+  details?: {
+    fieldErrors?: {
+      field: string;
+      message: string;
+    }[];
+  };
+}
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  return (await response.json()) as T
+  const payload = (await response.json().catch(() => null)) as
+    | T
+    | ErrorEnvelope
+    | null;
+
+  if (!response.ok) {
+    const fieldMessage =
+      payload && typeof payload === "object" && "details" in payload
+        ? payload.details?.fieldErrors?.[0]?.message
+        : undefined;
+    const message =
+      payload && typeof payload === "object" && "message" in payload
+        ? payload.message
+        : undefined;
+    const error =
+      payload && typeof payload === "object" && "error" in payload
+        ? payload.error
+        : undefined;
+
+    throw new Error(fieldMessage ?? message ?? error ?? "Order request failed.");
+  }
+
+  return payload as T;
 }
 
 function postJson<TPayload>(payload: TPayload) {
   return {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
-  }
+  };
 }
 
 async function getOrderList(
   query: AdminOrdersQueryParams = {},
 ): Promise<AdminOrdersListResponse> {
-  const queryString = buildQueryParams(query)
+  const queryString = buildQueryParams(query);
   const response = await apiClient.request(
-    buildApiUrl(queryString ? `${ORDER_LIST_PATH}?${queryString}` : ORDER_LIST_PATH),
-  )
+    buildApiUrl(
+      queryString ? `${ORDER_LIST_PATH}?${queryString}` : ORDER_LIST_PATH,
+    ),
+  );
 
-  return parseJsonResponse<AdminOrdersListResponse>(response)
+  return parseJsonResponse<AdminOrdersListResponse>(response);
 }
 
-async function getOrderById(orderId: string): Promise<AdminOrderDetailResponse> {
-  const response = await apiClient.request(buildApiUrl(ORDER_DETAIL_PATH(orderId)))
+async function getVendorOrders(
+  vendorId: string,
+  query: AdminOrdersQueryParams = {},
+): Promise<AdminOrdersListResponse> {
+  const queryString = buildQueryParams(query);
+  const path = ORDER_VENDOR_LIST_PATH(vendorId);
+  const response = await apiClient.request(
+    buildApiUrl(queryString ? `${path}?${queryString}` : path),
+  );
 
-  return parseJsonResponse<AdminOrderDetailResponse>(response)
+  return parseJsonResponse<AdminOrdersListResponse>(response);
+}
+
+async function getCustomerOrders(
+  customerId: string,
+  query: AdminOrdersQueryParams = {},
+): Promise<AdminOrdersListResponse> {
+  const queryString = buildQueryParams(query);
+  const path = ORDER_CUSTOMER_LIST_PATH(customerId);
+  const response = await apiClient.request(
+    buildApiUrl(queryString ? `${path}?${queryString}` : path),
+  );
+
+  return parseJsonResponse<AdminOrdersListResponse>(response);
+}
+
+async function getOrderById(
+  orderId: string,
+): Promise<AdminOrderDetailResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(ORDER_DETAIL_PATH(orderId)),
+  );
+
+  return parseJsonResponse<AdminOrderDetailResponse>(response);
 }
 
 async function updateOrderStatus(
@@ -70,9 +137,9 @@ async function updateOrderStatus(
   const response = await apiClient.request(
     buildApiUrl(ORDER_UPDATE_STATUS_PATH(orderId)),
     postJson(payload),
-  )
+  );
 
-  return parseJsonResponse<UpdateOrderStatusResponse>(response)
+  return parseJsonResponse<UpdateOrderStatusResponse>(response);
 }
 
 async function cancelOrder(
@@ -82,9 +149,9 @@ async function cancelOrder(
   const response = await apiClient.request(
     buildApiUrl(ORDER_CANCEL_PATH(orderId)),
     postJson(payload),
-  )
+  );
 
-  return parseJsonResponse<CancelOrderResponse>(response)
+  return parseJsonResponse<CancelOrderResponse>(response);
 }
 
 async function initiateOrderRefund(
@@ -94,9 +161,9 @@ async function initiateOrderRefund(
   const response = await apiClient.request(
     buildApiUrl(ORDER_REFUND_PATH(orderId)),
     postJson(payload),
-  )
+  );
 
-  return parseJsonResponse<InitiateOrderRefundResponse>(response)
+  return parseJsonResponse<InitiateOrderRefundResponse>(response);
 }
 
 async function generateDeliveryOtp(
@@ -106,9 +173,9 @@ async function generateDeliveryOtp(
   const response = await apiClient.request(
     buildApiUrl(ORDER_GENERATE_DELIVERY_OTP_PATH(orderId)),
     postJson(payload),
-  )
+  );
 
-  return parseJsonResponse<GenerateDeliveryOtpResponse>(response)
+  return parseJsonResponse<GenerateDeliveryOtpResponse>(response);
 }
 
 async function confirmDeliveryOtp(
@@ -118,9 +185,9 @@ async function confirmDeliveryOtp(
   const response = await apiClient.request(
     buildApiUrl(ORDER_CONFIRM_DELIVERY_OTP_PATH(orderId)),
     postJson(payload),
-  )
+  );
 
-  return parseJsonResponse<ConfirmDeliveryOtpResponse>(response)
+  return parseJsonResponse<ConfirmDeliveryOtpResponse>(response);
 }
 
 async function addOrderNote(
@@ -130,9 +197,9 @@ async function addOrderNote(
   const response = await apiClient.request(
     buildApiUrl(ORDER_ADD_NOTE_PATH(orderId)),
     postJson(payload),
-  )
+  );
 
-  return parseJsonResponse<AddOrderNoteResponse>(response)
+  return parseJsonResponse<AddOrderNoteResponse>(response);
 }
 
 async function createProofUploadIntent(
@@ -142,13 +209,15 @@ async function createProofUploadIntent(
   const response = await apiClient.request(
     buildApiUrl(ORDER_PROOF_UPLOAD_INTENT_PATH(orderId)),
     postJson(payload),
-  )
+  );
 
-  return parseJsonResponse<CreateOrderProofUploadIntentResponse>(response)
+  return parseJsonResponse<CreateOrderProofUploadIntentResponse>(response);
 }
 
 export const orderService = {
   getOrderList,
+  getCustomerOrders,
+  getVendorOrders,
   getOrderById,
   updateOrderStatus,
   cancelOrder,
@@ -157,4 +226,4 @@ export const orderService = {
   confirmDeliveryOtp,
   addOrderNote,
   createProofUploadIntent,
-}
+};

@@ -1,6 +1,7 @@
 import { type FormEvent, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Send, X } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { InlineAlert } from '../../../components/feedback/InlineAlert'
 import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
@@ -43,6 +44,17 @@ const vendorOnboardingStatuses: NotificationVendorOnboardingStatus[] = [
   'REJECTED',
 ]
 const vendorStatuses: NotificationVendorStatus[] = ['PENDING', 'ACTIVE', 'SUSPENDED', 'INACTIVE']
+
+function readSearchEnum<TValue extends string>(
+  searchParams: URLSearchParams,
+  key: string,
+  allowedValues: readonly TValue[],
+  fallback: TValue,
+) {
+  const value = searchParams.get(key)
+
+  return value && allowedValues.includes(value as TValue) ? (value as TValue) : fallback
+}
 
 function parseVariables(value: string) {
   if (!value.trim()) {
@@ -236,20 +248,36 @@ function ConfirmationModal({
 export function NotificationComposerPage() {
   const can = useAuthStore((state) => state.can)
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const seededRecipientUserId = searchParams.get('recipientUserId') ?? ''
+  const seededTargetType = readSearchEnum(
+    searchParams,
+    'targetType',
+    targetTypes,
+    'USER',
+  )
+  const initialTargetType = seededRecipientUserId ? 'USER' : seededTargetType
   const [adminStatus, setAdminStatus] = useState<'' | NotificationAdminStatus>('')
   const [categoryId, setCategoryId] = useState('')
-  const [channel, setChannel] = useState<NotificationChannel>('PUSH')
+  const [channel, setChannel] = useState<NotificationChannel>(() =>
+    readSearchEnum(searchParams, 'channel', channels, 'PUSH'),
+  )
   const [customerStatus, setCustomerStatus] = useState<'' | NotificationCustomerStatus>('')
-  const [dryRun, setDryRun] = useState(true)
+  const [dryRun, setDryRun] = useState(() => initialTargetType === 'SEGMENT')
   const [formError, setFormError] = useState<string | null>(null)
   const [pendingPayload, setPendingPayload] = useState<SendNotificationPayload | null>(null)
   const [reason, setReason] = useState('')
-  const [recipientType, setRecipientType] = useState<NotificationRecipientType>('CUSTOMER')
-  const [recipientUserId, setRecipientUserId] = useState('')
+  const [recipientType, setRecipientType] = useState<NotificationRecipientType>(() =>
+    readSearchEnum(searchParams, 'recipientType', recipientTypes, 'CUSTOMER'),
+  )
+  const [recipientUserId, setRecipientUserId] = useState(seededRecipientUserId)
   const [segmentCity, setSegmentCity] = useState('')
   const [segmentLimit, setSegmentLimit] = useState('100')
-  const [targetType, setTargetType] = useState<NotificationTargetType>('USER')
-  const [templateCode, setTemplateCode] = useState('')
+  const [targetType, setTargetType] =
+    useState<NotificationTargetType>(initialTargetType)
+  const [templateCode, setTemplateCode] = useState(
+    () => searchParams.get('templateCode') ?? '',
+  )
   const [userStatus, setUserStatus] = useState<NotificationUserStatus>('ACTIVE')
   const [variablesJson, setVariablesJson] = useState('{}')
   const [vendorOnboardingStatus, setVendorOnboardingStatus] =

@@ -8,11 +8,13 @@ import {
   PAYOUT_MARK_FAILED_PATH,
   PAYOUT_MARK_PAID_PATH,
   PAYOUT_RELEASE_HOLD_PATH,
+  PAYOUT_VENDOR_LIST_PATH,
 } from '../../../config/payoutApiPaths'
 import { apiClient } from '../../../services/apiClient'
 import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
   AdminPayoutDetailResponse,
+  AdminVendorPayoutsListResponse,
   AdminPayoutsListResponse,
   AdminPayoutsQueryParams,
   ApprovePayoutPayload,
@@ -28,16 +30,28 @@ interface ErrorEnvelope {
   message?: string
   error?: string
   code?: string
+  details?: {
+    fieldErrors?: {
+      field: string
+      message: string
+    }[]
+  }
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as T | ErrorEnvelope
+  const payload = (await response.json().catch(() => null)) as
+    | T
+    | ErrorEnvelope
+    | null
 
   if (!response.ok) {
     const errorPayload =
       payload && typeof payload === 'object' ? (payload as ErrorEnvelope) : null
+    const fieldMessage = errorPayload?.details?.fieldErrors?.[0]?.message
 
-    throw new Error(errorPayload?.message ?? 'Request failed.')
+    throw new Error(
+      fieldMessage ?? errorPayload?.message ?? errorPayload?.error ?? 'Payout request failed.',
+    )
   }
 
   return payload as T
@@ -62,6 +76,19 @@ async function getPayoutList(
   )
 
   return parseJsonResponse<AdminPayoutsListResponse>(response)
+}
+
+async function getVendorPayouts(
+  vendorId: string,
+  query: AdminPayoutsQueryParams = {},
+): Promise<AdminVendorPayoutsListResponse> {
+  const queryString = buildQueryParams(query)
+  const path = PAYOUT_VENDOR_LIST_PATH(vendorId)
+  const response = await apiClient.request(
+    buildApiUrl(queryString ? `${path}?${queryString}` : path),
+  )
+
+  return parseJsonResponse<AdminVendorPayoutsListResponse>(response)
 }
 
 async function createPayout(
@@ -143,6 +170,7 @@ async function markPayoutFailed(
 
 export const payoutService = {
   getPayoutList,
+  getVendorPayouts,
   createPayout,
   getPayoutById,
   approvePayout,

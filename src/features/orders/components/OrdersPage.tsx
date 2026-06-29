@@ -5,13 +5,16 @@ import {
   ChevronLeft,
   ChevronRight,
   CreditCard,
+  FileUp,
   MessageSquarePlus,
   Package,
   RefreshCcw,
   RotateCcw,
   ShieldCheck,
   SlidersHorizontal,
+  Store,
   Truck,
+  UserRound,
 } from 'lucide-react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -36,6 +39,7 @@ import { Skeleton } from '../../../components/ui/Skeleton'
 import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
+import { usePermission } from '../../../hooks/usePermission'
 import type { LookupOption } from '../../../types/lookup.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -56,6 +60,7 @@ import type {
   AdminOrderPaymentStatus,
   AdminOrdersPagination,
   AdminOrdersQueryParams,
+  AdminOrdersSummary,
   AdminOrderStatus,
   AdminOrderSummary,
 } from '../types/order.types'
@@ -310,7 +315,7 @@ function visibleRecommendedAction(order: AdminOrderSummary) {
 function hasOrderAction(order: AdminOrderSummary, action: string) {
   return order.availableActions
     .map((availableAction) => availableAction.toUpperCase())
-    .includes(action)
+    .includes(action.toUpperCase())
 }
 
 function statusFromRecommendedAction(action: string) {
@@ -333,7 +338,17 @@ function mapRecommendedAction(order: AdminOrderSummary): OrderActionSelection | 
 
   if (!action) return null
 
-  if (action === 'ADD_NOTE') return { kind: 'ADD_NOTE' }
+  if (action === 'ADD_NOTE' && hasOrderAction(order, 'ADD_NOTE')) {
+    return { kind: 'ADD_NOTE' }
+  }
+
+  if (
+    action === 'CREATE_PROOF_UPLOAD_INTENT' &&
+    hasOrderAction(order, 'CREATE_PROOF_UPLOAD_INTENT')
+  ) {
+    return { kind: 'CREATE_PROOF_UPLOAD_INTENT' }
+  }
+
   if (action === 'CANCEL' && hasOrderAction(order, 'CANCEL')) return { kind: 'CANCEL' }
   if (
     action === 'INITIATE_REFUND' &&
@@ -358,11 +373,20 @@ function mapRecommendedAction(order: AdminOrderSummary): OrderActionSelection | 
 
   const targetStatus = statusFromRecommendedAction(action)
 
-  if (targetStatus && hasOrderAction(order, 'UPDATE_STATUS')) {
+  if (targetStatus && hasOrderAction(order, `MARK_${targetStatus}`)) {
     return { kind: 'UPDATE_STATUS', targetStatus }
   }
 
   return null
+}
+
+function canRunOrderAction(
+  action: OrderActionSelection,
+  canRefundPayments: boolean,
+  canUpdateOrders: boolean,
+) {
+  if (action.kind === 'INITIATE_REFUND') return canRefundPayments
+  return canUpdateOrders
 }
 
 function primaryActionLabel(order: AdminOrderSummary) {
@@ -611,37 +635,66 @@ function OrderPagination({
 }
 
 function OrderRow({
+  canReadCustomers,
+  canReadVendors,
+  canRefundPayments,
+  canUpdateOrders,
   isSelected,
   isSubmitting,
+  onOpenCustomer,
   onOpenAction,
   onSelect,
   onViewDetails,
+  onOpenVendor,
   order,
   visibleColumns,
 }: {
+  canReadCustomers: boolean
+  canReadVendors: boolean
+  canRefundPayments: boolean
+  canUpdateOrders: boolean
   isSelected: boolean
   isSubmitting: boolean
+  onOpenCustomer: (order: AdminOrderSummary) => void
   onOpenAction: (order: AdminOrderSummary, selection: OrderActionSelection) => void
   onSelect: (order: AdminOrderSummary, selected: boolean) => void
   onViewDetails: (order: AdminOrderSummary) => void
+  onOpenVendor: (order: AdminOrderSummary) => void
   order: AdminOrderSummary
   visibleColumns: OrderColumnId[]
 }) {
   const recommendedAction = mapRecommendedAction(order)
+  const primaryAction =
+    recommendedAction &&
+    canRunOrderAction(recommendedAction, canRefundPayments, canUpdateOrders)
+      ? recommendedAction
+      : null
   const showColumn = (columnId: OrderColumnId) => visibleColumns.includes(columnId)
   const value = orderDisplayValue(order)
-  const showAddNoteAction = recommendedAction?.kind !== 'ADD_NOTE'
+  const showAddNoteAction =
+    canUpdateOrders &&
+    hasOrderAction(order, 'ADD_NOTE') &&
+    primaryAction?.kind !== 'ADD_NOTE'
   const showCancelAction =
-    hasOrderAction(order, 'CANCEL') && recommendedAction?.kind !== 'CANCEL'
+    canUpdateOrders &&
+    hasOrderAction(order, 'CANCEL') &&
+    primaryAction?.kind !== 'CANCEL'
   const showRefundAction =
+    canRefundPayments &&
     hasOrderAction(order, 'INITIATE_REFUND') &&
-    recommendedAction?.kind !== 'INITIATE_REFUND'
+    primaryAction?.kind !== 'INITIATE_REFUND'
   const showDeliveryOtpAction =
+    canUpdateOrders &&
     hasOrderAction(order, 'GENERATE_DELIVERY_OTP') &&
-    recommendedAction?.kind !== 'GENERATE_DELIVERY_OTP'
+    primaryAction?.kind !== 'GENERATE_DELIVERY_OTP'
   const showConfirmDeliveryOtpAction =
+    canUpdateOrders &&
     hasOrderAction(order, 'CONFIRM_DELIVERY_OTP') &&
-    recommendedAction?.kind !== 'CONFIRM_DELIVERY_OTP'
+    primaryAction?.kind !== 'CONFIRM_DELIVERY_OTP'
+  const showProofUploadAction =
+    canUpdateOrders &&
+    hasOrderAction(order, 'CREATE_PROOF_UPLOAD_INTENT') &&
+    primaryAction?.kind !== 'CREATE_PROOF_UPLOAD_INTENT'
 
   return (
     <article
@@ -705,7 +758,25 @@ function OrderRow({
 
       {showColumn('customer') ? (
         <div className="space-y-1 text-sm">
-          <p className="font-medium text-foreground">{order.customer.fullName}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate font-medium text-foreground">
+              {order.customer.fullName}
+            </p>
+            {canReadCustomers ? (
+              <button
+                aria-label={`Open customer ${order.customer.fullName}`}
+                className="btn-icon size-7"
+                title="Open customer"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onOpenCustomer(order)
+                }}
+              >
+                <UserRound className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
           <p className="text-xs text-muted">
             {order.customer.mobileNumber ?? 'No mobile'}
           </p>
@@ -717,7 +788,25 @@ function OrderRow({
 
       {showColumn('vendor') ? (
         <div className="space-y-1 text-sm">
-          <p className="font-medium text-foreground">{order.vendor.shopName}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate font-medium text-foreground">
+              {order.vendor.shopName}
+            </p>
+            {canReadVendors ? (
+              <button
+                aria-label={`Open vendor ${order.vendor.shopName}`}
+                className="btn-icon size-7"
+                title="Open vendor"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onOpenVendor(order)
+                }}
+              >
+                <Store className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
           <p className="text-xs text-muted">{order.vendor.publicVendorId}</p>
           <p className="truncate text-xs text-muted">
             {order.vendor.zone?.zoneName ?? order.vendor.city}
@@ -802,18 +891,18 @@ function OrderRow({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-        {recommendedAction ? (
+        {primaryAction ? (
           <Button
             disabled={isSubmitting}
             size="sm"
             type="button"
-            variant={recommendedAction.kind === 'CANCEL' ? 'danger' : 'primary'}
+            variant={primaryAction.kind === 'CANCEL' ? 'danger' : 'primary'}
             onClick={(event) => {
               event.stopPropagation()
-              onOpenAction(order, recommendedAction)
+              onOpenAction(order, primaryAction)
             }}
           >
-            {recommendedAction.kind === 'ADD_NOTE' ? (
+            {primaryAction.kind === 'ADD_NOTE' ? (
               <MessageSquarePlus className="mr-2 size-4" />
             ) : (
               <ArrowUpRight className="mr-2 size-4" />
@@ -896,18 +985,44 @@ function OrderRow({
             <ShieldCheck className="size-4" />
           </button>
         ) : null}
+        {showProofUploadAction ? (
+          <button
+            aria-label={`Create proof upload for ${order.publicOrderId}`}
+            className="btn-icon text-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isSubmitting}
+            title="Proof upload"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenAction(order, { kind: 'CREATE_PROOF_UPLOAD_INTENT' })
+            }}
+          >
+            <FileUp className="size-4" />
+          </button>
+        ) : null}
       </div>
     </article>
   )
 }
 
+function countOrderStatuses(
+  summary: AdminOrdersSummary | undefined,
+  statuses: AdminOrderStatus[],
+) {
+  if (!summary) return 0
+
+  return statuses.reduce(
+    (total, status) => total + (summary.byOrderStatus[status] ?? 0),
+    0,
+  )
+}
+
 function buildMetrics(
-  orders: AdminOrderSummary[],
+  summary: AdminOrdersSummary | undefined,
   pagination?: AdminOrdersPagination,
 ) {
-  const attention = orders.filter(orderNeedsAttention).length
-  const inProgress = orders.filter((order) =>
-    [
+  const attention = summary?.needsAttention ?? 0
+  const inProgress = countOrderStatuses(summary, [
       'PICKUP_SCHEDULED',
       'PICKED_UP_FROM_CUSTOMER',
       'HANDED_OVER_TO_VENDOR',
@@ -916,11 +1031,9 @@ function buildMetrics(
       'SERVICE_COMPLETED',
       'COLLECTED_FROM_VENDOR',
       'OUT_FOR_DELIVERY',
-    ].includes(order.orderStatus),
-  ).length
-  const paymentReview = orders.filter((order) =>
-    ['PENDING', 'FAILED', 'COD_PENDING'].includes(order.paymentStatus),
-  ).length
+  ])
+  const paymentReview = summary?.paymentReview ?? 0
+  const matchingOrders = pagination?.totalItems ?? summary?.total ?? 0
 
   return [
     {
@@ -942,63 +1055,55 @@ function buildMetrics(
       tone: paymentReview ? ('warning' as const) : ('success' as const),
     },
     {
-      label: 'Visible orders',
-      value: String(pagination?.totalItems ?? orders.length),
+      label: 'Matching orders',
+      value: String(matchingOrders),
       meta: 'Matching current filters',
       tone: 'info' as const,
     },
   ]
 }
 
-function buildQueueItems(orders: AdminOrderSummary[]) {
+function buildQueueItems(summary: AdminOrdersSummary | undefined) {
   return [
     {
       key: 'all' as const,
       label: 'All orders',
-      count: orders.length,
+      count: summary?.total ?? 0,
     },
     {
       key: 'attention' as const,
       label: 'Price review',
-      count: orders.filter(
-        (order) => order.orderStatus === 'PRICE_REVISION_PENDING_CUSTOMER',
-      ).length,
+      count: countOrderStatuses(summary, ['PRICE_REVISION_PENDING_CUSTOMER']),
     },
     {
       key: 'acceptance' as const,
       label: 'Vendor acceptance',
-      count: orders.filter(
-        (order) => order.orderStatus === 'VENDOR_ACCEPTANCE_PENDING',
-      ).length,
+      count: countOrderStatuses(summary, ['VENDOR_ACCEPTANCE_PENDING']),
     },
     {
       key: 'inProgress' as const,
       label: 'In progress',
-      count: orders.filter((order) => order.orderStatus === 'SERVICE_IN_PROGRESS')
-        .length,
+      count: countOrderStatuses(summary, ['SERVICE_IN_PROGRESS']),
     },
     {
       key: 'delivery' as const,
       label: 'Delivery',
-      count: orders.filter((order) => order.orderStatus === 'OUT_FOR_DELIVERY')
-        .length,
+      count: countOrderStatuses(summary, ['OUT_FOR_DELIVERY']),
     },
     {
       key: 'payment' as const,
       label: 'Payment review',
-      count: orders.filter((order) =>
-        ['PENDING', 'FAILED', 'COD_PENDING'].includes(order.paymentStatus),
-      ).length,
+      count: summary?.paymentReview ?? 0,
     },
     {
       key: 'completed' as const,
       label: 'Completed',
-      count: orders.filter((order) => order.orderStatus === 'DELIVERED').length,
+      count: countOrderStatuses(summary, ['DELIVERED']),
     },
     {
       key: 'cancelled' as const,
       label: 'Cancelled',
-      count: orders.filter((order) => order.orderStatus === 'CANCELLED').length,
+      count: countOrderStatuses(summary, ['CANCELLED']),
     },
   ]
 }
@@ -1006,6 +1111,10 @@ function buildQueueItems(orders: AdminOrderSummary[]) {
 export function OrdersPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const canReadCustomers = usePermission('customers:read')
+  const canReadVendors = usePermission('vendors:read')
+  const canRefundPayments = usePermission('payments:refund')
+  const canUpdateOrders = usePermission('orders:update_status')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
   const [search, setSearch] = useState('')
@@ -1203,8 +1312,52 @@ export function OrdersPage() {
     queryFn: () => orderService.getOrderList(query),
   })
 
+  const queueSummaryQuery = useMemo<AdminOrdersQueryParams>(
+    () => ({
+      page: 1,
+      limit: 1,
+      search: search.trim() || undefined,
+      city: city.trim() || undefined,
+      categoryId: categoryIds.length > 0 ? categoryIds : undefined,
+      customerId: customerIds.length > 0 ? customerIds : undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      orderStatus:
+        queue === 'all' && selectedOrderStatuses.length > 0
+          ? selectedOrderStatuses
+          : undefined,
+      paymentMethod:
+        selectedPaymentMethods.length > 0 ? selectedPaymentMethods : undefined,
+      paymentStatus:
+        queue === 'all' && selectedPaymentStatuses.length > 0
+          ? selectedPaymentStatuses
+          : undefined,
+      vendorId: vendorIds.length > 0 ? vendorIds : undefined,
+    }),
+    [
+      categoryIds,
+      city,
+      customerIds,
+      dateFrom,
+      dateTo,
+      queue,
+      search,
+      selectedOrderStatuses,
+      selectedPaymentMethods,
+      selectedPaymentStatuses,
+      vendorIds,
+    ],
+  )
+
+  const queueSummaryResultQuery = useQuery({
+    queryKey: ['orders-summary', queueSummaryQuery],
+    queryFn: () => orderService.getOrderList(queueSummaryQuery),
+  })
+
   const orders = ordersQuery.data?.data ?? []
   const pagination = ordersQuery.data?.pagination
+  const currentSummary = ordersQuery.data?.summary
+  const queueSummary = queueSummaryResultQuery.data?.summary
   const orderSelection = useListSelection(orders, (order) => order.orderId)
   const isInitialLoading = ordersQuery.isLoading && !ordersQuery.data
   const isRefreshing = ordersQuery.isFetching && Boolean(ordersQuery.data)
@@ -1212,8 +1365,8 @@ export function OrdersPage() {
     ? 'Refreshing now'
     : formatRefreshTime(ordersQuery.dataUpdatedAt)
 
-  const metrics = buildMetrics(orders, pagination)
-  const queueItems = buildQueueItems(orders)
+  const metrics = buildMetrics(currentSummary, pagination)
+  const queueItems = buildQueueItems(queueSummary)
   const selectedCategoryLabel =
     selectedCategories.length === 1 ? selectedCategories[0]?.label : ''
 
@@ -1308,10 +1461,26 @@ export function OrdersPage() {
     navigate(`${routePaths.orders}/${order.orderId}`)
   }
 
+  const viewCustomer = (order: AdminOrderSummary) => {
+    if (!canReadCustomers) return
+
+    navigate(`${routePaths.customers}/${order.customer.customerId}`)
+  }
+
+  const viewVendor = (order: AdminOrderSummary) => {
+    if (!canReadVendors) return
+
+    navigate(`${routePaths.vendors}/${order.vendor.vendorId}`)
+  }
+
   const openAction = (
     order: AdminOrderSummary,
     selection: OrderActionSelection,
   ) => {
+    if (!canRunOrderAction(selection, canRefundPayments, canUpdateOrders)) {
+      return
+    }
+
     setActionError(null)
     setActionTarget({ action: selection, order })
   }
@@ -1392,12 +1561,24 @@ export function OrdersPage() {
         })
       }
 
-      throw new Error('Unsupported order action from list view.')
+      if (!values.purpose || !values.fileName || !values.mimeType || !values.sizeBytes) {
+        throw new Error('Proof upload file details are required.')
+      }
+
+      return orderService.createProofUploadIntent(order.orderId, {
+        purpose: values.purpose,
+        fileName: values.fileName,
+        mimeType: values.mimeType,
+        sizeBytes: values.sizeBytes,
+      })
     },
     onMutate: () => setActionError(null),
     onSuccess: (_data, variables) => {
       setActionTarget(null)
       void queryClient.invalidateQueries({ queryKey: ['orders'] })
+      void queryClient.invalidateQueries({ queryKey: ['orders-summary'] })
+      void queryClient.invalidateQueries({ queryKey: ['manual-logistics'] })
+      void queryClient.invalidateQueries({ queryKey: ['manual-logistics-summary'] })
       void queryClient.invalidateQueries({
         queryKey: ['order-detail', variables.target.order.orderId],
       })
@@ -1882,12 +2063,18 @@ export function OrdersPage() {
                     <div>
                       {orders.map((order) => (
                         <OrderRow
+                          canReadCustomers={canReadCustomers}
+                          canReadVendors={canReadVendors}
+                          canRefundPayments={canRefundPayments}
+                          canUpdateOrders={canUpdateOrders}
                           isSelected={orderSelection.isSelected(order.orderId)}
                           isSubmitting={actionMutation.isPending}
                           key={order.orderId}
                           order={order}
                           visibleColumns={visibleColumns}
                           onOpenAction={openAction}
+                          onOpenCustomer={viewCustomer}
+                          onOpenVendor={viewVendor}
                           onSelect={(selectedOrder, selected) =>
                             orderSelection.setItemSelected(
                               selectedOrder.orderId,

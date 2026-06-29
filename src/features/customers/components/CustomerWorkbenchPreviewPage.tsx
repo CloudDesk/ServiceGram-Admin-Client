@@ -5,6 +5,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Clock3,
   CreditCard,
   Eye,
@@ -12,10 +13,12 @@ import {
   Mail,
   MapPin,
   MessageSquarePlus,
+  Package,
   Phone,
   RefreshCcw,
   Search,
   ShieldAlert,
+  Store,
   UserCheck,
   UsersRound,
   WalletCards,
@@ -34,6 +37,7 @@ import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
+import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -70,6 +74,14 @@ interface ActionTarget {
   customer: AdminCustomerListItem
 }
 
+interface CustomerWorkbenchPermissions {
+  canCreditWallet: boolean
+  canReadAudit: boolean
+  canReadOrders: boolean
+  canReadPayments: boolean
+  canUpdateCustomer: boolean
+}
+
 interface MetricCardProps {
   Icon: MetricIcon
   label: string
@@ -99,6 +111,25 @@ function formatDateSafe(value: string | null | undefined) {
 
 function formatPaise(value: number) {
   return formatMoney(value / 100)
+}
+
+function buildCustomerDetailPath(
+  customer: AdminCustomerListItem,
+  section?: string,
+) {
+  const hash = section ? `#${section}` : ''
+
+  return `${routePaths.customers}/${customer.customerId}${hash}`
+}
+
+function buildCustomerAuditPath(customer: AdminCustomerListItem) {
+  const params = new URLSearchParams({
+    moduleCode: 'customers',
+    entityType: 'customer',
+    entityId: customer.customerId,
+  })
+
+  return `${routePaths.audit}?${params.toString()}`
 }
 
 function isWalletAction(action: string | null | undefined) {
@@ -230,10 +261,25 @@ function mapRecommendedAction(
   return null
 }
 
-function primaryActionLabel(customer: AdminCustomerListItem) {
-  const nextRecommendedAction = visibleRecommendedAction(customer)
+function canOpenCustomerAction(
+  action: CustomerActionKind,
+  permissions: CustomerWorkbenchPermissions,
+) {
+  if (action === 'WALLET_CREDIT') {
+    return featureFlags.customerWallet && permissions.canCreditWallet
+  }
 
-  if (nextRecommendedAction) {
+  return permissions.canUpdateCustomer
+}
+
+function primaryActionLabel(
+  customer: AdminCustomerListItem,
+  permissions: CustomerWorkbenchPermissions,
+) {
+  const nextRecommendedAction = visibleRecommendedAction(customer)
+  const action = mapRecommendedAction(customer)
+
+  if (nextRecommendedAction && action && canOpenCustomerAction(action, permissions)) {
     return humanizeCode(nextRecommendedAction)
   }
 
@@ -318,25 +364,80 @@ function QueueButton({
 
 function ActionIconButton({
   children,
+  disabled,
   label,
   onClick,
 }: {
   children: ReactNode
+  disabled?: boolean
   label: string
   onClick: () => void
 }) {
   return (
     <button
       aria-label={label}
-      className="btn-icon"
+      className={cn('btn-icon', disabled && 'cursor-not-allowed opacity-50')}
+      disabled={disabled}
       title={label}
       type="button"
       onClick={(event) => {
         event.stopPropagation()
+        if (disabled) return
         onClick()
       }}
     >
       {children}
+    </button>
+  )
+}
+
+function RelatedChildLink({
+  Icon,
+  disabled,
+  label,
+  meta,
+  onOpen,
+  tone,
+  value,
+}: {
+  Icon: MetricIcon
+  disabled?: boolean
+  label: string
+  meta: string
+  onOpen: () => void
+  tone: CustomerTone
+  value: string
+}) {
+  return (
+    <button
+      className={cn(
+        'flex w-full items-center gap-3 px-3 py-3 text-left transition',
+        disabled
+          ? 'cursor-not-allowed bg-surface-muted/40 opacity-60'
+          : 'hover:bg-surface-muted',
+      )}
+      disabled={disabled}
+      type="button"
+      onClick={onOpen}
+    >
+      <span
+        className={cn(
+          'flex size-9 shrink-0 items-center justify-center rounded-[0.65rem] border',
+          toneClasses(tone),
+        )}
+      >
+        <Icon className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-foreground">
+          {label}
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-muted">{meta}</span>
+      </span>
+      <span className="flex shrink-0 items-center gap-2 text-xs font-semibold text-muted">
+        {value}
+        <ArrowUpRight className="size-3.5" />
+      </span>
     </button>
   )
 }
@@ -348,6 +449,7 @@ function CustomerDirectoryRow({
   onSelect,
   onToggleChecked,
   onViewDetails,
+  permissions,
   selected,
 }: {
   checked: boolean
@@ -356,16 +458,20 @@ function CustomerDirectoryRow({
   onSelect: (customer: AdminCustomerListItem) => void
   onToggleChecked: (customerId: string) => void
   onViewDetails: (customer: AdminCustomerListItem) => void
+  permissions: CustomerWorkbenchPermissions
   selected: boolean
 }) {
   const activity = lastActivity(customer)
   const health = customerHealth(customer)
   const recommendedAction = mapRecommendedAction(customer)
+  const canRunRecommendedAction = recommendedAction
+    ? canOpenCustomerAction(recommendedAction, permissions)
+    : false
   const nextRecommendedAction = visibleRecommendedAction(customer)
   const visibleSignals = visibleWarnings(customer.warnings).slice(0, 2)
 
   const handlePrimaryAction = () => {
-    if (recommendedAction) {
+    if (recommendedAction && canRunRecommendedAction) {
       onOpenAction(customer, recommendedAction)
       return
     }
@@ -510,7 +616,7 @@ function CustomerDirectoryRow({
             }}
           >
             <ArrowUpRight className="mr-2 size-4" />
-            {primaryActionLabel(customer)}
+            {primaryActionLabel(customer, permissions)}
           </Button>
           <ActionIconButton
             label={`Open details for ${customer.fullName}`}
@@ -519,7 +625,12 @@ function CustomerDirectoryRow({
             <Eye className="size-4" />
           </ActionIconButton>
           <ActionIconButton
-            label={`Add note for ${customer.fullName}`}
+            disabled={!permissions.canUpdateCustomer}
+            label={
+              permissions.canUpdateCustomer
+                ? `Add note for ${customer.fullName}`
+                : 'Requires customers:update'
+            }
             onClick={() => onOpenAction(customer, 'ADD_NOTE')}
           >
             <MessageSquarePlus className="size-4" />
@@ -527,6 +638,7 @@ function CustomerDirectoryRow({
           {featureFlags.customerWallet &&
           customer.availableActions.includes('WALLET_CREDIT') ? (
             <ActionIconButton
+              disabled={!permissions.canCreditWallet}
               label={`Apply wallet credit for ${customer.fullName}`}
               onClick={() => onOpenAction(customer, 'WALLET_CREDIT')}
             >
@@ -535,7 +647,12 @@ function CustomerDirectoryRow({
           ) : null}
           {customer.availableActions.includes('BLOCK') ? (
             <ActionIconButton
-              label={`Block ${customer.fullName}`}
+              disabled={!permissions.canUpdateCustomer}
+              label={
+                permissions.canUpdateCustomer
+                  ? `Block ${customer.fullName}`
+                  : 'Requires customers:update'
+              }
               onClick={() => onOpenAction(customer, 'BLOCK')}
             >
               <Ban className="size-4" />
@@ -543,7 +660,12 @@ function CustomerDirectoryRow({
           ) : null}
           {customer.availableActions.includes('UNBLOCK') ? (
             <ActionIconButton
-              label={`Unblock ${customer.fullName}`}
+              disabled={!permissions.canUpdateCustomer}
+              label={
+                permissions.canUpdateCustomer
+                  ? `Unblock ${customer.fullName}`
+                  : 'Requires customers:update'
+              }
               onClick={() => onOpenAction(customer, 'UNBLOCK')}
             >
               <UserCheck className="size-4" />
@@ -674,7 +796,7 @@ function buildMetrics({
       Icon: ShieldAlert,
       label: 'At risk',
       value: String(atRiskCount),
-      meta: 'Visible rows needing action',
+      meta: 'Current page needing action',
       tone: 'warning' as const,
     },
     ...(featureFlags.customerWallet
@@ -694,6 +816,27 @@ function buildMetrics({
 export function CustomerWorkbenchPreviewPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const canCreditWallet = usePermission('customers:wallet_credit')
+  const canReadAudit = usePermission('audit:read')
+  const canReadOrders = usePermission('orders:read')
+  const canReadPayments = usePermission('payments:read')
+  const canUpdateCustomer = usePermission('customers:update')
+  const permissions = useMemo<CustomerWorkbenchPermissions>(
+    () => ({
+      canCreditWallet,
+      canReadAudit,
+      canReadOrders,
+      canReadPayments,
+      canUpdateCustomer,
+    }),
+    [
+      canCreditWallet,
+      canReadAudit,
+      canReadOrders,
+      canReadPayments,
+      canUpdateCustomer,
+    ],
+  )
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
   const [queue, setQueue] = useState<QueueKey>('all')
@@ -761,7 +904,7 @@ export function CustomerWorkbenchPreviewPage() {
     },
     {
       key: 'atRisk' as const,
-      label: 'At risk',
+      label: 'At risk page',
       count: customers.filter(customerNeedsAttention).length,
     },
     {
@@ -776,7 +919,7 @@ export function CustomerWorkbenchPreviewPage() {
       ? [
           {
             key: 'walletCredit' as const,
-            label: 'Wallet credit',
+            label: 'Wallet page',
             count: customers.filter(
               (customer) => customer.walletSummary.creditBalancePaise > 0,
             ).length,
@@ -812,11 +955,13 @@ export function CustomerWorkbenchPreviewPage() {
 
   const openAction = (customer: AdminCustomerListItem, kind: CustomerActionKind) => {
     setActionError(null)
+    if (!canOpenCustomerAction(kind, permissions)) return
+
     setActionTarget({ action: { kind }, customer })
   }
 
-  const viewDetails = (customer: AdminCustomerListItem) => {
-    navigate(`${routePaths.customers}/${customer.customerId}`)
+  const viewDetails = (customer: AdminCustomerListItem, section?: string) => {
+    navigate(buildCustomerDetailPath(customer, section))
   }
 
   const toggleSelectedRow = (customerId: string) => {
@@ -855,6 +1000,10 @@ export function CustomerWorkbenchPreviewPage() {
       values: CustomerActionFormValues
     }) => {
       const { customer, action } = target
+
+      if (!canOpenCustomerAction(action.kind, permissions)) {
+        throw new Error('Your role does not include the required customer permission.')
+      }
 
       if (action.kind === 'ADD_NOTE') {
         if (!values.note) throw new Error('Internal note is required.')
@@ -1125,21 +1274,22 @@ export function CustomerWorkbenchPreviewPage() {
                   />
                 </div>
               ) : (
-                <div className="max-h-[calc(100vh-var(--spacing-topbar)-21rem)] min-h-[22rem] overflow-y-auto overflow-x-hidden">
-                  {visibleCustomers.map((customer) => (
-                    <CustomerDirectoryRow
-                      checked={selectedRows.includes(customer.customerId)}
-                      customer={customer}
-                      key={customer.customerId}
-                      selected={customer.customerId === selectedCustomer?.customerId}
-                      onOpenAction={openAction}
-                      onSelect={(nextCustomer) =>
-                        setSelectedCustomerId(nextCustomer.customerId)
-                      }
-                      onToggleChecked={toggleSelectedRow}
-                      onViewDetails={viewDetails}
-                    />
-                  ))}
+                  <div className="max-h-[calc(100vh-var(--spacing-topbar)-21rem)] min-h-[22rem] overflow-y-auto overflow-x-hidden">
+                    {visibleCustomers.map((customer) => (
+                      <CustomerDirectoryRow
+                        checked={selectedRows.includes(customer.customerId)}
+                        customer={customer}
+                        key={customer.customerId}
+                        selected={customer.customerId === selectedCustomer?.customerId}
+                        onOpenAction={openAction}
+                        onSelect={(nextCustomer) =>
+                          setSelectedCustomerId(nextCustomer.customerId)
+                        }
+                        onToggleChecked={toggleSelectedRow}
+                        onViewDetails={viewDetails}
+                        permissions={permissions}
+                      />
+                    ))}
                 </div>
               )}
             </div>
@@ -1223,88 +1373,233 @@ export function CustomerWorkbenchPreviewPage() {
                     : 'border-success/25 bg-success/10 text-success',
                 )}
               >
-                <div className="flex items-start gap-2">
-                  <ShieldAlert className="mt-0.5 size-4" />
-                  <div>
-                    <p className="text-sm font-semibold">
-                      {selectedCustomerWarning
-                        ? signalLabel(selectedCustomerWarning)
-                        : 'No active warning'}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 opacity-80">
-                      {selectedCustomerNextRecommendedAction
-                        ? `Recommended: ${humanizeCode(selectedCustomerNextRecommendedAction)}`
-                        : customerNeedsAttention(selectedCustomer)
-                          ? 'Review the customer before high-impact action.'
-                          : 'No operational action is queued for this customer.'}
-                    </p>
+                  <div className="flex items-start gap-2">
+                    <ShieldAlert className="mt-0.5 size-4" />
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {selectedCustomerWarning
+                          ? signalLabel(selectedCustomerWarning)
+                          : 'No active warning'}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 opacity-80">
+                        {selectedCustomerNextRecommendedAction
+                          ? `Recommended: ${humanizeCode(selectedCustomerNextRecommendedAction)}`
+                          : customerNeedsAttention(selectedCustomer)
+                            ? 'Review the customer before high-impact action.'
+                            : 'No operational action is queued for this customer.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 border-t border-border pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">
+                        Related child views
+                      </h3>
+                      <p className="mt-1 text-xs text-muted">
+                        Open the full detail workspace at the exact child section.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                      onClick={() => viewDetails(selectedCustomer)}
+                    >
+                      <ArrowUpRight className="mr-2 size-4" />
+                      Full detail
+                    </Button>
+                  </div>
+                  <div className="mt-3 divide-y divide-border overflow-hidden rounded-[0.75rem] border border-border">
+                    <RelatedChildLink
+                      Icon={MapPin}
+                      label="Addresses"
+                      meta={
+                        selectedCustomer.zone
+                          ? `${selectedCustomer.zone.zoneName} · ${selectedCustomer.zone.city}`
+                          : selectedCustomer.city || 'No zone mapped'
+                      }
+                      tone={selectedCustomer.zone ? 'success' : 'warning'}
+                      value={selectedCustomer.zone ? 'Mapped' : 'Review'}
+                      onOpen={() => viewDetails(selectedCustomer, 'addresses')}
+                    />
+                    <RelatedChildLink
+                      Icon={Package}
+                      disabled={!permissions.canReadOrders}
+                      label="Orders"
+                      meta={
+                        permissions.canReadOrders
+                          ? `${selectedCustomer.orderSummary.activeOrders} active · ${formatPaise(selectedCustomer.orderSummary.lifetimeSpendPaise)} lifetime`
+                          : 'Requires orders:read'
+                      }
+                      tone={
+                        !permissions.canReadOrders
+                          ? 'neutral'
+                          : selectedCustomer.orderSummary.activeOrders > 0
+                            ? 'warning'
+                            : 'info'
+                      }
+                      value={
+                        permissions.canReadOrders
+                          ? `${selectedCustomer.orderSummary.totalOrders} total`
+                          : 'Locked'
+                      }
+                      onOpen={() => viewDetails(selectedCustomer, 'orders')}
+                    />
+                    <RelatedChildLink
+                      Icon={Store}
+                      label="Related vendors"
+                      meta="Saved vendors and vendors from customer order history"
+                      tone="info"
+                      value="Open"
+                      onOpen={() => viewDetails(selectedCustomer, 'related-vendors')}
+                    />
+                    <RelatedChildLink
+                      Icon={CreditCard}
+                      disabled={!permissions.canReadPayments}
+                      label="Payments and refunds"
+                      meta={
+                        permissions.canReadPayments
+                          ? 'Payment, refund, and finance review child views'
+                          : 'Requires payments:read'
+                      }
+                      tone={permissions.canReadPayments ? 'info' : 'neutral'}
+                      value={permissions.canReadPayments ? 'Open' : 'Locked'}
+                      onOpen={() => viewDetails(selectedCustomer, 'finance')}
+                    />
+                    {featureFlags.customerWallet ? (
+                      <RelatedChildLink
+                        Icon={WalletCards}
+                        label="Wallet credits"
+                        meta="Credit history opens in customer detail"
+                        tone={
+                          selectedCustomer.walletSummary.creditBalancePaise > 0
+                            ? 'warning'
+                            : 'neutral'
+                        }
+                        value={formatPaise(
+                          selectedCustomer.walletSummary.creditBalancePaise,
+                        )}
+                        onOpen={() => viewDetails(selectedCustomer, 'wallet-credits')}
+                      />
+                    ) : null}
+                    <RelatedChildLink
+                      Icon={MessageSquarePlus}
+                      label="Internal notes"
+                      meta={`Last note ${formatDateSafe(selectedCustomer.noteSummary.lastNoteAt)}`}
+                      tone={
+                        selectedCustomer.noteSummary.totalNotes > 0
+                          ? 'info'
+                          : 'neutral'
+                      }
+                      value={`${selectedCustomer.noteSummary.totalNotes} notes`}
+                      onOpen={() => viewDetails(selectedCustomer, 'notes')}
+                    />
+                    <RelatedChildLink
+                      Icon={ClipboardList}
+                      disabled={!permissions.canReadAudit}
+                      label="Audit trail"
+                      meta={
+                        permissions.canReadAudit
+                          ? 'Filtered customer audit history'
+                          : 'Requires audit:read'
+                      }
+                      tone={permissions.canReadAudit ? 'info' : 'neutral'}
+                      value={permissions.canReadAudit ? 'Open' : 'Locked'}
+                      onOpen={() => navigate(buildCustomerAuditPath(selectedCustomer))}
+                    />
                   </div>
                 </div>
               </div>
-            </div>
 
             <aside className="rounded-[0.875rem] border border-border bg-surface p-4">
               <h3 className="text-sm font-semibold text-foreground">
                 Quick actions
               </h3>
-              <div className="mt-3 space-y-2">
-                <Button
-                  className="w-full justify-start"
-                  size="sm"
+                <div className="mt-3 space-y-2">
+                  <Button
+                    className="w-full justify-start"
+                    size="sm"
                   type="button"
                   variant="secondary"
-                  onClick={() => viewDetails(selectedCustomer)}
-                >
-                  <ArrowUpRight className="mr-2 size-4" />
-                  View details
-                </Button>
-                <Button
-                  className="w-full justify-start"
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => openAction(selectedCustomer, 'ADD_NOTE')}
-                >
-                  <MessageSquarePlus className="mr-2 size-4" />
-                  Add note
-                </Button>
-                {featureFlags.customerWallet &&
-                selectedCustomer.availableActions.includes('WALLET_CREDIT') ? (
+                    onClick={() => viewDetails(selectedCustomer)}
+                  >
+                    <ArrowUpRight className="mr-2 size-4" />
+                    View details
+                  </Button>
                   <Button
                     className="w-full justify-start"
+                    disabled={!permissions.canUpdateCustomer}
                     size="sm"
+                    title={
+                      permissions.canUpdateCustomer
+                        ? `Add note for ${selectedCustomer.fullName}`
+                        : 'Requires customers:update'
+                    }
                     type="button"
                     variant="secondary"
-                    onClick={() => openAction(selectedCustomer, 'WALLET_CREDIT')}
+                    onClick={() => openAction(selectedCustomer, 'ADD_NOTE')}
                   >
-                    <CreditCard className="mr-2 size-4" />
-                    Wallet credit
+                    <MessageSquarePlus className="mr-2 size-4" />
+                    Add note
                   </Button>
-                ) : null}
-                {selectedCustomer.availableActions.includes('BLOCK') ? (
-                  <Button
-                    className="w-full justify-start"
-                    size="sm"
-                    type="button"
-                    variant="danger"
-                    onClick={() => openAction(selectedCustomer, 'BLOCK')}
-                  >
-                    <Ban className="mr-2 size-4" />
-                    Block customer
-                  </Button>
-                ) : null}
-                {selectedCustomer.availableActions.includes('UNBLOCK') ? (
-                  <Button
-                    className="w-full justify-start"
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                    onClick={() => openAction(selectedCustomer, 'UNBLOCK')}
-                  >
-                    <UserCheck className="mr-2 size-4" />
-                    Unblock customer
-                  </Button>
-                ) : null}
+                  {featureFlags.customerWallet &&
+                    selectedCustomer.availableActions.includes('WALLET_CREDIT') ? (
+                    <Button
+                      className="w-full justify-start"
+                      disabled={!permissions.canCreditWallet}
+                      size="sm"
+                      title={
+                        permissions.canCreditWallet
+                          ? `Apply wallet credit for ${selectedCustomer.fullName}`
+                          : 'Requires customers:wallet_credit'
+                      }
+                      type="button"
+                      variant="secondary"
+                      onClick={() => openAction(selectedCustomer, 'WALLET_CREDIT')}
+                    >
+                      <CreditCard className="mr-2 size-4" />
+                      Wallet credit
+                    </Button>
+                  ) : null}
+                  {selectedCustomer.availableActions.includes('BLOCK') ? (
+                    <Button
+                      className="w-full justify-start"
+                      disabled={!permissions.canUpdateCustomer}
+                      size="sm"
+                      title={
+                        permissions.canUpdateCustomer
+                          ? `Block ${selectedCustomer.fullName}`
+                          : 'Requires customers:update'
+                      }
+                      type="button"
+                      variant="danger"
+                      onClick={() => openAction(selectedCustomer, 'BLOCK')}
+                    >
+                      <Ban className="mr-2 size-4" />
+                      Block customer
+                    </Button>
+                  ) : null}
+                  {selectedCustomer.availableActions.includes('UNBLOCK') ? (
+                    <Button
+                      className="w-full justify-start"
+                      disabled={!permissions.canUpdateCustomer}
+                      size="sm"
+                      title={
+                        permissions.canUpdateCustomer
+                          ? `Unblock ${selectedCustomer.fullName}`
+                          : 'Requires customers:update'
+                      }
+                      type="button"
+                      variant="secondary"
+                      onClick={() => openAction(selectedCustomer, 'UNBLOCK')}
+                    >
+                      <UserCheck className="mr-2 size-4" />
+                      Unblock customer
+                    </Button>
+                  ) : null}
               </div>
 
               <div className="mt-4 border-t border-border pt-4">

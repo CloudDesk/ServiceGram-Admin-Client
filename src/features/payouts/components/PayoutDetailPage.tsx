@@ -1,12 +1,21 @@
 import {
   ArrowUpRight,
+  CalendarClock,
   CheckCircle2,
   CircleDollarSign,
+  ClipboardList,
+  CreditCard,
+  HandCoins,
+  ListChecks,
   PauseCircle,
   RefreshCcw,
+  ReceiptText,
+  ShieldCheck,
+  Store,
+  TriangleAlert,
   XCircle,
 } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
@@ -18,7 +27,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
-import { useAuthStore } from '../../../store/authStore'
+import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -34,6 +43,26 @@ import type {
   AdminPayoutItem,
   AdminPayoutStatus,
 } from '../types/payout.types'
+
+type PayoutTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+
+const payoutSectionIds = {
+  information: 'payout-information',
+  items: 'payout-items',
+  metadata: 'payout-metadata',
+  settlement: 'payout-settlement',
+  vendor: 'payout-vendor',
+} as const
+
+type PayoutSectionId = (typeof payoutSectionIds)[keyof typeof payoutSectionIds]
+
+const payoutActionKinds: PayoutActionKind[] = [
+  'APPROVE',
+  'HOLD',
+  'RELEASE_HOLD',
+  'MARK_PAID',
+  'MARK_FAILED',
+]
 
 function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
@@ -51,7 +80,12 @@ function formatPaise(value: number | null | undefined) {
 
 function formatDateSafe(value: string | null | undefined) {
   if (!value) return 'Not available'
-  return formatDate(value, true)
+
+  try {
+    return formatDate(value, true)
+  } catch {
+    return value
+  }
 }
 
 function payoutTone(status: AdminPayoutStatus) {
@@ -77,6 +111,30 @@ function metadataText(value: unknown) {
   }
 }
 
+function isPayoutActionKind(action: string): action is PayoutActionKind {
+  return payoutActionKinds.includes(action as PayoutActionKind)
+}
+
+function canRunPayoutAction({
+  action,
+  canApprovePayouts,
+}: {
+  action: string
+  canApprovePayouts: boolean
+}) {
+  return isPayoutActionKind(action) && canApprovePayouts
+}
+
+function toneTextClass(tone: PayoutTone, neutralForeground = false) {
+  return cn(
+    tone === 'success' && 'text-success',
+    tone === 'warning' && 'text-warning',
+    tone === 'danger' && 'text-danger',
+    tone === 'info' && 'text-primary',
+    tone === 'neutral' && (neutralForeground ? 'text-foreground' : 'text-muted'),
+  )
+}
+
 function DetailField({
   label,
   value,
@@ -97,40 +155,27 @@ function DetailField({
 }
 
 function SummaryCard({
+  icon,
   label,
   meta,
   tone,
   value,
 }: {
+  icon: ReactNode
   label: string
   meta: string
-  tone: 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+  tone: PayoutTone
   value: string
 }) {
   return (
     <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <p
-        className={cn(
-          'text-xs font-semibold uppercase tracking-normal',
-          tone === 'success' && 'text-success',
-          tone === 'warning' && 'text-warning',
-          tone === 'danger' && 'text-danger',
-          tone === 'info' && 'text-primary',
-          tone === 'neutral' && 'text-muted',
-        )}
-      >
-        {label}
-      </p>
-      <p
-        className={cn(
-          'mt-3 text-2xl font-semibold tracking-normal',
-          tone === 'success' && 'text-success',
-          tone === 'warning' && 'text-warning',
-          tone === 'danger' && 'text-danger',
-          tone === 'info' && 'text-primary',
-          tone === 'neutral' && 'text-foreground',
-        )}
-      >
+      <div className="flex items-center justify-between gap-3">
+        <p className={cn('text-xs font-semibold uppercase tracking-normal', toneTextClass(tone))}>
+          {label}
+        </p>
+        <span className={toneTextClass(tone)}>{icon}</span>
+      </div>
+      <p className={cn('mt-3 text-2xl font-semibold tracking-normal', toneTextClass(tone, true))}>
         {value}
       </p>
       <p className="mt-1 text-xs text-muted">{meta}</p>
@@ -139,21 +184,33 @@ function SummaryCard({
 }
 
 function SectionShell({
+  actionNode,
   children,
   description,
+  id,
+  icon,
   title,
 }: {
-  children: React.ReactNode
+  actionNode?: ReactNode
+  children: ReactNode
   description?: string
+  id?: string
+  icon?: ReactNode
   title: string
 }) {
   return (
-    <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
-      <div className="mb-4">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        {description ? (
-          <p className="mt-1 text-sm text-muted">{description}</p>
-        ) : null}
+    <section id={id} className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            {icon ? <span className="text-primary">{icon}</span> : null}
+            <h2 className="text-base font-semibold text-foreground">{title}</h2>
+          </div>
+          {description ? (
+            <p className="mt-1 text-sm text-muted">{description}</p>
+          ) : null}
+        </div>
+        {actionNode ? <div className="shrink-0">{actionNode}</div> : null}
       </div>
       {children}
     </section>
@@ -173,8 +230,19 @@ const itemColumns: DynamicTableColumn<AdminPayoutItem>[] = [
     ),
   },
   {
+    key: 'orderState',
+    label: 'Order State',
+    minWidth: 210,
+    renderCell: (item) => (
+      <div className="flex flex-wrap gap-2">
+        <Badge tone="neutral">{humanizeCode(item.order.orderStatus)}</Badge>
+        <Badge tone="info">{humanizeCode(item.order.paymentStatus)}</Badge>
+      </div>
+    ),
+  },
+  {
     key: 'amountPaise',
-    label: 'Amount',
+    label: 'Net Item',
     align: 'right',
     minWidth: 140,
     renderCell: (item) => formatPaise(item.amountPaise),
@@ -208,6 +276,13 @@ const itemColumns: DynamicTableColumn<AdminPayoutItem>[] = [
     ),
   },
   {
+    key: 'finalPricePaise',
+    label: 'Order Value',
+    align: 'right',
+    minWidth: 140,
+    renderCell: (item) => formatPaise(item.order.finalPricePaise),
+  },
+  {
     key: 'createdAt',
     label: 'Created',
     minWidth: 170,
@@ -229,26 +304,32 @@ function HeaderStatus({ payout }: { payout: AdminPayoutDetail }) {
 
 function HeaderActions({
   canApprovePayouts,
+  canReadVendors,
   isSubmitting,
   onSelect,
   onViewVendor,
   payout,
 }: {
   canApprovePayouts: boolean
+  canReadVendors: boolean
   isSubmitting: boolean
   onSelect: (kind: PayoutActionKind) => void
   onViewVendor: () => void
   payout: AdminPayoutDetail
 }) {
-  const has = (action: string) => payout.availableActions.includes(action)
+  const has = (action: string) =>
+    payout.availableActions.includes(action) &&
+    canRunPayoutAction({ action, canApprovePayouts })
 
   return (
     <div className="flex flex-wrap justify-end gap-2">
-      <Button size="sm" type="button" variant="secondary" onClick={onViewVendor}>
-        <ArrowUpRight className="mr-2 size-4" />
-        View Vendor
-      </Button>
-      {canApprovePayouts && has('APPROVE') ? (
+      {canReadVendors ? (
+        <Button size="sm" type="button" variant="secondary" onClick={onViewVendor}>
+          <ArrowUpRight className="mr-2 size-4" />
+          View Vendor
+        </Button>
+      ) : null}
+      {has('APPROVE') ? (
         <Button
           disabled={isSubmitting}
           size="sm"
@@ -260,7 +341,7 @@ function HeaderActions({
           Approve
         </Button>
       ) : null}
-      {canApprovePayouts && has('HOLD') ? (
+      {has('HOLD') ? (
         <Button
           disabled={isSubmitting}
           size="sm"
@@ -272,7 +353,7 @@ function HeaderActions({
           Hold
         </Button>
       ) : null}
-      {canApprovePayouts && has('RELEASE_HOLD') ? (
+      {has('RELEASE_HOLD') ? (
         <Button
           disabled={isSubmitting}
           size="sm"
@@ -284,7 +365,7 @@ function HeaderActions({
           Release
         </Button>
       ) : null}
-      {canApprovePayouts && has('MARK_PAID') ? (
+      {has('MARK_PAID') ? (
         <Button
           disabled={isSubmitting}
           size="sm"
@@ -296,7 +377,7 @@ function HeaderActions({
           Mark Paid
         </Button>
       ) : null}
-      {canApprovePayouts && has('MARK_FAILED') ? (
+      {has('MARK_FAILED') ? (
         <Button
           disabled={isSubmitting}
           size="sm"
@@ -312,11 +393,235 @@ function HeaderActions({
   )
 }
 
+function RelatedRecordRow({
+  actionLabel = 'Open',
+  canOpen,
+  icon,
+  label,
+  meta,
+  onOpen,
+  value,
+}: {
+  actionLabel?: string
+  canOpen: boolean
+  icon: ReactNode
+  label: string
+  meta: string
+  onOpen?: () => void
+  value: string
+}) {
+  return (
+    <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 text-primary">{icon}</span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            {label}
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+            {value}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted">{meta}</p>
+        </div>
+      </div>
+      {canOpen && onOpen ? (
+        <Button className="shrink-0" size="sm" type="button" variant="secondary" onClick={onOpen}>
+          <ArrowUpRight className="mr-2 size-4" />
+          {actionLabel}
+        </Button>
+      ) : (
+        <Badge tone="neutral">View only</Badge>
+      )}
+    </div>
+  )
+}
+
+function RelatedRecordsPanel({
+  canReadAudit,
+  canReadVendors,
+  onNavigate,
+  onOpenSection,
+  payout,
+}: {
+  canReadAudit: boolean
+  canReadVendors: boolean
+  onNavigate: (path: string) => void
+  onOpenSection: (sectionId: PayoutSectionId) => void
+  payout: AdminPayoutDetail
+}) {
+  return (
+    <SectionShell
+      description="Primary records and child finance views attached to this payout."
+      icon={<ArrowUpRight className="size-4" />}
+      title="Related records"
+    >
+      <div className="divide-y divide-border">
+        <RelatedRecordRow
+          canOpen={canReadVendors}
+          icon={<Store className="size-4" />}
+          label="Vendor"
+          meta={`${payout.vendor.publicVendorId} · ${payout.vendor.zone?.zoneName ?? payout.vendor.city}`}
+          value={payout.vendor.shopName}
+          onOpen={() => onNavigate(`${routePaths.vendors}/${payout.vendor.vendorId}`)}
+        />
+        <RelatedRecordRow
+          actionLabel="Items"
+          canOpen
+          icon={<ReceiptText className="size-4" />}
+          label="Payout items"
+          meta={`${payout.itemSummary.itemCount} earning rows · ${formatPaise(
+            payout.itemSummary.netPayablePaise,
+          )} net`}
+          value="Order earnings"
+          onOpen={() => onOpenSection(payoutSectionIds.items)}
+        />
+        <RelatedRecordRow
+          actionLabel="Vendor payouts"
+          canOpen={canReadVendors}
+          icon={<HandCoins className="size-4" />}
+          label="Vendor payout queue"
+          meta="Filtered by this vendor id"
+          value={payout.vendor.publicVendorId}
+          onOpen={() => onNavigate(buildVendorPayoutsPath(payout))}
+        />
+        <RelatedRecordRow
+          actionLabel="Queue"
+          canOpen
+          icon={<HandCoins className="size-4" />}
+          label="Payout queue"
+          meta={`${humanizeCode(payout.status)} · ${humanizeCode(payout.payoutMethod)}`}
+          value={payout.publicPayoutId}
+          onOpen={() => onNavigate(routePaths.payouts)}
+        />
+        <RelatedRecordRow
+          actionLabel="Audit"
+          canOpen={canReadAudit}
+          icon={<ClipboardList className="size-4" />}
+          label="Audit trail"
+          meta="Filtered by module, entity type, and payout id"
+          value={payout.payoutId}
+          onOpen={() => onNavigate(buildPayoutAuditPath(payout))}
+        />
+      </div>
+    </SectionShell>
+  )
+}
+
+function buildPayoutAuditPath(payout: AdminPayoutDetail) {
+  const params = new URLSearchParams({
+    moduleCode: 'payouts',
+    entityType: 'payout',
+    entityId: payout.payoutId,
+  })
+
+  return `${routePaths.audit}?${params.toString()}`
+}
+
+function buildVendorPayoutsPath(payout: AdminPayoutDetail) {
+  const params = new URLSearchParams({
+    vendorId: payout.vendor.vendorId,
+    vendorLabel: payout.vendor.shopName,
+  })
+
+  return `${routePaths.payouts}?${params.toString()}`
+}
+
+function SignalBadgeGroup({
+  emptyLabel,
+  items,
+  tone,
+}: {
+  emptyLabel: string
+  items: string[]
+  tone: PayoutTone
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {items.length ? (
+        items.map((item) => (
+          <Badge key={item} tone={tone}>
+            {humanizeCode(item)}
+          </Badge>
+        ))
+      ) : (
+        <Badge tone="success">{emptyLabel}</Badge>
+      )}
+    </div>
+  )
+}
+
+function OperationalSignalsPanel({
+  canApprovePayouts,
+  payout,
+}: {
+  canApprovePayouts: boolean
+  payout: AdminPayoutDetail
+}) {
+  const permittedActions = payout.availableActions.filter((action) =>
+    canRunPayoutAction({ action, canApprovePayouts }),
+  )
+
+  return (
+    <SectionShell
+      description="Backend finance signals and actions permitted for this admin."
+      icon={<TriangleAlert className="size-4" />}
+      title="Signals"
+    >
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            Warnings
+          </p>
+          <SignalBadgeGroup
+            emptyLabel="No warnings"
+            items={payout.warnings}
+            tone="warning"
+          />
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            Available to you
+          </p>
+          <SignalBadgeGroup
+            emptyLabel="No permitted actions"
+            items={permittedActions}
+            tone="neutral"
+          />
+        </div>
+        <DetailField
+          label="Recommended next"
+          value={humanizeCode(payout.nextRecommendedAction)}
+        />
+      </div>
+    </SectionShell>
+  )
+}
+
+function LifecycleCheckpointsPanel({ payout }: { payout: AdminPayoutDetail }) {
+  return (
+    <SectionShell
+      description="Concrete payout lifecycle timestamps returned by the API."
+      icon={<CalendarClock className="size-4" />}
+      title="Lifecycle checkpoints"
+    >
+      <div className="grid gap-3">
+        <DetailField label="Created" value={formatDateSafe(payout.createdAt)} />
+        <DetailField label="Updated" value={formatDateSafe(payout.updatedAt)} />
+        <DetailField label="Approved At" value={formatDateSafe(payout.approvedAt)} />
+        <DetailField label="Paid At" value={formatDateSafe(payout.paidAt)} />
+      </div>
+    </SectionShell>
+  )
+}
+
 export function PayoutDetailPage() {
   const { payoutId } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const canApprovePayouts = useAuthStore((state) => state.can('payouts:approve'))
+  const canApprovePayouts = usePermission('payouts:approve')
+  const canReadAudit = usePermission('audit:read')
+  const canReadOrders = usePermission('orders:read')
+  const canReadVendors = usePermission('vendors:read')
   const [selectedAction, setSelectedAction] =
     useState<PayoutActionSelection | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -329,6 +634,16 @@ export function PayoutDetailPage() {
   })
   const payout = payoutQuery.data?.data
   const metadata = metadataText(payout?.metadata)
+
+  const openSection = (sectionId: PayoutSectionId) => {
+    const section = document.getElementById(sectionId)
+
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    if (section) {
+      window.history.replaceState(null, '', `#${sectionId}`)
+    }
+  }
 
   const mutation = useMutation({
     mutationFn: async ({
@@ -447,6 +762,7 @@ export function PayoutDetailPage() {
         actionNode={
           <HeaderActions
             canApprovePayouts={canApprovePayouts}
+            canReadVendors={canReadVendors}
             isSubmitting={mutation.isPending}
             payout={payout}
             onSelect={(kind) => setSelectedAction({ kind, payout })}
@@ -468,47 +784,40 @@ export function PayoutDetailPage() {
 
       <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
+          icon={<CircleDollarSign className="size-4" />}
           label="Payout amount"
           meta={payout.currency}
           tone={payout.status === 'PAID' ? 'success' : 'info'}
           value={formatPaise(payout.totalAmountPaise)}
         />
         <SummaryCard
+          icon={<HandCoins className="size-4" />}
           label="Net payable"
           meta={`${payout.itemSummary.itemCount} payout items`}
           tone="info"
           value={formatPaise(payout.itemSummary.netPayablePaise)}
         />
         <SummaryCard
+          icon={<CreditCard className="size-4" />}
           label="Gross value"
           meta={`Commission ${formatPaise(payout.itemSummary.commissionAmountPaise)}`}
           tone="neutral"
           value={formatPaise(payout.itemSummary.grossAmountPaise)}
         />
         <SummaryCard
+          icon={<TriangleAlert className="size-4" />}
           label="Warnings"
-          meta={payout.nextRecommendedAction ?? 'No recommended action'}
+          meta={humanizeCode(payout.nextRecommendedAction)}
           tone={payout.warnings.length > 0 ? 'danger' : 'neutral'}
           value={String(payout.warnings.length)}
         />
       </section>
 
-      {payout.warnings.length > 0 ? (
-        <section className="rounded-[0.875rem] border border-warning/25 bg-surface p-4 shadow-surface">
-          <h2 className="text-base font-semibold text-warning">Warning signals</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {payout.warnings.map((warning) => (
-              <Badge key={warning} tone="warning">
-                {humanizeCode(warning)}
-              </Badge>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
+      <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <SectionShell
-          description="Finance lifecycle and settlement metadata for this payout."
+          description="Finance lifecycle, settlement method, and payout identifiers."
+          id={payoutSectionIds.information}
+          icon={<HandCoins className="size-4" />}
           title="Payout Information"
         >
           <div className="grid gap-3 sm:grid-cols-2">
@@ -518,28 +827,54 @@ export function PayoutDetailPage() {
             <DetailField label="Method" value={humanizeCode(payout.payoutMethod)} />
             <DetailField label="Amount" value={formatPaise(payout.totalAmountPaise)} />
             <DetailField label="UTR Reference" value={payout.utrReference} />
-            <DetailField label="Created" value={formatDateSafe(payout.createdAt)} />
-            <DetailField label="Updated" value={formatDateSafe(payout.updatedAt)} />
+            <DetailField label="Currency" value={payout.currency} />
           </div>
         </SectionShell>
 
-        <SectionShell
-          description="Current review, hold, and payment state."
-          title="Settlement"
-        >
-          <div className="grid gap-3">
-            <DetailField label="Next Action" value={humanizeCode(payout.nextRecommendedAction)} />
-            <DetailField label="Approved By" value={payout.approvedByAdminId} />
-            <DetailField label="Approved At" value={formatDateSafe(payout.approvedAt)} />
-            <DetailField label="Paid At" value={formatDateSafe(payout.paidAt)} />
-            <DetailField label="Hold Reason" value={payout.holdReason} />
-            <DetailField label="Failure Reason" value={payout.failureReason} />
-          </div>
-        </SectionShell>
+        <div className="space-y-3">
+          <RelatedRecordsPanel
+            canReadAudit={canReadAudit}
+            canReadVendors={canReadVendors}
+            payout={payout}
+            onNavigate={navigate}
+            onOpenSection={openSection}
+          />
+          <OperationalSignalsPanel
+            canApprovePayouts={canApprovePayouts}
+            payout={payout}
+          />
+        </div>
       </section>
 
-      <section className="grid gap-3 xl:grid-cols-3">
-        <SectionShell title="Vendor">
+      <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <SectionShell
+          description="Current review, hold, payment, and failure state."
+          id={payoutSectionIds.settlement}
+          icon={<ShieldCheck className="size-4" />}
+          title="Settlement"
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <DetailField label="Approved By" value={payout.approvedByAdminId} />
+            <DetailField label="UTR Reference" value={payout.utrReference} />
+            <DetailField label="Hold Reason" value={payout.holdReason} />
+            <DetailField label="Failure Reason" value={payout.failureReason} />
+            <DetailField
+              label="Next Recommended"
+              value={humanizeCode(payout.nextRecommendedAction)}
+            />
+          </div>
+        </SectionShell>
+
+        <LifecycleCheckpointsPanel payout={payout} />
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-2">
+        <SectionShell
+          description="Vendor context used for payout access and finance review."
+          id={payoutSectionIds.vendor}
+          icon={<Store className="size-4" />}
+          title="Vendor"
+        >
           <div className="grid gap-3">
             <DetailField label="Shop" value={payout.vendor.shopName} />
             <DetailField label="Public Vendor ID" value={payout.vendor.publicVendorId} />
@@ -556,33 +891,26 @@ export function PayoutDetailPage() {
           </div>
         </SectionShell>
 
-        <SectionShell title="Item Summary">
-          <div className="grid gap-3">
+        <SectionShell
+          description="Gross, deductions, adjustments, and net payable totals."
+          icon={<ListChecks className="size-4" />}
+          title="Item summary"
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
             <DetailField label="Items" value={payout.itemSummary.itemCount} />
             <DetailField label="Gross" value={formatPaise(payout.itemSummary.grossAmountPaise)} />
             <DetailField label="Commission" value={formatPaise(payout.itemSummary.commissionAmountPaise)} />
             <DetailField label="Logistics" value={formatPaise(payout.itemSummary.logisticsDeductionPaise)} />
             <DetailField label="Adjustment" value={formatPaise(payout.itemSummary.adjustmentAmountPaise)} />
-          </div>
-        </SectionShell>
-
-        <SectionShell title="Actions">
-          <div className="grid gap-3">
-            <DetailField
-              label="Available Actions"
-              value={
-                payout.availableActions.length > 0
-                  ? payout.availableActions.map(humanizeCode).join(', ')
-                  : null
-              }
-            />
-            <DetailField label="Next Recommended" value={humanizeCode(payout.nextRecommendedAction)} />
+            <DetailField label="Net Payable" value={formatPaise(payout.itemSummary.netPayablePaise)} />
           </div>
         </SectionShell>
       </section>
 
       <SectionShell
         description="Order earnings included in this payout batch."
+        id={payoutSectionIds.items}
+        icon={<ReceiptText className="size-4" />}
         title="Payout Items"
       >
         {payout.items.length === 0 ? (
@@ -592,16 +920,37 @@ export function PayoutDetailPage() {
           />
         ) : (
           <DynamicTable
+            actionColumnLabel="Order Actions"
+            actionColumnMinWidth={140}
             columns={itemColumns}
             data={payout.items}
             getRowId={(row) => row.payoutItemId}
+            rowActions={(item) => [
+              {
+                icon: <ArrowUpRight className="size-4" />,
+                isVisible: canReadOrders,
+                key: 'open-order',
+                label: 'Open Order',
+                onClick: () => navigate(`${routePaths.orders}/${item.order.orderId}`),
+                variant: 'ghost',
+              },
+            ]}
             title="Payout Items"
+            onRowClick={
+              canReadOrders
+                ? (item) => navigate(`${routePaths.orders}/${item.order.orderId}`)
+                : undefined
+            }
           />
         )}
       </SectionShell>
 
       {metadata ? (
-        <SectionShell title="Metadata">
+        <SectionShell
+          description="Provider/task metadata returned by the payout API."
+          id={payoutSectionIds.metadata}
+          title="Metadata"
+        >
           <pre className="max-h-80 overflow-auto rounded-[0.75rem] border border-border bg-surface-muted/35 p-3 text-xs text-foreground">
             {metadata}
           </pre>

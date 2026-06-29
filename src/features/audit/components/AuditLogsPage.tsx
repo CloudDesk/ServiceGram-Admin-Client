@@ -6,16 +6,21 @@ import type {
 } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
+  ArrowUpRight,
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Eye,
   FileJson,
+  Filter,
   RefreshCcw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
   UserRound,
+  X,
 } from 'lucide-react'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Badge } from '../../../components/ui/Badge'
@@ -31,7 +36,9 @@ import {
 } from '../../../components/ui/ListSelection'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
+import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
+import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -224,6 +231,39 @@ function logMatchesSearch(log: AuditLog, search: string) {
   ].some((value) => valueToSearchText(value).toLowerCase().includes(term))
 }
 
+function normalizeEntityType(value: string | null | undefined) {
+  return (value ?? '').trim().toLowerCase()
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function changedTopLevelKeys(oldValue: unknown, newValue: unknown) {
+  if (!isPlainRecord(oldValue) && !isPlainRecord(newValue)) return []
+
+  const oldRecord = isPlainRecord(oldValue) ? oldValue : {}
+  const newRecord = isPlainRecord(newValue) ? newValue : {}
+  const keys = new Set([...Object.keys(oldRecord), ...Object.keys(newRecord)])
+
+  return Array.from(keys)
+    .filter(
+      (key) => JSON.stringify(oldRecord[key] ?? null) !== JSON.stringify(newRecord[key] ?? null),
+    )
+    .sort((left, right) => left.localeCompare(right))
+}
+
+function snapshotSummary(value: unknown) {
+  if (value === null || value === undefined) return 'No snapshot'
+  if (Array.isArray(value)) return `${value.length} array item${value.length === 1 ? '' : 's'}`
+  if (typeof value === 'object') {
+    const keys = Object.keys(value as Record<string, unknown>)
+    return `${keys.length} field${keys.length === 1 ? '' : 's'}`
+  }
+
+  return typeof value
+}
+
 function getDateRangeError(dateFrom: string, dateTo: string) {
   if (!dateFrom || !dateTo) return null
 
@@ -399,6 +439,142 @@ function AuditPaginationControls({
   )
 }
 
+interface AuditEntityAccess {
+  adminUsers: boolean
+  content: boolean
+  customers: boolean
+  influencers: boolean
+  notifications: boolean
+  orders: boolean
+  payments: boolean
+  payouts: boolean
+  reels: boolean
+  reports: boolean
+  roles: boolean
+  vendors: boolean
+}
+
+interface RelatedEntityLink {
+  label: string
+  path: string
+  canOpen: boolean
+}
+
+function getRelatedEntityLink(
+  log: AuditLog,
+  access: AuditEntityAccess,
+): RelatedEntityLink | null {
+  if (!log.entityId) return null
+
+  const entityType = normalizeEntityType(log.entityType)
+
+  if (entityType === 'admin_user') {
+    return {
+      canOpen: access.adminUsers,
+      label: 'Admin user',
+      path: `${routePaths.adminUsers}/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'role') {
+    return {
+      canOpen: access.roles,
+      label: 'Role',
+      path: `${routePaths.roles}/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'customer') {
+    return {
+      canOpen: access.customers,
+      label: 'Customer',
+      path: `${routePaths.customers}/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'vendor') {
+    return {
+      canOpen: access.vendors,
+      label: 'Vendor',
+      path: `${routePaths.vendors}/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'order') {
+    return {
+      canOpen: access.orders,
+      label: 'Order',
+      path: `${routePaths.orders}/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'payment') {
+    return {
+      canOpen: access.payments,
+      label: 'Payment',
+      path: `${routePaths.payments}/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'refund') {
+    return {
+      canOpen: access.payments,
+      label: 'Refund',
+      path: `${routePaths.refunds}/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'payout') {
+    return {
+      canOpen: access.payouts,
+      label: 'Payout',
+      path: `${routePaths.payouts}/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'reel') {
+    return {
+      canOpen: access.reels,
+      label: 'Reel',
+      path: `${routePaths.reels}/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'customer_influencer_profile') {
+    return {
+      canOpen: access.influencers,
+      label: 'Influencer profile',
+      path: `${routePaths.influencers}/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'notification_event') {
+    return {
+      canOpen: access.notifications,
+      label: 'Notification event',
+      path: `${routePaths.notifications}/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'content_page') {
+    return {
+      canOpen: access.content,
+      label: 'Content page',
+      path: `${routePaths.content}/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'report_export') {
+    return {
+      canOpen: access.reports,
+      label: 'Report export',
+      path: `${routePaths.reports}/exports/${log.entityId}`,
+    }
+  }
+
+  return null
+}
+
 function JsonBlock({ title, value }: { title: string; value: unknown }) {
   return (
     <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface p-3">
@@ -412,10 +588,283 @@ function JsonBlock({ title, value }: { title: string; value: unknown }) {
   )
 }
 
+function AuditDetailField({
+  label,
+  value,
+}: {
+  label: string
+  value: ReactNode
+}) {
+  return (
+    <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface-muted/35 px-3 py-3">
+      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+        {label}
+      </p>
+      <div className="mt-2 break-words text-sm font-medium text-foreground">
+        {value ?? 'Not available'}
+      </div>
+    </div>
+  )
+}
+
+function AuditDetailSection({
+  actionNode,
+  children,
+  description,
+  title,
+}: {
+  actionNode?: ReactNode
+  children: ReactNode
+  description?: string
+  title: string
+}) {
+  return (
+    <section className="rounded-[0.875rem] border border-border bg-surface p-4">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold text-foreground">{title}</h3>
+          {description ? (
+            <p className="mt-1 text-sm leading-5 text-muted">{description}</p>
+          ) : null}
+        </div>
+        {actionNode ? <div className="shrink-0">{actionNode}</div> : null}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function AuditDetailModal({
+  log,
+  onClose,
+  onFilterActor,
+  onFilterEntity,
+  onFilterModuleAction,
+  onOpenRelated,
+  onSearchRequest,
+  relatedEntityLink,
+}: {
+  log: AuditLog
+  onClose: () => void
+  onFilterActor: () => void
+  onFilterEntity: () => void
+  onFilterModuleAction: () => void
+  onOpenRelated: () => void
+  onSearchRequest: () => void
+  relatedEntityLink: RelatedEntityLink | null
+}) {
+  const changedKeys = changedTopLevelKeys(log.oldValue, log.newValue)
+  const actorLabel =
+    log.actor.adminName ??
+    log.actor.email ??
+    log.actor.actorAdminId ??
+    log.actor.actorUserId ??
+    humanizeCode(log.actor.actorType)
+  const hasActorFilter = Boolean(log.actor.actorAdminId || log.actor.actorUserId)
+
+  return (
+    <div className="premium-overlay flex items-start justify-center overflow-y-auto p-3 sm:p-6 lg:items-center">
+      <div className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-[var(--shadow-overlay)] sm:max-h-[calc(100vh-3rem)]">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={moduleTone(log.moduleCode)}>
+                {humanizeCode(log.moduleCode)}
+              </Badge>
+              <Badge tone="neutral">{humanizeCode(log.actionCode)}</Badge>
+              <Badge tone={log.reason ? 'success' : 'warning'}>
+                {log.reason ? 'Reason recorded' : 'No reason'}
+              </Badge>
+            </div>
+            <h2 className="mt-3 break-words text-lg font-semibold text-foreground">
+              Audit event
+            </h2>
+            <p className="mt-1 break-all text-sm text-muted">{log.auditLogId}</p>
+          </div>
+          <button
+            aria-label="Close audit detail"
+            className="rounded-full p-2 text-muted transition hover:bg-surface-muted hover:text-foreground"
+            type="button"
+            onClick={onClose}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              icon={<ShieldCheck className="size-4 text-primary" />}
+              label="Module"
+              meta={humanizeCode(log.actionCode)}
+              value={humanizeCode(log.moduleCode)}
+            />
+            <MetricCard
+              icon={<UserRound className="size-4 text-success" />}
+              label="Actor"
+              meta={humanizeCode(log.actor.actorType)}
+              value={actorLabel}
+            />
+            <MetricCard
+              icon={<FileJson className="size-4 text-info" />}
+              label="Changed fields"
+              meta="Top-level snapshot diff"
+              value={changedKeys.length}
+            />
+            <MetricCard
+              icon={<Clock3 className="size-4 text-warning" />}
+              label="Created"
+              meta={relativeDate(log.createdAt)}
+              value={formatDate(log.createdAt, true)}
+            />
+          </section>
+
+          <section className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.55fr)]">
+            <div className="space-y-3">
+              <AuditDetailSection
+                actionNode={
+                  <Button
+                    disabled={!hasActorFilter}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={onFilterActor}
+                  >
+                    <Filter className="mr-2 size-4" />
+                    Filter actor
+                  </Button>
+                }
+                description="Actor identity returned with the audit row."
+                title="Actor"
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <AuditDetailField label="Actor type" value={humanizeCode(log.actor.actorType)} />
+                  <AuditDetailField label="Admin name" value={log.actor.adminName} />
+                  <AuditDetailField label="Email" value={log.actor.email} />
+                  <AuditDetailField label="Admin ID" value={log.actor.actorAdminId} />
+                  <AuditDetailField label="User ID" value={log.actor.actorUserId} />
+                  <AuditDetailField label="User status" value={humanizeCode(log.actor.userStatus)} />
+                </div>
+              </AuditDetailSection>
+
+              <AuditDetailSection
+                actionNode={
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      disabled={!log.entityId}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                      onClick={onFilterEntity}
+                    >
+                      <Filter className="mr-2 size-4" />
+                      Filter entity
+                    </Button>
+                    {relatedEntityLink ? (
+                      <Button
+                        disabled={!relatedEntityLink.canOpen}
+                        size="sm"
+                        type="button"
+                        onClick={onOpenRelated}
+                      >
+                        <ArrowUpRight className="mr-2 size-4" />
+                        Open
+                      </Button>
+                    ) : null}
+                  </div>
+                }
+                description="Entity context from the audit row. Some child entities do not have standalone admin detail routes."
+                title="Entity"
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <AuditDetailField label="Entity type" value={humanizeCode(log.entityType)} />
+                  <AuditDetailField label="Entity ID" value={log.entityId} />
+                  <AuditDetailField
+                    label="Related route"
+                    value={
+                      relatedEntityLink
+                        ? relatedEntityLink.canOpen
+                          ? relatedEntityLink.label
+                          : `${relatedEntityLink.label} permission required`
+                        : 'No direct route'
+                    }
+                  />
+                  <AuditDetailField label="Reason" value={log.reason} />
+                </div>
+              </AuditDetailSection>
+            </div>
+
+            <div className="space-y-3">
+              <AuditDetailSection
+                actionNode={
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={onFilterModuleAction}
+                  >
+                    <Filter className="mr-2 size-4" />
+                    Filter action
+                  </Button>
+                }
+                description="Module/action pair and request correlation."
+                title="Request"
+              >
+                <div className="grid gap-3">
+                  <AuditDetailField label="Module" value={log.moduleCode} />
+                  <AuditDetailField label="Action" value={log.actionCode} />
+                  <AuditDetailField label="Request ID" value={log.requestId} />
+                  <AuditDetailField label="IP address" value={log.ipAddress} />
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={onSearchRequest}
+                  >
+                    <Search className="mr-2 size-4" />
+                    Search request on page
+                  </Button>
+                </div>
+              </AuditDetailSection>
+
+              <AuditDetailSection
+                description="Top-level fields changed between old and new snapshots."
+                title="Change signals"
+              >
+                <div className="flex flex-wrap gap-2">
+                  {changedKeys.length ? (
+                    changedKeys.map((key) => (
+                      <Badge key={key} tone="info">
+                        {humanizeCode(key)}
+                      </Badge>
+                    ))
+                  ) : (
+                    <Badge tone="neutral">No top-level diff</Badge>
+                  )}
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <AuditDetailField label="Old snapshot" value={snapshotSummary(log.oldValue)} />
+                  <AuditDetailField label="New snapshot" value={snapshotSummary(log.newValue)} />
+                </div>
+              </AuditDetailSection>
+            </div>
+          </section>
+
+          <section className="mt-4 grid gap-3 xl:grid-cols-2">
+            <JsonBlock title="Old value" value={log.oldValue} />
+            <JsonBlock title="New value" value={log.newValue} />
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AuditRow({
   isExpanded,
   isSelected,
   log,
+  onInspect,
   onSelect,
   onToggle,
   visibleColumns,
@@ -423,6 +872,7 @@ function AuditRow({
   isExpanded: boolean
   isSelected: boolean
   log: AuditLog
+  onInspect: () => void
   onSelect: (log: AuditLog, selected: boolean) => void
   onToggle: () => void
   visibleColumns: AuditColumnId[]
@@ -475,6 +925,12 @@ function AuditRow({
       </div>
       {isExpanded ? (
         <div className="bg-surface-muted/35 px-3 pb-3">
+          <div className="flex justify-end pb-2">
+            <Button size="sm" type="button" variant="secondary" onClick={onInspect}>
+              <Eye className="mr-2 size-4" />
+              Inspect
+            </Button>
+          </div>
           <div className="grid gap-3 rounded-[0.875rem] border border-border bg-surface p-3 xl:grid-cols-2">
             <div className="space-y-2 text-sm">
               <div>
@@ -530,20 +986,45 @@ function AuditRow({
 }
 
 export function AuditLogsPage() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const canReadAdminUsers = usePermission('admin_users:read')
+  const canReadContent = usePermission('content:read')
+  const canReadCustomers = usePermission('customers:read')
+  const canReadInfluencers = usePermission('influencers:read')
+  const canReadNotifications = usePermission('notifications:read')
+  const canReadOrders = usePermission('orders:read')
+  const canReadPayments = usePermission('payments:read')
+  const canReadPayouts = usePermission('payouts:read')
+  const canReadReels = usePermission('reels:read')
+  const canReadReports = usePermission('reports:read')
+  const canReadRoles = usePermission('roles:read')
+  const canReadVendors = usePermission('vendors:read')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
-  const [moduleCode, setModuleCode] = useState('')
-  const [actionCode, setActionCode] = useState('')
-  const [entityType, setEntityType] = useState('')
-  const [entityId, setEntityId] = useState('')
-  const [actorAdminId, setActorAdminId] = useState('')
-  const [actorUserId, setActorUserId] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [search, setSearch] = useState('')
+  const [moduleCode, setModuleCode] = useState(
+    () => searchParams.get('moduleCode') ?? searchParams.get('module') ?? '',
+  )
+  const [actionCode, setActionCode] = useState(
+    () => searchParams.get('actionCode') ?? searchParams.get('action') ?? '',
+  )
+  const [entityType, setEntityType] = useState(
+    () => searchParams.get('entityType') ?? '',
+  )
+  const [entityId, setEntityId] = useState(() => searchParams.get('entityId') ?? '')
+  const [actorAdminId, setActorAdminId] = useState(
+    () => searchParams.get('actorAdminId') ?? '',
+  )
+  const [actorUserId, setActorUserId] = useState(
+    () => searchParams.get('actorUserId') ?? '',
+  )
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get('dateFrom') ?? '')
+  const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') ?? '')
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [filtersCollapsed, setFiltersCollapsed] = useState(false)
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null)
+  const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null)
   const [visibleColumns, setVisibleColumns] =
     useState<AuditColumnId[]>(defaultAuditColumns)
   const [columnWidths, setColumnWidths] =
@@ -605,6 +1086,7 @@ export function AuditLogsPage() {
   const resetToFirstPage = () => {
     setPage(1)
     setExpandedLogId(null)
+    setSelectedLog(null)
   }
 
   const query = useMemo<AuditLogsQueryParams>(
@@ -671,6 +1153,39 @@ export function AuditLogsPage() {
     }),
     [columnWidths, visibleColumns],
   )
+  const entityAccess = useMemo<AuditEntityAccess>(
+    () => ({
+      adminUsers: canReadAdminUsers,
+      content: canReadContent,
+      customers: canReadCustomers,
+      influencers: canReadInfluencers,
+      notifications: canReadNotifications,
+      orders: canReadOrders,
+      payments: canReadPayments,
+      payouts: canReadPayouts,
+      reels: canReadReels,
+      reports: canReadReports,
+      roles: canReadRoles,
+      vendors: canReadVendors,
+    }),
+    [
+      canReadAdminUsers,
+      canReadContent,
+      canReadCustomers,
+      canReadInfluencers,
+      canReadNotifications,
+      canReadOrders,
+      canReadPayments,
+      canReadPayouts,
+      canReadReels,
+      canReadReports,
+      canReadRoles,
+      canReadVendors,
+    ],
+  )
+  const selectedRelatedEntityLink = selectedLog
+    ? getRelatedEntityLink(selectedLog, entityAccess)
+    : null
 
   const startColumnResize = (
     columnId: AuditColumnId,
@@ -750,6 +1265,43 @@ export function AuditLogsPage() {
     setSearch('')
     setPage(1)
     setExpandedLogId(null)
+    setSelectedLog(null)
+  }
+
+  const applyEntityFilter = (log: AuditLog) => {
+    setEntityType(log.entityType)
+    setEntityId(log.entityId ?? '')
+    setPage(1)
+    setExpandedLogId(null)
+    setSelectedLog(null)
+  }
+
+  const applyActorFilter = (log: AuditLog) => {
+    setActorAdminId(log.actor.actorAdminId ?? '')
+    setActorUserId(log.actor.actorAdminId ? '' : log.actor.actorUserId ?? '')
+    setPage(1)
+    setExpandedLogId(null)
+    setSelectedLog(null)
+  }
+
+  const applyModuleActionFilter = (log: AuditLog) => {
+    setModuleCode(log.moduleCode)
+    setActionCode(log.actionCode)
+    setPage(1)
+    setExpandedLogId(null)
+    setSelectedLog(null)
+  }
+
+  const applyRequestSearch = (log: AuditLog) => {
+    setSearch(log.requestId)
+    setExpandedLogId(null)
+    setSelectedLog(null)
+  }
+
+  const openRelatedEntity = () => {
+    if (!selectedRelatedEntityLink?.canOpen) return
+
+    navigate(selectedRelatedEntityLink.path)
   }
 
   return (
@@ -1027,6 +1579,7 @@ export function AuditLogsPage() {
                   onChange={(nextSearch) => {
                     setSearch(nextSearch)
                     setExpandedLogId(null)
+                    setSelectedLog(null)
                   }}
                 />
                 <span
@@ -1208,6 +1761,7 @@ export function AuditLogsPage() {
                           key={log.auditLogId}
                           log={log}
                           visibleColumns={visibleColumns}
+                          onInspect={() => setSelectedLog(log)}
                           onSelect={(selectedLog, selected) =>
                             auditSelection.setItemSelected(
                               selectedLog.auditLogId,
@@ -1230,11 +1784,13 @@ export function AuditLogsPage() {
                   onPageChange={(nextPage) => {
                     setPage(nextPage)
                     setExpandedLogId(null)
+                    setSelectedLog(null)
                   }}
                   onPageSizeChange={(nextLimit) => {
                     setLimit(nextLimit)
                     setPage(1)
                     setExpandedLogId(null)
+                    setSelectedLog(null)
                   }}
                 />
               </div>
@@ -1242,6 +1798,19 @@ export function AuditLogsPage() {
           </main>
         </section>
       </div>
+
+      {selectedLog ? (
+        <AuditDetailModal
+          log={selectedLog}
+          relatedEntityLink={selectedRelatedEntityLink}
+          onClose={() => setSelectedLog(null)}
+          onFilterActor={() => applyActorFilter(selectedLog)}
+          onFilterEntity={() => applyEntityFilter(selectedLog)}
+          onFilterModuleAction={() => applyModuleActionFilter(selectedLog)}
+          onOpenRelated={openRelatedEntity}
+          onSearchRequest={() => applyRequestSearch(selectedLog)}
+        />
+      ) : null}
     </PageContainer>
   )
 }

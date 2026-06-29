@@ -9,6 +9,7 @@ import {
   REEL_REJECT_PATH,
   REEL_REMOVE_PATH,
   REEL_REQUEST_EDIT_PATH,
+  REEL_VENDOR_LIST_PATH,
 } from '../../../config/reelApiPaths'
 import { apiClient } from '../../../services/apiClient'
 import { buildQueryParams } from '../../../utils/buildQueryParams'
@@ -67,7 +68,11 @@ async function getPendingReels(
 ): Promise<AdminReelsListResponse> {
   const queryString = buildQueryParams(query)
   const response = await apiClient.request(
-    buildApiUrl(queryString ? `${REEL_PENDING_LIST_PATH}?${queryString}` : REEL_PENDING_LIST_PATH),
+    buildApiUrl(
+      queryString
+        ? `${REEL_PENDING_LIST_PATH}?${queryString}`
+        : REEL_PENDING_LIST_PATH,
+    ),
   )
 
   return parseJsonResponse<AdminReelsListResponse>(response)
@@ -78,14 +83,36 @@ async function getLiveReels(
 ): Promise<AdminReelsListResponse> {
   const queryString = buildQueryParams(query)
   const response = await apiClient.request(
-    buildApiUrl(queryString ? `${REEL_LIVE_LIST_PATH}?${queryString}` : REEL_LIVE_LIST_PATH),
+    buildApiUrl(
+      queryString
+        ? `${REEL_LIVE_LIST_PATH}?${queryString}`
+        : REEL_LIVE_LIST_PATH,
+    ),
+  )
+
+  return parseJsonResponse<AdminReelsListResponse>(response)
+}
+
+async function getVendorReels(
+  vendorId: string,
+  query: AdminReelsQueryParams = {},
+): Promise<AdminReelsListResponse> {
+  const queryString = buildQueryParams(query)
+  const response = await apiClient.request(
+    buildApiUrl(
+      queryString
+        ? `${REEL_VENDOR_LIST_PATH(vendorId)}?${queryString}`
+        : REEL_VENDOR_LIST_PATH(vendorId),
+    ),
   )
 
   return parseJsonResponse<AdminReelsListResponse>(response)
 }
 
 async function getReelById(reelId: string): Promise<AdminReelDetailResponse> {
-  const response = await apiClient.request(buildApiUrl(REEL_DETAIL_PATH(reelId)))
+  const response = await apiClient.request(
+    buildApiUrl(REEL_DETAIL_PATH(reelId)),
+  )
 
   return parseJsonResponse<AdminReelDetailResponse>(response)
 }
@@ -165,6 +192,7 @@ async function deleteReel(
 export const reelService = {
   getPendingReels,
   getLiveReels,
+  getVendorReels,
   getReelById,
   approveReel,
   rejectReel,

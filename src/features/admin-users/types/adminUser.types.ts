@@ -23,6 +23,7 @@ export interface AdminUserRole {
 
 export interface AdminUserScope {
   scopeType: string
+  scopeId?: string | null
   scopeRefId?: string | null
 }
 
