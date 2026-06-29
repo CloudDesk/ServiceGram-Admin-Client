@@ -1,6 +1,7 @@
 import {
   Bell,
   ChevronDown,
+  Clock3,
   LogOut,
   Menu,
   Settings,
@@ -15,17 +16,95 @@ import { useAuthStore } from "../../store/authStore";
 import { useUiStore } from "../../store/uiStore";
 import { usePageChrome } from "../../providers/pageChromeContext";
 import { GlobalSearch } from "../../features/search/components/GlobalSearch";
+import { authService } from "../../features/auth/services/auth.service";
+import { buildPathWithQueryParams } from "../../utils/buildQueryParams";
+
+function remainingSecondsUntil(value?: string | null, now = Date.now()) {
+  if (!value) {
+    return null;
+  }
+
+  const expiresAt = Date.parse(value);
+
+  if (Number.isNaN(expiresAt)) {
+    return null;
+  }
+
+  return Math.max(0, Math.floor((expiresAt - now) / 1000));
+}
+
+function formatRemainingTime(seconds: number | null) {
+  if (seconds === null) {
+    return "Unavailable";
+  }
+
+  if (seconds <= 0) {
+    return "Expired";
+  }
+
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  if (minutes > 0) {
+    return `${minutes}m`;
+  }
+
+  return "<1m";
+}
+
+function sessionTimeTone(seconds: number | null) {
+  if (seconds === null) {
+    return "text-adaptive-muted";
+  }
+
+  if (seconds <= 0 || seconds <= 15 * 60) {
+    return "text-[color:var(--adaptive-danger-text)]";
+  }
+
+  if (seconds <= 60 * 60) {
+    return "text-[color:var(--adaptive-warning-text)]";
+  }
+
+  return "text-[color:var(--adaptive-success-text)]";
+}
 
 export function Topbar() {
   const navigate = useNavigate();
   const clearSession = useAuthStore((state) => state.clearSession);
+  const canOpenNotifications = useAuthStore((state) =>
+    state.can("notifications:read"),
+  );
+  const canOpenSettings = useAuthStore((state) => state.can("settings:read"));
+  const session = useAuthStore((state) => state.session);
   const user = useAuthStore((state) => state.user);
   const openMobileSidebar = useUiStore((state) => state.openMobileSidebar);
   const { pageChrome } = usePageChrome();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const profileRef = useRef<HTMLDivElement | null>(null);
   const title = pageChrome.title ?? "ServiceGram Admin";
   const description = pageChrome.description ?? "Admin operations console";
+  const sessionRemainingSeconds = remainingSecondsUntil(
+    session?.refreshTokenExpiresAt,
+    now,
+  );
+  const sessionRemainingLabel = formatRemainingTime(sessionRemainingSeconds);
+  const sessionRemainingTone = sessionTimeTone(sessionRemainingSeconds);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNow(Date.now()), 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     if (!profileOpen) {
@@ -54,9 +133,11 @@ export function Topbar() {
   }, [profileOpen]);
 
   const handleLogout = () => {
-    clearSession();
     setProfileOpen(false);
-    navigate(routePaths.login);
+    void authService.logout().finally(() => {
+      clearSession();
+      navigate(routePaths.login);
+    });
   };
 
   const handleNavigate = (path: string) => {
@@ -91,10 +172,24 @@ export function Topbar() {
       </div>
 
       <div className="flex items-center justify-end gap-3">
-        <Button aria-label="Alerts" size="sm" type="button" variant="ghost">
-          <Bell className="size-4 sm:mr-2" />
-          <span className="hidden sm:inline">Alerts</span>
-        </Button>
+        {canOpenNotifications ? (
+          <Button
+            aria-label="Alerts"
+            size="sm"
+            type="button"
+            variant="ghost"
+            onClick={() =>
+              navigate(
+                `${buildPathWithQueryParams(routePaths.notifications, {
+                  status: "FAILED",
+                })}#notification-events`,
+              )
+            }
+          >
+            <Bell className="size-4 sm:mr-2" />
+            <span className="hidden sm:inline">Alerts</span>
+          </Button>
+        ) : null}
 
         <div className="relative" ref={profileRef}>
           <button
@@ -138,6 +233,19 @@ export function Topbar() {
                     </p>
                   </div>
                 </div>
+                <div className="mt-3 rounded-[0.75rem] border border-adaptive bg-[color:var(--adaptive-search-bg)] px-3 py-2">
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <span className="flex min-w-0 items-center gap-2 text-adaptive-muted">
+                      <Clock3 className="size-3.5 shrink-0" />
+                      <span className="truncate">Session remaining</span>
+                    </span>
+                    <span
+                      className={`shrink-0 font-semibold ${sessionRemainingTone}`}
+                    >
+                      {sessionRemainingLabel}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="p-2">
@@ -149,14 +257,16 @@ export function Topbar() {
                   <User className="size-4 text-adaptive-mute" />
                   <span>View Profile</span>
                 </button>
-                <button
-                  className="flex w-full items-center gap-3 rounded-[0.95rem] px-3 py-2.5 text-left text-sm text-adaptive-main transition hover:bg-[color:var(--adaptive-search-bg)]"
-                  type="button"
-                  onClick={() => handleNavigate(routePaths.settings)}
-                >
-                  <Settings className="size-4 text-adaptive-mute" />
-                  <span>Account Settings</span>
-                </button>
+                {canOpenSettings ? (
+                  <button
+                    className="flex w-full items-center gap-3 rounded-[0.95rem] px-3 py-2.5 text-left text-sm text-adaptive-main transition hover:bg-[color:var(--adaptive-search-bg)]"
+                    type="button"
+                    onClick={() => handleNavigate(routePaths.settings)}
+                  >
+                    <Settings className="size-4 text-adaptive-mute" />
+                    <span>Platform Settings</span>
+                  </button>
+                ) : null}
               </div>
               <div className="border-t border-adaptive p-2">
                 <button

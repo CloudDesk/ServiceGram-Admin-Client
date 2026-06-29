@@ -95,6 +95,15 @@ function recipientLabel(event: NotificationEvent) {
   )
 }
 
+function recipientDirectorySearchValue(event: NotificationEvent) {
+  return (
+    event.recipient?.mobileNumber ??
+    event.recipient?.email ??
+    event.recipientUserId ??
+    ''
+  )
+}
+
 function DetailField({
   label,
   value,
@@ -287,14 +296,20 @@ function RelatedRecordRow({
 }
 
 function RelatedRecordsPanel({
+  canReadAdminUsers,
   canReadAudit,
+  canReadCustomers,
+  canReadVendors,
   canSendNotifications,
   canUpdateTemplates,
   event,
   onNavigate,
   onOpenSection,
 }: {
+  canReadAdminUsers: boolean
   canReadAudit: boolean
+  canReadCustomers: boolean
+  canReadVendors: boolean
   canSendNotifications: boolean
   canUpdateTemplates: boolean
   event: NotificationEvent
@@ -334,6 +349,19 @@ function RelatedRecordsPanel({
           meta={`${humanizeCode(event.recipientType)} event filter`}
           value={recipientLabel(event)}
           onOpen={() => onNavigate(buildRecipientNotificationsPath(event))}
+        />
+        <RelatedRecordRow
+          actionLabel="Find"
+          canOpen={canOpenRecipientDirectory(event, {
+            canReadAdminUsers,
+            canReadCustomers,
+            canReadVendors,
+          })}
+          icon={<UserRound className="size-4" />}
+          label="Recipient directory"
+          meta={`${humanizeCode(event.recipientType)} list search using available contact`}
+          value={recipientDirectorySearchValue(event) || 'No searchable recipient'}
+          onOpen={() => onNavigate(buildRecipientDirectoryPath(event))}
         />
         <RelatedRecordRow
           actionLabel="Payload"
@@ -401,6 +429,41 @@ function buildRecipientNotificationsPath(event: NotificationEvent) {
   }
 
   return `${routePaths.notifications}?${params.toString()}#notification-events`
+}
+
+function buildRecipientDirectoryPath(event: NotificationEvent) {
+  const searchValue = recipientDirectorySearchValue(event)
+  const params = new URLSearchParams()
+
+  if (searchValue) {
+    params.set('search', searchValue)
+  }
+
+  const queryString = params.toString()
+
+  if (event.recipientType === 'CUSTOMER') {
+    return queryString ? `${routePaths.customers}?${queryString}` : routePaths.customers
+  }
+
+  if (event.recipientType === 'VENDOR') {
+    return queryString ? `${routePaths.vendors}?${queryString}` : routePaths.vendors
+  }
+
+  return queryString ? `${routePaths.adminUsers}?${queryString}` : routePaths.adminUsers
+}
+
+function canOpenRecipientDirectory(
+  event: NotificationEvent,
+  permissions: {
+    canReadAdminUsers: boolean
+    canReadCustomers: boolean
+    canReadVendors: boolean
+  },
+) {
+  if (!recipientDirectorySearchValue(event)) return false
+  if (event.recipientType === 'CUSTOMER') return permissions.canReadCustomers
+  if (event.recipientType === 'VENDOR') return permissions.canReadVendors
+  return permissions.canReadAdminUsers
 }
 
 function buildTemplateEditorPath(event: NotificationEvent) {
@@ -592,6 +655,9 @@ export function NotificationDetailPage() {
   const { notificationId } = useParams()
   const navigate = useNavigate()
   const canReadAudit = usePermission('audit:read')
+  const canReadAdminUsers = usePermission('admin_users:read')
+  const canReadCustomers = usePermission('customers:read')
+  const canReadVendors = usePermission('vendors:read')
   const canSendNotifications = usePermission('notifications:send')
   const canUpdateTemplates = usePermission('notifications:update')
 
@@ -714,7 +780,10 @@ export function NotificationDetailPage() {
           <RetryPanel event={event} />
         </div>
         <RelatedRecordsPanel
+          canReadAdminUsers={canReadAdminUsers}
           canReadAudit={canReadAudit}
+          canReadCustomers={canReadCustomers}
+          canReadVendors={canReadVendors}
           canSendNotifications={canSendNotifications}
           canUpdateTemplates={canUpdateTemplates}
           event={event}

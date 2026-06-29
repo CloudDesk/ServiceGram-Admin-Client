@@ -3,6 +3,7 @@ import {
   Ban,
   ChevronLeft,
   ChevronRight,
+  Filter,
   MapPin,
   MessageSquarePlus,
   RefreshCcw,
@@ -12,7 +13,7 @@ import {
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
@@ -728,8 +729,9 @@ function CustomerRowsSkeleton() {
 
 export function CustomersPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
   const [status, setStatus] = useState<'' | AdminCustomerStatus>('')
   const [city, setCity] = useState('')
   const [hasOrders, setHasOrders] = useState('')
@@ -962,7 +964,16 @@ export function CustomersPage() {
       dateTo,
   )
 
+  const clearSeededCustomerParams = () => {
+    if (!searchParams.has('search')) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('search')
+    setSearchParams(nextParams, { replace: true })
+  }
+
   const resetFilters = () => {
+    clearSeededCustomerParams()
     setSearch('')
     setStatus('')
     setCity('')
@@ -1116,6 +1127,7 @@ export function CustomersPage() {
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         description="Search, filter, and manage customer accounts from backend data."
+        layout="workspace"
         placement="topbar"
         title="Customers"
       />
@@ -1159,8 +1171,11 @@ export function CustomersPage() {
                 >
                   <ChevronRight className="size-4" />
                 </button>
-                <span className="text-xs font-semibold uppercase tracking-normal text-muted xl:[writing-mode:vertical-rl] xl:rotate-180">
-                  Filters
+                <span
+                  aria-hidden="true"
+                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
+                >
+                  <Filter className="size-4" />
                 </span>
                 {hasActiveFilters ? (
                   <span
@@ -1347,6 +1362,7 @@ export function CustomersPage() {
                   placeholder="Search name, mobile, email"
                   value={search}
                   onChange={(nextSearch) => {
+                    clearSeededCustomerParams()
                     setSearch(nextSearch)
                     resetToFirstPage()
                   }}

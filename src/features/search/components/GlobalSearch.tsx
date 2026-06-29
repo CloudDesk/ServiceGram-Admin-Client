@@ -25,6 +25,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
+import { routePaths } from '../../../config/routes'
 import { cn } from '../../../utils/cn'
 import { adminSearchService } from '../services/search.service'
 import type {
@@ -67,6 +68,105 @@ function useDebouncedValue(value: string, delayMs: number) {
 
 function formatModuleLabel(module: AdminSearchModule, modules: AdminSearchModuleAccess[]) {
   return modules.find((item) => item.module === module)?.label ?? module
+}
+
+function metadataString(result: AdminSearchResult, key: string) {
+  const value = result.metadata[key]
+
+  if (value === null || value === undefined || typeof value === 'boolean') {
+    return null
+  }
+
+  return String(value)
+}
+
+function pathWithUrlParams(url: URL) {
+  const query = url.searchParams.toString()
+
+  return `${url.pathname}${query ? `?${query}` : ''}${url.hash}`
+}
+
+function normalizeSearchRoute(result: AdminSearchResult) {
+  let url: URL
+
+  try {
+    url = new URL(result.route, window.location.origin)
+  } catch {
+    return result.route
+  }
+
+  if (url.pathname === routePaths.audit) {
+    const legacyModule = url.searchParams.get('module')
+    const legacyAction = url.searchParams.get('action')
+
+    if (legacyModule && !url.searchParams.has('moduleCode')) {
+      url.searchParams.set('moduleCode', legacyModule)
+    }
+
+    if (legacyAction && !url.searchParams.has('actionCode')) {
+      url.searchParams.set('actionCode', legacyAction)
+    }
+
+    url.searchParams.delete('module')
+    url.searchParams.delete('action')
+
+    const moduleCode = metadataString(result, 'moduleCode')
+    const actionCode = metadataString(result, 'actionCode')
+    const entityType = metadataString(result, 'entityType')
+    const entityId = metadataString(result, 'entityId')
+
+    if (moduleCode && !url.searchParams.has('moduleCode')) {
+      url.searchParams.set('moduleCode', moduleCode)
+    }
+
+    if (actionCode && !url.searchParams.has('actionCode')) {
+      url.searchParams.set('actionCode', actionCode)
+    }
+
+    if (entityType && !url.searchParams.has('entityType')) {
+      url.searchParams.set('entityType', entityType)
+    }
+
+    if (entityId && !url.searchParams.has('entityId')) {
+      url.searchParams.set('entityId', entityId)
+    }
+
+    url.hash = 'audit-records'
+
+    return pathWithUrlParams(url)
+  }
+
+  if (url.pathname === routePaths.notifications) {
+    const tab = url.searchParams.get('tab')
+    const search = url.searchParams.get('search')
+
+    url.searchParams.delete('tab')
+
+    if (tab === 'templates' || result.type === 'notification_template') {
+      if (search && !url.searchParams.has('templateSearch')) {
+        url.searchParams.set('templateSearch', search)
+      }
+
+      url.searchParams.delete('search')
+      url.hash = 'notification-templates'
+
+      return pathWithUrlParams(url)
+    }
+
+    if (tab === 'events' || result.type === 'notification_event') {
+      url.hash = 'notification-events'
+
+      return pathWithUrlParams(url)
+    }
+  }
+
+  if (result.type === 'service_type' && url.pathname.startsWith(`${routePaths.settings}/categories/`)) {
+    url.hash = 'settings-service-types'
+
+    return pathWithUrlParams(url)
+  }
+
+  return pathWithUrlParams(url)
 }
 
 export function GlobalSearch() {
@@ -163,7 +263,7 @@ export function GlobalSearch() {
   const navigateToResult = (result: AdminSearchResult) => {
     close()
     setQuery('')
-    navigate(result.route)
+    navigate(normalizeSearchRoute(result))
   }
 
   const handleInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {

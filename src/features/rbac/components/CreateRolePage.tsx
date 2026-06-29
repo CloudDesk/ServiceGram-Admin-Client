@@ -26,8 +26,10 @@ export function CreateRolePage() {
   )
   const [formError, setFormError] = useState<string | null>(null)
   const canCreateRoles = can('roles:create')
+  const canReadPermissions = can('permissions:read')
 
   const permissionsQuery = useQuery({
+    enabled: canCreateRoles && canReadPermissions,
     queryKey: ['rbac', 'permissions'],
     queryFn: () => rbacService.getPermissions(),
   })
@@ -38,13 +40,22 @@ export function CreateRolePage() {
   )
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      rbacService.createRole({
+    mutationFn: () => {
+      if (!canCreateRoles) {
+        throw new Error('Role create access is required.')
+      }
+
+      if (!canReadPermissions) {
+        throw new Error('Permission catalogue access is required to create roles.')
+      }
+
+      return rbacService.createRole({
         roleCode: roleCode.trim(),
         roleName: roleName.trim(),
         description: description.trim() || undefined,
         permissionIds: Array.from(selectedPermissionIds),
-      }),
+      })
+    },
     onMutate: () => setFormError(null),
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: ['rbac', 'roles'] })
@@ -75,6 +86,11 @@ export function CreateRolePage() {
       return
     }
 
+    if (!canReadPermissions) {
+      setFormError('Permission catalogue access is required to create roles.')
+      return
+    }
+
     if (!roleCode.trim() || !roleName.trim()) {
       setFormError('Role code and role name are required.')
       return
@@ -89,6 +105,23 @@ export function CreateRolePage() {
         <ErrorState
           description="Your current admin role cannot create roles."
           title="Role creation unavailable"
+        />
+      </PageContainer>
+    )
+  }
+
+  if (!canReadPermissions) {
+    return (
+      <PageContainer>
+        <DetailPageHeader
+          description="Permission catalogue access is required before assigning role access."
+          listHref={routePaths.roles}
+          listLabel="Roles"
+          recordName="Create Role"
+        />
+        <ErrorState
+          description="You can review existing roles, but creating a role requires permission catalogue access so the starting access set can be selected safely."
+          title="Permission access required"
         />
       </PageContainer>
     )

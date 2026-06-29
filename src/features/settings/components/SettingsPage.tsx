@@ -2536,9 +2536,10 @@ export function SettingsPage() {
   }
 
   return (
-    <PageContainer>
+    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         description="Manage platform settings, category behavior, and service zones."
+        layout="workspace"
         placement="topbar"
         title="Settings"
       />
@@ -2585,7 +2586,7 @@ export function SettingsPage() {
 
         <section
           className={cn(
-            'grid min-h-[calc(100vh-15rem)] flex-1 gap-3 transition-[grid-template-columns] xl:min-h-0',
+            'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
             filtersCollapsed
               ? 'xl:grid-cols-[3rem_minmax(0,1fr)]'
               : 'xl:grid-cols-[18rem_minmax(0,1fr)]',

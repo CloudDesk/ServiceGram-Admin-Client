@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CreditCard,
+  Filter,
   FileUp,
   MessageSquarePlus,
   Package,
@@ -19,7 +20,7 @@ import {
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
@@ -41,6 +42,7 @@ import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
 import { usePermission } from '../../../hooks/usePermission'
 import type { LookupOption } from '../../../types/lookup.types'
+import { readLookupOptionsFromSearchParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -191,6 +193,60 @@ type OrderQueueKey =
   | 'completed'
   | 'cancelled'
 
+function readSearchValues(searchParams: URLSearchParams, key: string) {
+  return Array.from(
+    new Set(
+      searchParams
+        .getAll(key)
+        .flatMap((value) => value.split(','))
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
+function readEnumSearchValues<T extends string>(
+  searchParams: URLSearchParams,
+  key: string,
+  allowedValues: readonly T[],
+) {
+  const allowed = new Set<T>(allowedValues)
+
+  return readSearchValues(searchParams, key).filter((value): value is T =>
+    allowed.has(value as T),
+  )
+}
+
+function queueKeyForOrderFilters(
+  selectedOrderStatuses: AdminOrderStatus[],
+  selectedPaymentStatuses: AdminOrderPaymentStatus[],
+): OrderQueueKey {
+  if (
+    selectedOrderStatuses.length === 0 &&
+    selectedPaymentStatuses.length > 0 &&
+    selectedPaymentStatuses.every((status) =>
+      ['PENDING', 'FAILED', 'COD_PENDING'].includes(status),
+    )
+  ) {
+    return 'payment'
+  }
+
+  if (selectedOrderStatuses.length !== 1 || selectedPaymentStatuses.length > 0) {
+    return 'all'
+  }
+
+  const [status] = selectedOrderStatuses
+
+  if (status === 'VENDOR_ACCEPTANCE_PENDING') return 'acceptance'
+  if (status === 'SERVICE_IN_PROGRESS') return 'inProgress'
+  if (status === 'OUT_FOR_DELIVERY') return 'delivery'
+  if (status === 'DELIVERED') return 'completed'
+  if (status === 'CANCELLED') return 'cancelled'
+  if (status === 'PRICE_REVISION_PENDING_CUSTOMER') return 'attention'
+
+  return 'all'
+}
+
 const defaultOrderColumns: OrderColumnId[] = [
   'order',
   'customer',
@@ -318,6 +374,10 @@ function hasOrderAction(order: AdminOrderSummary, action: string) {
     .includes(action.toUpperCase())
 }
 
+function hasActiveDeliveryOtp(order: AdminOrderSummary) {
+  return (order.counts?.activeOtpCount ?? 0) > 0
+}
+
 function statusFromRecommendedAction(action: string) {
   const normalized = action.toUpperCase()
   const markPrefix = 'MARK_'
@@ -366,7 +426,8 @@ function mapRecommendedAction(order: AdminOrderSummary): OrderActionSelection | 
 
   if (
     action === 'CONFIRM_DELIVERY_OTP' &&
-    hasOrderAction(order, 'CONFIRM_DELIVERY_OTP')
+    hasOrderAction(order, 'CONFIRM_DELIVERY_OTP') &&
+    hasActiveDeliveryOtp(order)
   ) {
     return { kind: 'CONFIRM_DELIVERY_OTP' }
   }
@@ -690,6 +751,7 @@ function OrderRow({
   const showConfirmDeliveryOtpAction =
     canUpdateOrders &&
     hasOrderAction(order, 'CONFIRM_DELIVERY_OTP') &&
+    hasActiveDeliveryOtp(order) &&
     primaryAction?.kind !== 'CONFIRM_DELIVERY_OTP'
   const showProofUploadAction =
     canUpdateOrders &&
@@ -1110,6 +1172,7 @@ function buildQueueItems(summary: AdminOrdersSummary | undefined) {
 
 export function OrdersPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const canReadCustomers = usePermission('customers:read')
   const canReadVendors = usePermission('vendors:read')
@@ -1117,23 +1180,41 @@ export function OrdersPage() {
   const canUpdateOrders = usePermission('orders:update_status')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
-  const [search, setSearch] = useState('')
-  const [city, setCity] = useState('')
-  const [selectedCategories, setSelectedCategories] = useState<LookupOption[]>([])
-  const [selectedCustomers, setSelectedCustomers] = useState<LookupOption[]>([])
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const seededOrderStatuses = readEnumSearchValues(
+    searchParams,
+    'orderStatus',
+    orderStatuses,
+  )
+  const seededPaymentStatuses = readEnumSearchValues(
+    searchParams,
+    'paymentStatus',
+    paymentStatuses,
+  )
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [city, setCity] = useState(() => searchParams.get('city') ?? '')
+  const [selectedCategories, setSelectedCategories] = useState<LookupOption[]>(() =>
+    readLookupOptionsFromSearchParams(searchParams, 'categoryId', 'categoryLabel'),
+  )
+  const [selectedCustomers, setSelectedCustomers] = useState<LookupOption[]>(() =>
+    readLookupOptionsFromSearchParams(searchParams, 'customerId', 'customerLabel'),
+  )
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get('dateFrom') ?? '')
+  const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') ?? '')
   const [selectedOrderStatuses, setSelectedOrderStatuses] = useState<
     AdminOrderStatus[]
-  >([])
+  >(() => seededOrderStatuses)
   const [selectedPaymentMethods, setSelectedPaymentMethods] = useState<
     AdminOrderPaymentMethod[]
   >([])
   const [selectedPaymentStatuses, setSelectedPaymentStatuses] = useState<
     AdminOrderPaymentStatus[]
-  >([])
-  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>([])
-  const [queue, setQueue] = useState<OrderQueueKey>('all')
+  >(() => seededPaymentStatuses)
+  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>(() =>
+    readLookupOptionsFromSearchParams(searchParams, 'vendorId', 'vendorLabel'),
+  )
+  const [queue, setQueue] = useState<OrderQueueKey>(() =>
+    queueKeyForOrderFilters(seededOrderStatuses, seededPaymentStatuses),
+  )
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionTarget, setActionTarget] = useState<OrderActionTarget | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
@@ -1234,6 +1315,29 @@ export function OrdersPage() {
   }
 
   const resetToFirstPage = () => setPage(1)
+  const clearSeededOrderParams = () => {
+    const seededKeys = [
+      'categoryId',
+      'categoryLabel',
+      'city',
+      'customerId',
+      'customerLabel',
+      'dateFrom',
+      'dateTo',
+      'orderStatus',
+      'paymentStatus',
+      'queue',
+      'search',
+      'vendorId',
+      'vendorLabel',
+    ] as const
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    seededKeys.forEach((key) => nextParams.delete(key))
+    setSearchParams(nextParams, { replace: true })
+  }
   const categoryIds = useMemo(
     () => selectedCategories.map((category) => category.value),
     [selectedCategories],
@@ -1393,6 +1497,7 @@ export function OrdersPage() {
   )
 
   const clearOrderFilters = () => {
+    clearSeededOrderParams()
     setQueue('all')
     setSearch('')
     setCity('')
@@ -1408,6 +1513,7 @@ export function OrdersPage() {
   }
 
   const applyQueue = (nextQueue: OrderQueueKey) => {
+    clearSeededOrderParams()
     setQueue(nextQueue)
     setSelectedOrderStatuses([])
     setSelectedPaymentStatuses([])
@@ -1603,6 +1709,7 @@ export function OrdersPage() {
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         description="Live orders moving through customer, vendor, payment, and delivery operations."
+        layout="workspace"
         placement="topbar"
         title="Orders"
       />
@@ -1645,8 +1752,11 @@ export function OrdersPage() {
                 >
                   <ChevronRight className="size-4" />
                 </button>
-                <span className="text-xs font-semibold uppercase tracking-normal text-muted xl:[writing-mode:vertical-rl] xl:rotate-180">
-                  Filters
+                <span
+                  aria-hidden="true"
+                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
+                >
+                  <Filter className="size-4" />
                 </span>
                 {hasActiveFilters ? (
                   <span
@@ -1717,6 +1827,7 @@ export function OrdersPage() {
                       placeholder="All statuses"
                       values={selectedOrderStatuses}
                       onChange={(values) => {
+                        clearSeededOrderParams()
                         setSelectedOrderStatuses(values as AdminOrderStatus[])
                         setQueue('all')
                         resetToFirstPage()
@@ -1728,6 +1839,7 @@ export function OrdersPage() {
                       placeholder="All payment statuses"
                       values={selectedPaymentStatuses}
                       onChange={(values) => {
+                        clearSeededOrderParams()
                         setSelectedPaymentStatuses(
                           values as AdminOrderPaymentStatus[],
                         )
@@ -1756,6 +1868,7 @@ export function OrdersPage() {
                         placeholder="Chennai"
                         value={city}
                         onChange={(event) => {
+                          clearSeededOrderParams()
                           setCity(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1768,6 +1881,7 @@ export function OrdersPage() {
                       queryKey={['lookup', 'categories']}
                       selectedOptions={selectedCategories}
                       onChange={(options) => {
+                        clearSeededOrderParams()
                         setSelectedCategories(options)
                         setSelectedVendors([])
                         resetToFirstPage()
@@ -1799,6 +1913,7 @@ export function OrdersPage() {
                       ]}
                       selectedOptions={selectedVendors}
                       onChange={(options) => {
+                        clearSeededOrderParams()
                         setSelectedVendors(options)
                         resetToFirstPage()
                       }}
@@ -1810,6 +1925,7 @@ export function OrdersPage() {
                       queryKey={['lookup', 'customers']}
                       selectedOptions={selectedCustomers}
                       onChange={(options) => {
+                        clearSeededOrderParams()
                         setSelectedCustomers(options)
                         resetToFirstPage()
                       }}
@@ -1823,6 +1939,7 @@ export function OrdersPage() {
                         type="datetime-local"
                         value={dateFrom}
                         onChange={(event) => {
+                          clearSeededOrderParams()
                           setDateFrom(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1837,6 +1954,7 @@ export function OrdersPage() {
                         type="datetime-local"
                         value={dateTo}
                         onChange={(event) => {
+                          clearSeededOrderParams()
                           setDateTo(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1866,6 +1984,7 @@ export function OrdersPage() {
                   placeholder="Search order, customer, vendor"
                   value={search}
                   onChange={(nextSearch) => {
+                    clearSeededOrderParams()
                     setSearch(nextSearch)
                     resetToFirstPage()
                   }}

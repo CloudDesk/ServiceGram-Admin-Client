@@ -37,9 +37,10 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 
   if (!response.ok) {
     const errorBody = body as AdminUserErrorResponse | null
+    const fieldMessage = errorBody?.details?.fieldErrors?.[0]?.message
 
     throw new AdminUserServiceError(
-      errorBody?.message ?? 'Request failed.',
+      fieldMessage ?? errorBody?.message ?? 'Request failed.',
       response.status,
       errorBody,
     )

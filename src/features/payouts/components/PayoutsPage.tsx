@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  Filter,
   PauseCircle,
   Plus,
   RefreshCcw,
@@ -39,6 +40,7 @@ import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
 import { usePermission } from '../../../hooks/usePermission'
 import type { LookupOption } from '../../../types/lookup.types'
+import { readLookupOptionsFromSearchParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -145,6 +147,57 @@ type PayoutQueueKey =
   | 'approved'
   | 'paid'
   | 'exceptions'
+
+function readSearchValues(searchParams: URLSearchParams, key: string) {
+  return Array.from(
+    new Set(
+      searchParams
+        .getAll(key)
+        .flatMap((value) => value.split(','))
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
+function readEnumSearchValues<T extends string>(
+  searchParams: URLSearchParams,
+  key: string,
+  allowedValues: readonly T[],
+) {
+  const allowed = new Set<T>(allowedValues)
+
+  return readSearchValues(searchParams, key).filter((value): value is T =>
+    allowed.has(value as T),
+  )
+}
+
+function queueKeyForPayoutStatuses(
+  selectedStatuses: AdminPayoutStatus[],
+): PayoutQueueKey {
+  if (selectedStatuses.length === 0) return 'all'
+  if (
+    selectedStatuses.every((status) => ['PENDING', 'UNDER_REVIEW'].includes(status))
+  ) {
+    return 'review'
+  }
+  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'HELD') {
+    return 'held'
+  }
+  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'APPROVED') {
+    return 'approved'
+  }
+  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'PAID') {
+    return 'paid'
+  }
+  if (
+    selectedStatuses.every((status) => ['FAILED', 'CANCELLED'].includes(status))
+  ) {
+    return 'exceptions'
+  }
+
+  return 'all'
+}
 
 const defaultPayoutColumns: PayoutColumnId[] = [
   'payout',
@@ -419,32 +472,30 @@ export function PayoutsPage() {
   const canReadVendors = usePermission('vendors:read')
   const canApprovePayouts = usePermission('payouts:approve')
   const initialVendorId = searchParams.get('vendorId') ?? ''
-  const initialVendorLabel = searchParams.get('vendorLabel') ?? initialVendorId
+  const seededStatuses = readEnumSearchValues(searchParams, 'status', payoutStatuses)
   const [selectedAction, setSelectedAction] =
     useState<PayoutActionSelection | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
-  const [search, setSearch] = useState('')
-  const [selectedStatuses, setSelectedStatuses] = useState<AdminPayoutStatus[]>([])
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [selectedStatuses, setSelectedStatuses] =
+    useState<AdminPayoutStatus[]>(() => seededStatuses)
   const [selectedMethods, setSelectedMethods] = useState<AdminPayoutMethod[]>([])
-  const [city, setCity] = useState('')
+  const [city, setCity] = useState(() => searchParams.get('city') ?? '')
   const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>(() =>
     initialVendorId
-      ? [
-          {
-            label: initialVendorLabel,
-            value: initialVendorId,
-          },
-        ]
+      ? readLookupOptionsFromSearchParams(searchParams, 'vendorId', 'vendorLabel')
       : [],
   )
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get('dateFrom') ?? '')
+  const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') ?? '')
   const [minAmountPaise, setMinAmountPaise] = useState('')
   const [maxAmountPaise, setMaxAmountPaise] = useState('')
-  const [queue, setQueue] = useState<PayoutQueueKey>('all')
+  const [queue, setQueue] = useState<PayoutQueueKey>(() =>
+    queueKeyForPayoutStatuses(seededStatuses),
+  )
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [filtersCollapsed, setFiltersCollapsed] = useState(false)
   const [visibleColumns, setVisibleColumns] =
@@ -515,12 +566,21 @@ export function PayoutsPage() {
 
   const resetToFirstPage = () => setPage(1)
 
-  const clearSeededVendorFilter = () => {
-    if (!searchParams.has('vendorId') && !searchParams.has('vendorLabel')) return
+  const clearSeededPayoutParams = () => {
+    const seededKeys = [
+      'city',
+      'dateFrom',
+      'dateTo',
+      'search',
+      'status',
+      'vendorId',
+      'vendorLabel',
+    ] as const
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
 
     const nextParams = new URLSearchParams(searchParams)
-    nextParams.delete('vendorId')
-    nextParams.delete('vendorLabel')
+    seededKeys.forEach((key) => nextParams.delete(key))
     setSearchParams(nextParams, { replace: true })
   }
 
@@ -596,13 +656,13 @@ export function PayoutsPage() {
   )
 
   const clearPayoutFilters = () => {
+    clearSeededPayoutParams()
     setQueue('all')
     setSearch('')
     setSelectedStatuses([])
     setSelectedMethods([])
     setCity('')
     setSelectedVendors([])
-    clearSeededVendorFilter()
     setDateFrom('')
     setDateTo('')
     setMinAmountPaise('')
@@ -611,6 +671,7 @@ export function PayoutsPage() {
   }
 
   const applyQueue = (nextQueue: PayoutQueueKey) => {
+    clearSeededPayoutParams()
     setQueue(nextQueue)
     setSelectedStatuses([])
 
@@ -981,6 +1042,7 @@ export function PayoutsPage() {
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         description="Review, create, approve, and settle vendor payouts."
+        layout="workspace"
         placement="topbar"
         title="Payouts"
       />
@@ -1029,8 +1091,11 @@ export function PayoutsPage() {
                 >
                   <ChevronRight className="size-4" />
                 </button>
-                <span className="text-xs font-semibold uppercase tracking-normal text-muted xl:[writing-mode:vertical-rl] xl:rotate-180">
-                  Filters
+                <span
+                  aria-hidden="true"
+                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
+                >
+                  <Filter className="size-4" />
                 </span>
                 {hasActiveFilters ? (
                   <span
@@ -1104,6 +1169,7 @@ export function PayoutsPage() {
                       placeholder="All statuses"
                       values={selectedStatuses}
                       onChange={(values) => {
+                        clearSeededPayoutParams()
                         setSelectedStatuses(values as AdminPayoutStatus[])
                         setQueue('all')
                         resetToFirstPage()
@@ -1128,6 +1194,7 @@ export function PayoutsPage() {
                         placeholder="Chennai"
                         value={city}
                         onChange={(event) => {
+                          clearSeededPayoutParams()
                           setCity(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1141,7 +1208,7 @@ export function PayoutsPage() {
                       selectedOptions={selectedVendors}
                       onChange={(options) => {
                         setSelectedVendors(options)
-                        clearSeededVendorFilter()
+                        clearSeededPayoutParams()
                         resetToFirstPage()
                       }}
                     />
@@ -1184,6 +1251,7 @@ export function PayoutsPage() {
                         type="datetime-local"
                         value={dateFrom}
                         onChange={(event) => {
+                          clearSeededPayoutParams()
                           setDateFrom(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1198,6 +1266,7 @@ export function PayoutsPage() {
                         type="datetime-local"
                         value={dateTo}
                         onChange={(event) => {
+                          clearSeededPayoutParams()
                           setDateTo(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1227,6 +1296,7 @@ export function PayoutsPage() {
                   placeholder="Search payout, UTR, vendor"
                   value={search}
                   onChange={(nextSearch) => {
+                    clearSeededPayoutParams()
                     setSearch(nextSearch)
                     resetToFirstPage()
                   }}

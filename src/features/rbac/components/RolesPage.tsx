@@ -6,7 +6,7 @@ import type {
 } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ChevronLeft,
   ChevronRight,
@@ -173,6 +173,18 @@ function roleMatchesStatus(role: RoleSummary, statusFilter: RoleStatusFilter) {
   if (statusFilter === 'all') return true
   if (statusFilter === 'active') return role.isActive
   return !role.isActive
+}
+
+function readRoleTypeFilter(searchParams: URLSearchParams): RoleTypeFilter {
+  const type = searchParams.get('type')
+
+  return type === 'system' || type === 'custom' ? type : 'all'
+}
+
+function readRoleStatusFilter(searchParams: URLSearchParams): RoleStatusFilter {
+  const status = searchParams.get('status')
+
+  return status === 'active' || status === 'inactive' ? status : 'all'
 }
 
 function getRoleColumnMinWidth(columnId: RoleColumnId) {
@@ -342,10 +354,15 @@ function RoleRow({
 
 export function RolesPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const can = useAuthStore((state) => state.can)
-  const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState<RoleTypeFilter>('all')
-  const [statusFilter, setStatusFilter] = useState<RoleStatusFilter>('all')
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [typeFilter, setTypeFilter] = useState<RoleTypeFilter>(() =>
+    readRoleTypeFilter(searchParams),
+  )
+  const [statusFilter, setStatusFilter] = useState<RoleStatusFilter>(() =>
+    readRoleStatusFilter(searchParams),
+  )
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [filtersCollapsed, setFiltersCollapsed] = useState(false)
   const [visibleColumns, setVisibleColumns] =
@@ -496,7 +513,22 @@ export function RolesPage() {
     })
   }
 
+  const clearSeededListParams = () => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        next.delete('search')
+        next.delete('type')
+        next.delete('status')
+
+        return next
+      },
+      { replace: true },
+    )
+  }
+
   const clearFilters = () => {
+    clearSeededListParams()
     setSearch('')
     setTypeFilter('all')
     setStatusFilter('all')
@@ -507,9 +539,10 @@ export function RolesPage() {
   }
 
   return (
-    <PageContainer>
+    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         description="Manage admin role access across platform modules."
+        layout="workspace"
         placement="topbar"
         title="Roles"
       />
@@ -544,7 +577,7 @@ export function RolesPage() {
 
         <section
           className={cn(
-            'grid min-h-[calc(100vh-15rem)] flex-1 gap-3 transition-[grid-template-columns] xl:min-h-0',
+            'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
             filtersCollapsed
               ? 'xl:grid-cols-[3rem_minmax(0,1fr)]'
               : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
@@ -611,9 +644,10 @@ export function RolesPage() {
                       <select
                         className="form-input"
                         value={typeFilter}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          clearSeededListParams()
                           setTypeFilter(event.target.value as RoleTypeFilter)
-                        }
+                        }}
                       >
                         <option value="all">All</option>
                         <option value="system">System</option>
@@ -627,9 +661,10 @@ export function RolesPage() {
                       <select
                         className="form-input"
                         value={statusFilter}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          clearSeededListParams()
                           setStatusFilter(event.target.value as RoleStatusFilter)
-                        }
+                        }}
                       >
                         <option value="all">All</option>
                         <option value="active">Active</option>
@@ -642,7 +677,10 @@ export function RolesPage() {
             )}
           </aside>
 
-          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
+          <main
+            className="flex min-w-0 scroll-mt-4 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0"
+            id="roles-records"
+          >
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
               <div>
                 <h2 className="text-base font-semibold text-foreground">
@@ -657,7 +695,10 @@ export function RolesPage() {
                   className="w-full sm:w-72 lg:w-80"
                   placeholder="Search role, code, description"
                   value={search}
-                  onChange={setSearch}
+                  onChange={(nextSearch) => {
+                    clearSeededListParams()
+                    setSearch(nextSearch)
+                  }}
                 />
                 {canCreateRoles ? (
                   <Link to={`${routePaths.roles}/new`}>

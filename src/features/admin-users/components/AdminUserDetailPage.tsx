@@ -27,6 +27,7 @@ import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
+import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { rbacService } from '../../rbac/services/rbac.service'
@@ -41,6 +42,14 @@ import type {
 type ModalKind = 'EDIT' | 'FORCE_LOGOUT'
 
 const adminUserStatuses: AdminUserStatus[] = ['ACTIVE', 'DISABLED']
+const adminUserDetailSectionIds = {
+  account: 'admin-user-account',
+  lifecycle: 'admin-user-lifecycle',
+  role: 'admin-user-role',
+  signals: 'admin-user-signals',
+} as const
+type AdminUserDetailSectionId =
+  (typeof adminUserDetailSectionIds)[keyof typeof adminUserDetailSectionIds]
 
 function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
@@ -70,6 +79,32 @@ function authStatusTone(status: string | null | undefined): StatusTone {
   if (status === 'ACTIVE') return 'success'
   if (status === 'DISABLED' || status === 'BLOCKED') return 'danger'
   return 'warning'
+}
+
+function buildAdminUsersListPath(user: AdminUser) {
+  return buildPathWithQueryParams(routePaths.adminUsers, {
+    search: user.email ?? user.fullName,
+    status: user.status,
+    roleId: user.role?.roleId,
+  }) + '#admin-users-records'
+}
+
+function buildAdminUserAuditPath(user: AdminUser) {
+  const params = new URLSearchParams({
+    moduleCode: 'admin_users',
+    entityType: 'admin_user',
+    entityId: user.adminId,
+  })
+
+  return `${routePaths.audit}?${params.toString()}`
+}
+
+function buildAdminUserActorAuditPath(user: AdminUser) {
+  const params = new URLSearchParams({
+    actorAdminId: user.adminId,
+  })
+
+  return `${routePaths.audit}?${params.toString()}`
 }
 
 function toneClass(tone: 'danger' | 'info' | 'neutral' | 'success' | 'warning') {
@@ -133,16 +168,21 @@ function SectionShell({
   children,
   description,
   icon,
+  id,
   title,
 }: {
   actionNode?: ReactNode
   children: ReactNode
   description?: string
   icon?: ReactNode
+  id?: string
   title: string
 }) {
   return (
-    <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+    <section
+      className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
+      id={id}
+    >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -317,6 +357,7 @@ function LifecyclePanel({ user }: { user: AdminUser }) {
     <SectionShell
       description="Core admin profile timestamps and session invalidation marker."
       icon={<CalendarClock className="size-4" />}
+      id={adminUserDetailSectionIds.lifecycle}
       title="Lifecycle"
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -336,6 +377,7 @@ function AccountPanel({ user }: { user: AdminUser }) {
     <SectionShell
       description="Identity fields returned by the admin user detail API."
       icon={<UserRound className="size-4" />}
+      id={adminUserDetailSectionIds.account}
       title="Account"
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -382,6 +424,7 @@ function RolePanel({
       }
       description="Primary role assignment for this admin user."
       icon={<ShieldCheck className="size-4" />}
+      id={adminUserDetailSectionIds.role}
       title="Role"
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -444,6 +487,7 @@ function SignalsPanel({
     <SectionShell
       description="Derived account warnings and controls available to the current admin."
       icon={<TriangleAlert className="size-4" />}
+      id={adminUserDetailSectionIds.signals}
       title="Signals"
     >
       <div className="space-y-4">
@@ -474,6 +518,7 @@ function RelatedRecordsPanel({
   canUpdateAdminUsers,
   onEdit,
   onNavigate,
+  onOpenSection,
   user,
 }: {
   canReadAudit: boolean
@@ -481,6 +526,7 @@ function RelatedRecordsPanel({
   canUpdateAdminUsers: boolean
   onEdit: () => void
   onNavigate: (path: string) => void
+  onOpenSection: (sectionId: AdminUserDetailSectionId) => void
   user: AdminUser
 }) {
   return (
@@ -495,9 +541,9 @@ function RelatedRecordsPanel({
           canOpen
           icon={<Users className="size-4" />}
           label="Admin users"
-          meta={`${humanizeCode(user.status)} profile`}
+          meta={`${humanizeCode(user.status)} profile · role scoped if available`}
           value={user.email ?? user.adminId}
-          onOpen={() => onNavigate(routePaths.adminUsers)}
+          onOpen={() => onNavigate(buildAdminUsersListPath(user))}
         />
         <RelatedRecordRow
           actionLabel="Role"
@@ -515,16 +561,27 @@ function RelatedRecordsPanel({
           canOpen={canReadAudit}
           icon={<ClipboardList className="size-4" />}
           label="Audit trail"
-          meta="Filter by admin_users module activity"
+          meta="Filtered by module, entity type, and admin id"
           value={user.adminId}
-          onOpen={() => onNavigate(routePaths.audit)}
+          onOpen={() => onNavigate(buildAdminUserAuditPath(user))}
         />
         <RelatedRecordRow
-          canOpen={false}
+          actionLabel="Account"
+          canOpen
           icon={<KeyRound className="size-4" />}
           label="Auth user"
           meta="Auth profile backing this admin account"
           value={user.userId}
+          onOpen={() => onOpenSection(adminUserDetailSectionIds.account)}
+        />
+        <RelatedRecordRow
+          actionLabel="Activity"
+          canOpen={canReadAudit}
+          icon={<ClipboardList className="size-4" />}
+          label="Performed actions"
+          meta="Audit entries where this admin is the actor"
+          value={user.fullName}
+          onOpen={() => onNavigate(buildAdminUserActorAuditPath(user))}
         />
         <RelatedRecordRow
           actionLabel="Edit"
@@ -832,6 +889,16 @@ export function AdminUserDetailPage() {
     [rolesQuery.data?.data, user?.role?.roleId],
   )
 
+  const openSection = (sectionId: AdminUserDetailSectionId) => {
+    const section = document.getElementById(sectionId)
+
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    if (section) {
+      window.history.replaceState(null, '', `#${sectionId}`)
+    }
+  }
+
   const refreshUsers = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
@@ -1019,6 +1086,7 @@ export function AdminUserDetailPage() {
             setActiveModal('EDIT')
           }}
           onNavigate={navigate}
+          onOpenSection={openSection}
           user={user}
         />
       </section>

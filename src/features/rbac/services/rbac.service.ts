@@ -22,6 +22,12 @@ interface ErrorEnvelope {
   message?: string
   error?: string
   code?: string
+  details?: {
+    fieldErrors?: {
+      field?: string
+      message?: string
+    }[]
+  }
 }
 
 function jsonRequest<TPayload>(method: 'POST' | 'PUT', payload: TPayload) {
@@ -34,16 +40,30 @@ function jsonRequest<TPayload>(method: 'POST' | 'PUT', payload: TPayload) {
   }
 }
 
+async function readJsonResponse<T>(response: Response): Promise<T | null> {
+  const text = await response.text()
+
+  if (!text) {
+    return null
+  }
+
+  return JSON.parse(text) as T
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as T | ErrorEnvelope
+  const payload = await readJsonResponse<T | ErrorEnvelope>(response)
 
   if (!response.ok) {
     const errorPayload =
       payload && typeof payload === 'object' ? (payload as ErrorEnvelope) : null
+    const fieldMessage = errorPayload?.details?.fieldErrors?.[0]?.message
     const message =
-      errorPayload?.message
+      fieldMessage ??
+      (errorPayload?.message
         ? errorPayload.message
-        : 'Request failed.'
+        : errorPayload?.error
+          ? errorPayload.error
+          : 'Request failed.')
 
     throw new Error(message)
   }

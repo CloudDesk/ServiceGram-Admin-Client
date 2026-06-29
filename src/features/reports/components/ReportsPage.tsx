@@ -14,6 +14,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  Filter,
   RefreshCcw,
   SlidersHorizontal,
   TriangleAlert,
@@ -47,6 +48,11 @@ import { usePermission } from '../../../hooks/usePermission'
 import { useListSelection } from '../../../hooks/useListSelection'
 import { mapApiError } from '../../../services/apiErrorMapper'
 import type { LookupOption } from '../../../types/lookup.types'
+import {
+  buildPathWithQueryParams,
+  readLookupOptionsFromSearchParams,
+  readSearchParamList,
+} from '../../../utils/buildQueryParams'
 import type { StatusTone } from '../../../types/status.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -166,6 +172,12 @@ type ReportColumnWidths = Record<string, number>
 
 interface ReportRowHandoff {
   key: string
+  label: string
+  path: string
+}
+
+interface ReportOperationsDrilldown {
+  description: string
   label: string
   path: string
 }
@@ -522,32 +534,10 @@ function reportSupportsCustomerFilter(reportType: AdminReportType) {
   return ['ORDER_LIFECYCLE', 'PAYMENTS', 'REFUNDS'].includes(reportType)
 }
 
-function readSearchList(searchParams: URLSearchParams, key: string) {
-  return searchParams
-    .getAll(key)
-    .flatMap((value) => value.split(','))
-    .map((value) => value.trim())
-    .filter(Boolean)
-}
-
-function readLookupOptions(
-  searchParams: URLSearchParams,
-  valueKey: string,
-  labelKey: string,
-) {
-  const values = readSearchList(searchParams, valueKey)
-  const labels = readSearchList(searchParams, labelKey)
-
-  return values.map((value, index) => ({
-    label: labels[index] ?? value,
-    value,
-  }))
-}
-
 function readReportStatuses(searchParams: URLSearchParams, reportType: AdminReportType) {
   const allowedStatuses = new Set(reportCatalog[reportType].statusOptions)
 
-  return readSearchList(searchParams, 'status').filter((status) =>
+  return readSearchParamList(searchParams, 'status').filter((status) =>
     allowedStatuses.has(status),
   )
 }
@@ -632,6 +622,123 @@ function buildReportRowHandoffs(
   }
 
   return handoffs
+}
+
+function lookupParamValues(options: LookupOption[]) {
+  return options.map((option) => option.value)
+}
+
+function lookupParamLabels(options: LookupOption[]) {
+  return options.map((option) => option.label || option.value)
+}
+
+function singleLookupSearch(options: LookupOption[]) {
+  if (options.length !== 1) return undefined
+
+  return (options[0]?.label || options[0]?.value || '').trim() || undefined
+}
+
+function buildReportOperationsDrilldown(
+  reportType: AdminReportType,
+  filters: {
+    city: string
+    dateFrom: string
+    dateTo: string
+    selectedCategories: LookupOption[]
+    selectedCustomers: LookupOption[]
+    selectedStatuses: string[]
+    selectedVendors: LookupOption[]
+  },
+  access: {
+    canReadOrders: boolean
+    canReadPayments: boolean
+    canReadPayouts: boolean
+    canReadVendors: boolean
+  },
+): ReportOperationsDrilldown | null {
+  const baseFilters = {
+    city: filters.city.trim() || undefined,
+    dateFrom: filters.dateFrom || undefined,
+    dateTo: filters.dateTo || undefined,
+  }
+  const categoryFilters = {
+    categoryId: lookupParamValues(filters.selectedCategories),
+    categoryLabel: lookupParamLabels(filters.selectedCategories),
+  }
+  const customerFilters = {
+    customerId: lookupParamValues(filters.selectedCustomers),
+    customerLabel: lookupParamLabels(filters.selectedCustomers),
+  }
+  const vendorFilters = {
+    vendorId: lookupParamValues(filters.selectedVendors),
+    vendorLabel: lookupParamLabels(filters.selectedVendors),
+  }
+
+  if (reportType === 'ORDER_LIFECYCLE' && access.canReadOrders) {
+    return {
+      description: 'Open matching orders with the current report filters applied.',
+      label: 'Open Orders',
+      path: buildPathWithQueryParams(routePaths.orders, {
+        ...baseFilters,
+        ...categoryFilters,
+        ...customerFilters,
+        ...vendorFilters,
+        orderStatus: filters.selectedStatuses,
+      }),
+    }
+  }
+
+  if (reportType === 'VENDOR_PERFORMANCE' && access.canReadVendors) {
+    return {
+      description: 'Open the vendor list with matching city/category context.',
+      label: 'Open Vendors',
+      path: buildPathWithQueryParams(routePaths.vendors, {
+        city: baseFilters.city,
+        ...categoryFilters,
+        search: singleLookupSearch(filters.selectedVendors),
+      }),
+    }
+  }
+
+  if (reportType === 'PAYMENTS' && access.canReadPayments) {
+    return {
+      description: 'Open matching payments with supported report filters applied.',
+      label: 'Open Payments',
+      path: buildPathWithQueryParams(routePaths.payments, {
+        ...baseFilters,
+        ...customerFilters,
+        ...vendorFilters,
+        status: filters.selectedStatuses,
+      }),
+    }
+  }
+
+  if (reportType === 'PAYOUTS' && access.canReadPayouts) {
+    return {
+      description: 'Open matching payouts with supported report filters applied.',
+      label: 'Open Payouts',
+      path: buildPathWithQueryParams(routePaths.payouts, {
+        ...baseFilters,
+        ...vendorFilters,
+        status: filters.selectedStatuses,
+      }),
+    }
+  }
+
+  if (reportType === 'REFUNDS' && access.canReadPayments) {
+    return {
+      description: 'Open matching refunds with supported report filters applied.',
+      label: 'Open Refunds',
+      path: buildPathWithQueryParams(routePaths.refunds, {
+        ...baseFilters,
+        ...customerFilters,
+        ...vendorFilters,
+        status: filters.selectedStatuses,
+      }),
+    }
+  }
+
+  return null
 }
 
 function statusOptionsForReport(reportType: AdminReportType): LookupOption[] {
@@ -1028,14 +1135,14 @@ export function ReportsPage({
   const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') ?? '')
   const [city, setCity] = useState(() => searchParams.get('city') ?? '')
   const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>(() =>
-    readLookupOptions(searchParams, 'vendorId', 'vendorLabel'),
+    readLookupOptionsFromSearchParams(searchParams, 'vendorId', 'vendorLabel'),
   )
   const [selectedCategories, setSelectedCategories] = useState<LookupOption[]>(() =>
-    readLookupOptions(searchParams, 'categoryId', 'categoryLabel'),
+    readLookupOptionsFromSearchParams(searchParams, 'categoryId', 'categoryLabel'),
   )
   const [selectedCustomers, setSelectedCustomers] = useState<LookupOption[]>(() =>
     reportSupportsCustomerFilter(initialReportType)
-      ? readLookupOptions(searchParams, 'customerId', 'customerLabel')
+      ? readLookupOptionsFromSearchParams(searchParams, 'customerId', 'customerLabel')
       : [],
   )
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>(() =>
@@ -1234,6 +1341,41 @@ export function ReportsPage({
       canReadPayments,
       canReadPayouts,
       canReadVendors,
+    ],
+  )
+  const operationsDrilldown = useMemo(
+    () =>
+      buildReportOperationsDrilldown(
+        reportType,
+        {
+          city,
+          dateFrom,
+          dateTo,
+          selectedCategories,
+          selectedCustomers,
+          selectedStatuses,
+          selectedVendors,
+        },
+        {
+          canReadOrders,
+          canReadPayments,
+          canReadPayouts,
+          canReadVendors,
+        },
+      ),
+    [
+      canReadOrders,
+      canReadPayments,
+      canReadPayouts,
+      canReadVendors,
+      city,
+      dateFrom,
+      dateTo,
+      reportType,
+      selectedCategories,
+      selectedCustomers,
+      selectedStatuses,
+      selectedVendors,
     ],
   )
   const exportErrorMessage = exportQuery.error ? mapApiError(exportQuery.error) : undefined
@@ -1473,6 +1615,7 @@ export function ReportsPage({
     ) : (
       <PageContextHeader
         description="Operational report views and async export jobs."
+        layout="workspace"
         placement="topbar"
         title="Reports"
       />
@@ -1523,8 +1666,11 @@ export function ReportsPage({
                 >
                   <ChevronRight className="size-4" />
                 </button>
-                <span className="text-xs font-semibold uppercase tracking-normal text-muted xl:[writing-mode:vertical-rl] xl:rotate-180">
-                  Reports
+                <span
+                  aria-hidden="true"
+                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
+                >
+                  <Filter className="size-4" />
                 </span>
                 {hasActiveFilters ? (
                   <span
@@ -1600,7 +1746,10 @@ export function ReportsPage({
                         placeholder="All statuses"
                         searchPlaceholder="Search status"
                         values={selectedStatuses}
-                        onChange={setSelectedStatuses}
+                        onChange={(values) => {
+                          clearSeededReportParams()
+                          setSelectedStatuses(values)
+                        }}
                       />
                     ) : null}
 
@@ -1611,6 +1760,7 @@ export function ReportsPage({
                       queryKey={['report-category-lookup']}
                       selectedOptions={selectedCategories}
                       onChange={(options) => {
+                        clearSeededReportParams()
                         setSelectedCategories(options)
                         setSelectedVendors([])
                       }}
@@ -1626,7 +1776,10 @@ export function ReportsPage({
                       }
                       queryKey={['report-vendor-lookup', categoryIds.join(',')]}
                       selectedOptions={selectedVendors}
-                      onChange={setSelectedVendors}
+                      onChange={(options) => {
+                        clearSeededReportParams()
+                        setSelectedVendors(options)
+                      }}
                     />
 
                     {reportSupportsCustomerFilter(reportType) ? (
@@ -1636,7 +1789,10 @@ export function ReportsPage({
                         placeholder="All customers"
                         queryKey={['report-customer-lookup']}
                         selectedOptions={selectedCustomers}
-                        onChange={setSelectedCustomers}
+                        onChange={(options) => {
+                          clearSeededReportParams()
+                          setSelectedCustomers(options)
+                        }}
                       />
                     ) : null}
 
@@ -1646,7 +1802,10 @@ export function ReportsPage({
                         className="h-10"
                         placeholder="City"
                         value={city}
-                        onChange={(event) => setCity(event.target.value)}
+                        onChange={(event) => {
+                          clearSeededReportParams()
+                          setCity(event.target.value)
+                        }}
                       />
                     </label>
 
@@ -1659,7 +1818,10 @@ export function ReportsPage({
                           className="h-10"
                           type="datetime-local"
                           value={dateFrom}
-                          onChange={(event) => setDateFrom(event.target.value)}
+                          onChange={(event) => {
+                            clearSeededReportParams()
+                            setDateFrom(event.target.value)
+                          }}
                         />
                       </label>
                       <label className="space-y-1">
@@ -1670,7 +1832,10 @@ export function ReportsPage({
                           className="h-10"
                           type="datetime-local"
                           value={dateTo}
-                          onChange={(event) => setDateTo(event.target.value)}
+                          onChange={(event) => {
+                            clearSeededReportParams()
+                            setDateTo(event.target.value)
+                          }}
                         />
                       </label>
                     </div>
@@ -1683,7 +1848,10 @@ export function ReportsPage({
                         min={1}
                         type="number"
                         value={limit}
-                        onChange={(event) => setLimit(event.target.value)}
+                        onChange={(event) => {
+                          clearSeededReportParams()
+                          setLimit(event.target.value)
+                        }}
                       />
                     </label>
                   </div>
@@ -1702,9 +1870,10 @@ export function ReportsPage({
                         <select
                           className="form-input h-10"
                           value={format}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            clearSeededReportParams()
                             setFormat(event.target.value as ReportExportFormat)
-                          }
+                          }}
                         >
                           {exportFormats.map((item) => (
                             <option key={item} value={item}>
@@ -1779,6 +1948,18 @@ export function ReportsPage({
                   >
                     <ExternalLink className="mr-2 size-4" />
                     Detail
+                  </Button>
+                ) : null}
+                {operationsDrilldown ? (
+                  <Button
+                    size="sm"
+                    title={operationsDrilldown.description}
+                    type="button"
+                    variant="secondary"
+                    onClick={() => navigate(operationsDrilldown.path)}
+                  >
+                    <ExternalLink className="mr-2 size-4" />
+                    {operationsDrilldown.label}
                   </Button>
                 ) : null}
                 {canExport ? (

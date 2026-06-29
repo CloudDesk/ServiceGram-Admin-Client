@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { DynamicTable, TableSkeleton, type DynamicTableColumn } from '../../../components/ui/Table'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
@@ -75,6 +75,16 @@ function onboardingTone(status: VendorOnboardingStatus) {
   if (status === 'REJECTED') return 'danger'
   if (status === 'UNDER_REVIEW' || status === 'DOCUMENTS_PENDING') return 'warning'
   return 'info'
+}
+
+function readOnboardingStatusFilter(
+  searchParams: URLSearchParams,
+): '' | VendorOnboardingStatus {
+  const status = searchParams.get('onboardingStatus')
+
+  return onboardingStatuses.includes(status as VendorOnboardingStatus)
+    ? (status as VendorOnboardingStatus)
+    : ''
 }
 
 function documentSummaryTone(vendor: VendorListItem) {
@@ -268,16 +278,19 @@ const columns: DynamicTableColumn<VendorListItem>[] = [
 
 export function VendorOnboardingPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const canApproveVendors = usePermission('vendors:approve')
   const canReadAudit = usePermission('audit:read')
   const canReadSettings = usePermission('settings:read')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
-  const [search, setSearch] = useState('')
-  const [city, setCity] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [city, setCity] = useState(() => searchParams.get('city') ?? '')
   const [onboardingStatus, setOnboardingStatus] =
-    useState<'' | VendorOnboardingStatus>('')
+    useState<'' | VendorOnboardingStatus>(() =>
+      readOnboardingStatusFilter(searchParams),
+    )
   const [actionTarget, setActionTarget] =
     useState<VendorOnboardingActionTarget | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -302,6 +315,16 @@ export function VendorOnboardingPage() {
   const pagination = onboardingQuery.data?.pagination
   const isLoading = onboardingQuery.isLoading || onboardingQuery.isFetching
   const resetToFirstPage = () => setPage(1)
+
+  const clearSeededOnboardingParams = () => {
+    const seededKeys = ['city', 'onboardingStatus', 'search'] as const
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    seededKeys.forEach((key) => nextParams.delete(key))
+    setSearchParams(nextParams, { replace: true })
+  }
 
   const openAction = (
     vendor: VendorListItem,
@@ -487,16 +510,16 @@ export function VendorOnboardingPage() {
                 <span className="text-sm font-medium text-foreground">Search</span>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-                  <Input className="pl-9" placeholder="Vendor, owner, mobile" value={search} onChange={(event) => { setSearch(event.target.value); resetToFirstPage() }} />
+                  <Input className="pl-9" placeholder="Vendor, owner, mobile" value={search} onChange={(event) => { clearSeededOnboardingParams(); setSearch(event.target.value); resetToFirstPage() }} />
                 </div>
               </label>
               <label className="space-y-1">
                 <span className="text-sm font-medium text-foreground">City</span>
-                <Input placeholder="Bengaluru" value={city} onChange={(event) => { setCity(event.target.value); resetToFirstPage() }} />
+                <Input placeholder="Bengaluru" value={city} onChange={(event) => { clearSeededOnboardingParams(); setCity(event.target.value); resetToFirstPage() }} />
               </label>
               <label className="space-y-1">
                 <span className="text-sm font-medium text-foreground">Status</span>
-                <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={onboardingStatus} onChange={(event) => { setOnboardingStatus(event.target.value as '' | VendorOnboardingStatus); resetToFirstPage() }}>
+                <select className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none" value={onboardingStatus} onChange={(event) => { clearSeededOnboardingParams(); setOnboardingStatus(event.target.value as '' | VendorOnboardingStatus); resetToFirstPage() }}>
                   <option value="">All</option>
                   {onboardingStatuses.map((status) => (
                     <option key={status} value={status}>
@@ -509,7 +532,7 @@ export function VendorOnboardingPage() {
           }
         />
 
-        <section className="list-results-panel">
+        <section className="list-results-panel scroll-mt-4" id="vendor-onboarding-records">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
             <div>
               <h2 className="text-sm font-semibold text-foreground">

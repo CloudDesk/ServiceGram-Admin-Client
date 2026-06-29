@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Filter,
   PauseCircle,
   RefreshCcw,
   RotateCcw,
@@ -19,7 +20,7 @@ import type {
 } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
@@ -85,6 +86,53 @@ const influencerStatuses: InfluencerStatus[] = [
   'SUSPENDED',
   'NOT_APPLIED',
 ]
+
+function readSearchValues(searchParams: URLSearchParams, key: string) {
+  return Array.from(
+    new Set(
+      searchParams
+        .getAll(key)
+        .flatMap((value) => value.split(','))
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
+function readEnumSearchValues<T extends string>(
+  searchParams: URLSearchParams,
+  key: string,
+  allowedValues: readonly T[],
+) {
+  const allowed = new Set<T>(allowedValues)
+
+  return readSearchValues(searchParams, key).filter((value): value is T =>
+    allowed.has(value as T),
+  )
+}
+
+function readInitialLookup(searchParams: URLSearchParams, idKey: string, labelKey: string) {
+  const value = searchParams.get(idKey) ?? ''
+  const label = searchParams.get(labelKey) ?? value
+
+  return value ? [{ label, value }] : []
+}
+
+function queueKeyForInfluencerStatuses(
+  selectedStatuses: InfluencerStatus[],
+): InfluencerQueueKey {
+  if (selectedStatuses.length === 0) return 'all'
+  if (selectedStatuses.length !== 1) return 'all'
+
+  const [status] = selectedStatuses
+
+  if (status === 'PENDING_REVIEW') return 'pending'
+  if (status === 'APPROVED') return 'approved'
+  if (status === 'SUSPENDED') return 'suspended'
+  if (status === 'REJECTED') return 'rejected'
+
+  return 'all'
+}
 
 const influencerDataColumns = [
   {
@@ -445,18 +493,31 @@ function InfluencerCell({
 
 export function InfluencersPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const canReadCustomers = usePermission('customers:read')
   const canReviewInfluencers = usePermission('influencers:review')
+  const seededStatuses = readEnumSearchValues(
+    searchParams,
+    'status',
+    influencerStatuses,
+  )
+  const initialStatuses =
+    seededStatuses.length > 0
+      ? seededStatuses
+      : (['PENDING_REVIEW'] as InfluencerStatus[])
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
-  const [search, setSearch] = useState('')
-  const [city, setCity] = useState('')
-  const [selectedStatuses, setSelectedStatuses] = useState<InfluencerStatus[]>([
-    'PENDING_REVIEW',
-  ])
-  const [selectedCategories, setSelectedCategories] = useState<LookupOption[]>([])
-  const [queue, setQueue] = useState<InfluencerQueueKey>('pending')
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [city, setCity] = useState(() => searchParams.get('city') ?? '')
+  const [selectedStatuses, setSelectedStatuses] =
+    useState<InfluencerStatus[]>(() => initialStatuses)
+  const [selectedCategories, setSelectedCategories] = useState<LookupOption[]>(() =>
+    readInitialLookup(searchParams, 'categoryId', 'categoryLabel'),
+  )
+  const [queue, setQueue] = useState<InfluencerQueueKey>(() =>
+    queueKeyForInfluencerStatuses(initialStatuses),
+  )
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [filtersCollapsed, setFiltersCollapsed] = useState(false)
   const [visibleColumns, setVisibleColumns] =
@@ -522,6 +583,22 @@ export function InfluencersPage() {
   )
 
   const resetToFirstPage = () => setPage(1)
+  const clearSeededInfluencerParams = () => {
+    const seededKeys = [
+      'categoryId',
+      'categoryLabel',
+      'city',
+      'queue',
+      'search',
+      'status',
+    ] as const
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    seededKeys.forEach((key) => nextParams.delete(key))
+    setSearchParams(nextParams, { replace: true })
+  }
 
   const query = useMemo<AdminInfluencersQueryParams>(
     () => ({
@@ -608,6 +685,7 @@ export function InfluencersPage() {
   )
 
   const clearInfluencerFilters = () => {
+    clearSeededInfluencerParams()
     setQueue('pending')
     setSearch('')
     setCity('')
@@ -617,6 +695,7 @@ export function InfluencersPage() {
   }
 
   const applyQueue = (nextQueue: InfluencerQueueKey) => {
+    clearSeededInfluencerParams()
     setQueue(nextQueue)
 
     if (nextQueue === 'pending') {
@@ -972,6 +1051,7 @@ export function InfluencersPage() {
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         description="Review creator applications, monitor approved creators, and track Phase 1 commission activity."
+        layout="workspace"
         placement="topbar"
         title="Influencers"
       />
@@ -1020,8 +1100,11 @@ export function InfluencersPage() {
                 >
                   <ChevronRight className="size-4" />
                 </button>
-                <span className="text-xs font-semibold uppercase tracking-normal text-muted xl:[writing-mode:vertical-rl] xl:rotate-180">
-                  Filters
+                <span
+                  aria-hidden="true"
+                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
+                >
+                  <Filter className="size-4" />
                 </span>
                 {hasActiveFilters ? (
                   <span
@@ -1097,6 +1180,7 @@ export function InfluencersPage() {
                       placeholder="All statuses"
                       values={selectedStatuses}
                       onChange={(values) => {
+                        clearSeededInfluencerParams()
                         setSelectedStatuses(values as InfluencerStatus[])
                         setQueue('all')
                         resetToFirstPage()
@@ -1109,6 +1193,7 @@ export function InfluencersPage() {
                       queryKey={['lookup', 'categories', 'influencers']}
                       selectedOptions={selectedCategories}
                       onChange={(options) => {
+                        clearSeededInfluencerParams()
                         setSelectedCategories(options)
                         resetToFirstPage()
                       }}
@@ -1122,6 +1207,7 @@ export function InfluencersPage() {
                         placeholder="Chennai"
                         value={city}
                         onChange={(event) => {
+                          clearSeededInfluencerParams()
                           setCity(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1177,6 +1263,7 @@ export function InfluencersPage() {
                   placeholder="Search name, handle, mobile"
                   value={search}
                   onChange={(nextSearch) => {
+                    clearSeededInfluencerParams()
                     setSearch(nextSearch)
                     resetToFirstPage()
                   }}

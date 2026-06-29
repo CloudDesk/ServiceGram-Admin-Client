@@ -20,6 +20,7 @@ import {
   ShoppingBag,
   Tags,
   Trash2,
+  Truck,
   XCircle,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -38,6 +39,7 @@ import { DetailPageHeader } from "../../../components/layout/DetailPageHeader";
 import { PageContainer } from "../../../components/layout/PageContainer";
 import { routePaths } from "../../../config/routes";
 import { useAuthStore } from "../../../store/authStore";
+import { buildQueryParams } from "../../../utils/buildQueryParams";
 import { cn } from "../../../utils/cn";
 import { formatMoney } from "../../../utils/formatMoney";
 import { orderService } from "../../orders/services/order.service";
@@ -2088,6 +2090,10 @@ export function VendorDetailPage({
   );
   const orderRows = canReadOrders ? (vendorOrders?.data ?? []) : [];
   const orderSummary = vendorOrders?.summary;
+  const vendorLogisticsQuery = buildQueryParams({ vendorId });
+  const vendorLogisticsPath = vendorLogisticsQuery
+    ? `${routePaths.manualLogistics}?${vendorLogisticsQuery}`
+    : routePaths.manualLogistics;
   const orderSummaryTone: VendorTone = canReadOrders
     ? getOrderSummaryTone(orderSummary)
     : "neutral";
@@ -2523,6 +2529,16 @@ export function VendorDetailPage({
                 variant: "secondary",
               },
               {
+                icon: <Truck className="size-4" />,
+                isDisabled: orderMutation.isPending,
+                key: "open-logistics",
+                label: "Logistics",
+                onClick: () =>
+                  navigate(`${routePaths.orders}/${order.orderId}/logistics`),
+                placement: "menu",
+                variant: "secondary",
+              },
+              {
                 icon: <ArrowUpRight className="size-4" />,
                 isDisabled: orderMutation.isPending,
                 key: "open-order",
@@ -2537,16 +2553,27 @@ export function VendorDetailPage({
           title="Vendor Orders"
           toolbar={
             canReadOrders ? (
-              <Button
-                disabled={ordersQuery.isFetching}
-                size="sm"
-                type="button"
-                variant="secondary"
-                onClick={() => void ordersQuery.refetch()}
-              >
-                <RotateCcw className="mr-2 size-4" />
-                Refresh
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => navigate(vendorLogisticsPath)}
+                >
+                  <Truck className="mr-2 size-4" />
+                  Logistics
+                </Button>
+                <Button
+                  disabled={ordersQuery.isFetching}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void ordersQuery.refetch()}
+                >
+                  <RotateCcw className="mr-2 size-4" />
+                  Refresh
+                </Button>
+              </div>
             ) : undefined
           }
           onRetry={() => void ordersQuery.refetch()}

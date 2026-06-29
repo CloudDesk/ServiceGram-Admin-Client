@@ -107,6 +107,18 @@ function formatDateSafe(value: string | null | undefined) {
   }
 }
 
+function routeWithFilters(path: string, filters: Record<string, string | undefined>) {
+  const params = new URLSearchParams()
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value)
+  })
+
+  const query = params.toString()
+
+  return query ? `${path}?${query}` : path
+}
+
 function isInfluencerActionKind(action: string): action is InfluencerActionKind {
   return influencerActionKinds.includes(action as InfluencerActionKind)
 }
@@ -447,6 +459,9 @@ function RelatedRecordsPanel({
   influencer: AdminInfluencer
   onNavigate: (path: string) => void
 }) {
+  const reelQueueView =
+    influencer.summary.pendingReelCount > 0 ? 'pending' : 'live'
+
   return (
     <SectionShell
       description="Primary records connected to this creator profile."
@@ -469,16 +484,26 @@ function RelatedRecordsPanel({
           label="Creator reels"
           meta={`${influencer.summary.liveReelCount} live · ${influencer.summary.pendingReelCount} pending`}
           value={`${influencer.summary.reelCount} reels`}
-          onOpen={() => onNavigate(routePaths.reels)}
+          onOpen={() =>
+            onNavigate(
+              routeWithFilters(routePaths.reels, {
+                search: influencer.publicInfluencerId,
+                view: reelQueueView,
+              }),
+            )
+          }
         />
         <RelatedRecordRow
-          actionLabel="Orders"
-          canOpen={canReadOrders}
+          actionLabel="Ledger"
+          canOpen={false}
           icon={<ReceiptText className="size-4" />}
           label="Attributed bookings"
-          meta={`${formatPaise(influencer.summary.confirmedCommissionPaise)} confirmed commission`}
+          meta={
+            canReadOrders
+              ? 'Open individual orders from the commission ledger below'
+              : `${formatPaise(influencer.summary.confirmedCommissionPaise)} confirmed commission`
+          }
           value={`${influencer.summary.attributedBookingCount} bookings`}
-          onOpen={() => onNavigate(routePaths.orders)}
         />
       </div>
     </SectionShell>
@@ -707,6 +732,10 @@ export function InfluencerDetailPage() {
     influencer.application?.reviewReason ??
     influencer.rejectionReason ??
     influencer.suspensionReason
+  const creatorReelsPath = routeWithFilters(routePaths.reels, {
+    search: influencer.publicInfluencerId,
+    view: influencer.summary.pendingReelCount > 0 ? 'pending' : 'live',
+  })
 
   return (
     <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
@@ -886,7 +915,7 @@ export function InfluencerDetailPage() {
               size="sm"
               type="button"
               variant="secondary"
-              onClick={() => navigate(routePaths.reels)}
+              onClick={() => navigate(creatorReelsPath)}
             >
               <ArrowUpRight className="mr-2 size-4" />
               Open reels queue

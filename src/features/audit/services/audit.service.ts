@@ -2,10 +2,33 @@ import { buildApiUrl } from '../../../config/api'
 import { AUDIT_LOGS_PATH } from '../../../config/auditApiPaths'
 import { apiClient } from '../../../services/apiClient'
 import { buildQueryParams } from '../../../utils/buildQueryParams'
-import type { AuditLogsQueryParams, AuditLogsResponse } from '../types/audit.types'
+import type {
+  AuditErrorResponse,
+  AuditLogsQueryParams,
+  AuditLogsResponse,
+} from '../types/audit.types'
+
+async function readJsonResponse<T>(response: Response): Promise<T | null> {
+  const text = await response.text()
+
+  if (!text) {
+    return null
+  }
+
+  return JSON.parse(text) as T
+}
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  return (await response.json()) as T
+  const body = await readJsonResponse<T | AuditErrorResponse>(response)
+
+  if (!response.ok) {
+    const errorBody = body as AuditErrorResponse | null
+    const fieldMessage = errorBody?.details?.fieldErrors?.[0]?.message
+
+    throw new Error(fieldMessage ?? errorBody?.message ?? 'Request failed.')
+  }
+
+  return body as T
 }
 
 async function getAuditLogs(

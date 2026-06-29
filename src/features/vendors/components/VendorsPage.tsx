@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Filter,
   MapPin,
   MessageSquarePlus,
   PauseCircle,
@@ -14,7 +15,7 @@ import {
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
@@ -32,6 +33,7 @@ import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
+import { readLookupOptionsFromSearchParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { searchCategoryLookupOptions } from '../../lookups/adminLookups'
@@ -882,12 +884,20 @@ function buildStableQueueItems(counts?: VendorQueueCounts) {
 
 export function VendorsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
+  const seededCategories = readLookupOptionsFromSearchParams(
+    searchParams,
+    'categoryId',
+    'categoryLabel',
+  )
   const [viewMode, setViewMode] = useState<VendorViewMode>('active')
-  const [search, setSearch] = useState('')
-  const [city, setCity] = useState('')
-  const [categoryId, setCategoryId] = useState('')
-  const [categoryLookupLabel, setCategoryLookupLabel] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [city, setCity] = useState(() => searchParams.get('city') ?? '')
+  const [categoryId, setCategoryId] = useState(() => seededCategories[0]?.value ?? '')
+  const [categoryLookupLabel, setCategoryLookupLabel] = useState(
+    () => seededCategories[0]?.label ?? '',
+  )
   const [onboardingStatus, setOnboardingStatus] = useState<
     '' | VendorOnboardingStatus
   >('')
@@ -1105,7 +1115,25 @@ export function VendorsPage() {
       viewMode !== 'active',
   )
 
+  const clearSeededVendorParams = () => {
+    const seededKeys = [
+      'categoryId',
+      'categoryLabel',
+      'city',
+      'onboardingStatus',
+      'search',
+      'vendorStatus',
+    ] as const
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    seededKeys.forEach((key) => nextParams.delete(key))
+    setSearchParams(nextParams, { replace: true })
+  }
+
   const clearVendorFilters = () => {
+    clearSeededVendorParams()
     setViewMode('active')
     setSearch('')
     setCity('')
@@ -1117,6 +1145,8 @@ export function VendorsPage() {
   }
 
   const applyQueue = (queue: VendorQueueKey) => {
+    clearSeededVendorParams()
+
     if (queue === 'active') {
       setViewMode('active')
       setVendorStatus('ACTIVE')
@@ -1280,6 +1310,7 @@ export function VendorsPage() {
             ? 'Live vendors currently active in the platform.'
             : 'Vendors waiting for onboarding review and approval.'
         }
+        layout="workspace"
         placement="topbar"
         title="Vendors"
       />
@@ -1322,8 +1353,11 @@ export function VendorsPage() {
                 >
                   <ChevronRight className="size-4" />
                 </button>
-                <span className="text-xs font-semibold uppercase tracking-normal text-muted xl:[writing-mode:vertical-rl] xl:rotate-180">
-                  Filters
+                <span
+                  aria-hidden="true"
+                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
+                >
+                  <Filter className="size-4" />
                 </span>
                 {hasActiveFilters ? (
                   <span
@@ -1397,6 +1431,7 @@ export function VendorsPage() {
                         placeholder="Chennai"
                         value={city}
                         onChange={(event) => {
+                          clearSeededVendorParams()
                           setCity(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1410,6 +1445,7 @@ export function VendorsPage() {
                       selectedLabel={categoryLookupLabel}
                       value={categoryId}
                       onChange={(value, option) => {
+                        clearSeededVendorParams()
                         setCategoryId(value)
                         setCategoryLookupLabel(option?.label ?? '')
                         resetToFirstPage()
@@ -1423,6 +1459,7 @@ export function VendorsPage() {
                         className="form-input"
                         value={onboardingStatus}
                         onChange={(event) => {
+                          clearSeededVendorParams()
                           setOnboardingStatus(
                             event.target.value as '' | VendorOnboardingStatus,
                           )
@@ -1446,6 +1483,7 @@ export function VendorsPage() {
                         className="form-input"
                         value={vendorStatus}
                         onChange={(event) => {
+                          clearSeededVendorParams()
                           setVendorStatus(event.target.value as '' | VendorStatus)
                           resetToFirstPage()
                         }}
@@ -1481,6 +1519,7 @@ export function VendorsPage() {
                   placeholder="Search vendor, owner, mobile"
                   value={search}
                   onChange={(nextSearch) => {
+                    clearSeededVendorParams()
                     setSearch(nextSearch)
                     resetToFirstPage()
                   }}

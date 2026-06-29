@@ -1,6 +1,7 @@
 import type { ApiErrorDetails } from '../../../types/api.types'
 
 export type ReelContentType = 'BEFORE_AFTER' | 'SERVICE_DEMO' | 'NEW_OFFER' | 'INTRODUCTION'
+export type ReelUploaderType = 'VENDOR' | 'INFLUENCER'
 export type ReelUploadStatus =
   | 'UPLOAD_REQUESTED'
   | 'UPLOADING'
@@ -70,11 +71,22 @@ export interface AdminReelCategory {
   isActive: boolean
 }
 
+export interface AdminReelInfluencer {
+  influencerProfileId: string
+  publicInfluencerId: string
+  displayName: string
+  socialHandle: string | null
+  status: string
+}
+
 export interface AdminReelMedia {
   cloudflareVideoUid: string | null
   playbackUrl: string | null
   thumbnailUrl: string | null
   durationSeconds: number | null
+  width?: number | null
+  height?: number | null
+  aspectRatio?: string | null
   uploadStatus: ReelUploadStatus
 }
 
@@ -101,6 +113,8 @@ export interface AdminReelChecklistItem {
 export interface AdminReel {
   reelId: string
   publicReelId: string
+  uploaderType?: ReelUploaderType
+  influencer?: AdminReelInfluencer | null
   contentType: ReelContentType
   caption: string | null
   priceIndicator: string | null

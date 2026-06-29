@@ -2,6 +2,7 @@ import {
   ArrowUpRight,
   ChevronLeft,
   ChevronRight,
+  Filter,
   ReceiptText,
   RefreshCcw,
   RotateCcw,
@@ -12,7 +13,7 @@ import {
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
@@ -34,6 +35,7 @@ import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
 import { usePermission } from '../../../hooks/usePermission'
 import type { LookupOption } from '../../../types/lookup.types'
+import { readLookupOptionsFromSearchParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -152,6 +154,54 @@ type PaymentColumnWidthId =
   | typeof PAYMENT_ACTION_COLUMN_ID
 type PaymentColumnWidths = Partial<Record<PaymentColumnWidthId, number>>
 type PaymentQueueKey = 'all' | 'needsReview' | 'successful' | 'failed' | 'cancelled'
+
+function readSearchValues(searchParams: URLSearchParams, key: string) {
+  return Array.from(
+    new Set(
+      searchParams
+        .getAll(key)
+        .flatMap((value) => value.split(','))
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
+function readEnumSearchValues<T extends string>(
+  searchParams: URLSearchParams,
+  key: string,
+  allowedValues: readonly T[],
+) {
+  const allowed = new Set<T>(allowedValues)
+
+  return readSearchValues(searchParams, key).filter((value): value is T =>
+    allowed.has(value as T),
+  )
+}
+
+function queueKeyForPaymentStatuses(
+  selectedStatuses: AdminPaymentStatus[],
+): PaymentQueueKey {
+  if (selectedStatuses.length === 0) return 'all'
+  if (
+    selectedStatuses.every((status) =>
+      ['CREATED', 'PENDING', 'FAILED'].includes(status),
+    )
+  ) {
+    return 'needsReview'
+  }
+  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'SUCCESS') {
+    return 'successful'
+  }
+  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'FAILED') {
+    return 'failed'
+  }
+  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'CANCELLED') {
+    return 'cancelled'
+  }
+
+  return 'all'
+}
 
 const defaultPaymentColumns: PaymentColumnId[] = [
   'payment',
@@ -429,27 +479,38 @@ function PaymentCell({
 
 export function PaymentsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const canReadOrders = usePermission('orders:read')
   const canReadCustomers = usePermission('customers:read')
   const canReadVendors = usePermission('vendors:read')
   const canReadRefunds = usePermission('payments:read')
   const canReconcile = usePermission('payments:reconcile')
+  const seededStatuses = readEnumSearchValues(searchParams, 'status', paymentStatuses)
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
-  const [search, setSearch] = useState('')
-  const [selectedStatuses, setSelectedStatuses] = useState<AdminPaymentStatus[]>([])
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [selectedStatuses, setSelectedStatuses] =
+    useState<AdminPaymentStatus[]>(() => seededStatuses)
   const [selectedMethods, setSelectedMethods] = useState<AdminPaymentMethod[]>([])
   const [selectedGateways, setSelectedGateways] = useState<AdminPaymentGateway[]>([])
-  const [city, setCity] = useState('')
-  const [selectedOrders, setSelectedOrders] = useState<LookupOption[]>([])
-  const [selectedCustomers, setSelectedCustomers] = useState<LookupOption[]>([])
-  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>([])
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [city, setCity] = useState(() => searchParams.get('city') ?? '')
+  const [selectedOrders, setSelectedOrders] = useState<LookupOption[]>(() =>
+    readLookupOptionsFromSearchParams(searchParams, 'orderId', 'orderLabel'),
+  )
+  const [selectedCustomers, setSelectedCustomers] = useState<LookupOption[]>(() =>
+    readLookupOptionsFromSearchParams(searchParams, 'customerId', 'customerLabel'),
+  )
+  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>(() =>
+    readLookupOptionsFromSearchParams(searchParams, 'vendorId', 'vendorLabel'),
+  )
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get('dateFrom') ?? '')
+  const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') ?? '')
   const [minAmountPaise, setMinAmountPaise] = useState('')
   const [maxAmountPaise, setMaxAmountPaise] = useState('')
-  const [queue, setQueue] = useState<PaymentQueueKey>('all')
+  const [queue, setQueue] = useState<PaymentQueueKey>(() =>
+    queueKeyForPaymentStatuses(seededStatuses),
+  )
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionTarget, setActionTarget] = useState<PaymentActionTarget | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
@@ -537,6 +598,27 @@ export function PaymentsPage() {
   )
 
   const resetToFirstPage = () => setPage(1)
+  const clearSeededPaymentParams = () => {
+    const seededKeys = [
+      'city',
+      'customerId',
+      'customerLabel',
+      'dateFrom',
+      'dateTo',
+      'orderId',
+      'orderLabel',
+      'search',
+      'status',
+      'vendorId',
+      'vendorLabel',
+    ] as const
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    seededKeys.forEach((key) => nextParams.delete(key))
+    setSearchParams(nextParams, { replace: true })
+  }
 
   const query = useMemo<AdminPaymentsQueryParams>(
     () => ({
@@ -620,6 +702,7 @@ export function PaymentsPage() {
   )
 
   const clearPaymentFilters = () => {
+    clearSeededPaymentParams()
     setQueue('all')
     setSearch('')
     setSelectedStatuses([])
@@ -637,6 +720,7 @@ export function PaymentsPage() {
   }
 
   const applyQueue = (nextQueue: PaymentQueueKey) => {
+    clearSeededPaymentParams()
     setQueue(nextQueue)
     setSelectedStatuses([])
 
@@ -970,6 +1054,7 @@ export function PaymentsPage() {
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         description="Review, reconcile, and trace backend payment records."
+        layout="workspace"
         placement="topbar"
         title="Payments"
       />
@@ -1012,8 +1097,11 @@ export function PaymentsPage() {
                 >
                   <ChevronRight className="size-4" />
                 </button>
-                <span className="text-xs font-semibold uppercase tracking-normal text-muted xl:[writing-mode:vertical-rl] xl:rotate-180">
-                  Filters
+                <span
+                  aria-hidden="true"
+                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
+                >
+                  <Filter className="size-4" />
                 </span>
                 {hasActiveFilters ? (
                   <span
@@ -1087,6 +1175,7 @@ export function PaymentsPage() {
                       placeholder="All statuses"
                       values={selectedStatuses}
                       onChange={(values) => {
+                        clearSeededPaymentParams()
                         setSelectedStatuses(values as AdminPaymentStatus[])
                         setQueue('all')
                         resetToFirstPage()
@@ -1121,6 +1210,7 @@ export function PaymentsPage() {
                         placeholder="Chennai"
                         value={city}
                         onChange={(event) => {
+                          clearSeededPaymentParams()
                           setCity(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1133,6 +1223,7 @@ export function PaymentsPage() {
                       queryKey={['lookup', 'orders']}
                       selectedOptions={selectedOrders}
                       onChange={(options) => {
+                        clearSeededPaymentParams()
                         setSelectedOrders(options)
                         resetToFirstPage()
                       }}
@@ -1144,6 +1235,7 @@ export function PaymentsPage() {
                       queryKey={['lookup', 'customers']}
                       selectedOptions={selectedCustomers}
                       onChange={(options) => {
+                        clearSeededPaymentParams()
                         setSelectedCustomers(options)
                         resetToFirstPage()
                       }}
@@ -1155,6 +1247,7 @@ export function PaymentsPage() {
                       queryKey={['lookup', 'vendors', 'payments']}
                       selectedOptions={selectedVendors}
                       onChange={(options) => {
+                        clearSeededPaymentParams()
                         setSelectedVendors(options)
                         resetToFirstPage()
                       }}
@@ -1198,6 +1291,7 @@ export function PaymentsPage() {
                         type="datetime-local"
                         value={dateFrom}
                         onChange={(event) => {
+                          clearSeededPaymentParams()
                           setDateFrom(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1212,6 +1306,7 @@ export function PaymentsPage() {
                         type="datetime-local"
                         value={dateTo}
                         onChange={(event) => {
+                          clearSeededPaymentParams()
                           setDateTo(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1241,6 +1336,7 @@ export function PaymentsPage() {
                   placeholder="Search payment, order, customer, vendor"
                   value={search}
                   onChange={(nextSearch) => {
+                    clearSeededPaymentParams()
                     setSearch(nextSearch)
                     resetToFirstPage()
                   }}

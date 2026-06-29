@@ -1,4 +1,7 @@
-import type { ApiErrorDetails } from '../../../types/api.types'
+import type {
+  ApiErrorDetails,
+  ApiErrorResponse,
+} from '../../../types/api.types'
 
 export interface AuditLogsQueryParams {
   page?: number
@@ -62,3 +65,5 @@ export interface AuditApiErrorDetails extends ApiErrorDetails {
     message: string
   }[]
 }
+
+export type AuditErrorResponse = ApiErrorResponse<AuditApiErrorDetails>

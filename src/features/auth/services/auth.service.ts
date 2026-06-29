@@ -2,11 +2,11 @@ import { buildApiUrl } from '../../../config/api'
 import {
   ADMIN_FORGOT_PASSWORD_PATH,
   ADMIN_LOGIN_PATH,
+  ADMIN_LOGOUT_PATH,
   ADMIN_RESET_PASSWORD_PATH,
 } from '../../../config/apiPaths'
 import { useAuthStore } from '../../../store/authStore'
 import { apiClient } from '../../../services/apiClient'
-import type { AppUser } from '../../../types/common.types'
 import type {
   AuthSession,
   AuthActionResponse,
@@ -17,18 +17,7 @@ import type {
   LoginResponse,
 } from '../types/auth.types'
 import { AuthActionServiceError, LoginServiceError } from '../types/auth.types'
-
-function mapAdminToUser(admin: LoginResponse['data']['admin']): AppUser {
-  const role = admin.roleCodes[0]?.toLowerCase().replaceAll('_', '-') as AppUser['role']
-
-  return {
-    id: admin.userId,
-    name: admin.fullName,
-    email: admin.email,
-    role: role ?? 'super-admin',
-    permissions: admin.permissions,
-  }
-}
+import { buildAuthSession } from '../utils/session'
 
 async function readJsonResponse<T>(response: Response): Promise<T | null> {
   const text = await response.text()
@@ -37,7 +26,11 @@ async function readJsonResponse<T>(response: Response): Promise<T | null> {
     return null
   }
 
-  return JSON.parse(text) as T
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return null
+  }
 }
 
 async function login(payload: LoginPayload): Promise<AuthSession> {
@@ -62,24 +55,22 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
   }
 
   const body = (await response.json()) as LoginResponse
-  const user = mapAdminToUser(body.data.admin)
-
-  const accessTokenExpiresAt = new Date(
-    Date.now() + body.data.accessTokenExpiresInSeconds * 1000,
-  ).toISOString()
-
-  const session: AuthSession = {
-    accessToken: body.data.accessToken,
-    accessTokenExpiresInSeconds: body.data.accessTokenExpiresInSeconds,
-    accessTokenExpiresAt,
-    refreshTokenExpiresAt: body.data.refreshTokenExpiresAt,
-    admin: body.data.admin,
-    user,
-  }
+  const session = buildAuthSession(body.data)
 
   useAuthStore.getState().setSession(session)
 
   return session
+}
+
+async function logout(): Promise<void> {
+  try {
+    await apiClient.request(buildApiUrl(ADMIN_LOGOUT_PATH), {
+      method: 'POST',
+      credentials: 'include',
+    })
+  } finally {
+    useAuthStore.getState().clearSession()
+  }
 }
 
 async function requestPasswordReset(
@@ -90,6 +81,7 @@ async function requestPasswordReset(
     headers: {
       'Content-Type': 'application/json',
     },
+    credentials: 'include',
     body: JSON.stringify(payload),
   })
 
@@ -113,6 +105,7 @@ async function resetPassword(
     headers: {
       'Content-Type': 'application/json',
     },
+    credentials: 'include',
     body: JSON.stringify(payload),
   })
 
@@ -130,6 +123,7 @@ async function resetPassword(
 
 export const authService = {
   login,
+  logout,
   requestPasswordReset,
   resetPassword,
 }

@@ -238,7 +238,50 @@
 
   .page-scroll-region {
     height: calc(100vh - var(--spacing-topbar));
+    min-height: 0;
     overflow-y: auto;
+  }
+
+  @media (min-width: 1280px) {
+    html.admin-workspace-scroll-lock,
+    body.admin-workspace-scroll-lock {
+      height: 100%;
+      max-height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    html.admin-workspace-scroll-lock {
+      scrollbar-width: none;
+    }
+
+    html.admin-workspace-scroll-lock::-webkit-scrollbar,
+    body.admin-workspace-scroll-lock::-webkit-scrollbar {
+      display: none;
+    }
+
+    .app-shell-grid--workspace {
+      height: 100vh;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    .app-shell-grid--workspace .app-main-shell {
+      height: 100vh;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .page-scroll-region--workspace {
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    .page-scroll-region--workspace > .page-content {
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+    }
   }
 
   .premium-page-surface {

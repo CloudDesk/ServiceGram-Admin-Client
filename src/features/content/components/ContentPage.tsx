@@ -992,14 +992,15 @@ export function ContentPage() {
   }
 
   return (
-    <PageContainer>
+    <PageContainer className="flex min-h-full flex-col gap-3 !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         description="Manage app content pages, policies, FAQs, and support copy."
+        layout="workspace"
         placement="topbar"
         title="Content"
       />
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid shrink-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => (
           <SummaryCard key={metric.label} metric={metric} />
         ))}
@@ -1013,13 +1014,13 @@ export function ContentPage() {
 
       <section
         className={cn(
-          'grid min-h-[calc(100vh-16rem)] gap-3 transition-[grid-template-columns]',
+          'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
           isFilterRailCollapsed
             ? 'lg:grid-cols-[3rem_minmax(0,1fr)]'
             : 'lg:grid-cols-[18rem_minmax(0,1fr)]',
         )}
       >
-        <aside className="min-w-0 rounded-[0.875rem] border border-border bg-surface shadow-surface">
+        <aside className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
           <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
             {!isFilterRailCollapsed ? (
               <div className="min-w-0">
@@ -1040,7 +1041,7 @@ export function ContentPage() {
           </div>
 
           {isFilterRailCollapsed ? null : (
-            <div className="space-y-4 p-3">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
               <div className="space-y-2">
                 {queueItems.map((item) => (
                   <button
@@ -1157,7 +1158,7 @@ export function ContentPage() {
         </aside>
 
         <section
-          className="min-w-0 scroll-mt-4 rounded-[0.875rem] border border-border bg-surface shadow-surface"
+          className="flex min-w-0 scroll-mt-4 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0"
           id="content-pages"
         >
           <div className="flex flex-col gap-3 border-b border-border px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1237,7 +1238,7 @@ export function ContentPage() {
           </div>
 
           {contentQuery.isError ? (
-            <div className="p-4">
+            <div className="p-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
               <ErrorState
                 description="We could not load content pages."
                 title="Content unavailable"
@@ -1245,18 +1246,18 @@ export function ContentPage() {
               />
             </div>
           ) : isLoading ? (
-            <div className="p-4">
+            <div className="p-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
               <TableSkeleton columnCount={visibleColumns.length + 2} hasFooter rowCount={8} />
             </div>
           ) : pages.length === 0 ? (
-            <div className="p-4">
+            <div className="p-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
               <EmptyState description="No content pages matched this filter." title="No content pages" />
             </div>
           ) : (
-            <>
-              <div className="overflow-x-auto">
+            <div className="flex flex-col xl:min-h-0 xl:flex-1">
+              <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
                 <div className="min-w-[var(--content-grid-min-width)]" style={gridStyle}>
-                  <div className="grid grid-cols-[var(--content-grid-template)] gap-x-3 border-b border-border bg-surface-muted/60 px-3 py-3 text-xs font-semibold uppercase tracking-normal text-muted">
+                  <div className="sticky top-0 z-10 grid grid-cols-[var(--content-grid-template)] gap-x-3 border-b border-border bg-surface-muted px-3 py-3 text-xs font-semibold uppercase tracking-normal text-muted">
                     <div className="flex min-w-0 items-center">
                       <ListSelectionCheckbox
                         checked={contentSelection.allVisibleSelected}
@@ -1401,7 +1402,7 @@ export function ContentPage() {
                   </div>
                 </div>
               ) : null}
-            </>
+            </div>
           )}
         </section>
       </section>

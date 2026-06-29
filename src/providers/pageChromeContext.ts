@@ -1,8 +1,11 @@
 import { createContext, useContext } from 'react'
 
+export type PageChromeLayout = 'document' | 'workspace'
+
 export interface PageChromeState {
   title?: string
   description?: string
+  layout?: PageChromeLayout
 }
 
 export interface PageChromeContextValue {

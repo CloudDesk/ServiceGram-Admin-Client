@@ -55,7 +55,15 @@ export function ForgotPasswordPage() {
                 title: 'Reset request failed.',
                 description: error.message,
               })
+
+              return
             }
+
+            pushToast({
+              tone: 'danger',
+              title: 'Reset request failed.',
+              description: 'Please try again in a moment.',
+            })
           }
         })}
       >

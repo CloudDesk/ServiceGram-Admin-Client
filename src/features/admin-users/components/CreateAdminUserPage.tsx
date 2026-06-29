@@ -8,6 +8,7 @@ import { Input } from '../../../components/ui/Input'
 import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
+import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { rbacService } from '../../rbac/services/rbac.service'
 import { adminUserService } from '../services/adminUser.service'
@@ -84,6 +85,7 @@ function mapAdminUserFieldErrors(
 export function CreateAdminUserPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const canCreateAdminUsers = usePermission('admin_users:create')
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
   const [password, setPassword] = useState('')
@@ -93,20 +95,26 @@ export function CreateAdminUserPage() {
   const [fieldErrors, setFieldErrors] = useState<CreateAdminUserFieldErrors>({})
 
   const rolesQuery = useQuery({
+    enabled: canCreateAdminUsers,
     queryKey: ['rbac', 'roles'],
     queryFn: () => rbacService.getRoles(),
   })
   const activeRoles = rolesQuery.data?.data.filter((role) => role.isActive) ?? []
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      adminUserService.createAdminUser({
+    mutationFn: () => {
+      if (!canCreateAdminUsers) {
+        throw new Error('Create access is required for admin users.')
+      }
+
+      return adminUserService.createAdminUser({
         email: email.trim(),
         fullName: fullName.trim(),
         password,
         roleId: roleId.trim(),
         status,
-      }),
+      })
+    },
     onMutate: () => setFormError(null),
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: ['admin-users'] })
@@ -162,6 +170,11 @@ export function CreateAdminUserPage() {
   }
 
   const submitForm = () => {
+    if (!canCreateAdminUsers) {
+      setFormError('Create access is required for admin users.')
+      return
+    }
+
     const nextFieldErrors = validateCreateAdminUserForm({
       email,
       fullName,
@@ -177,6 +190,23 @@ export function CreateAdminUserPage() {
     }
 
     void createMutation.mutateAsync()
+  }
+
+  if (!canCreateAdminUsers) {
+    return (
+      <PageContainer>
+        <DetailPageHeader
+          description="Create access is required to add admin portal users."
+          listHref={routePaths.adminUsers}
+          listLabel="Users"
+          recordName="Create Admin User"
+        />
+        <ErrorState
+          description="You can still review existing admin users, but adding a new admin requires admin user create permission."
+          title="Create access required"
+        />
+      </PageContainer>
+    )
   }
 
   return (

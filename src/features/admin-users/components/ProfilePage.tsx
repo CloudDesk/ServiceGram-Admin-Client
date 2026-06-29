@@ -23,6 +23,7 @@ import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
+import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { adminUserService } from '../services/adminUser.service'
@@ -32,6 +33,17 @@ import type {
   AdminUserStatus,
   CurrentAdminUser,
 } from '../types/adminUser.types'
+
+const profileSectionIds = {
+  account: 'profile-account',
+  lifecycle: 'profile-lifecycle',
+  permissions: 'profile-permissions',
+  role: 'profile-role',
+  scopes: 'profile-scopes',
+  session: 'profile-session',
+  signals: 'profile-signals',
+} as const
+type ProfileSectionId = (typeof profileSectionIds)[keyof typeof profileSectionIds]
 
 function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
@@ -68,12 +80,59 @@ function roleTone(role: AdminUserRole | null): StatusTone {
   return role.isActive ? 'success' : 'warning'
 }
 
+function formatRemainingSeconds(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return 'Not available'
+  }
+
+  if (value <= 0) return 'Expired'
+
+  const hours = Math.floor(value / 3600)
+  const minutes = Math.floor((value % 3600) / 60)
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`
+  }
+
+  return `${Math.max(minutes, 1)}m`
+}
+
 function toneClass(tone: StatusTone) {
   if (tone === 'success') return 'text-success'
   if (tone === 'warning') return 'text-warning'
   if (tone === 'danger') return 'text-danger'
   if (tone === 'info') return 'text-primary'
   return 'text-muted'
+}
+
+function buildProfileAdminUsersListPath(profile: CurrentAdminUser) {
+  return buildPathWithQueryParams(routePaths.adminUsers, {
+    roleId: profile.role?.roleId,
+    search: profile.email ?? profile.fullName,
+    status: profile.status,
+  }) + '#admin-users-records'
+}
+
+function buildProfileActorAuditPath(profile: CurrentAdminUser) {
+  return buildPathWithQueryParams(routePaths.audit, {
+    actorAdminId: profile.adminId,
+  })
+}
+
+function buildProfileEntityAuditPath(profile: CurrentAdminUser) {
+  return buildPathWithQueryParams(routePaths.audit, {
+    entityId: profile.adminId,
+    entityType: 'admin_user',
+    moduleCode: 'admin_users',
+  })
+}
+
+function buildProfileRoleCataloguePath(profile: CurrentAdminUser) {
+  return buildPathWithQueryParams(routePaths.roles, {
+    search: profile.role?.roleCode,
+    status: profile.role?.isActive ? 'active' : 'inactive',
+    type: profile.role?.isSystem ? 'system' : 'custom',
+  }) + '#roles-records'
 }
 
 function DetailField({
@@ -129,16 +188,21 @@ function SectionShell({
   children,
   description,
   icon,
+  id,
   title,
 }: {
   actionNode?: ReactNode
   children: ReactNode
   description?: string
   icon?: ReactNode
+  id?: string
   title: string
 }) {
   return (
-    <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+    <section
+      className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
+      id={id}
+    >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -198,6 +262,7 @@ function AccountPanel({ profile }: { profile: CurrentAdminUser }) {
     <SectionShell
       description="Identity and account status for the active admin session."
       icon={<UserRound className="size-4" />}
+      id={profileSectionIds.account}
       title="Account"
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -254,6 +319,7 @@ function RolePanel({
       }
       description="Primary role and role-code claims applied to the current session."
       icon={<ShieldCheck className="size-4" />}
+      id={profileSectionIds.role}
       title="Role"
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -298,6 +364,7 @@ function LifecyclePanel({ profile }: { profile: CurrentAdminUser }) {
     <SectionShell
       description="Timestamps and permission-version marker for the current admin profile."
       icon={<CalendarClock className="size-4" />}
+      id={profileSectionIds.lifecycle}
       title="Lifecycle"
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -319,6 +386,7 @@ function ScopesPanel({ scopes }: { scopes: AdminUserScope[] }) {
     <SectionShell
       description="Object scope claims returned with the active admin session."
       icon={<KeyRound className="size-4" />}
+      id={profileSectionIds.scopes}
       title="Scopes"
     >
       {scopes.length ? (
@@ -353,6 +421,43 @@ function ScopesPanel({ scopes }: { scopes: AdminUserScope[] }) {
   )
 }
 
+function SessionPanel({ profile }: { profile: CurrentAdminUser }) {
+  const session = profile.session
+
+  return (
+    <SectionShell
+      description="Current token and recent-auth timing returned by the profile API."
+      icon={<KeyRound className="size-4" />}
+      id={profileSectionIds.session}
+      title="Session"
+    >
+      {session ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <DetailField
+            label="Authenticated"
+            value={formatDateSafe(session.authenticatedAt)}
+          />
+          <DetailField label="Expires" value={formatDateSafe(session.expiresAt)} />
+          <DetailField
+            label="Session remaining"
+            value={formatRemainingSeconds(session.remainingSeconds)}
+          />
+          <DetailField
+            label="Recent auth expires"
+            value={formatDateSafe(session.recentAuthExpiresAt)}
+          />
+          <DetailField
+            label="Recent auth remaining"
+            value={formatRemainingSeconds(session.recentAuthRemainingSeconds)}
+          />
+        </div>
+      ) : (
+        <Badge tone="warning">No session metadata returned</Badge>
+      )}
+    </SectionShell>
+  )
+}
+
 function groupPermissions(permissions: string[]) {
   const groups = new Map<string, string[]>()
 
@@ -380,6 +485,7 @@ function PermissionsPanel({ permissions }: { permissions: string[] }) {
     <SectionShell
       description="Effective permissions loaded from the current admin session."
       icon={<ShieldCheck className="size-4" />}
+      id={profileSectionIds.permissions}
       title="Permissions"
     >
       {permissionGroups.length ? (
@@ -442,11 +548,13 @@ function SignalsPanel({
   canReadAdminUsers,
   canReadAudit,
   canReadRoles,
+  canUpdateAdminUsers,
   profile,
 }: {
   canReadAdminUsers: boolean
   canReadAudit: boolean
   canReadRoles: boolean
+  canUpdateAdminUsers: boolean
   profile: CurrentAdminUser
 }) {
   const warnings = useMemo(() => {
@@ -476,16 +584,26 @@ function SignalsPanel({
     const items: string[] = []
 
     if (canReadAdminUsers) items.push('OPEN_ADMIN_RECORD')
+    if (canReadAdminUsers && canUpdateAdminUsers) items.push('MANAGE_ADMIN_RECORD')
     if (canReadRoles && profile.role) items.push('OPEN_ROLE')
     if (canReadAudit) items.push('OPEN_AUDIT_TRAIL')
+    if (profile.session) items.push('VIEW_SESSION_STATE')
 
     return items
-  }, [canReadAdminUsers, canReadAudit, canReadRoles, profile.role])
+  }, [
+    canReadAdminUsers,
+    canReadAudit,
+    canReadRoles,
+    canUpdateAdminUsers,
+    profile.role,
+    profile.session,
+  ])
 
   return (
     <SectionShell
       description="Derived account warnings and permission-backed drill-downs."
       icon={<TriangleAlert className="size-4" />}
+      id={profileSectionIds.signals}
       title="Signals"
     >
       <div className="space-y-4">
@@ -567,13 +685,17 @@ function RelatedRecordsPanel({
   canReadAdminUsers,
   canReadAudit,
   canReadRoles,
+  canUpdateAdminUsers,
   onNavigate,
+  onOpenSection,
   profile,
 }: {
   canReadAdminUsers: boolean
   canReadAudit: boolean
   canReadRoles: boolean
+  canUpdateAdminUsers: boolean
   onNavigate: (path: string) => void
+  onOpenSection: (sectionId: ProfileSectionId) => void
   profile: CurrentAdminUser
 }) {
   return (
@@ -593,6 +715,24 @@ function RelatedRecordsPanel({
           onOpen={() => onNavigate(`${routePaths.adminUsers}/${profile.adminId}`)}
         />
         <RelatedRecordRow
+          actionLabel="Users"
+          canOpen={canReadAdminUsers}
+          icon={<Users className="size-4" />}
+          label="Admin users list"
+          meta="Filtered by this profile and role when available"
+          value={profile.fullName}
+          onOpen={() => onNavigate(buildProfileAdminUsersListPath(profile))}
+        />
+        <RelatedRecordRow
+          actionLabel="Manage"
+          canOpen={canReadAdminUsers && canUpdateAdminUsers}
+          icon={<UserRound className="size-4" />}
+          label="Profile edit path"
+          meta="Profile edits are handled from the admin user detail page"
+          value={profile.email ?? profile.adminId}
+          onOpen={() => onNavigate(`${routePaths.adminUsers}/${profile.adminId}`)}
+        />
+        <RelatedRecordRow
           actionLabel="Role"
           canOpen={Boolean(profile.role && canReadRoles)}
           icon={<ShieldCheck className="size-4" />}
@@ -604,22 +744,40 @@ function RelatedRecordsPanel({
           }}
         />
         <RelatedRecordRow
+          actionLabel="Roles"
+          canOpen={Boolean(profile.role && canReadRoles)}
+          icon={<ShieldCheck className="size-4" />}
+          label="Role catalogue"
+          meta={profile.role?.isSystem ? 'System role' : 'Custom role'}
+          value={profile.role?.roleCode ?? 'No role'}
+          onOpen={() => onNavigate(buildProfileRoleCataloguePath(profile))}
+        />
+        <RelatedRecordRow
+          actionLabel="Activity"
+          canOpen={canReadAudit}
+          icon={<ClipboardList className="size-4" />}
+          label="Performed actions"
+          meta="Filtered by actor admin ID"
+          value={profile.adminId}
+          onOpen={() => onNavigate(buildProfileActorAuditPath(profile))}
+        />
+        <RelatedRecordRow
           actionLabel="Audit"
           canOpen={canReadAudit}
           icon={<ClipboardList className="size-4" />}
-          label="Audit trail"
-          meta="Filtered by actor admin ID"
+          label="Profile changes"
+          meta="Filtered by admin user record"
           value={profile.adminId}
-          onOpen={() => {
-            onNavigate(`${routePaths.audit}?actorAdminId=${encodeURIComponent(profile.adminId)}`)
-          }}
+          onOpen={() => onNavigate(buildProfileEntityAuditPath(profile))}
         />
         <RelatedRecordRow
-          canOpen={false}
+          actionLabel="Session"
+          canOpen
           icon={<KeyRound className="size-4" />}
           label="Auth user"
           meta="Identity user backing the admin account"
           value={profile.userId}
+          onOpen={() => onOpenSection(profileSectionIds.session)}
         />
       </div>
     </SectionShell>
@@ -631,12 +789,23 @@ export function ProfilePage() {
   const canReadAdminUsers = usePermission('admin_users:read')
   const canReadAudit = usePermission('audit:read')
   const canReadRoles = usePermission('roles:read')
+  const canUpdateAdminUsers = usePermission('admin_users:update')
   const profileQuery = useQuery({
     queryKey: ['admin-me'],
     queryFn: adminUserService.getMe,
   })
 
   const profile = profileQuery.data?.data
+
+  const openSection = (sectionId: ProfileSectionId) => {
+    const section = document.getElementById(sectionId)
+
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    if (section) {
+      window.history.replaceState(null, '', `#${sectionId}`)
+    }
+  }
 
   if (profileQuery.isLoading) {
     return <DetailSkeleton />
@@ -679,6 +848,16 @@ export function ProfilePage() {
               >
                 <ArrowUpRight className="mr-2 size-4" />
                 Record
+              </Button>
+            ) : null}
+            {canReadAdminUsers && canUpdateAdminUsers ? (
+              <Button
+                size="sm"
+                type="button"
+                onClick={() => navigate(`${routePaths.adminUsers}/${profile.adminId}`)}
+              >
+                <UserRound className="mr-2 size-4" />
+                Manage
               </Button>
             ) : null}
             <Button
@@ -741,6 +920,7 @@ export function ProfilePage() {
             onNavigate={navigate}
           />
           <ScopesPanel scopes={profile.scopes} />
+          <SessionPanel profile={profile} />
           <LifecyclePanel profile={profile} />
         </div>
       </section>
@@ -750,14 +930,17 @@ export function ProfilePage() {
           canReadAdminUsers={canReadAdminUsers}
           canReadAudit={canReadAudit}
           canReadRoles={canReadRoles}
+          canUpdateAdminUsers={canUpdateAdminUsers}
           profile={profile}
         />
         <RelatedRecordsPanel
           canReadAdminUsers={canReadAdminUsers}
           canReadAudit={canReadAudit}
           canReadRoles={canReadRoles}
+          canUpdateAdminUsers={canUpdateAdminUsers}
           profile={profile}
           onNavigate={navigate}
+          onOpenSection={openSection}
         />
       </section>
     </PageContainer>

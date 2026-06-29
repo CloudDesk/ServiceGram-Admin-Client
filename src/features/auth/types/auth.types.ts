@@ -17,16 +17,18 @@ export interface ResetPasswordPayload {
   confirmPassword: string
 }
 
+export interface AuthResponseData {
+  accessToken: string
+  accessTokenExpiresInSeconds: number
+  refreshTokenExpiresAt: string
+  admin: AdminSessionAdmin
+}
+
 export interface LoginResponse {
   success: true
   code: 'LOGIN_SUCCESS'
   message: string
-  data: {
-    accessToken: string
-    accessTokenExpiresInSeconds: number
-    refreshTokenExpiresAt: string
-    admin: AdminSessionAdmin
-  }
+  data: AuthResponseData
   meta?: {
     requestId?: string
     timestamp?: string
@@ -35,6 +37,14 @@ export interface LoginResponse {
     durationMs?: number
     apiVersion?: string
   }
+}
+
+export interface RefreshResponse {
+  success: true
+  code: 'TOKEN_REFRESHED'
+  message: string
+  data: AuthResponseData
+  meta?: LoginResponse['meta']
 }
 
 export interface AdminSessionAdmin {

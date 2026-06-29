@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CreditCard,
+  Filter,
   ReceiptText,
   RefreshCcw,
   SlidersHorizontal,
@@ -39,6 +40,7 @@ import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
 import { usePermission } from '../../../hooks/usePermission'
 import type { LookupOption } from '../../../types/lookup.types'
+import { readLookupOptionsFromSearchParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -147,6 +149,55 @@ type RefundQueueKey =
   | 'processing'
   | 'successful'
   | 'exceptions'
+
+function readSearchValues(searchParams: URLSearchParams, key: string) {
+  return Array.from(
+    new Set(
+      searchParams
+        .getAll(key)
+        .flatMap((value) => value.split(','))
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
+function readEnumSearchValues<T extends string>(
+  searchParams: URLSearchParams,
+  key: string,
+  allowedValues: readonly T[],
+) {
+  const allowed = new Set<T>(allowedValues)
+
+  return readSearchValues(searchParams, key).filter((value): value is T =>
+    allowed.has(value as T),
+  )
+}
+
+function queueKeyForRefundStatuses(
+  selectedStatuses: AdminRefundStatus[],
+): RefundQueueKey {
+  if (selectedStatuses.length === 0) return 'all'
+  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'REQUESTED') {
+    return 'requested'
+  }
+  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'APPROVED') {
+    return 'approved'
+  }
+  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'PROCESSING') {
+    return 'processing'
+  }
+  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'SUCCESS') {
+    return 'successful'
+  }
+  if (
+    selectedStatuses.every((status) => ['FAILED', 'REJECTED'].includes(status))
+  ) {
+    return 'exceptions'
+  }
+
+  return 'all'
+}
 
 const defaultRefundColumns: RefundColumnId[] = [
   'refund',
@@ -426,13 +477,17 @@ export function RefundsPage() {
   const canReviewRefunds = usePermission('payments:refund')
   const initialPaymentId = searchParams.get('paymentId') ?? ''
   const initialPaymentLabel = searchParams.get('paymentLabel') ?? initialPaymentId
+  const seededStatuses = readEnumSearchValues(searchParams, 'status', refundStatuses)
+  const initialStatuses =
+    seededStatuses.length > 0
+      ? seededStatuses
+      : (['REQUESTED'] as AdminRefundStatus[])
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
-  const [search, setSearch] = useState('')
-  const [selectedStatuses, setSelectedStatuses] = useState<AdminRefundStatus[]>([
-    'REQUESTED',
-  ])
-  const [city, setCity] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [selectedStatuses, setSelectedStatuses] =
+    useState<AdminRefundStatus[]>(() => initialStatuses)
+  const [city, setCity] = useState(() => searchParams.get('city') ?? '')
   const [selectedPayments, setSelectedPayments] = useState<LookupOption[]>(() =>
     initialPaymentId
       ? [
@@ -443,14 +498,22 @@ export function RefundsPage() {
         ]
       : [],
   )
-  const [selectedOrders, setSelectedOrders] = useState<LookupOption[]>([])
-  const [selectedCustomers, setSelectedCustomers] = useState<LookupOption[]>([])
-  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>([])
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [selectedOrders, setSelectedOrders] = useState<LookupOption[]>(() =>
+    readLookupOptionsFromSearchParams(searchParams, 'orderId', 'orderLabel'),
+  )
+  const [selectedCustomers, setSelectedCustomers] = useState<LookupOption[]>(() =>
+    readLookupOptionsFromSearchParams(searchParams, 'customerId', 'customerLabel'),
+  )
+  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>(() =>
+    readLookupOptionsFromSearchParams(searchParams, 'vendorId', 'vendorLabel'),
+  )
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get('dateFrom') ?? '')
+  const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') ?? '')
   const [minAmountPaise, setMinAmountPaise] = useState('')
   const [maxAmountPaise, setMaxAmountPaise] = useState('')
-  const [queue, setQueue] = useState<RefundQueueKey>('requested')
+  const [queue, setQueue] = useState<RefundQueueKey>(() =>
+    queueKeyForRefundStatuses(initialStatuses),
+  )
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [selectedAction, setSelectedAction] =
@@ -529,12 +592,27 @@ export function RefundsPage() {
 
   const resetToFirstPage = () => setPage(1)
 
-  const clearSeededPaymentFilter = () => {
-    if (!searchParams.has('paymentId') && !searchParams.has('paymentLabel')) return
+  const clearSeededRefundParams = () => {
+    const seededKeys = [
+      'city',
+      'customerId',
+      'customerLabel',
+      'dateFrom',
+      'dateTo',
+      'orderId',
+      'orderLabel',
+      'paymentId',
+      'paymentLabel',
+      'search',
+      'status',
+      'vendorId',
+      'vendorLabel',
+    ] as const
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
 
     const nextParams = new URLSearchParams(searchParams)
-    nextParams.delete('paymentId')
-    nextParams.delete('paymentLabel')
+    seededKeys.forEach((key) => nextParams.delete(key))
     setSearchParams(nextParams, { replace: true })
   }
 
@@ -617,6 +695,7 @@ export function RefundsPage() {
   )
 
   const clearRefundFilters = () => {
+    clearSeededRefundParams()
     setQueue('all')
     setSearch('')
     setSelectedStatuses([])
@@ -630,10 +709,10 @@ export function RefundsPage() {
     setMinAmountPaise('')
     setMaxAmountPaise('')
     setPage(1)
-    clearSeededPaymentFilter()
   }
 
   const applyQueue = (nextQueue: RefundQueueKey) => {
+    clearSeededRefundParams()
     setQueue(nextQueue)
     setSelectedStatuses([])
 
@@ -997,6 +1076,7 @@ export function RefundsPage() {
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         description="Review, approve, reject, and trace refund requests."
+        layout="workspace"
         placement="topbar"
         title="Refunds"
       />
@@ -1045,8 +1125,11 @@ export function RefundsPage() {
                 >
                   <ChevronRight className="size-4" />
                 </button>
-                <span className="text-xs font-semibold uppercase tracking-normal text-muted xl:[writing-mode:vertical-rl] xl:rotate-180">
-                  Filters
+                <span
+                  aria-hidden="true"
+                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
+                >
+                  <Filter className="size-4" />
                 </span>
                 {hasActiveFilters ? (
                   <span
@@ -1120,6 +1203,7 @@ export function RefundsPage() {
                       placeholder="All statuses"
                       values={selectedStatuses}
                       onChange={(values) => {
+                        clearSeededRefundParams()
                         setSelectedStatuses(values as AdminRefundStatus[])
                         setQueue('all')
                         resetToFirstPage()
@@ -1134,6 +1218,7 @@ export function RefundsPage() {
                         placeholder="Chennai"
                         value={city}
                         onChange={(event) => {
+                          clearSeededRefundParams()
                           setCity(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1147,7 +1232,7 @@ export function RefundsPage() {
                       selectedOptions={selectedPayments}
                       onChange={(options) => {
                         setSelectedPayments(options)
-                        clearSeededPaymentFilter()
+                        clearSeededRefundParams()
                         resetToFirstPage()
                       }}
                     />
@@ -1158,6 +1243,7 @@ export function RefundsPage() {
                       queryKey={['lookup', 'orders', 'refunds']}
                       selectedOptions={selectedOrders}
                       onChange={(options) => {
+                        clearSeededRefundParams()
                         setSelectedOrders(options)
                         resetToFirstPage()
                       }}
@@ -1169,6 +1255,7 @@ export function RefundsPage() {
                       queryKey={['lookup', 'customers', 'refunds']}
                       selectedOptions={selectedCustomers}
                       onChange={(options) => {
+                        clearSeededRefundParams()
                         setSelectedCustomers(options)
                         resetToFirstPage()
                       }}
@@ -1180,6 +1267,7 @@ export function RefundsPage() {
                       queryKey={['lookup', 'vendors', 'refunds']}
                       selectedOptions={selectedVendors}
                       onChange={(options) => {
+                        clearSeededRefundParams()
                         setSelectedVendors(options)
                         resetToFirstPage()
                       }}
@@ -1223,6 +1311,7 @@ export function RefundsPage() {
                         type="datetime-local"
                         value={dateFrom}
                         onChange={(event) => {
+                          clearSeededRefundParams()
                           setDateFrom(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1237,6 +1326,7 @@ export function RefundsPage() {
                         type="datetime-local"
                         value={dateTo}
                         onChange={(event) => {
+                          clearSeededRefundParams()
                           setDateTo(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1266,6 +1356,7 @@ export function RefundsPage() {
                   placeholder="Search refund, payment, order, customer, vendor"
                   value={search}
                   onChange={(nextSearch) => {
+                    clearSeededRefundParams()
                     setSearch(nextSearch)
                     resetToFirstPage()
                   }}

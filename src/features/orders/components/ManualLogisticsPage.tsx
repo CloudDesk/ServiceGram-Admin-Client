@@ -17,13 +17,16 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { Input } from '../../../components/ui/Input'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
-import { ListFilterBar } from '../../../components/layout/ListFilterBar'
+import {
+  ListFilterBar,
+  type ActiveFilterChip,
+} from '../../../components/layout/ListFilterBar'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import {
   DynamicTable,
@@ -45,6 +48,7 @@ import {
 import type {
   AdminOrdersQueryParams,
   AdminOrdersSummary,
+  AdminOrderPaymentStatus,
   AdminOrderStatus,
   AdminOrderSummary,
 } from '../types/order.types'
@@ -136,6 +140,15 @@ const queueOptions: {
 
 const manualStatuses: AdminOrderStatus[] = [...logisticsStatusGroups.all]
 
+const paymentStatuses: AdminOrderPaymentStatus[] = [
+  'PENDING',
+  'PAID',
+  'FAILED',
+  'REFUNDED',
+  'PARTIALLY_REFUNDED',
+  'COD_PENDING',
+]
+
 function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
 
@@ -144,6 +157,55 @@ function humanizeCode(value: string | null | undefined) {
     .split(/[:_-]+/)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
+}
+
+function readSearchValues(searchParams: URLSearchParams, key: string) {
+  return Array.from(
+    new Set(
+      searchParams
+        .getAll(key)
+        .flatMap((value) => value.split(','))
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
+function readEnumSearchValues<T extends string>(
+  searchParams: URLSearchParams,
+  key: string,
+  allowedValues: readonly T[],
+) {
+  const allowed = new Set<T>(allowedValues)
+
+  return readSearchValues(searchParams, key).filter((value): value is T =>
+    allowed.has(value as T),
+  )
+}
+
+function isLogisticsQueueKey(value: string | null): value is LogisticsQueueKey {
+  return Boolean(value && value in logisticsStatusGroups)
+}
+
+function queueLabel(queue: LogisticsQueueKey) {
+  return queueOptions.find((option) => option.key === queue)?.label ?? queue
+}
+
+function buildPathWithParams(
+  path: string,
+  params: Record<string, string | number | null | undefined>,
+) {
+  const nextParams = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      nextParams.set(key, String(value))
+    }
+  })
+
+  const queryString = nextParams.toString()
+
+  return queryString ? `${path}?${queryString}` : path
 }
 
 function formatDateSafe(value: string | null | undefined) {
@@ -203,6 +265,10 @@ function hasOrderAction(order: AdminOrderSummary, action: string) {
   return order.availableActions.includes(action)
 }
 
+function hasActiveDeliveryOtp(order: AdminOrderSummary) {
+  return (order.counts?.activeOtpCount ?? 0) > 0
+}
+
 function actionTargetStatus(action: string) {
   return action.replace(/^MARK_/, '') as AdminOrderStatus
 }
@@ -225,7 +291,11 @@ function mapRecommendedAction(order: AdminOrderSummary): OrderActionSelection | 
     return { kind: 'GENERATE_DELIVERY_OTP' }
   }
 
-  if (recommended === 'CONFIRM_DELIVERY_OTP' && hasOrderAction(order, recommended)) {
+  if (
+    recommended === 'CONFIRM_DELIVERY_OTP' &&
+    hasOrderAction(order, recommended) &&
+    hasActiveDeliveryOtp(order)
+  ) {
     return { kind: 'CONFIRM_DELIVERY_OTP' }
   }
 
@@ -583,29 +653,82 @@ function buildColumns(): DynamicTableColumn<AdminOrderSummary>[] {
 
 export function ManualLogisticsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const canReadCustomers = usePermission('customers:read')
   const canReadVendors = usePermission('vendors:read')
+  const canReadPayments = usePermission('payments:read')
   const canRefundPayments = usePermission('payments:refund')
   const canUpdateOrders = usePermission('orders:update_status')
+  const seededOrderStatuses = readEnumSearchValues(
+    searchParams,
+    'orderStatus',
+    manualStatuses,
+  )
+  const seededPaymentStatuses = readEnumSearchValues(
+    searchParams,
+    'paymentStatus',
+    paymentStatuses,
+  )
+  const queueParam = searchParams.get('queue')
+  const seededQueue = isLogisticsQueueKey(queueParam) ? queueParam : 'all'
   const [actionError, setActionError] = useState<string | null>(null)
-  const [activeQueue, setActiveQueue] = useState<LogisticsQueueKey>('all')
+  const [activeQueue, setActiveQueue] =
+    useState<LogisticsQueueKey>(seededQueue)
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
-  const [search, setSearch] = useState('')
-  const [city, setCity] = useState('')
-  const [vendorId, setVendorId] = useState('')
-  const [orderStatus, setOrderStatus] = useState<'' | AdminOrderStatus>('')
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [city, setCity] = useState(() => searchParams.get('city') ?? '')
+  const [customerId, setCustomerId] = useState(
+    () => searchParams.get('customerId') ?? '',
+  )
+  const [dateFrom, setDateFrom] = useState(
+    () => searchParams.get('dateFrom') ?? '',
+  )
+  const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') ?? '')
+  const [vendorId, setVendorId] = useState(
+    () => searchParams.get('vendorId') ?? '',
+  )
+  const [orderStatus, setOrderStatus] = useState<'' | AdminOrderStatus>(
+    () => seededOrderStatuses[0] ?? '',
+  )
+  const [paymentStatus, setPaymentStatus] = useState<
+    '' | AdminOrderPaymentStatus
+  >(() => seededPaymentStatuses[0] ?? '')
   const [selectedAction, setSelectedAction] =
     useState<LogisticsActionTarget | null>(null)
+
+  const clearSeededLogisticsParams = () => {
+    const seededKeys = [
+      'city',
+      'customerId',
+      'dateFrom',
+      'dateTo',
+      'orderStatus',
+      'paymentStatus',
+      'queue',
+      'search',
+      'vendorId',
+    ] as const
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    seededKeys.forEach((key) => nextParams.delete(key))
+    setSearchParams(nextParams, { replace: true })
+  }
 
   const baseFilters = useMemo(
     () => ({
       search: search.trim() || undefined,
       city: city.trim() || undefined,
+      customerId: customerId.trim() || undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      paymentStatus: paymentStatus || undefined,
       vendorId: vendorId.trim() || undefined,
     }),
-    [city, search, vendorId],
+    [city, customerId, dateFrom, dateTo, paymentStatus, search, vendorId],
   )
 
   const query = useMemo<AdminOrdersQueryParams>(
@@ -652,6 +775,130 @@ export function ManualLogisticsPage() {
   }
 
   const resetToFirstPage = () => setPage(1)
+  const clearLogisticsFilters = () => {
+    clearSeededLogisticsParams()
+    setActiveQueue('all')
+    setSearch('')
+    setCity('')
+    setCustomerId('')
+    setDateFrom('')
+    setDateTo('')
+    setVendorId('')
+    setOrderStatus('')
+    setPaymentStatus('')
+    setPage(1)
+  }
+
+  const activeFilters: ActiveFilterChip[] = []
+
+  if (activeQueue !== 'all' && !orderStatus) {
+    activeFilters.push({
+      key: 'queue',
+      label: `Queue: ${queueLabel(activeQueue)}`,
+      onRemove: () => {
+        clearSeededLogisticsParams()
+        setActiveQueue('all')
+        setPage(1)
+      },
+    })
+  }
+
+  if (search.trim()) {
+    activeFilters.push({
+      key: 'search',
+      label: `Search: ${search.trim()}`,
+      onRemove: () => {
+        clearSeededLogisticsParams()
+        setSearch('')
+        setPage(1)
+      },
+    })
+  }
+
+  if (orderStatus) {
+    activeFilters.push({
+      key: 'orderStatus',
+      label: `Status: ${humanizeCode(orderStatus)}`,
+      onRemove: () => {
+        clearSeededLogisticsParams()
+        setOrderStatus('')
+        setPage(1)
+      },
+    })
+  }
+
+  if (paymentStatus) {
+    activeFilters.push({
+      key: 'paymentStatus',
+      label: `Payment: ${humanizeCode(paymentStatus)}`,
+      onRemove: () => {
+        clearSeededLogisticsParams()
+        setPaymentStatus('')
+        setPage(1)
+      },
+    })
+  }
+
+  if (city.trim()) {
+    activeFilters.push({
+      key: 'city',
+      label: `City: ${city.trim()}`,
+      onRemove: () => {
+        clearSeededLogisticsParams()
+        setCity('')
+        setPage(1)
+      },
+    })
+  }
+
+  if (customerId.trim()) {
+    activeFilters.push({
+      key: 'customerId',
+      label: `Customer: ${customerId.trim()}`,
+      onRemove: () => {
+        clearSeededLogisticsParams()
+        setCustomerId('')
+        setPage(1)
+      },
+    })
+  }
+
+  if (vendorId.trim()) {
+    activeFilters.push({
+      key: 'vendorId',
+      label: `Vendor: ${vendorId.trim()}`,
+      onRemove: () => {
+        clearSeededLogisticsParams()
+        setVendorId('')
+        setPage(1)
+      },
+    })
+  }
+
+  if (dateFrom) {
+    activeFilters.push({
+      key: 'dateFrom',
+      label: `From: ${dateFrom}`,
+      onRemove: () => {
+        clearSeededLogisticsParams()
+        setDateFrom('')
+        setPage(1)
+      },
+    })
+  }
+
+  if (dateTo) {
+    activeFilters.push({
+      key: 'dateTo',
+      label: `To: ${dateTo}`,
+      onRemove: () => {
+        clearSeededLogisticsParams()
+        setDateTo('')
+        setPage(1)
+      },
+    })
+  }
+
   const openLogistics = (order: AdminOrderSummary) => {
     navigate(`${routePaths.orders}/${order.orderId}/logistics`)
   }
@@ -839,6 +1086,32 @@ export function ManualLogisticsPage() {
       })
     }
 
+    if (canReadPayments) {
+      actions.push({
+        key: 'payments',
+        label: 'Payments',
+        icon: <CreditCard className="size-4" />,
+        onClick: () =>
+          navigate(buildPathWithParams(routePaths.payments, {
+            search: order.publicOrderId,
+          })),
+        placement: 'menu',
+      })
+    }
+
+    if (canReadPayments && (order.counts?.refundCount ?? 0) > 0) {
+      actions.push({
+        key: 'refunds',
+        label: `Refunds (${order.counts?.refundCount ?? 0})`,
+        icon: <RotateCcw className="size-4" />,
+        onClick: () =>
+          navigate(buildPathWithParams(routePaths.refunds, {
+            search: order.publicOrderId,
+          })),
+        placement: 'menu',
+      })
+    }
+
     if (canUpdateOrders && hasOrderAction(order, 'ADD_NOTE')) {
       actions.push({
         key: 'add-note',
@@ -869,7 +1142,11 @@ export function ManualLogisticsPage() {
       })
     }
 
-    if (canUpdateOrders && hasOrderAction(order, 'CONFIRM_DELIVERY_OTP')) {
+    if (
+      canUpdateOrders &&
+      hasOrderAction(order, 'CONFIRM_DELIVERY_OTP') &&
+      hasActiveDeliveryOtp(order)
+    ) {
       actions.push({
         key: 'confirm-otp',
         label: 'Confirm OTP',
@@ -940,6 +1217,7 @@ export function ManualLogisticsPage() {
         activeQueue={activeQueue}
         summary={summary}
         onSelectQueue={(queue) => {
+          clearSeededLogisticsParams()
           setActiveQueue(queue)
           setOrderStatus('')
           setPage(1)
@@ -948,6 +1226,8 @@ export function ManualLogisticsPage() {
 
       <div className="list-workspace">
         <ListFilterBar
+          activeFilters={activeFilters}
+          onClearAll={clearLogisticsFilters}
           primaryFilters={
             <>
               <label className="space-y-1">
@@ -959,6 +1239,7 @@ export function ManualLogisticsPage() {
                     placeholder="Order, customer, vendor"
                     value={search}
                     onChange={(event) => {
+                      clearSeededLogisticsParams()
                       setSearch(event.target.value)
                       resetToFirstPage()
                     }}
@@ -971,7 +1252,12 @@ export function ManualLogisticsPage() {
                   className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
                   value={orderStatus}
                   onChange={(event) => {
-                    setOrderStatus(event.target.value as '' | AdminOrderStatus)
+                    clearSeededLogisticsParams()
+                    const nextStatus = event.target.value as '' | AdminOrderStatus
+                    setOrderStatus(nextStatus)
+                    if (nextStatus) {
+                      setActiveQueue('all')
+                    }
                     resetToFirstPage()
                   }}
                 >
@@ -989,6 +1275,7 @@ export function ManualLogisticsPage() {
                   placeholder="Bengaluru"
                   value={city}
                   onChange={(event) => {
+                    clearSeededLogisticsParams()
                     setCity(event.target.value)
                     resetToFirstPage()
                   }}
@@ -997,17 +1284,77 @@ export function ManualLogisticsPage() {
             </>
           }
           secondaryFilters={
-            <label className="space-y-1">
-              <span className="text-sm font-medium text-foreground">Vendor ID</span>
-              <Input
-                placeholder="UUID"
-                value={vendorId}
-                onChange={(event) => {
-                  setVendorId(event.target.value)
-                  resetToFirstPage()
-                }}
-              />
-            </label>
+            <>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Customer ID</span>
+                <Input
+                  placeholder="UUID"
+                  value={customerId}
+                  onChange={(event) => {
+                    clearSeededLogisticsParams()
+                    setCustomerId(event.target.value)
+                    resetToFirstPage()
+                  }}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Vendor ID</span>
+                <Input
+                  placeholder="UUID"
+                  value={vendorId}
+                  onChange={(event) => {
+                    clearSeededLogisticsParams()
+                    setVendorId(event.target.value)
+                    resetToFirstPage()
+                  }}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">Payment status</span>
+                <select
+                  className="min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
+                  value={paymentStatus}
+                  onChange={(event) => {
+                    clearSeededLogisticsParams()
+                    setPaymentStatus(
+                      event.target.value as '' | AdminOrderPaymentStatus,
+                    )
+                    resetToFirstPage()
+                  }}
+                >
+                  <option value="">All payments</option>
+                  {paymentStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {humanizeCode(status)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">From date</span>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => {
+                    clearSeededLogisticsParams()
+                    setDateFrom(event.target.value)
+                    resetToFirstPage()
+                  }}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-foreground">To date</span>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(event) => {
+                    clearSeededLogisticsParams()
+                    setDateTo(event.target.value)
+                    resetToFirstPage()
+                  }}
+                />
+              </label>
+            </>
           }
         />
 

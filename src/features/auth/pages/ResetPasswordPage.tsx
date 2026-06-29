@@ -21,11 +21,20 @@ const DEFAULT_VALUES: ResetPasswordFormValues = {
   confirmPassword: '',
 }
 
+function readResetToken(searchParams: URLSearchParams) {
+  return (
+    searchParams.get('token') ??
+    searchParams.get('resetToken') ??
+    searchParams.get('code') ??
+    ''
+  )
+}
+
 export function ResetPasswordPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { pushToast } = useToast()
-  const token = searchParams.get('token') ?? ''
+  const token = readResetToken(searchParams)
   const mutation = useResetPassword()
   const {
     clearErrors,
@@ -71,7 +80,15 @@ export function ResetPasswordPage() {
                 title: 'Reset failed.',
                 description: error.message,
               })
+
+              return
             }
+
+            pushToast({
+              tone: 'danger',
+              title: 'Reset failed.',
+              description: 'Please request a fresh reset link and try again.',
+            })
           }
         })}
       >

@@ -30,7 +30,7 @@ export interface NavigationItem {
 }
 
 export const navigationItems: NavigationItem[] = [
-  { label: 'Dashboard', href: routePaths.dashboard, icon: LayoutDashboard, alwaysVisible: true },
+  { label: 'Dashboard', href: routePaths.dashboard, icon: LayoutDashboard, permission: permissions.dashboard },
   { label: 'Customers', href: routePaths.customers, icon: Users, permission: permissions.customers },
   { label: 'Vendors', href: routePaths.vendors, icon: Wrench, permission: permissions.vendors },
   { label: 'Orders', href: routePaths.orders, icon: PackageSearch, permission: permissions.orders },

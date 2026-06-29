@@ -22,6 +22,7 @@ import {
   Star,
   Store,
   Trash2,
+  Truck,
   UserRound,
   Wallet,
   XCircle,
@@ -43,6 +44,7 @@ import { PageContainer } from "../../../components/layout/PageContainer";
 import { featureFlags } from "../../../config/featureFlags";
 import { routePaths } from "../../../config/routes";
 import { usePermission } from "../../../hooks/usePermission";
+import { buildQueryParams } from "../../../utils/buildQueryParams";
 import { cn } from "../../../utils/cn";
 import { formatDate } from "../../../utils/formatDate";
 import { formatMoney } from "../../../utils/formatMoney";
@@ -2136,6 +2138,10 @@ export function CustomerDetailPage() {
     );
   const orderRows = canReadOrders ? (customerOrders?.data ?? []) : [];
   const orderSummary = customerOrders?.summary;
+  const customerLogisticsQuery = buildQueryParams({ customerId });
+  const customerLogisticsPath = customerLogisticsQuery
+    ? `${routePaths.manualLogistics}?${customerLogisticsQuery}`
+    : routePaths.manualLogistics;
   const orderSummaryTone: CustomerTone = canReadOrders
     ? getOrderSummaryTone(orderSummary)
     : "neutral";
@@ -2336,15 +2342,25 @@ export function CustomerDetailPage() {
                 <TableToolbar
                   actionNode={
                     canReadOrders ? (
-                      <Button
-                        disabled={ordersQuery.isFetching}
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => void ordersQuery.refetch()}
-                      >
-                        <RotateCcw className="mr-2 size-4" />
-                        Refresh
-                      </Button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => navigate(customerLogisticsPath)}
+                        >
+                          <Truck className="mr-2 size-4" />
+                          Logistics
+                        </Button>
+                        <Button
+                          disabled={ordersQuery.isFetching}
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => void ordersQuery.refetch()}
+                        >
+                          <RotateCcw className="mr-2 size-4" />
+                          Refresh
+                        </Button>
+                      </div>
                     ) : null
                   }
                   count={canReadOrders ? (orderSummary?.total ?? 0) : 0}
@@ -2450,6 +2466,16 @@ export function CustomerDetailPage() {
                       openOrderAction(order, {
                         kind: "CONFIRM_DELIVERY_OTP",
                       }),
+                    placement: "menu",
+                    variant: "secondary",
+                  },
+                  {
+                    icon: <Truck className="size-4" />,
+                    isDisabled: orderMutation.isPending,
+                    key: "open-logistics",
+                    label: "Logistics",
+                    onClick: () =>
+                      navigate(`${routePaths.orders}/${order.orderId}/logistics`),
                     placement: "menu",
                     variant: "secondary",
                   },

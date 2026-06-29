@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { GlobalLoadingBar } from '../components/feedback/GlobalLoadingBar'
 import { routePaths } from '../config/routes'
 import { useAuthSession } from '../features/auth/hooks/useAuthSession'
+import { safeAuthRedirectPath } from '../features/auth/utils/redirect'
 
 export function ProtectedRoute() {
   const location = useLocation()
@@ -12,7 +13,18 @@ export function ProtectedRoute() {
   }
 
   if (!accessToken) {
-    return <Navigate replace state={{ from: location }} to={routePaths.login} />
+    const redirectTo = safeAuthRedirectPath(
+      `${location.pathname}${location.search}${location.hash}`,
+    )
+    const searchParams = new URLSearchParams({ redirectTo })
+
+    return (
+      <Navigate
+        replace
+        state={{ from: location }}
+        to={`${routePaths.login}?${searchParams.toString()}`}
+      />
+    )
   }
 
   return <Outlet />

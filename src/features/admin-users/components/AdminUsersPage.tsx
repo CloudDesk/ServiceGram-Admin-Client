@@ -6,7 +6,7 @@ import type {
 } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ChevronLeft,
   ChevronRight,
@@ -31,6 +31,7 @@ import {
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import { usePermission } from '../../../hooks/usePermission'
 import { useListSelection } from '../../../hooks/useListSelection'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -193,6 +194,14 @@ function formatRefreshTime(value: number) {
     hour: 'numeric',
     minute: '2-digit',
   }).format(new Date(value))}`
+}
+
+function readAdminUserStatusFilter(
+  searchParams: URLSearchParams,
+): '' | AdminUserStatus {
+  const status = searchParams.get('status')
+
+  return status === 'ACTIVE' || status === 'DISABLED' ? status : ''
 }
 
 function getAdminUserColumnMinWidth(columnId: AdminUserColumnId) {
@@ -436,9 +445,13 @@ function AdminUserRow({
 
 export function AdminUsersPage() {
   const navigate = useNavigate()
-  const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<'' | AdminUserStatus>('')
-  const [roleId, setRoleId] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const canCreateAdminUsers = usePermission('admin_users:create')
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [status, setStatus] = useState<'' | AdminUserStatus>(() =>
+    readAdminUserStatusFilter(searchParams),
+  )
+  const [roleId, setRoleId] = useState(() => searchParams.get('roleId') ?? '')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
   const [columnsOpen, setColumnsOpen] = useState(false)
@@ -601,7 +614,22 @@ export function AdminUsersPage() {
     })
   }
 
+  const clearSeededListParams = () => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        next.delete('search')
+        next.delete('status')
+        next.delete('roleId')
+
+        return next
+      },
+      { replace: true },
+    )
+  }
+
   const clearFilters = () => {
+    clearSeededListParams()
     setSearch('')
     setStatus('')
     setRoleId('')
@@ -613,9 +641,10 @@ export function AdminUsersPage() {
   }
 
   return (
-    <PageContainer>
+    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         description="Manage admin access, status, and assigned roles."
+        layout="workspace"
         placement="topbar"
         title="Users"
       />
@@ -650,7 +679,7 @@ export function AdminUsersPage() {
 
         <section
           className={cn(
-            'grid min-h-[calc(100vh-15rem)] flex-1 gap-3 transition-[grid-template-columns] xl:min-h-0',
+            'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
             filtersCollapsed
               ? 'xl:grid-cols-[3rem_minmax(0,1fr)]'
               : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
@@ -718,6 +747,7 @@ export function AdminUsersPage() {
                         className="form-input"
                         value={status}
                         onChange={(event) => {
+                          clearSeededListParams()
                           setStatus(event.target.value as '' | AdminUserStatus)
                           resetToFirstPage()
                         }}
@@ -736,6 +766,7 @@ export function AdminUsersPage() {
                         disabled={rolesQuery.isLoading || rolesQuery.isError}
                         value={roleId}
                         onChange={(event) => {
+                          clearSeededListParams()
                           setRoleId(event.target.value)
                           resetToFirstPage()
                         }}
@@ -759,7 +790,10 @@ export function AdminUsersPage() {
             )}
           </aside>
 
-          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
+          <main
+            className="flex min-w-0 scroll-mt-4 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0"
+            id="admin-users-records"
+          >
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
               <div>
                 <h2 className="text-base font-semibold text-foreground">
@@ -777,16 +811,19 @@ export function AdminUsersPage() {
                   placeholder="Search name or email"
                   value={search}
                   onChange={(nextSearch) => {
+                    clearSeededListParams()
                     setSearch(nextSearch)
                     resetToFirstPage()
                   }}
                 />
-                <Link to={`${routePaths.adminUsers}/new`}>
-                  <Button size="sm" type="button" variant="secondary">
-                    <Plus className="mr-2 size-4" />
-                    User
-                  </Button>
-                </Link>
+                {canCreateAdminUsers ? (
+                  <Link to={`${routePaths.adminUsers}/new`}>
+                    <Button size="sm" type="button" variant="secondary">
+                      <Plus className="mr-2 size-4" />
+                      User
+                    </Button>
+                  </Link>
+                ) : null}
                 <span
                   className={cn(
                     'text-xs font-medium',

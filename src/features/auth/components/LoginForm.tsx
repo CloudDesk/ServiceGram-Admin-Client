@@ -15,8 +15,9 @@ import { PasswordInput } from "./PasswordInput";
 import { useLogin } from "../hooks/useLogin";
 import { LoginServiceError } from "../types/auth.types";
 import { type LoginFormValues, loginSchema } from "../schemas/auth.schema";
+import { getAdminDeviceId } from "../utils/device";
+import { safeAuthRedirectPath } from "../utils/redirect";
 
-const ADMIN_DEVICE_ID = "admin-web-macbook-pro";
 const EMPTY_LOGIN_VALUES: LoginFormValues = {
   email: "",
   password: "",
@@ -51,18 +52,6 @@ function hasFieldErrors(details: unknown): details is {
   );
 }
 
-function safeRedirectPath(path: string | null | undefined) {
-  if (!path || !path.startsWith("/") || path.startsWith("//")) {
-    return routePaths.dashboard;
-  }
-
-  if (path.startsWith(routePaths.login)) {
-    return routePaths.dashboard;
-  }
-
-  return path;
-}
-
 function redirectFromLocationState(state: unknown) {
   const locationState = state as LoginLocationState | null;
   const from = locationState?.from;
@@ -88,7 +77,7 @@ export function LoginForm() {
   const { pushToast } = useToast();
   const mutation = useLogin();
   const redirectNotice = useMemo(readAuthRedirectNotice, []);
-  const redirectTo = safeRedirectPath(
+  const redirectTo = safeAuthRedirectPath(
     searchParams.get("redirectTo") ??
       redirectNotice?.redirectTo ??
       redirectFromLocationState(location.state),
@@ -131,13 +120,13 @@ export function LoginForm() {
 
   return (
     <form
-      autoComplete="off"
+      autoComplete="on"
       className="relative z-10 space-y-4"
       onSubmit={handleSubmit(async (values) => {
         try {
           await mutation.mutateAsync({
             ...values,
-            deviceId: ADMIN_DEVICE_ID,
+            deviceId: getAdminDeviceId(),
           });
 
           pushToast({
@@ -183,6 +172,12 @@ export function LoginForm() {
 
             return;
           }
+
+          pushToast({
+            tone: "danger",
+            title: "Login failed.",
+            description: "Please try again in a moment.",
+          });
         }
       })}
     >
@@ -204,7 +199,7 @@ export function LoginForm() {
         <div className="relative">
           <Mail className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <Input
-            autoComplete="off"
+            autoComplete="username"
             className="min-h-12 rounded-[1.125rem] border-border bg-surface/80 pl-11 text-[0.9375rem] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] placeholder:text-muted focus-visible:border-foreground/20 focus-visible:bg-surface focus-visible:ring-foreground/10"
             hasError={Boolean(errors.email)}
             id="email"
@@ -229,7 +224,7 @@ export function LoginForm() {
         <div className="relative">
           <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 z-10 size-4 -translate-y-1/2 text-muted" />
           <PasswordInput
-            autoComplete="off"
+            autoComplete="current-password"
             hasError={Boolean(errors.password)}
             id="password"
             inputClassName="min-h-12 rounded-[1.125rem] border-border bg-surface/80 pl-11 text-[0.9375rem] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] placeholder:text-muted focus-visible:border-foreground/20 focus-visible:bg-surface focus-visible:ring-foreground/10"
@@ -251,14 +246,7 @@ export function LoginForm() {
 
       <FormErrorSummary message={mutation.error?.message} />
 
-      <div className="flex items-center justify-between gap-3 text-[0.8125rem] text-muted">
-        <label className="inline-flex items-center gap-2">
-          <input
-            className="h-4 w-4 rounded border border-border accent-foreground"
-            type="checkbox"
-          />
-          <span>Remember me</span>
-        </label>
+      <div className="flex justify-end text-[0.8125rem] text-muted">
         <Link
           className="font-bold text-foreground transition hover:text-muted"
           to={routePaths.forgotPassword}

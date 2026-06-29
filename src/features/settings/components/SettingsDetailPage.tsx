@@ -34,6 +34,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
+import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { settingsService } from '../services/settings.service'
@@ -542,6 +543,39 @@ function buildScopedPolicyRulesPath(scopeType: 'CATEGORY' | 'ZONE') {
   return `${routePaths.settings}?${params.toString()}#settings-policy-rules`
 }
 
+function buildCategoryOrdersPath(category: ServiceCategory) {
+  return buildPathWithQueryParams(routePaths.orders, {
+    categoryId: category.categoryId,
+    categoryLabel: category.name,
+  })
+}
+
+function buildCategoryVendorsPath(category: ServiceCategory) {
+  return buildPathWithQueryParams(routePaths.vendors, {
+    categoryId: category.categoryId,
+    categoryLabel: category.name,
+  })
+}
+
+function buildCategoryReelsPath(category: ServiceCategory) {
+  return buildPathWithQueryParams(routePaths.reels, {
+    categoryId: category.categoryId,
+    categoryLabel: category.name,
+  })
+}
+
+function buildZoneOrdersPath(zone: ServiceZone) {
+  return buildPathWithQueryParams(routePaths.orders, {
+    city: zone.city,
+  })
+}
+
+function buildZoneVendorsPath(zone: ServiceZone) {
+  return buildPathWithQueryParams(routePaths.vendors, {
+    city: zone.city,
+  })
+}
+
 function RelatedRecordsPanel({
   canUpdateSettings,
   canReadAudit,
@@ -715,8 +749,17 @@ function RelatedRecordsPanel({
             icon={<Store className="size-4" />}
             label="Vendor catalogue"
             meta="Vendor services use category and service type mappings"
-            value="Vendor services"
-            onOpen={() => onNavigate(routePaths.vendors)}
+            value={category.name}
+            onOpen={() => onNavigate(buildCategoryVendorsPath(category))}
+          />
+          <RelatedRecordRow
+            actionLabel="Orders"
+            canOpen={canReadOrders}
+            icon={<ReceiptText className="size-4" />}
+            label="Orders"
+            meta="Orders can be filtered by this service category"
+            value={category.name}
+            onOpen={() => onNavigate(buildCategoryOrdersPath(category))}
           />
           <RelatedRecordRow
             actionLabel="Reels"
@@ -724,8 +767,8 @@ function RelatedRecordsPanel({
             icon={<Film className="size-4" />}
             label="Reel tagging"
             meta="Approved reels can be associated with service categories"
-            value="Reel content"
-            onOpen={() => onNavigate(routePaths.reels)}
+            value={category.name}
+            onOpen={() => onNavigate(buildCategoryReelsPath(category))}
           />
           <RelatedRecordRow
             actionLabel="Audit"
@@ -799,7 +842,7 @@ function RelatedRecordsPanel({
           label="Vendors"
           meta="Vendor onboarding and service coverage use zones"
           value={zone.city}
-          onOpen={() => onNavigate(routePaths.vendors)}
+          onOpen={() => onNavigate(buildZoneVendorsPath(zone))}
         />
         <RelatedRecordRow
           actionLabel="Orders"
@@ -808,7 +851,7 @@ function RelatedRecordsPanel({
           label="Orders"
           meta="Orders can be reviewed by service city and delivery coverage"
           value={`${zone.pincodeList.length} configured pincodes`}
-          onOpen={() => onNavigate(routePaths.orders)}
+          onOpen={() => onNavigate(buildZoneOrdersPath(zone))}
         />
         <RelatedRecordRow
           actionLabel="Audit"

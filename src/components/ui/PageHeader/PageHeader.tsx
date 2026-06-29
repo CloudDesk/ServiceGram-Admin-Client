@@ -1,6 +1,9 @@
 import { useEffect, type ReactNode } from 'react'
 import type { NavCrumb } from '../../../types/common.types'
-import { usePageChrome } from '../../../providers/pageChromeContext'
+import {
+  usePageChrome,
+  type PageChromeLayout,
+} from '../../../providers/pageChromeContext'
 import { Breadcrumbs } from '../Breadcrumbs'
 
 interface PageHeaderProps {
@@ -13,6 +16,7 @@ interface PageHeaderProps {
   statsNode?: ReactNode
   tabsNode?: ReactNode
   compact?: boolean
+  layout?: PageChromeLayout
   placement?: 'body' | 'topbar' | 'both'
 }
 
@@ -21,6 +25,7 @@ export function PageContextHeader({
   description,
   breadcrumbs,
   compact = false,
+  layout = 'document',
   statsNode,
   tabsNode,
   placement = 'body',
@@ -36,10 +41,10 @@ export function PageContextHeader({
       return undefined
     }
 
-    setPageChrome({ description, title })
+    setPageChrome({ description, layout, title })
 
     return () => resetPageChrome()
-  }, [description, placement, resetPageChrome, setPageChrome, title])
+  }, [description, layout, placement, resetPageChrome, setPageChrome, title])
 
   if (!renderBody) {
     return null

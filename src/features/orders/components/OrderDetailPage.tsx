@@ -630,6 +630,14 @@ function hasOrderAction(order: AdminOrderDetail, action: string) {
   return order.availableActions.includes(action)
 }
 
+function hasActiveDeliveryOtp(order: AdminOrderDetail) {
+  const expiresAt = Date.parse(order.activeDeliveryOtp?.expiresAt ?? '')
+
+  return Boolean(
+    order.activeDeliveryOtp && Number.isFinite(expiresAt) && expiresAt > Date.now(),
+  )
+}
+
 function buildOrderAuditPath(order: AdminOrderDetail) {
   const params = new URLSearchParams({
     moduleCode: 'orders',
@@ -880,7 +888,7 @@ function ManualLogisticsPanel({
               Generate OTP
             </Button>
           ) : null}
-          {canUpdateOrders && hasOrderAction(order, 'CONFIRM_DELIVERY_OTP') ? (
+          {canUpdateOrders && hasOrderAction(order, 'CONFIRM_DELIVERY_OTP') && hasActiveDeliveryOtp(order) ? (
             <Button disabled={isSubmitting} size="sm" onClick={() => onSelectAction('CONFIRM_DELIVERY_OTP')}>
               <CircleCheck className="mr-2 size-4" />
               Confirm OTP
@@ -1149,6 +1157,7 @@ export function OrderDetailPage({
       queryClient.invalidateQueries({ queryKey: ['order-detail', orderId] }),
       queryClient.invalidateQueries({ queryKey: ['orders'] }),
       queryClient.invalidateQueries({ queryKey: ['manual-logistics'] }),
+      queryClient.invalidateQueries({ queryKey: ['manual-logistics-summary'] }),
       queryClient.invalidateQueries({ queryKey: ['payments'] }),
       queryClient.invalidateQueries({ queryKey: ['refunds'] }),
     ])
@@ -1246,9 +1255,9 @@ export function OrderDetailPage({
       })
     },
     onMutate: () => setActionError(null),
-    onSuccess: () => {
+    onSuccess: async () => {
       setSelectedAction(null)
-      void refreshOrder()
+      await refreshOrder()
     },
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : 'Order action failed.')

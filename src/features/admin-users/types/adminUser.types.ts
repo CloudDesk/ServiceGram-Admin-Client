@@ -45,6 +45,13 @@ export interface CurrentAdminUser extends AdminUser {
   roleCodes: string[]
   permissions: string[]
   scopes: AdminUserScope[]
+  session?: {
+    authenticatedAt: string | null
+    expiresAt: string | null
+    remainingSeconds: number
+    recentAuthExpiresAt: string | null
+    recentAuthRemainingSeconds: number
+  }
 }
 
 export interface CreateAdminUserPayload {

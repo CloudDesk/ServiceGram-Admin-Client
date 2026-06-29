@@ -40,6 +40,7 @@ import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
 import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
+import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { auditService } from '../services/audit.service'
@@ -54,6 +55,19 @@ const emptyAuditLogs: AuditLog[] = []
 
 type AuditColumnId = 'action' | 'actor' | 'entity' | 'reason' | 'request' | 'createdAt'
 type AuditColumnWidths = Record<AuditColumnId, number>
+type AuditFilterParamKey =
+  | 'actionCode'
+  | 'action'
+  | 'actorAdminId'
+  | 'actorUserId'
+  | 'dateFrom'
+  | 'dateTo'
+  | 'entityId'
+  | 'entityType'
+  | 'module'
+  | 'moduleCode'
+  | 'search'
+type AuditFilterParamValues = Partial<Record<AuditFilterParamKey, string | null | undefined>>
 
 interface AuditGridStyle extends CSSProperties {
   '--audit-grid-template': string
@@ -235,8 +249,49 @@ function normalizeEntityType(value: string | null | undefined) {
   return (value ?? '').trim().toLowerCase()
 }
 
+function buildAuditSearchParams(values: AuditFilterParamValues) {
+  const params = new URLSearchParams()
+
+  Object.entries(values).forEach(([key, value]) => {
+    const normalized = value?.trim()
+
+    if (normalized) {
+      params.set(key, normalized)
+    }
+  })
+
+  return params
+}
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function getRecordString(value: unknown, key: string) {
+  if (!isPlainRecord(value)) return null
+
+  const fieldValue = value[key]
+
+  return typeof fieldValue === 'string' && fieldValue.trim()
+    ? fieldValue.trim()
+    : null
+}
+
+function getNestedRecordString(value: unknown, parentKey: string, key: string) {
+  if (!isPlainRecord(value)) return null
+
+  return getRecordString(value[parentKey], key)
+}
+
+function getSnapshotString(log: AuditLog, key: string) {
+  return getRecordString(log.newValue, key) ?? getRecordString(log.oldValue, key)
+}
+
+function getNestedSnapshotString(log: AuditLog, parentKey: string, key: string) {
+  return (
+    getNestedRecordString(log.newValue, parentKey, key) ??
+    getNestedRecordString(log.oldValue, parentKey, key)
+  )
 }
 
 function changedTopLevelKeys(oldValue: unknown, newValue: unknown) {
@@ -451,6 +506,7 @@ interface AuditEntityAccess {
   reels: boolean
   reports: boolean
   roles: boolean
+  settings: boolean
   vendors: boolean
 }
 
@@ -458,6 +514,44 @@ interface RelatedEntityLink {
   label: string
   path: string
   canOpen: boolean
+}
+
+function buildPlatformSettingPath(log: AuditLog) {
+  const settingKey = getSnapshotString(log, 'settingKey')
+
+  if (settingKey) {
+    return `${routePaths.settings}/settings/${encodeURIComponent(settingKey)}`
+  }
+
+  return buildPathWithQueryParams(routePaths.settings, {
+    search: log.entityId,
+    type: 'settings',
+  }) + '#settings-records'
+}
+
+function buildServiceTypePath(log: AuditLog) {
+  const categoryId = getSnapshotString(log, 'categoryId')
+
+  if (!categoryId) return null
+
+  return `${routePaths.settings}/categories/${encodeURIComponent(
+    categoryId,
+  )}#settings-service-types`
+}
+
+function buildPolicyRulePath(log: AuditLog) {
+  const family = getSnapshotString(log, 'family')
+  const status = getSnapshotString(log, 'status')
+  const scopeType =
+    getNestedSnapshotString(log, 'scope', 'scopeType') ??
+    getSnapshotString(log, 'scopeType')
+
+  return buildPathWithQueryParams(routePaths.settings, {
+    family,
+    scopeType,
+    status,
+    type: 'policies',
+  }) + '#settings-policy-rules'
 }
 
 function getRelatedEntityLink(
@@ -572,7 +666,64 @@ function getRelatedEntityLink(
     }
   }
 
+  if (entityType === 'platform_setting') {
+    return {
+      canOpen: access.settings,
+      label: 'Platform setting',
+      path: buildPlatformSettingPath(log),
+    }
+  }
+
+  if (entityType === 'service_category') {
+    return {
+      canOpen: access.settings,
+      label: 'Service category',
+      path: `${routePaths.settings}/categories/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'service_zone') {
+    return {
+      canOpen: access.settings,
+      label: 'Service zone',
+      path: `${routePaths.settings}/zones/${log.entityId}`,
+    }
+  }
+
+  if (entityType === 'service_type') {
+    const path = buildServiceTypePath(log)
+
+    if (!path) return null
+
+    return {
+      canOpen: access.settings,
+      label: 'Service type',
+      path,
+    }
+  }
+
+  if (entityType === 'policy_rule') {
+    return {
+      canOpen: access.settings,
+      label: 'Policy rules',
+      path: buildPolicyRulePath(log),
+    }
+  }
+
   return null
+}
+
+function getActorAdminLink(
+  log: AuditLog,
+  canReadAdminUsers: boolean,
+): RelatedEntityLink | null {
+  if (!log.actor.actorAdminId) return null
+
+  return {
+    canOpen: canReadAdminUsers,
+    label: 'Actor admin',
+    path: `${routePaths.adminUsers}/${log.actor.actorAdminId}`,
+  }
 }
 
 function JsonBlock({ title, value }: { title: string; value: unknown }) {
@@ -634,21 +785,74 @@ function AuditDetailSection({
   )
 }
 
+function RelatedAuditRow({
+  actionLabel = 'Open',
+  canOpen,
+  icon,
+  label,
+  meta,
+  onOpen,
+  value,
+}: {
+  actionLabel?: string
+  canOpen: boolean
+  icon: ReactNode
+  label: string
+  meta: string
+  onOpen?: () => void
+  value: string
+}) {
+  return (
+    <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 text-primary">{icon}</span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+            {label}
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+            {value}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted">{meta}</p>
+        </div>
+      </div>
+      {canOpen && onOpen ? (
+        <Button
+          className="shrink-0"
+          size="sm"
+          type="button"
+          variant="secondary"
+          onClick={onOpen}
+        >
+          <ArrowUpRight className="mr-2 size-4" />
+          {actionLabel}
+        </Button>
+      ) : (
+        <Badge tone="neutral">View only</Badge>
+      )}
+    </div>
+  )
+}
+
 function AuditDetailModal({
+  actorAdminLink,
   log,
   onClose,
   onFilterActor,
   onFilterEntity,
   onFilterModuleAction,
+  onOpenActorAdmin,
   onOpenRelated,
   onSearchRequest,
   relatedEntityLink,
 }: {
+  actorAdminLink: RelatedEntityLink | null
   log: AuditLog
   onClose: () => void
   onFilterActor: () => void
   onFilterEntity: () => void
   onFilterModuleAction: () => void
+  onOpenActorAdmin: () => void
   onOpenRelated: () => void
   onSearchRequest: () => void
   relatedEntityLink: RelatedEntityLink | null
@@ -723,16 +927,29 @@ function AuditDetailModal({
             <div className="space-y-3">
               <AuditDetailSection
                 actionNode={
-                  <Button
-                    disabled={!hasActorFilter}
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                    onClick={onFilterActor}
-                  >
-                    <Filter className="mr-2 size-4" />
-                    Filter actor
-                  </Button>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      disabled={!hasActorFilter}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                      onClick={onFilterActor}
+                    >
+                      <Filter className="mr-2 size-4" />
+                      Filter actor
+                    </Button>
+                    {actorAdminLink ? (
+                      <Button
+                        disabled={!actorAdminLink.canOpen}
+                        size="sm"
+                        type="button"
+                        onClick={onOpenActorAdmin}
+                      >
+                        <ArrowUpRight className="mr-2 size-4" />
+                        Admin
+                      </Button>
+                    ) : null}
+                  </div>
                 }
                 description="Actor identity returned with the audit row."
                 title="Actor"
@@ -795,6 +1012,84 @@ function AuditDetailModal({
             </div>
 
             <div className="space-y-3">
+              <AuditDetailSection
+                description="Fast paths from this immutable event to its related records and history."
+                title="Related records"
+              >
+                <div className="divide-y divide-border">
+                  <RelatedAuditRow
+                    actionLabel="Open"
+                    canOpen={Boolean(relatedEntityLink?.canOpen)}
+                    icon={<FileJson className="size-4" />}
+                    label="Target record"
+                    meta={
+                      relatedEntityLink
+                        ? relatedEntityLink.canOpen
+                          ? relatedEntityLink.label
+                          : `${relatedEntityLink.label} permission required`
+                        : 'No standalone admin route'
+                    }
+                    value={log.entityId ?? 'No entity id'}
+                    onOpen={onOpenRelated}
+                  />
+                  <RelatedAuditRow
+                    actionLabel="History"
+                    canOpen={Boolean(log.entityId)}
+                    icon={<Filter className="size-4" />}
+                    label="Entity history"
+                    meta={humanizeCode(log.entityType)}
+                    value={log.entityId ?? 'No entity id'}
+                    onOpen={onFilterEntity}
+                  />
+                  <RelatedAuditRow
+                    actionLabel="Admin"
+                    canOpen={Boolean(actorAdminLink?.canOpen)}
+                    icon={<UserRound className="size-4" />}
+                    label="Actor admin"
+                    meta={
+                      actorAdminLink
+                        ? actorAdminLink.canOpen
+                          ? actorAdminLink.label
+                          : 'Admin user permission required'
+                        : humanizeCode(log.actor.actorType)
+                    }
+                    value={actorLabel}
+                    onOpen={onOpenActorAdmin}
+                  />
+                  <RelatedAuditRow
+                    actionLabel="Activity"
+                    canOpen={hasActorFilter}
+                    icon={<UserRound className="size-4" />}
+                    label="Actor activity"
+                    meta="Filter audit trail by actor id"
+                    value={
+                      log.actor.actorAdminId ??
+                      log.actor.actorUserId ??
+                      humanizeCode(log.actor.actorType)
+                    }
+                    onOpen={onFilterActor}
+                  />
+                  <RelatedAuditRow
+                    actionLabel="Queue"
+                    canOpen
+                    icon={<ShieldCheck className="size-4" />}
+                    label="Module action"
+                    meta={humanizeCode(log.moduleCode)}
+                    value={humanizeCode(log.actionCode)}
+                    onOpen={onFilterModuleAction}
+                  />
+                  <RelatedAuditRow
+                    actionLabel="Search"
+                    canOpen
+                    icon={<Search className="size-4" />}
+                    label="Request correlation"
+                    meta={log.ipAddress ?? 'IP not available'}
+                    value={log.requestId}
+                    onOpen={onSearchRequest}
+                  />
+                </div>
+              </AuditDetailSection>
+
               <AuditDetailSection
                 actionNode={
                   <Button
@@ -987,7 +1282,7 @@ function AuditRow({
 
 export function AuditLogsPage() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const canReadAdminUsers = usePermission('admin_users:read')
   const canReadContent = usePermission('content:read')
   const canReadCustomers = usePermission('customers:read')
@@ -999,6 +1294,7 @@ export function AuditLogsPage() {
   const canReadReels = usePermission('reels:read')
   const canReadReports = usePermission('reports:read')
   const canReadRoles = usePermission('roles:read')
+  const canReadSettings = usePermission('settings:read')
   const canReadVendors = usePermission('vendors:read')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
@@ -1166,6 +1462,7 @@ export function AuditLogsPage() {
       reels: canReadReels,
       reports: canReadReports,
       roles: canReadRoles,
+      settings: canReadSettings,
       vendors: canReadVendors,
     }),
     [
@@ -1180,11 +1477,15 @@ export function AuditLogsPage() {
       canReadReels,
       canReadReports,
       canReadRoles,
+      canReadSettings,
       canReadVendors,
     ],
   )
   const selectedRelatedEntityLink = selectedLog
     ? getRelatedEntityLink(selectedLog, entityAccess)
+    : null
+  const selectedActorAdminLink = selectedLog
+    ? getActorAdminLink(selectedLog, canReadAdminUsers)
     : null
 
   const startColumnResize = (
@@ -1253,49 +1554,87 @@ export function AuditLogsPage() {
     })
   }
 
-  const clearFilters = () => {
-    setModuleCode('')
-    setActionCode('')
-    setEntityType('')
-    setEntityId('')
-    setActorAdminId('')
-    setActorUserId('')
-    setDateFrom('')
-    setDateTo('')
-    setSearch('')
+  const clearSeededAuditParams = () => {
+    const seededKeys: AuditFilterParamKey[] = [
+      'actionCode',
+      'action',
+      'actorAdminId',
+      'actorUserId',
+      'dateFrom',
+      'dateTo',
+      'entityId',
+      'entityType',
+      'module',
+      'moduleCode',
+      'search',
+    ]
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    seededKeys.forEach((key) => nextParams.delete(key))
+    setSearchParams(nextParams, { replace: true })
+  }
+
+  const applyAuditFilterState = (values: AuditFilterParamValues) => {
+    setModuleCode(values.moduleCode ?? '')
+    setActionCode(values.actionCode ?? '')
+    setEntityType(values.entityType ?? '')
+    setEntityId(values.entityId ?? '')
+    setActorAdminId(values.actorAdminId ?? '')
+    setActorUserId(values.actorUserId ?? '')
+    setDateFrom(values.dateFrom ?? '')
+    setDateTo(values.dateTo ?? '')
+    setSearch(values.search ?? '')
     setPage(1)
     setExpandedLogId(null)
     setSelectedLog(null)
+    setSearchParams(buildAuditSearchParams(values), { replace: true })
+  }
+
+  const clearFilters = () => {
+    applyAuditFilterState({})
   }
 
   const applyEntityFilter = (log: AuditLog) => {
-    setEntityType(log.entityType)
-    setEntityId(log.entityId ?? '')
-    setPage(1)
-    setExpandedLogId(null)
-    setSelectedLog(null)
+    applyAuditFilterState({
+      entityType: log.entityType,
+      entityId: log.entityId,
+    })
   }
 
   const applyActorFilter = (log: AuditLog) => {
-    setActorAdminId(log.actor.actorAdminId ?? '')
-    setActorUserId(log.actor.actorAdminId ? '' : log.actor.actorUserId ?? '')
-    setPage(1)
-    setExpandedLogId(null)
-    setSelectedLog(null)
+    applyAuditFilterState({
+      actorAdminId: log.actor.actorAdminId,
+      actorUserId: log.actor.actorAdminId ? null : log.actor.actorUserId,
+    })
   }
 
   const applyModuleActionFilter = (log: AuditLog) => {
-    setModuleCode(log.moduleCode)
-    setActionCode(log.actionCode)
-    setPage(1)
-    setExpandedLogId(null)
-    setSelectedLog(null)
+    applyAuditFilterState({
+      moduleCode: log.moduleCode,
+      actionCode: log.actionCode,
+    })
   }
 
   const applyRequestSearch = (log: AuditLog) => {
     setSearch(log.requestId)
     setExpandedLogId(null)
     setSelectedLog(null)
+    setSearchParams(
+      buildAuditSearchParams({
+        moduleCode,
+        actionCode,
+        entityType,
+        entityId,
+        actorAdminId,
+        actorUserId,
+        dateFrom,
+        dateTo,
+        search: log.requestId,
+      }),
+      { replace: true },
+    )
   }
 
   const openRelatedEntity = () => {
@@ -1304,10 +1643,17 @@ export function AuditLogsPage() {
     navigate(selectedRelatedEntityLink.path)
   }
 
+  const openActorAdmin = () => {
+    if (!selectedActorAdminLink?.canOpen) return
+
+    navigate(selectedActorAdminLink.path)
+  }
+
   return (
-    <PageContainer>
+    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         description="Review administrative actions and entity-level audit history."
+        layout="workspace"
         placement="topbar"
         title="Audit Logs"
       />
@@ -1342,7 +1688,7 @@ export function AuditLogsPage() {
 
         <section
           className={cn(
-            'grid min-h-[calc(100vh-15rem)] flex-1 gap-3 transition-[grid-template-columns] xl:min-h-0',
+            'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
             filtersCollapsed
               ? 'xl:grid-cols-[3rem_minmax(0,1fr)]'
               : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
@@ -1403,6 +1749,7 @@ export function AuditLogsPage() {
                           key={module}
                           type="button"
                           onClick={() => {
+                            clearSeededAuditParams()
                             setModuleCode(moduleCode === module ? '' : module)
                             resetToFirstPage()
                           }}
@@ -1442,6 +1789,7 @@ export function AuditLogsPage() {
                           placeholder="vendors, payments"
                           value={moduleCode}
                           onChange={(event) => {
+                            clearSeededAuditParams()
                             setModuleCode(event.target.value)
                             resetToFirstPage()
                           }}
@@ -1457,6 +1805,7 @@ export function AuditLogsPage() {
                         placeholder="update, approve"
                         value={actionCode}
                         onChange={(event) => {
+                          clearSeededAuditParams()
                           setActionCode(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1471,6 +1820,7 @@ export function AuditLogsPage() {
                         placeholder="vendor, order"
                         value={entityType}
                         onChange={(event) => {
+                          clearSeededAuditParams()
                           setEntityType(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1485,6 +1835,7 @@ export function AuditLogsPage() {
                         placeholder="UUID"
                         value={entityId}
                         onChange={(event) => {
+                          clearSeededAuditParams()
                           setEntityId(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1499,6 +1850,7 @@ export function AuditLogsPage() {
                         placeholder="UUID"
                         value={actorAdminId}
                         onChange={(event) => {
+                          clearSeededAuditParams()
                           setActorAdminId(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1513,6 +1865,7 @@ export function AuditLogsPage() {
                         placeholder="UUID"
                         value={actorUserId}
                         onChange={(event) => {
+                          clearSeededAuditParams()
                           setActorUserId(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1528,6 +1881,7 @@ export function AuditLogsPage() {
                           type="date"
                           value={dateFrom}
                           onChange={(event) => {
+                            clearSeededAuditParams()
                             setDateFrom(event.target.value)
                             resetToFirstPage()
                           }}
@@ -1542,6 +1896,7 @@ export function AuditLogsPage() {
                           type="date"
                           value={dateTo}
                           onChange={(event) => {
+                            clearSeededAuditParams()
                             setDateTo(event.target.value)
                             resetToFirstPage()
                           }}
@@ -1559,7 +1914,10 @@ export function AuditLogsPage() {
             )}
           </aside>
 
-          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
+          <main
+            className="flex min-w-0 scroll-mt-4 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0"
+            id="audit-records"
+          >
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
               <div>
                 <h2 className="text-base font-semibold text-foreground">
@@ -1577,6 +1935,7 @@ export function AuditLogsPage() {
                   placeholder="Search loaded audit logs"
                   value={search}
                   onChange={(nextSearch) => {
+                    clearSeededAuditParams()
                     setSearch(nextSearch)
                     setExpandedLogId(null)
                     setSelectedLog(null)
@@ -1671,7 +2030,11 @@ export function AuditLogsPage() {
             ) : auditQuery.isError ? (
               <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
                 <ErrorState
-                  description="We could not load audit logs."
+                  description={
+                    auditQuery.error instanceof Error
+                      ? auditQuery.error.message
+                      : 'We could not load audit logs.'
+                  }
                   title="Audit logs unavailable"
                   onRetry={() => void auditQuery.refetch()}
                 />
@@ -1801,12 +2164,14 @@ export function AuditLogsPage() {
 
       {selectedLog ? (
         <AuditDetailModal
+          actorAdminLink={selectedActorAdminLink}
           log={selectedLog}
           relatedEntityLink={selectedRelatedEntityLink}
           onClose={() => setSelectedLog(null)}
           onFilterActor={() => applyActorFilter(selectedLog)}
           onFilterEntity={() => applyEntityFilter(selectedLog)}
           onFilterModuleAction={() => applyModuleActionFilter(selectedLog)}
+          onOpenActorAdmin={openActorAdmin}
           onOpenRelated={openRelatedEntity}
           onSearchRequest={() => applyRequestSearch(selectedLog)}
         />

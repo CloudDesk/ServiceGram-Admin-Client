@@ -27,6 +27,7 @@ import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
+import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { DashboardChart } from '../components/DashboardChart'
 import type {
@@ -65,6 +66,33 @@ const chartPalette = [
   '#0f766e',
 ] as const
 
+const orderStatusRouteAliases: Record<string, string> = {
+  ACCEPTED: 'VENDOR_ACCEPTED',
+  COMPLETED: 'SERVICE_COMPLETED',
+  IN_PROGRESS: 'SERVICE_IN_PROGRESS',
+  PLACED: 'ORDER_PLACED',
+}
+
+const orderPaymentStatusRouteAliases: Record<string, string> = {
+  CAPTURED: 'PAID',
+  SUCCESS: 'PAID',
+}
+
+const financeStatusRouteAliases: Record<string, Record<string, string>> = {
+  PAYMENTS: {
+    CAPTURED: 'SUCCESS',
+    PAID: 'SUCCESS',
+  },
+  PAYOUTS: {
+    ON_HOLD: 'HELD',
+    SETTLED: 'PAID',
+    SUCCESS: 'PAID',
+  },
+  REFUNDS: {
+    REFUNDED: 'SUCCESS',
+  },
+}
+
 function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
 
@@ -101,11 +129,69 @@ function chartRoute(data: unknown) {
   return typeof routePath === 'string' ? routePath : null
 }
 
-function routeWithFilters(path: string, filters: Record<string, string>) {
-  const params = new URLSearchParams(filters)
-  const query = params.toString()
+function routeWithFilters(
+  path: string,
+  filters: Record<string, string | undefined>,
+) {
+  return buildPathWithQueryParams(path, filters)
+}
 
-  return query ? `${path}?${query}` : path
+function dayRangeFilters(value: string) {
+  const date = value.slice(0, 10)
+
+  return {
+    dateFrom: date,
+    dateTo: date,
+  }
+}
+
+function vendorReviewPath() {
+  return `${routeWithFilters(routePaths.vendorOnboarding, {
+    onboardingStatus: 'UNDER_REVIEW',
+  })}#vendor-onboarding-records`
+}
+
+function normalizeOrderRouteFilters(filters: Record<string, string>) {
+  const nextFilters = { ...filters }
+
+  if (nextFilters.orderStatus) {
+    nextFilters.orderStatus =
+      orderStatusRouteAliases[nextFilters.orderStatus] ?? nextFilters.orderStatus
+  }
+
+  if (nextFilters.paymentStatus) {
+    nextFilters.paymentStatus =
+      orderPaymentStatusRouteAliases[nextFilters.paymentStatus] ??
+      nextFilters.paymentStatus
+  }
+
+  return nextFilters
+}
+
+function orderRouteWithFilters(filters: Record<string, string>) {
+  return routeWithFilters(routePaths.orders, normalizeOrderRouteFilters(filters))
+}
+
+function normalizeFinanceStatus(widgetCode: string, status: string) {
+  return financeStatusRouteAliases[widgetCode]?.[status] ?? status
+}
+
+function financeRouteWithStatus(widget: DashboardFinanceWidget, path: string, status: string) {
+  return routeWithFilters(path, {
+    status: normalizeFinanceStatus(widget.code, status),
+  })
+}
+
+function localDateKey(value: Date) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const date = String(value.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${date}`
+}
+
+function todayRangeFilters() {
+  return dayRangeFilters(localDateKey(new Date()))
 }
 
 function chartItemsFromRecord(
@@ -174,27 +260,49 @@ function getCardTarget(card: DashboardCard, access: DashboardAccess): DrilldownT
   }
 
   if (card.code === 'ACTIVE_ORDERS' || card.code === 'TODAY_ORDERS') {
-    return { canOpen: access.canReadOrders, label: 'Orders', path: routePaths.orders }
+    return {
+      canOpen: access.canReadOrders,
+      label: 'Orders',
+      path:
+        card.code === 'TODAY_ORDERS'
+          ? routeWithFilters(routePaths.orders, todayRangeFilters())
+          : routePaths.orders,
+    }
   }
 
   if (card.code === 'PENDING_VENDOR_REVIEWS' || card.action === 'REVIEW_VENDORS') {
     return {
       canOpen: access.canReadVendors,
       label: 'Vendor onboarding',
-      path: routePaths.vendorOnboarding,
+      path: vendorReviewPath(),
     }
   }
 
   if (card.code === 'PENDING_REEL_REVIEWS' || card.action === 'REVIEW_REELS') {
-    return { canOpen: access.canReadReels, label: 'Reels', path: routePaths.reels }
+    return {
+      canOpen: access.canReadReels,
+      label: 'Reels',
+      path: routeWithFilters(routePaths.reels, {
+        moderationStatus: 'PENDING_REVIEW',
+        view: 'pending',
+      }),
+    }
   }
 
   if (card.code === 'PENDING_REFUNDS' || card.action === 'REVIEW_REFUNDS') {
-    return { canOpen: access.canReadPayments, label: 'Refunds', path: routePaths.refunds }
+    return {
+      canOpen: access.canReadPayments,
+      label: 'Refunds',
+      path: routeWithFilters(routePaths.refunds, { status: 'REQUESTED' }),
+    }
   }
 
   if (card.code === 'PAYOUT_HOLDS' || card.action === 'REVIEW_PAYOUTS') {
-    return { canOpen: access.canReadPayouts, label: 'Payouts', path: routePaths.payouts }
+    return {
+      canOpen: access.canReadPayouts,
+      label: 'Payouts',
+      path: routeWithFilters(routePaths.payouts, { status: 'HELD' }),
+    }
   }
 
   return null
@@ -205,27 +313,112 @@ function getQueueTarget(queue: DashboardQueue, access: DashboardAccess): Drilldo
     return {
       canOpen: access.canReadVendors,
       label: 'Vendor onboarding',
-      path: routePaths.vendorOnboarding,
+      path: vendorReviewPath(),
     }
   }
 
   if (queue.code === 'REEL_MODERATION') {
-    return { canOpen: access.canReadReels, label: 'Reels', path: routePaths.reels }
+    return {
+      canOpen: access.canReadReels,
+      label: 'Reels',
+      path: routeWithFilters(routePaths.reels, {
+        moderationStatus: 'PENDING_REVIEW',
+        view: 'pending',
+      }),
+    }
   }
 
   if (queue.code === 'REFUND_REVIEWS') {
-    return { canOpen: access.canReadPayments, label: 'Refunds', path: routePaths.refunds }
+    return {
+      canOpen: access.canReadPayments,
+      label: 'Refunds',
+      path: routeWithFilters(routePaths.refunds, { status: 'REQUESTED' }),
+    }
   }
 
   if (queue.code === 'PAYOUT_HOLDS') {
-    return { canOpen: access.canReadPayouts, label: 'Payouts', path: routePaths.payouts }
+    return {
+      canOpen: access.canReadPayouts,
+      label: 'Payouts',
+      path: routeWithFilters(routePaths.payouts, { status: 'HELD' }),
+    }
   }
 
   if (queue.code === 'FAILED_NOTIFICATIONS') {
     return {
       canOpen: access.canReadNotifications,
       label: 'Notifications',
-      path: routePaths.notifications,
+      path: routeWithFilters(routePaths.notifications, { status: 'FAILED' }),
+    }
+  }
+
+  return null
+}
+
+function getRecommendedActionTarget(
+  action: string | null,
+  access: DashboardAccess,
+): DrilldownTarget | null {
+  const normalized = action?.toUpperCase() ?? ''
+
+  if (!normalized) return null
+
+  if (normalized.includes('VENDOR')) {
+    return {
+      canOpen: access.canReadVendors,
+      label: 'Vendor onboarding',
+      path: vendorReviewPath(),
+    }
+  }
+
+  if (normalized.includes('REEL')) {
+    return {
+      canOpen: access.canReadReels,
+      label: 'Reels',
+      path: routeWithFilters(routePaths.reels, {
+        moderationStatus: 'PENDING_REVIEW',
+        view: 'pending',
+      }),
+    }
+  }
+
+  if (normalized.includes('REFUND')) {
+    return {
+      canOpen: access.canReadPayments,
+      label: 'Refunds',
+      path: routeWithFilters(routePaths.refunds, { status: 'REQUESTED' }),
+    }
+  }
+
+  if (normalized.includes('PAYOUT')) {
+    return {
+      canOpen: access.canReadPayouts,
+      label: 'Payouts',
+      path: routeWithFilters(routePaths.payouts, { status: 'HELD' }),
+    }
+  }
+
+  if (normalized.includes('NOTIFICATION')) {
+    return {
+      canOpen: access.canReadNotifications,
+      label: 'Notifications',
+      path: routeWithFilters(routePaths.notifications, { status: 'FAILED' }),
+    }
+  }
+
+  if (normalized.includes('PAYMENT')) {
+    return {
+      canOpen: access.canReadPayments,
+      label: 'Payments',
+      path: routePaths.payments,
+    }
+  }
+
+  if (normalized.includes('ORDER')) {
+    return {
+      canOpen: access.canReadOrders,
+      label: 'Orders',
+      path: routePaths.orders,
     }
   }
 
@@ -493,14 +686,23 @@ function FinancePanel({
         type: 'value',
       },
       series: statusCodes.map((status) => ({
-        data: widgets.map((widget) => widget.byStatus[status]?.count ?? 0),
+        data: widgets.map((widget) => {
+          const target = getFinanceTarget(widget, access)
+
+          return {
+            routePath: target?.canOpen
+              ? financeRouteWithStatus(widget, target.path, status)
+              : undefined,
+            value: widget.byStatus[status]?.count ?? 0,
+          }
+        }),
         emphasis: { focus: 'series' },
         name: humanizeCode(status),
         stack: 'finance-status',
         type: 'bar',
       })),
     }
-  }, [widgets])
+  }, [access, widgets])
 
   if (!permitted) {
     return (
@@ -522,10 +724,26 @@ function FinancePanel({
       icon={<CircleDollarSign className="size-4" />}
       title="Finance"
     >
-      <DashboardChart className="mb-3 h-64 min-h-64" option={financeChartOption} />
+      <DashboardChart
+        className="mb-3 h-64 min-h-64"
+        option={financeChartOption}
+        onChartClick={(event) => {
+          const routePath = chartRoute(event.data)
+          if (routePath) onOpen(routePath)
+        }}
+      />
       <div className="grid gap-3 lg:grid-cols-3">
         {widgets.map((widget) => {
           const target = getFinanceTarget(widget, access)
+          const statusItems = widget.statusItems?.length
+            ? widget.statusItems.map((item) => ({
+                count: item.count,
+                status: item.code,
+              }))
+            : Object.entries(widget.byStatus).map(([status, item]) => ({
+                count: item.count,
+                status,
+              }))
 
           return (
             <article
@@ -547,11 +765,32 @@ function FinancePanel({
                 <CreditCard className="size-4 text-primary" />
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {Object.entries(widget.byStatus).map(([status, item]) => (
-                  <Badge key={status} tone={item.count > 0 ? 'warning' : 'neutral'}>
-                    {humanizeCode(status)} {item.count}
-                  </Badge>
-                ))}
+                {statusItems.map((item) => {
+                  const routePath = target?.canOpen
+                    ? financeRouteWithStatus(widget, target.path, item.status)
+                    : null
+
+                  return (
+                    <button
+                      className={cn(
+                        'inline-flex min-h-8 items-center gap-1 rounded-full border px-2.5 text-xs font-semibold transition',
+                        item.count > 0
+                          ? 'border-warning/30 bg-warning/10 text-warning hover:border-warning/60'
+                          : 'border-border bg-surface text-muted hover:border-primary/35',
+                        !routePath && 'cursor-not-allowed opacity-60 hover:border-border',
+                      )}
+                      disabled={!routePath}
+                      key={item.status}
+                      type="button"
+                      onClick={() => {
+                        if (routePath) onOpen(routePath)
+                      }}
+                    >
+                      <span>{humanizeCode(item.status)}</span>
+                      <span>{item.count}</span>
+                    </button>
+                  )
+                })}
               </div>
               {target ? (
                 <Button
@@ -645,7 +884,7 @@ function OrdersPanel({
           barMaxWidth: 18,
           data: [...resolvedStatusItems].reverse().map((item) => ({
             itemStyle: { borderRadius: [0, 5, 5, 0] },
-            routePath: routeWithFilters(routePaths.orders, item.routeFilter),
+            routePath: orderRouteWithFilters(item.routeFilter),
             value: item.count,
           })),
           name: 'Orders',
@@ -668,7 +907,7 @@ function OrdersPanel({
         {
           data: resolvedPaymentItems.map((item) => ({
             name: item.label,
-            routePath: routeWithFilters(routePaths.orders, item.routeFilter),
+            routePath: orderRouteWithFilters(item.routeFilter),
             value: item.count,
           })),
           emphasis: { label: { show: true } },
@@ -720,11 +959,14 @@ function OrdersPanel({
       },
       series: [
         {
-          data: resolvedMatrixRows.map((row) => [
-            paymentLabels.indexOf(row.paymentStatusLabel),
-            orderLabels.indexOf(row.orderStatusLabel),
-            row.count,
-          ]),
+          data: resolvedMatrixRows.map((row) => ({
+            routePath: orderRouteWithFilters(row.routeFilter),
+            value: [
+              paymentLabels.indexOf(row.paymentStatusLabel),
+              orderLabels.indexOf(row.orderStatusLabel),
+              row.count,
+            ],
+          })),
           emphasis: {
             itemStyle: {
               borderColor: '#1d1d1f',
@@ -790,7 +1032,14 @@ function OrdersPanel({
         <p className="text-xs font-semibold uppercase tracking-normal text-muted">
           Order x payment grid
         </p>
-        <DashboardChart className="mt-2 h-80 min-h-80" option={matrixOption} />
+        <DashboardChart
+          className="mt-2 h-80 min-h-80"
+          option={matrixOption}
+          onChartClick={(event) => {
+            const routePath = chartRoute(event.data)
+            if (routePath && canReadOrders) onOpen(routePath)
+          }}
+        />
       </div>
       {rows.length ? (
         <div className="mt-3 overflow-hidden rounded-[0.75rem] border border-border">
@@ -868,7 +1117,7 @@ function TrendsPanel({
         {
           areaStyle: { opacity: 0.08 },
           data: points.map((point) => ({
-            routePath: routePaths.orders,
+            routePath: routeWithFilters(routePaths.orders, dayRangeFilters(point.bucketStart)),
             value: point.ordersCreated,
           })),
           name: 'Orders created',
@@ -878,7 +1127,10 @@ function TrendsPanel({
         },
         {
           data: points.map((point) => ({
-            routePath: routeWithFilters(routePaths.orders, { orderStatus: 'DELIVERED' }),
+            routePath: routeWithFilters(routePaths.orders, {
+              ...dayRangeFilters(point.bucketStart),
+              orderStatus: 'DELIVERED',
+            }),
             value: point.ordersDelivered,
           })),
           name: 'Delivered',
@@ -888,7 +1140,7 @@ function TrendsPanel({
         },
         {
           data: points.map((point) => ({
-            routePath: routePaths.payments,
+            routePath: routeWithFilters(routePaths.payments, dayRangeFilters(point.bucketStart)),
             value: point.paymentAmountPaise,
           })),
           name: 'Payment value',
@@ -952,18 +1204,27 @@ function TrendsPanel({
 }
 
 function SignalsPanel({
+  access,
   alerts,
   loadedAt,
   nextRecommendedAction,
+  onOpen,
   scopeType,
   zoneIds,
 }: {
+  access: DashboardAccess
   alerts: string[]
   loadedAt: string
   nextRecommendedAction: string | null
+  onOpen: (path: string) => void
   scopeType: string
   zoneIds: string[]
 }) {
+  const recommendedTarget = getRecommendedActionTarget(
+    nextRecommendedAction,
+    access,
+  )
+
   return (
     <SectionShell
       description="Backend signals returned with dashboard summary."
@@ -1003,6 +1264,21 @@ function SignalsPanel({
           <p className="mt-2 text-sm font-semibold text-foreground">
             {nextRecommendedAction ? humanizeCode(nextRecommendedAction) : 'No backend recommendation'}
           </p>
+          {recommendedTarget ? (
+            <Button
+              className="mt-3"
+              disabled={!recommendedTarget.canOpen}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                if (recommendedTarget.canOpen) onOpen(recommendedTarget.path)
+              }}
+            >
+              <ArrowUpRight className="mr-2 size-4" />
+              {recommendedTarget.canOpen ? recommendedTarget.label : 'No access'}
+            </Button>
+          ) : null}
         </div>
         <div className="rounded-[0.75rem] border border-border bg-surface-muted/35 p-3">
           <p className="text-xs font-semibold uppercase tracking-normal text-muted">
@@ -1141,12 +1417,14 @@ export function DashboardPage() {
               onOpen={navigate}
             />
             <SignalsPanel
+              access={access}
               alerts={data.summary.alerts}
               loadedAt={data.loadedAt}
               nextRecommendedAction={
                 data.reviewQueues.nextRecommendedAction ??
                 data.summary.nextRecommendedAction
               }
+              onOpen={navigate}
               scopeType={data.summary.scope.type}
               zoneIds={data.summary.scope.zoneIds}
             />

@@ -27,6 +27,7 @@ import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
+import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { rbacService } from '../services/rbac.service'
@@ -39,6 +40,14 @@ import type {
 } from '../types/rbac.types'
 
 type ModalKind = 'EDIT_DETAILS' | 'MANAGE_PERMISSIONS'
+const roleDetailSectionIds = {
+  details: 'role-details',
+  lifecycle: 'role-lifecycle',
+  permissions: 'role-permissions',
+  signals: 'role-signals',
+} as const
+type RoleDetailSectionId =
+  (typeof roleDetailSectionIds)[keyof typeof roleDetailSectionIds]
 
 function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
@@ -74,6 +83,28 @@ function statusTone(isActive: boolean): StatusTone {
 
 function roleTypeLabel(role: RoleDetail) {
   return role.isSystem ? 'System' : 'Custom'
+}
+
+function buildRolesCataloguePath(role: RoleDetail) {
+  return buildPathWithQueryParams(routePaths.roles, {
+    search: role.roleCode,
+    status: role.isActive ? 'active' : 'inactive',
+    type: role.isSystem ? 'system' : 'custom',
+  }) + '#roles-records'
+}
+
+function buildRoleAdminUsersPath(role: RoleDetail) {
+  return buildPathWithQueryParams(routePaths.adminUsers, {
+    roleId: role.roleId,
+  }) + '#admin-users-records'
+}
+
+function buildRoleAuditPath(role: RoleDetail) {
+  return buildPathWithQueryParams(routePaths.audit, {
+    moduleCode: 'rbac',
+    entityType: 'role',
+    entityId: role.roleId,
+  })
 }
 
 function DetailField({
@@ -129,16 +160,21 @@ function SectionShell({
   children,
   description,
   icon,
+  id,
   title,
 }: {
   actionNode?: ReactNode
   children: ReactNode
   description?: string
   icon?: ReactNode
+  id?: string
   title: string
 }) {
   return (
-    <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+    <section
+      className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
+      id={id}
+    >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -320,6 +356,7 @@ function LifecyclePanel({ role }: { role: RoleDetail }) {
     <SectionShell
       description="Role metadata and timestamps returned by the RBAC API."
       icon={<CalendarClock className="size-4" />}
+      id={roleDetailSectionIds.lifecycle}
       title="Lifecycle"
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -349,6 +386,7 @@ function DetailsPanel({ role }: { role: RoleDetail }) {
     <SectionShell
       description="Human-readable role purpose and assignment status."
       icon={<KeyRound className="size-4" />}
+      id={roleDetailSectionIds.details}
       title="Role details"
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -399,6 +437,7 @@ function SignalsPanel({
     <SectionShell
       description="Derived role warnings and controls available to the current admin."
       icon={<TriangleAlert className="size-4" />}
+      id={roleDetailSectionIds.signals}
       title="Signals"
     >
       <div className="space-y-4">
@@ -430,6 +469,7 @@ function RelatedRecordsPanel({
   canUpdateRole,
   onManagePermissions,
   onNavigate,
+  onOpenSection,
   onUpdateRole,
   role,
 }: {
@@ -439,6 +479,7 @@ function RelatedRecordsPanel({
   canUpdateRole: boolean
   onManagePermissions: () => void
   onNavigate: (path: string) => void
+  onOpenSection: (sectionId: RoleDetailSectionId) => void
   onUpdateRole: () => void
   role: RoleDetail
 }) {
@@ -456,7 +497,7 @@ function RelatedRecordsPanel({
           label="Role catalogue"
           meta={`${roleTypeLabel(role)} role`}
           value={role.roleCode}
-          onOpen={() => onNavigate(routePaths.roles)}
+          onOpen={() => onNavigate(buildRolesCataloguePath(role))}
         />
         <RelatedRecordRow
           actionLabel="Admins"
@@ -465,16 +506,25 @@ function RelatedRecordsPanel({
           label="Assigned admin users"
           meta="Use role filter on the admin users list"
           value={role.roleName}
-          onOpen={() => onNavigate(`${routePaths.adminUsers}?roleId=${role.roleId}`)}
+          onOpen={() => onNavigate(buildRoleAdminUsersPath(role))}
         />
         <RelatedRecordRow
           actionLabel="Audit"
           canOpen={canReadAudit}
           icon={<ClipboardList className="size-4" />}
           label="Audit trail"
-          meta="Filter by RBAC role changes"
+          meta="Filtered by RBAC module, role entity, and role id"
           value={role.roleId}
-          onOpen={() => onNavigate(routePaths.audit)}
+          onOpen={() => onNavigate(buildRoleAuditPath(role))}
+        />
+        <RelatedRecordRow
+          actionLabel="View"
+          canOpen
+          icon={<ShieldCheck className="size-4" />}
+          label="Assigned permissions"
+          meta="Permission matrix inside this role detail"
+          value={`${role.permissions.length} permissions`}
+          onOpen={() => onOpenSection(roleDetailSectionIds.permissions)}
         />
         <RelatedRecordRow
           actionLabel="Edit"
@@ -500,6 +550,7 @@ function RelatedRecordsPanel({
 }
 
 function PermissionsPanel({
+  canReadPermissions,
   permissionGroups,
   permissionsLoading,
   permissionsError,
@@ -507,6 +558,7 @@ function PermissionsPanel({
   selectedPermissionIds,
   onRetry,
 }: {
+  canReadPermissions: boolean
   permissionGroups: PermissionGroup[]
   permissionsLoading: boolean
   permissionsError: Error | null
@@ -520,9 +572,15 @@ function PermissionsPanel({
     <SectionShell
       description={`${role.permissions.length} permissions across ${moduleCount} module${moduleCount === 1 ? '' : 's'}.`}
       icon={<ShieldCheck className="size-4" />}
+      id={roleDetailSectionIds.permissions}
       title="Permissions"
     >
-      {permissionsError ? (
+      {!canReadPermissions ? (
+        <EmptyState
+          description="Permission catalogue access is required to view the full role permission matrix."
+          title="Permission matrix locked"
+        />
+      ) : permissionsError ? (
         <ErrorState
           description={permissionsError.message}
           title="Permissions unavailable"
@@ -896,6 +954,16 @@ export function RoleDetailPage() {
     role && !role.isSystem && canManageRolePermissions && canReadPermissions,
   )
 
+  const openSection = (sectionId: RoleDetailSectionId) => {
+    const section = document.getElementById(sectionId)
+
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    if (section) {
+      window.history.replaceState(null, '', `#${sectionId}`)
+    }
+  }
+
   const refreshRole = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['rbac', 'roles'] }),
@@ -1080,6 +1148,7 @@ export function RoleDetailPage() {
         <div className="space-y-3">
           <DetailsPanel role={role} />
           <PermissionsPanel
+            canReadPermissions={canReadPermissions}
             permissionGroups={permissionGroups}
             permissionsError={
               permissionsQuery.isError
@@ -1105,6 +1174,7 @@ export function RoleDetailPage() {
             setActiveModal('MANAGE_PERMISSIONS')
           }}
           onNavigate={navigate}
+          onOpenSection={openSection}
           onUpdateRole={() => {
             setActionError(null)
             setActiveModal('EDIT_DETAILS')

@@ -12,6 +12,7 @@ import {
   Tags,
   Trash2,
   TriangleAlert,
+  UserRound,
   Video,
   XCircle,
 } from 'lucide-react'
@@ -131,6 +132,18 @@ function formatDuration(value: number | null | undefined) {
   const minutes = Math.floor(value / 60)
   const seconds = value % 60
   return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`
+}
+
+function routeWithFilters(path: string, filters: Record<string, string | undefined>) {
+  const params = new URLSearchParams()
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value)
+  })
+
+  const query = params.toString()
+
+  return query ? `${path}?${query}` : path
 }
 
 function isReelActionKind(action: string): action is ReelActionKind {
@@ -487,15 +500,18 @@ function RelatedRecordRow({
 }
 
 function RelatedRecordsPanel({
+  canReadInfluencers,
   canReadVendors,
   onNavigate,
   reel,
 }: {
+  canReadInfluencers: boolean
   canReadVendors: boolean
   onNavigate: (path: string) => void
   reel: AdminReel
 }) {
   const canOpenPlayback = isOpenableUrl(reel.media.playbackUrl)
+  const reelQueueView = reel.publish.customerVisibility === 'VISIBLE' ? 'live' : 'pending'
 
   return (
     <SectionShell
@@ -513,11 +529,59 @@ function RelatedRecordsPanel({
           onOpen={() => onNavigate(`${routePaths.vendors}/${reel.vendor.vendorId}`)}
         />
         <RelatedRecordRow
-          canOpen={false}
+          actionLabel="Queue"
+          canOpen
+          icon={<Film className="size-4" />}
+          label="Vendor reel queue"
+          meta="Current moderation workspace filtered by this vendor"
+          value={reel.vendor.shopName}
+          onOpen={() =>
+            onNavigate(
+              routeWithFilters(routePaths.reels, {
+                vendorId: reel.vendor.vendorId,
+                vendorLabel: reel.vendor.shopName,
+                view: reelQueueView,
+              }),
+            )
+          }
+        />
+        {reel.influencer ? (
+          <RelatedRecordRow
+            actionLabel="Influencer"
+            canOpen={canReadInfluencers}
+            icon={<UserRound className="size-4" />}
+            label="Influencer"
+            meta={`${reel.influencer.publicInfluencerId} · ${humanizeCode(
+              reel.influencer.status,
+            )}`}
+            value={
+              reel.influencer.socialHandle
+                ? `${reel.influencer.displayName} · ${reel.influencer.socialHandle}`
+                : reel.influencer.displayName
+            }
+            onOpen={() =>
+              onNavigate(
+                `${routePaths.influencers}/${reel.influencer?.influencerProfileId}`,
+              )
+            }
+          />
+        ) : null}
+        <RelatedRecordRow
+          actionLabel="Queue"
+          canOpen={Boolean(reel.category)}
           icon={<Tags className="size-4" />}
           label="Category"
           meta={reel.category?.categoryCode ?? 'No category code'}
           value={reel.category?.name ?? 'Unassigned category'}
+          onOpen={() =>
+            onNavigate(
+              routeWithFilters(routePaths.reels, {
+                categoryId: reel.category?.categoryId,
+                categoryLabel: reel.category?.name,
+                view: reelQueueView,
+              }),
+            )
+          }
         />
         <RelatedRecordRow
           actionLabel="Playback"
@@ -670,6 +734,15 @@ function ReelMediaPanel({ reel }: { reel: AdminReel }) {
             value={reel.media.cloudflareVideoUid}
           />
           <DetailField label="Duration" value={formatDuration(reel.media.durationSeconds)} />
+          <DetailField
+            label="Dimensions"
+            value={
+              reel.media.width && reel.media.height
+                ? `${reel.media.width} x ${reel.media.height}`
+                : null
+            }
+          />
+          <DetailField label="Aspect Ratio" value={reel.media.aspectRatio} />
           <DetailField label="Upload Status" value={humanizeCode(reel.media.uploadStatus)} />
           <UrlDetailField label="Playback URL" value={reel.media.playbackUrl} />
           <UrlDetailField label="Thumbnail URL" value={reel.media.thumbnailUrl} />
@@ -686,6 +759,7 @@ export function ReelDetailPage() {
   const canModerateReels = usePermission('reels:moderate')
   const canDeleteReels = usePermission('reels:delete')
   const canReadVendors = usePermission('vendors:read')
+  const canReadInfluencers = usePermission('influencers:read')
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedAction, setSelectedAction] =
     useState<ReelActionSelection | null>(null)
@@ -899,6 +973,7 @@ export function ReelDetailPage() {
 
         <div className="space-y-3">
           <RelatedRecordsPanel
+            canReadInfluencers={canReadInfluencers}
             canReadVendors={canReadVendors}
             reel={reel}
             onNavigate={navigate}
@@ -960,6 +1035,14 @@ export function ReelDetailPage() {
           <DetailField label="Mobile" value={reel.vendor.mobileNumber} />
           <DetailField label="Vendor ID" value={reel.vendor.vendorId} />
           <DetailField label="Public Vendor ID" value={reel.vendor.publicVendorId} />
+          <DetailField
+            label="Uploader"
+            value={humanizeCode(reel.uploaderType ?? 'VENDOR')}
+          />
+          <DetailField
+            label="Influencer"
+            value={reel.influencer?.displayName}
+          />
           <DetailField
             label="Vendor Status"
             value={humanizeCode(reel.vendor.vendorStatus)}

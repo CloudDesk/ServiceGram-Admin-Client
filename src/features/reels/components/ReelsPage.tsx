@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Filter,
   PauseCircle,
   PencilLine,
   RefreshCcw,
@@ -19,7 +20,7 @@ import type {
 } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
@@ -100,6 +101,37 @@ const reelModerationStatuses: ReelModerationStatus[] = [
   'PAUSED',
   'REMOVED',
 ]
+
+function readSearchValues(searchParams: URLSearchParams, key: string) {
+  return Array.from(
+    new Set(
+      searchParams
+        .getAll(key)
+        .flatMap((value) => value.split(','))
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
+function readEnumSearchValues<T extends string>(
+  searchParams: URLSearchParams,
+  key: string,
+  allowedValues: readonly T[],
+) {
+  const allowed = new Set<T>(allowedValues)
+
+  return readSearchValues(searchParams, key).filter((value): value is T =>
+    allowed.has(value as T),
+  )
+}
+
+function readInitialLookup(searchParams: URLSearchParams, idKey: string, labelKey: string) {
+  const value = searchParams.get(idKey) ?? ''
+  const label = searchParams.get(labelKey) ?? value
+
+  return value ? [{ label, value }] : []
+}
 
 const reelDataColumns = [
   {
@@ -411,20 +443,45 @@ function ReelCell({
 
 export function ReelsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const canReadVendors = usePermission('vendors:read')
   const canModerateReels = usePermission('reels:moderate')
   const canDeleteReels = usePermission('reels:delete')
-  const [viewMode, setViewMode] = useState<ReelViewMode>('pending')
+  const seededViewMode =
+    searchParams.get('view') === 'live' ? 'live' : ('pending' as ReelViewMode)
+  const seededContentTypes = readEnumSearchValues(
+    searchParams,
+    'contentType',
+    reelContentTypes,
+  )
+  const seededUploadStatuses = readEnumSearchValues(
+    searchParams,
+    'uploadStatus',
+    reelUploadStatuses,
+  )
+  const seededModerationStatuses = readEnumSearchValues(
+    searchParams,
+    'moderationStatus',
+    reelModerationStatuses,
+  )
+  const [viewMode, setViewMode] = useState<ReelViewMode>(seededViewMode)
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
-  const [search, setSearch] = useState('')
-  const [city, setCity] = useState('')
-  const [selectedCategories, setSelectedCategories] = useState<LookupOption[]>([])
-  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>([])
-  const [selectedContentTypes, setSelectedContentTypes] = useState<ReelContentType[]>([])
-  const [selectedUploadStatuses, setSelectedUploadStatuses] = useState<ReelUploadStatus[]>([])
-  const [selectedModerationStatuses, setSelectedModerationStatuses] = useState<ReelModerationStatus[]>([])
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [city, setCity] = useState(() => searchParams.get('city') ?? '')
+  const [selectedCategories, setSelectedCategories] = useState<LookupOption[]>(() =>
+    readInitialLookup(searchParams, 'categoryId', 'categoryLabel'),
+  )
+  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>(() =>
+    readInitialLookup(searchParams, 'vendorId', 'vendorLabel'),
+  )
+  const [selectedContentTypes, setSelectedContentTypes] =
+    useState<ReelContentType[]>(() => seededContentTypes)
+  const [selectedUploadStatuses, setSelectedUploadStatuses] =
+    useState<ReelUploadStatus[]>(() => seededUploadStatuses)
+  const [selectedModerationStatuses, setSelectedModerationStatuses] =
+    useState<ReelModerationStatus[]>(() => seededModerationStatuses)
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [filtersCollapsed, setFiltersCollapsed] = useState(false)
   const [visibleColumns, setVisibleColumns] =
@@ -510,6 +567,26 @@ export function ReelsPage() {
   )
 
   const resetToFirstPage = () => setPage(1)
+  const clearSeededReelParams = () => {
+    const seededKeys = [
+      'categoryId',
+      'categoryLabel',
+      'city',
+      'contentType',
+      'moderationStatus',
+      'search',
+      'uploadStatus',
+      'vendorId',
+      'vendorLabel',
+      'view',
+    ] as const
+
+    if (!seededKeys.some((key) => searchParams.has(key))) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    seededKeys.forEach((key) => nextParams.delete(key))
+    setSearchParams(nextParams, { replace: true })
+  }
 
   const query = useMemo<AdminReelsQueryParams>(
     () => ({
@@ -627,6 +704,7 @@ export function ReelsPage() {
   )
 
   const clearReelFilters = () => {
+    clearSeededReelParams()
     setViewMode('pending')
     setSearch('')
     setCity('')
@@ -639,6 +717,7 @@ export function ReelsPage() {
   }
 
   const applyQueue = (nextQueue: ReelQueueKey) => {
+    clearSeededReelParams()
     setViewMode(nextQueue)
     setPage(1)
   }
@@ -938,7 +1017,7 @@ export function ReelsPage() {
             onClick={(event) => openReelAction('REQUEST_EDIT', reel, event)}
           >
             <PencilLine className="mr-2 size-4" />
-            Edit
+            Request Edit
           </Button>
         ) : null}
         {canModerateReels && hasAction('PAUSE') ? (
@@ -1013,6 +1092,7 @@ export function ReelsPage() {
             ? 'Moderate reels waiting for review.'
             : 'Review approved reels currently visible to customers.'
         }
+        layout="workspace"
         placement="topbar"
         title="Reels"
       />
@@ -1061,8 +1141,11 @@ export function ReelsPage() {
                 >
                   <ChevronRight className="size-4" />
                 </button>
-                <span className="text-xs font-semibold uppercase tracking-normal text-muted xl:[writing-mode:vertical-rl] xl:rotate-180">
-                  Filters
+                <span
+                  aria-hidden="true"
+                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
+                >
+                  <Filter className="size-4" />
                 </span>
                 {hasActiveFilters ? (
                   <span
@@ -1136,6 +1219,7 @@ export function ReelsPage() {
                       placeholder="All content"
                       values={selectedContentTypes}
                       onChange={(values) => {
+                        clearSeededReelParams()
                         setSelectedContentTypes(values as ReelContentType[])
                         resetToFirstPage()
                       }}
@@ -1146,6 +1230,7 @@ export function ReelsPage() {
                       placeholder="All upload states"
                       values={selectedUploadStatuses}
                       onChange={(values) => {
+                        clearSeededReelParams()
                         setSelectedUploadStatuses(values as ReelUploadStatus[])
                         resetToFirstPage()
                       }}
@@ -1156,6 +1241,7 @@ export function ReelsPage() {
                       placeholder="All moderation states"
                       values={selectedModerationStatuses}
                       onChange={(values) => {
+                        clearSeededReelParams()
                         setSelectedModerationStatuses(
                           values as ReelModerationStatus[],
                         )
@@ -1169,6 +1255,7 @@ export function ReelsPage() {
                       queryKey={['lookup', 'categories', 'reels']}
                       selectedOptions={selectedCategories}
                       onChange={(options) => {
+                        clearSeededReelParams()
                         setSelectedCategories(options)
                         setSelectedVendors([])
                         resetToFirstPage()
@@ -1189,6 +1276,7 @@ export function ReelsPage() {
                       queryKey={['lookup', 'vendors', 'reels', categoryIds]}
                       selectedOptions={selectedVendors}
                       onChange={(options) => {
+                        clearSeededReelParams()
                         setSelectedVendors(options)
                         resetToFirstPage()
                       }}
@@ -1202,6 +1290,7 @@ export function ReelsPage() {
                         placeholder="Chennai"
                         value={city}
                         onChange={(event) => {
+                          clearSeededReelParams()
                           setCity(event.target.value)
                           resetToFirstPage()
                         }}
@@ -1232,6 +1321,7 @@ export function ReelsPage() {
                   placeholder="Search reel, caption, vendor"
                   value={search}
                   onChange={(nextSearch) => {
+                    clearSeededReelParams()
                     setSearch(nextSearch)
                     resetToFirstPage()
                   }}

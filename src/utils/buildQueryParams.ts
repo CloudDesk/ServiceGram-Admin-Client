@@ -1,3 +1,5 @@
+import type { LookupOption } from '../types/lookup.types'
+
 export function buildQueryParams(params: object) {
   const searchParams = new URLSearchParams()
 
@@ -20,4 +22,32 @@ export function buildQueryParams(params: object) {
   })
 
   return searchParams.toString()
+}
+
+export function buildPathWithQueryParams(path: string, params: object) {
+  const queryString = buildQueryParams(params)
+
+  return queryString ? `${path}?${queryString}` : path
+}
+
+export function readSearchParamList(searchParams: URLSearchParams, key: string) {
+  return searchParams
+    .getAll(key)
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .filter(Boolean)
+}
+
+export function readLookupOptionsFromSearchParams(
+  searchParams: URLSearchParams,
+  valueKey: string,
+  labelKey: string,
+): LookupOption[] {
+  const values = readSearchParamList(searchParams, valueKey)
+  const labels = readSearchParamList(searchParams, labelKey)
+
+  return values.map((value, index) => ({
+    label: labels[index] ?? value,
+    value,
+  }))
 }
