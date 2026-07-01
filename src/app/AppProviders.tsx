@@ -5,6 +5,7 @@ import { PermissionProvider } from '../providers/PermissionProvider'
 import { PageChromeProvider } from '../providers/PageChromeProvider'
 import { QueryProvider } from '../providers/QueryProvider'
 import { ToastProvider } from '../providers/ToastProvider'
+import { MediaViewerProvider } from '../components/media'
 
 export function AppProviders({ children }: PropsWithChildren) {
   return (
@@ -13,7 +14,9 @@ export function AppProviders({ children }: PropsWithChildren) {
         <PageChromeProvider>
           <AuthProvider>
             <PermissionProvider>
-              <ToastProvider>{children}</ToastProvider>
+              <ToastProvider>
+                <MediaViewerProvider>{children}</MediaViewerProvider>
+              </ToastProvider>
             </PermissionProvider>
           </AuthProvider>
         </PageChromeProvider>

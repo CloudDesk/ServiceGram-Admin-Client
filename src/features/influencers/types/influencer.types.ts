@@ -40,6 +40,25 @@ export interface InfluencerSummary {
   providerStatus: string
 }
 
+export type InfluencerSocialPlatform =
+  | 'INSTAGRAM'
+  | 'YOUTUBE'
+  | 'FACEBOOK'
+  | 'X'
+
+export interface InfluencerSocialProfile {
+  platform: InfluencerSocialPlatform
+  handle?: string | null
+  profileUrl: string
+  followerCount?: number | null
+}
+
+export interface AdminInfluencerPreferredCategory {
+  categoryId: string
+  categoryCode: string
+  name: string
+}
+
 export interface AdminInfluencerProfile {
   influencerProfileId: string
   customerId: string
@@ -47,8 +66,10 @@ export interface AdminInfluencerProfile {
   publicInfluencerId: string
   displayName: string
   socialHandle: string | null
+  socialProfiles: InfluencerSocialProfile[]
   bio: string | null
   preferredCategoryIds: string[]
+  preferredCategories?: AdminInfluencerPreferredCategory[]
   status: InfluencerStatus
   rejectionReason: string | null
   suspensionReason: string | null
@@ -76,7 +97,9 @@ export interface AdminInfluencerApplication {
   status: string
   city: string | null
   preferredCategoryIds: string[]
+  preferredCategories?: AdminInfluencerPreferredCategory[]
   socialHandle: string | null
+  socialProfiles?: InfluencerSocialProfile[]
   motivation: string | null
   reviewReason: string | null
   reviewedByAdminId: string | null
@@ -157,8 +180,10 @@ export interface AdminInfluencer {
   publicInfluencerId: string
   displayName: string
   socialHandle: string | null
+  socialProfiles: InfluencerSocialProfile[]
   bio: string | null
   preferredCategoryIds: string[]
+  preferredCategories?: AdminInfluencerPreferredCategory[]
   status: InfluencerStatus
   rejectionReason: string | null
   suspensionReason: string | null

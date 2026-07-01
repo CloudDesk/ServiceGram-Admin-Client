@@ -27,7 +27,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
-import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
+import {
+  DetailPageHeader,
+  DetailPageHeaderSkeleton,
+} from '../../../components/layout/DetailPageHeader'
 import { DynamicTable, type DynamicTableColumn } from '../../../components/ui/Table'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
@@ -1016,7 +1019,7 @@ function RelatedRecordsPanel({
           meta={
             canReadPayments
               ? 'Payment and refund detail links enabled'
-              : 'Order-scoped finance rows'
+              : 'Payments permission required'
           }
           value={formatStatusLabel(order.paymentStatus)}
           onOpen={() => onOpenSection(orderSectionIds.finance)}
@@ -1066,6 +1069,52 @@ function RelatedRecordsPanel({
           value={order.orderId}
           onOpen={() => onNavigate(buildOrderAuditPath(order))}
         />
+      </div>
+    </DetailPanel>
+  )
+}
+
+function FinanceLockedPanel({ order }: { order: AdminOrderDetail }) {
+  return (
+    <DetailPanel
+      description="Payment attempts and refund rows require finance access."
+      icon={<CreditCard className="size-4" />}
+      id={orderSectionIds.finance}
+      title="Finance"
+    >
+      <div className="grid gap-2.5 md:grid-cols-2">
+        <DetailMetricCard
+          icon={<CreditCard className="size-4" />}
+          label="Payments"
+          meta="Payments permission required"
+          tone="neutral"
+          value="Locked"
+        />
+        <DetailMetricCard
+          icon={<RotateCcw className="size-4" />}
+          label="Refunds"
+          meta="Payments permission required"
+          tone="neutral"
+          value="Locked"
+        />
+      </div>
+      <div className="mt-4 flex items-start gap-3 rounded-[0.85rem] border border-border bg-surface-muted/50 p-3">
+        <KeyRound className="mt-0.5 size-4 shrink-0 text-primary" />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">
+            Payments permission required
+          </p>
+          <p className="mt-1 text-sm leading-5 text-muted">
+            This order remains available for operations work. Payment attempts
+            and refund records are hidden until payments:read is assigned.
+          </p>
+          <p className="mt-2 text-xs font-semibold uppercase text-muted">
+            Current payment status
+          </p>
+          <Badge tone={paymentTone(order.paymentStatus)}>
+            {formatStatusLabel(order.paymentStatus)}
+          </Badge>
+        </div>
       </div>
     </DetailPanel>
   )
@@ -1288,7 +1337,7 @@ export function OrderDetailPage({
   }
 
   if (orderQuery.isLoading) {
-    return <PageContainer><Skeleton className="h-24 w-full" /><Skeleton className="h-[28rem] w-full" /></PageContainer>
+    return <PageContainer><DetailPageHeaderSkeleton /><Skeleton className="h-[28rem] w-full" /></PageContainer>
   }
 
   if (orderQuery.isError) {
@@ -1359,170 +1408,147 @@ export function OrderDetailPage({
       />
 
       <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <DetailPanel
-          description="Core booking, schedule, customer, vendor, and pricing fields."
-          id="order-information"
-          icon={<ReceiptText className="size-4" />}
-          title="Order information"
-        >
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <DetailField label="Order ID" value={order.orderId} />
-            <DetailField label="Public Order ID" value={order.publicOrderId} />
-            <DetailField label="Customer" value={order.customer.fullName} />
-            <DetailField label="Customer Mobile" value={order.customer.mobileNumber} />
-            <DetailField label="Vendor" value={order.vendor.shopName} />
-            <DetailField label="Category" value={order.category?.name} />
-            <DetailField label="Payment Method" value={order.paymentMethod} />
-            <DetailField label="Value" value={orderDisplayValue(order)} />
-            <DetailField label="Pickup Date" value={formatDateSafe(order.schedule.pickupDate)} />
-            <DetailField label="Expected Delivery" value={formatDateSafe(order.schedule.expectedDeliveryAt)} />
-            <DetailField label="Delivered At" value={formatDateSafe(order.schedule.deliveredAt)} />
-            <DetailField label="Cancellation Reason" value={order.cancellationReason} />
-            <DetailField label="Active Delivery OTP" value={order.activeDeliveryOtp?.status} />
-            <DetailField label="Created At" value={formatDateSafe(order.createdAt)} />
-            <DetailField label="Updated At" value={formatDateSafe(order.updatedAt)} />
+        <div className="min-w-0 space-y-3">
+          <DetailPanel
+            description="Core booking, schedule, customer, vendor, and pricing fields."
+            id="order-information"
+            icon={<ReceiptText className="size-4" />}
+            title="Order information"
+          >
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <DetailField label="Order ID" value={order.orderId} />
+              <DetailField label="Public Order ID" value={order.publicOrderId} />
+              <DetailField label="Customer" value={order.customer.fullName} />
+              <DetailField label="Customer Mobile" value={order.customer.mobileNumber} />
+              <DetailField label="Vendor" value={order.vendor.shopName} />
+              <DetailField label="Category" value={order.category?.name} />
+              <DetailField label="Payment Method" value={order.paymentMethod} />
+              <DetailField label="Value" value={orderDisplayValue(order)} />
+              <DetailField label="Pickup Date" value={formatDateSafe(order.schedule.pickupDate)} />
+              <DetailField label="Expected Delivery" value={formatDateSafe(order.schedule.expectedDeliveryAt)} />
+              <DetailField label="Delivered At" value={formatDateSafe(order.schedule.deliveredAt)} />
+              <DetailField label="Cancellation Reason" value={order.cancellationReason} />
+              <DetailField label="Active Delivery OTP" value={order.activeDeliveryOtp?.status} />
+              <DetailField label="Created At" value={formatDateSafe(order.createdAt)} />
+              <DetailField label="Updated At" value={formatDateSafe(order.updatedAt)} />
+            </div>
+          </DetailPanel>
+
+          <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+            <DetailMetricCard
+              icon={<PackageCheck className="size-4" />}
+              label="Items"
+              meta="Service line items"
+              tone={order.items.length ? 'info' : 'neutral'}
+              value={String(order.counts?.itemCount ?? order.items.length)}
+            />
+            <DetailMetricCard
+              icon={<CreditCard className="size-4" />}
+              label="Payments"
+              meta={
+                canReadPayments
+                  ? `${order.refunds.length} linked refunds`
+                  : 'Payments permission required'
+              }
+              tone={canReadPayments && order.payments.length ? 'success' : 'neutral'}
+              value={canReadPayments ? String(order.payments.length) : 'Locked'}
+            />
+            <DetailMetricCard
+              icon={<ImageIcon className="size-4" />}
+              label="Proofs"
+              meta="Order media assets"
+              tone={order.mediaAssets.length ? 'info' : 'neutral'}
+              value={String(order.mediaAssets.length)}
+            />
+            <DetailMetricCard
+              icon={<FileText className="size-4" />}
+              label="Notes"
+              meta="Internal admin notes"
+              tone={order.notes.length ? 'warning' : 'neutral'}
+              value={String(order.counts?.noteCount ?? order.notes.length)}
+            />
           </div>
-        </DetailPanel>
 
-        <div className="space-y-3">
-          <RelatedRecordsPanel
-            canReadAudit={canReadAudit}
-            canReadCustomers={canReadCustomers}
-            canReadPayments={canReadPayments}
-            canReadReels={canReadReels}
-            canReadVendors={canReadVendors}
-            order={order}
-            onNavigate={navigate}
-            onOpenSection={openSection}
-          />
-          <OperationalSignalsPanel order={order} />
-        </div>
-      </section>
+        {canReadPayments ? (
+          <div id={orderSectionIds.finance} className="grid scroll-mt-4 gap-3 2xl:grid-cols-2">
+            <DynamicTable
+              actionColumnLabel="Payment Actions"
+              actionColumnMinWidth={180}
+              bodyMaxHeight={320}
+              columns={paymentColumns}
+              data={order.payments}
+              emptyDescription="This order does not have payment records yet."
+              emptyTitle="No payments"
+              getRowId={(row) => row.paymentId}
+              stickyHeader
+              title="Payments"
+              toolbar={
+                <TableToolbar
+                  count={order.payments.length}
+                  description="Payment attempts and verification state linked to this order."
+                  icon={<CreditCard className="size-4" />}
+                  title="Payments"
+                />
+              }
+              rowActions={(payment) => [
+                {
+                  icon: <ArrowUpRight className="size-4" />,
+                  key: 'open-payment',
+                  label: 'Open',
+                  onClick: () => navigate(`${routePaths.payments}/${payment.paymentId}`),
+                  variant: 'ghost',
+                },
+              ]}
+              onRowClick={(payment) => navigate(`${routePaths.payments}/${payment.paymentId}`)}
+            />
 
-      <section className="space-y-3">
-        <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          <DetailMetricCard
-            icon={<PackageCheck className="size-4" />}
-            label="Items"
-            meta="Service line items"
-            tone={order.items.length ? 'info' : 'neutral'}
-            value={String(order.counts?.itemCount ?? order.items.length)}
-          />
-          <DetailMetricCard
-            icon={<CreditCard className="size-4" />}
-            label="Payments"
-            meta={`${order.refunds.length} linked refunds`}
-            tone={order.payments.length ? 'success' : 'neutral'}
-            value={String(order.payments.length)}
-          />
-          <DetailMetricCard
-            icon={<ImageIcon className="size-4" />}
-            label="Proofs"
-            meta="Order media assets"
-            tone={order.mediaAssets.length ? 'info' : 'neutral'}
-            value={String(order.mediaAssets.length)}
-          />
-          <DetailMetricCard
-            icon={<FileText className="size-4" />}
-            label="Notes"
-            meta="Internal admin notes"
-            tone={order.notes.length ? 'warning' : 'neutral'}
-            value={String(order.counts?.noteCount ?? order.notes.length)}
-          />
-        </div>
-
-        <div id={orderSectionIds.finance} className="grid scroll-mt-4 gap-3 2xl:grid-cols-2">
-          <DynamicTable
-            actionColumnLabel="Payment Actions"
-            actionColumnMinWidth={180}
-            bodyMaxHeight={320}
-            columns={paymentColumns}
-            data={order.payments}
-            emptyDescription="This order does not have payment records yet."
-            emptyTitle="No payments"
-            getRowId={(row) => row.paymentId}
-            stickyHeader
-            title="Payments"
-            toolbar={
-              <TableToolbar
-                count={order.payments.length}
-                description="Payment attempts and verification state linked to this order."
-                icon={<CreditCard className="size-4" />}
-                title="Payments"
-              />
-            }
-            rowActions={
-              canReadPayments
-                ? (payment) => [
-                    {
-                      icon: <ArrowUpRight className="size-4" />,
-                      key: 'open-payment',
-                      label: 'Open',
-                      onClick: () => navigate(`${routePaths.payments}/${payment.paymentId}`),
-                      variant: 'ghost',
-                    },
-                  ]
-                : undefined
-            }
-            onRowClick={
-              canReadPayments
-                ? (payment) => navigate(`${routePaths.payments}/${payment.paymentId}`)
-                : undefined
-            }
-          />
-
-          <DynamicTable
-            actionColumnLabel="Refund Actions"
-            actionColumnMinWidth={180}
-            bodyMaxHeight={320}
-            columns={refundColumns}
-            data={order.refunds}
-            emptyDescription="This order does not have refund records yet."
-            emptyTitle="No refunds"
-            getRowId={(row) => row.refundId}
-            stickyHeader
-            title="Refunds"
-            toolbar={
-              <TableToolbar
-                actionNode={
-                  canRefundPayments && hasOrderAction(order, 'INITIATE_REFUND') ? (
-                    <Button
-                      disabled={actionMutation.isPending}
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => openAction('INITIATE_REFUND')}
-                    >
-                      <RotateCcw className="mr-2 size-4" />
-                      Refund
-                    </Button>
-                  ) : null
-                }
-                count={order.refunds.length}
-                description="Refund requests created for this order payment."
-                icon={<RotateCcw className="size-4" />}
-                title="Refunds"
-              />
-            }
-            rowActions={
-              canReadPayments
-                ? (refund) => [
-                    {
-                      icon: <ArrowUpRight className="size-4" />,
-                      key: 'open-refund',
-                      label: 'Open',
-                      onClick: () => navigate(`${routePaths.refunds}/${refund.refundId}`),
-                      variant: 'ghost',
-                    },
-                  ]
-                : undefined
-            }
-            onRowClick={
-              canReadPayments
-                ? (refund) => navigate(`${routePaths.refunds}/${refund.refundId}`)
-                : undefined
-            }
-          />
-        </div>
+            <DynamicTable
+              actionColumnLabel="Refund Actions"
+              actionColumnMinWidth={180}
+              bodyMaxHeight={320}
+              columns={refundColumns}
+              data={order.refunds}
+              emptyDescription="This order does not have refund records yet."
+              emptyTitle="No refunds"
+              getRowId={(row) => row.refundId}
+              stickyHeader
+              title="Refunds"
+              toolbar={
+                <TableToolbar
+                  actionNode={
+                    canRefundPayments && hasOrderAction(order, 'INITIATE_REFUND') ? (
+                      <Button
+                        disabled={actionMutation.isPending}
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => openAction('INITIATE_REFUND')}
+                      >
+                        <RotateCcw className="mr-2 size-4" />
+                        Refund
+                      </Button>
+                    ) : null
+                  }
+                  count={order.refunds.length}
+                  description="Refund requests created for this order payment."
+                  icon={<RotateCcw className="size-4" />}
+                  title="Refunds"
+                />
+              }
+              rowActions={(refund) => [
+                {
+                  icon: <ArrowUpRight className="size-4" />,
+                  key: 'open-refund',
+                  label: 'Open',
+                  onClick: () => navigate(`${routePaths.refunds}/${refund.refundId}`),
+                  variant: 'ghost',
+                },
+              ]}
+              onRowClick={(refund) => navigate(`${routePaths.refunds}/${refund.refundId}`)}
+            />
+          </div>
+        ) : (
+          <FinanceLockedPanel order={order} />
+        )}
 
         <div id={orderSectionIds.history} className="grid scroll-mt-4 gap-3 2xl:grid-cols-2">
           <DynamicTable
@@ -1658,6 +1684,21 @@ export function OrderDetailPage({
             />
           </div>
         </div>
+        </div>
+
+        <aside className="space-y-3 xl:sticky xl:top-[5.5rem]">
+          <RelatedRecordsPanel
+            canReadAudit={canReadAudit}
+            canReadCustomers={canReadCustomers}
+            canReadPayments={canReadPayments}
+            canReadReels={canReadReels}
+            canReadVendors={canReadVendors}
+            order={order}
+            onNavigate={navigate}
+            onOpenSection={openSection}
+          />
+          <OperationalSignalsPanel order={order} />
+        </aside>
       </section>
 
       <OrderActionModal

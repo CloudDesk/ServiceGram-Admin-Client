@@ -7,6 +7,7 @@ import {
   CUSTOMER_BLOCK_PATH,
   CUSTOMER_DETAIL_PATH,
   CUSTOMER_LIST_PATH,
+  CUSTOMER_OVERVIEW_PATH,
   CUSTOMER_PROFILE_UPDATE_PATH,
   CUSTOMER_RELATED_VENDORS_PATH,
   CUSTOMER_UNBLOCK_PATH,
@@ -17,6 +18,7 @@ import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
   AddCustomerNoteResponse,
   AdminCustomerDetailResponse,
+  AdminCustomerOverviewResponse,
   AdminCustomerRelatedVendorsQueryParams,
   AdminCustomerRelatedVendorsResponse,
   AdminCustomersListResponse,
@@ -103,6 +105,14 @@ async function getCustomerById(
   const response = await apiClient.request(buildApiUrl(CUSTOMER_DETAIL_PATH(customerId)))
 
   return parseJsonResponse<AdminCustomerDetailResponse>(response)
+}
+
+async function getCustomerOverview(
+  customerId: string,
+): Promise<AdminCustomerOverviewResponse> {
+  const response = await apiClient.request(buildApiUrl(CUSTOMER_OVERVIEW_PATH(customerId)))
+
+  return parseJsonResponse<AdminCustomerOverviewResponse>(response)
 }
 
 async function getCustomerRelatedVendors(
@@ -235,6 +245,7 @@ async function creditCustomerWallet(
 export const customerService = {
   getCustomerList,
   getCustomerById,
+  getCustomerOverview,
   getCustomerRelatedVendors,
   updateCustomerProfile,
   createCustomerAddress,

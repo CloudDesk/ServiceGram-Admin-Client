@@ -1,4 +1,9 @@
 import type { ApiErrorDetails } from '../../../types/api.types'
+import type { AdminOrdersListResponse } from '../../orders/types/order.types'
+import type {
+  AdminCustomerPaymentsListResponse,
+  AdminCustomerRefundsListResponse,
+} from '../../payments/types/payment.types'
 
 export type AdminCustomerStatus = 'ACTIVE' | 'BLOCKED' | 'INCOMPLETE'
 
@@ -319,8 +324,39 @@ export interface AdminCustomerRelatedVendorsResponse
   summary: AdminCustomerRelatedVendorsSummary
 }
 
+export type AdminCustomerOverviewSectionName =
+  | 'orders'
+  | 'relatedVendors'
+  | 'payments'
+  | 'refunds'
+
+export interface AdminCustomerOverviewOmittedSection {
+  section: AdminCustomerOverviewSectionName
+  reason: 'NOT_REQUESTED' | 'MISSING_PERMISSION' | 'SERVICE_UNAVAILABLE'
+}
+
+export interface AdminCustomerOverview {
+  customer: AdminCustomerDetail
+  sections: {
+    orders: Pick<AdminOrdersListResponse, 'data' | 'pagination' | 'summary'> | null
+    relatedVendors:
+      | Pick<AdminCustomerRelatedVendorsResponse, 'data' | 'pagination' | 'summary'>
+      | null
+    payments:
+      | Pick<AdminCustomerPaymentsListResponse, 'data' | 'pagination' | 'summary'>
+      | null
+    refunds:
+      | Pick<AdminCustomerRefundsListResponse, 'data' | 'pagination' | 'summary'>
+      | null
+  }
+  omittedSections: AdminCustomerOverviewOmittedSection[]
+  refreshedAt: string
+}
+
 export type AdminCustomerDetailResponse =
   AdminCustomerApiResponse<AdminCustomerDetail>
+export type AdminCustomerOverviewResponse =
+  AdminCustomerApiResponse<AdminCustomerOverview>
 export type UpdateCustomerProfileResponse =
   AdminCustomerApiResponse<AdminCustomerListItem>
 export type CustomerAddressResponse =

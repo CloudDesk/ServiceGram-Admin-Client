@@ -287,6 +287,7 @@ export function NotificationComposerPage() {
 
   const canSendNotifications = can('notifications:send')
   const templatesQuery = useQuery({
+    enabled: canSendNotifications,
     queryKey: ['notification-templates', 'composer', channel],
     queryFn: () => notificationService.getTemplates({ channel, isActive: true }),
   })
@@ -375,6 +376,11 @@ export function NotificationComposerPage() {
     event.preventDefault()
     setFormError(null)
 
+    if (!canSendNotifications) {
+      setFormError('Your current admin role cannot send notifications.')
+      return
+    }
+
     try {
       const payload = buildPayload()
 
@@ -397,6 +403,22 @@ export function NotificationComposerPage() {
     }
   }
 
+  if (!canSendNotifications) {
+    return (
+      <PageContainer>
+        <DetailPageHeader
+          listHref={routePaths.notifications}
+          listLabel="Notifications"
+          recordName="New Notification"
+        />
+        <ErrorState
+          description="Your current admin role can view notification events and templates but cannot queue new sends."
+          title="Notification composer unavailable"
+        />
+      </PageContainer>
+    )
+  }
+
   return (
     <PageContainer>
       <DetailPageHeader
@@ -404,8 +426,6 @@ export function NotificationComposerPage() {
         listLabel="Notifications"
         recordName="New Notification"
       />
-
-      {!canSendNotifications ? <InlineAlert message="Your role cannot send notifications." /> : null}
 
       <form className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]" onSubmit={handleSubmit}>
         <section className="rounded-[1.5rem] border border-border bg-surface p-4 shadow-sm">
@@ -641,7 +661,7 @@ export function NotificationComposerPage() {
           {sendMutation.data ? <SendResultPanel result={sendMutation.data.data} /> : null}
 
           <div className="mt-4 flex justify-end">
-            <Button disabled={!canSendNotifications} isLoading={sendMutation.isPending} type="submit">
+            <Button isLoading={sendMutation.isPending} type="submit">
               <Send className="mr-2 size-4" />
               {targetType === 'SEGMENT' && dryRun ? 'Preview Segment' : 'Review Send'}
             </Button>

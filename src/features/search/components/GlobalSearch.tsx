@@ -54,6 +54,13 @@ const moduleIcons: Record<AdminSearchModule, LucideIcon> = {
   adminUsers: Shield,
 }
 
+const defaultSearchPromptModules: AdminSearchModule[] = [
+  'orders',
+  'vendors',
+  'customers',
+  'payouts',
+]
+
 function useDebouncedValue(value: string, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value)
 
@@ -68,6 +75,16 @@ function useDebouncedValue(value: string, delayMs: number) {
 
 function formatModuleLabel(module: AdminSearchModule, modules: AdminSearchModuleAccess[]) {
   return modules.find((item) => item.module === module)?.label ?? module
+}
+
+function formatSearchPrompt(labels: string[]) {
+  const visibleLabels = labels.slice(0, 4)
+
+  if (visibleLabels.length === 0) {
+    return 'Search records...'
+  }
+
+  return `Search ${visibleLabels.join(', ')}...`
 }
 
 function metadataString(result: AdminSearchResult, key: string) {
@@ -196,6 +213,20 @@ export function GlobalSearch() {
     () => payload?.availableModules ?? [],
     [payload?.availableModules],
   )
+  const searchPromptText = useMemo(() => {
+    if (availableModules.length === 0) {
+      return formatSearchPrompt([])
+    }
+
+    const availableByModule = new Map(
+      availableModules.map((item) => [item.module, item.label]),
+    )
+    const labels = defaultSearchPromptModules
+      .filter((module) => availableByModule.has(module))
+      .map((module) => availableByModule.get(module)?.toLowerCase() ?? module)
+
+    return formatSearchPrompt(labels)
+  }, [availableModules])
   const groups = useMemo(() => payload?.groups ?? [], [payload?.groups])
   const flatResults = useMemo(
     () =>
@@ -304,7 +335,7 @@ export function GlobalSearch() {
       >
         <Search className="size-4 shrink-0" />
         <span className="flex min-h-5 min-w-0 flex-1 items-center truncate leading-none">
-          Search orders, vendors, customers, payouts...
+          {searchPromptText}
         </span>
       </button>
 

@@ -11,6 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@cloudflare/stream-react": "^1.9.3",
+    "@embedpdf/react-pdf-viewer": "^2.14.4",
     "@hookform/resolvers": "^5.4.0",
     "@tanstack/react-query": "^5.101.0",
     "@tanstack/react-table": "^8.21.3",
@@ -27,6 +29,7 @@
     "tailwind-merge": "^3.6.0",
     "typescript": "latest",
     "vite": "latest",
+    "yet-another-react-lightbox": "^3.32.0",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },

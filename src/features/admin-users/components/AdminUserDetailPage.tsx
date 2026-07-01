@@ -22,7 +22,10 @@ import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Skeleton } from '../../../components/ui/Skeleton'
-import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
+import {
+  DetailPageHeader,
+  DetailPageHeaderSkeleton,
+} from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
@@ -268,7 +271,7 @@ function HeaderActions({
 function DetailSkeleton() {
   return (
     <PageContainer>
-      <Skeleton className="h-16 w-full rounded-[0.875rem]" />
+      <DetailPageHeaderSkeleton />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <Skeleton className="h-28 rounded-[0.875rem]" key={index} />

@@ -2,9 +2,14 @@ import { buildApiUrl } from '../../../config/api'
 import {
   VENDOR_ADD_NOTE_PATH,
   VENDOR_APPROVE_PATH,
+  VENDOR_BRAND_LOGO_CONFIRM_UPLOAD_PATH,
+  VENDOR_BRAND_LOGO_PATH,
+  VENDOR_BRAND_LOGO_UPLOAD_INTENT_PATH,
   VENDOR_DETAIL_PATH,
+  VENDOR_DOCUMENT_DOWNLOAD_TARGET_PATH,
   VENDOR_LIST_PATH,
   VENDOR_ONBOARDING_QUEUE_PATH,
+  VENDOR_OVERVIEW_PATH,
   VENDOR_REACTIVATE_PATH,
   VENDOR_REJECT_BANK_ACCOUNT_PATH,
   VENDOR_REJECT_DOCUMENT_PATH,
@@ -22,14 +27,20 @@ import {
 import { buildQueryParams } from '../../../utils/buildQueryParams'
 import { apiClient } from '../../../services/apiClient'
 import type {
+  ConfirmVendorBrandLogoUploadPayload,
+  CreateVendorBrandLogoUploadIntentPayload,
+  RemoveVendorBrandLogoPayload,
   VendorActionResponse,
+  VendorBrandLogoUploadIntentResponse,
   VendorDetailResponse,
+  VendorDocumentDownloadTargetResponse,
   VendorDocumentVerificationPayload,
   VendorListQueryParams,
   VendorListResponse,
   VendorNotePayload,
   VendorOnboardingQueueResponse,
   VendorOptionalReasonPayload,
+  VendorOverviewResponse,
   VendorProfileUpdatePayload,
   VendorRequiredReasonPayload,
   VendorRequestDocumentsPayload,
@@ -39,8 +50,54 @@ import type {
   VendorServicesResponse,
 } from '../types/vendor.types'
 
+interface VendorErrorEnvelope {
+  message?: string
+  error?: string
+  details?: {
+    fieldErrors?: {
+      field: string
+      message: string
+    }[]
+  }
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  return (await response.json()) as T
+  const payload = (await response.json().catch(() => null)) as
+    | T
+    | VendorErrorEnvelope
+    | null
+
+  if (!response.ok) {
+    const fieldMessage =
+      payload && typeof payload === 'object' && 'details' in payload
+        ? payload.details?.fieldErrors?.[0]?.message
+        : undefined
+    const message =
+      payload && typeof payload === 'object' && 'message' in payload
+        ? payload.message
+        : undefined
+    const error =
+      payload && typeof payload === 'object' && 'error' in payload
+        ? payload.error
+        : undefined
+
+    throw new Error(fieldMessage ?? message ?? error ?? 'Vendor request failed.')
+  }
+
+  return payload as T
+}
+
+function jsonRequest<TPayload>(
+  method: 'DELETE' | 'POST' | 'PUT',
+  payload: TPayload,
+) {
+  return {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  }
 }
 
 async function getVendorList(
@@ -76,19 +133,68 @@ async function getVendorById(vendorId: string): Promise<VendorDetailResponse> {
   return parseJsonResponse<VendorDetailResponse>(response)
 }
 
+async function getVendorDocumentDownloadTarget(
+  vendorId: string,
+  documentId: string,
+): Promise<VendorDocumentDownloadTargetResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(VENDOR_DOCUMENT_DOWNLOAD_TARGET_PATH(vendorId, documentId)),
+  )
+  return parseJsonResponse<VendorDocumentDownloadTargetResponse>(response)
+}
+
+async function getVendorOverview(
+  vendorId: string,
+): Promise<VendorOverviewResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(VENDOR_OVERVIEW_PATH(vendorId)),
+  )
+  return parseJsonResponse<VendorOverviewResponse>(response)
+}
+
 async function updateVendorProfile(
   vendorId: string,
   payload: VendorProfileUpdatePayload,
 ): Promise<VendorActionResponse> {
   const response = await apiClient.request(
     buildApiUrl(VENDOR_UPDATE_PROFILE_PATH(vendorId)),
-    {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    },
+    jsonRequest('PUT', payload),
+  )
+
+  return parseJsonResponse<VendorActionResponse>(response)
+}
+
+async function createVendorBrandLogoUploadIntent(
+  vendorId: string,
+  payload: CreateVendorBrandLogoUploadIntentPayload,
+): Promise<VendorBrandLogoUploadIntentResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(VENDOR_BRAND_LOGO_UPLOAD_INTENT_PATH(vendorId)),
+    jsonRequest('POST', payload),
+  )
+
+  return parseJsonResponse<VendorBrandLogoUploadIntentResponse>(response)
+}
+
+async function confirmVendorBrandLogoUpload(
+  vendorId: string,
+  payload: ConfirmVendorBrandLogoUploadPayload,
+): Promise<VendorActionResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(VENDOR_BRAND_LOGO_CONFIRM_UPLOAD_PATH(vendorId)),
+    jsonRequest('POST', payload),
+  )
+
+  return parseJsonResponse<VendorActionResponse>(response)
+}
+
+async function removeVendorBrandLogo(
+  vendorId: string,
+  payload: RemoveVendorBrandLogoPayload,
+): Promise<VendorActionResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(VENDOR_BRAND_LOGO_PATH(vendorId)),
+    jsonRequest('DELETE', payload),
   )
 
   return parseJsonResponse<VendorActionResponse>(response)
@@ -366,7 +472,12 @@ export const vendorService = {
   getVendorList,
   getVendorOnboardingQueue,
   getVendorById,
+  getVendorDocumentDownloadTarget,
+  getVendorOverview,
   updateVendorProfile,
+  createVendorBrandLogoUploadIntent,
+  confirmVendorBrandLogoUpload,
+  removeVendorBrandLogo,
   getVendorServices,
   createVendorService,
   updateVendorService,

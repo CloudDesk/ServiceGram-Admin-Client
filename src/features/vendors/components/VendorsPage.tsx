@@ -31,6 +31,12 @@ import { LookupSelect } from '../../../components/ui/LookupSelect'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
+import {
+  inferMediaViewerKind,
+  isOpenableMediaUrl,
+  useMediaViewer,
+  type MediaViewerItem,
+} from '../../../components/media'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
 import { readLookupOptionsFromSearchParams } from '../../../utils/buildQueryParams'
@@ -537,10 +543,99 @@ function VendorPagination({
   )
 }
 
+function getVendorLogoUrl(vendor: VendorTableRow) {
+  return vendor.brandLogo?.url ?? vendor.brandLogo?.downloadUrl ?? null
+}
+
+function buildVendorListLogoMediaItem(
+  vendor: VendorTableRow,
+): MediaViewerItem | null {
+  const logoUrl = getVendorLogoUrl(vendor)
+
+  if (!isOpenableMediaUrl(logoUrl)) return null
+
+  return {
+    description: 'Brand logo shown across vendor records.',
+    downloadUrl: vendor.brandLogo?.downloadUrl ?? logoUrl,
+    expiresAt: vendor.brandLogo?.expiresAt,
+    fileName: vendor.brandLogo?.fileName,
+    id: `${vendor.vendorId}-brand-logo`,
+    kind: inferMediaViewerKind({
+      fileName: vendor.brandLogo?.fileName,
+      mimeType: vendor.brandLogo?.mimeType,
+      src: logoUrl,
+    }),
+    mimeType: vendor.brandLogo?.mimeType,
+    ownerLabel: vendor.shopName,
+    providerStatus: vendor.brandLogo?.providerStatus,
+    sizeBytes: vendor.brandLogo?.sizeBytes,
+    sourceLabel: 'Vendor brand logo',
+    src: logoUrl,
+    title: `${vendor.shopName} brand logo`,
+    warnings: vendor.brandLogo?.warnings ?? [],
+  }
+}
+
+function VendorLogoMark({
+  onOpen,
+  vendor,
+}: {
+  onOpen?: () => void
+  vendor: VendorTableRow
+}) {
+  const logoUrl = getVendorLogoUrl(vendor)
+  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null)
+  const canShowLogo = Boolean(logoUrl && failedLogoUrl !== logoUrl)
+  const toneClass =
+    vendor.vendorStatus === 'SUSPENDED'
+      ? 'border-danger/25 text-danger'
+      : vendorNeedsAttention(vendor)
+        ? 'border-warning/25 text-warning'
+        : 'border-success/25 text-success'
+  const markClassName = cn(
+    'flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-surface text-sm font-semibold',
+    toneClass,
+    onOpen && canShowLogo
+      ? 'transition hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+      : null,
+  )
+  const content =
+    canShowLogo && logoUrl ? (
+      <img
+        alt={`${vendor.shopName} logo`}
+        className="size-full object-contain p-1"
+        loading="lazy"
+        src={logoUrl}
+        onError={() => setFailedLogoUrl(logoUrl)}
+      />
+    ) : (
+      getVendorInitials(vendor.shopName)
+    )
+
+  if (onOpen && canShowLogo) {
+    return (
+      <button
+        aria-label={`View ${vendor.shopName} logo`}
+        className={markClassName}
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation()
+          onOpen()
+        }}
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return <div className={markClassName}>{content}</div>
+}
+
 function VendorRow({
   isSelected,
   isSubmitting,
   onOpenAction,
+  onOpenLogo,
   onSelect,
   onViewDetails,
   vendor,
@@ -549,6 +644,7 @@ function VendorRow({
   isSelected: boolean
   isSubmitting: boolean
   onOpenAction: (vendor: VendorTableRow, kind: VendorListActionKind) => void
+  onOpenLogo: (vendor: VendorTableRow) => void
   onSelect: (vendor: VendorTableRow, selected: boolean) => void
   onViewDetails: (vendor: VendorTableRow) => void
   vendor: VendorTableRow
@@ -600,18 +696,14 @@ function VendorRow({
       </div>
       {showColumn('vendor') ? (
         <div className="flex min-w-0 items-start gap-3">
-          <div
-            className={cn(
-              'flex size-10 shrink-0 items-center justify-center rounded-full border bg-surface text-sm font-semibold',
-              vendor.vendorStatus === 'SUSPENDED'
-                ? 'border-danger/25 text-danger'
-                : vendorNeedsAttention(vendor)
-                  ? 'border-warning/25 text-warning'
-                  : 'border-success/25 text-success',
-            )}
-          >
-            {getVendorInitials(vendor.shopName)}
-          </div>
+          <VendorLogoMark
+            vendor={vendor}
+            onOpen={
+              buildVendorListLogoMediaItem(vendor)
+                ? () => onOpenLogo(vendor)
+                : undefined
+            }
+          />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="truncate text-sm font-semibold text-foreground">
@@ -886,6 +978,7 @@ export function VendorsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
+  const { openMediaViewer } = useMediaViewer()
   const seededCategories = readLookupOptionsFromSearchParams(
     searchParams,
     'categoryId',
@@ -1214,6 +1307,14 @@ export function VendorsPage() {
 
   const viewDetails = (vendor: VendorTableRow) => {
     navigate(`${routePaths.vendors}/${vendor.vendorId}`)
+  }
+
+  const viewVendorLogo = (vendor: VendorTableRow) => {
+    const logoMediaItem = buildVendorListLogoMediaItem(vendor)
+
+    if (logoMediaItem) {
+      openMediaViewer({ items: [logoMediaItem] })
+    }
   }
 
   const openAction = (vendor: VendorTableRow, kind: VendorListActionKind) => {
@@ -1726,6 +1827,7 @@ export function VendorsPage() {
                           vendor={vendor}
                           visibleColumns={visibleColumns}
                           onOpenAction={openAction}
+                          onOpenLogo={viewVendorLogo}
                           onSelect={(selectedVendor, selected) =>
                             vendorSelection.setItemSelected(
                               selectedVendor.vendorId,

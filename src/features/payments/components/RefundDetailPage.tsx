@@ -14,7 +14,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
-import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
+import {
+  DetailPageHeader,
+  DetailPageHeaderSkeleton,
+} from '../../../components/layout/DetailPageHeader'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { PageContainer } from '../../../components/layout/PageContainer'
@@ -403,7 +406,7 @@ export function RefundDetailPage() {
   if (refundQuery.isLoading) {
     return (
       <PageContainer className="space-y-3 !px-3 !py-3 sm:!px-4 lg:!px-6">
-        <Skeleton className="h-24 w-full" />
+        <DetailPageHeaderSkeleton />
         <Skeleton className="h-[24rem] w-full" />
       </PageContainer>
     )

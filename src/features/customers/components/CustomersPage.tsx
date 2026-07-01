@@ -9,6 +9,7 @@ import {
   RefreshCcw,
   SlidersHorizontal,
   UserCheck,
+  Wallet,
 } from 'lucide-react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -31,6 +32,7 @@ import { Skeleton } from '../../../components/ui/Skeleton'
 import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
+import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -300,6 +302,54 @@ function visibleRecommendedAction(customer: AdminCustomerListItem) {
   return customer.nextRecommendedAction
 }
 
+function visibleAvailableActions(actions: string[]) {
+  return featureFlags.customerWallet
+    ? actions
+    : actions.filter((action) => action !== 'WALLET_CREDIT')
+}
+
+const customerUpdateActions = new Set([
+  'ADD_NOTE',
+  'BLOCK',
+  'EDIT_PROFILE',
+  'MANAGE_ADDRESSES',
+  'UNBLOCK',
+])
+
+function canRunCustomerAction({
+  action,
+  canCreditWallet,
+  canUpdateCustomer,
+}: {
+  action: string
+  canCreditWallet: boolean
+  canUpdateCustomer: boolean
+}) {
+  const normalizedAction = action.toUpperCase()
+
+  if (customerUpdateActions.has(normalizedAction)) {
+    return canUpdateCustomer
+  }
+
+  if (normalizedAction === 'WALLET_CREDIT') {
+    return featureFlags.customerWallet && canCreditWallet
+  }
+
+  return false
+}
+
+function permittedAvailableActions(
+  actions: string[],
+  access: {
+    canCreditWallet: boolean
+    canUpdateCustomer: boolean
+  },
+) {
+  return visibleAvailableActions(actions).filter((action) =>
+    canRunCustomerAction({ action, ...access }),
+  )
+}
+
 function primaryActionLabel(customer: AdminCustomerListItem) {
   const nextRecommendedAction = visibleRecommendedAction(customer)
 
@@ -315,10 +365,18 @@ function primaryActionLabel(customer: AdminCustomerListItem) {
 
 function mapRecommendedAction(
   customer: AdminCustomerListItem,
+  access: {
+    canCreditWallet: boolean
+    canUpdateCustomer: boolean
+  },
 ): CustomerActionKind | null {
   const action = customer.nextRecommendedAction?.toUpperCase()
 
   if (!featureFlags.customerWallet && action === 'WALLET_CREDIT') {
+    return null
+  }
+
+  if (!action || !canRunCustomerAction({ action, ...access })) {
     return null
   }
 
@@ -405,6 +463,8 @@ function MetricCard({
 }
 
 function CustomerRow({
+  canCreditWallet,
+  canUpdateCustomer,
   customer,
   isSelected,
   isSubmitting,
@@ -413,6 +473,8 @@ function CustomerRow({
   onViewDetails,
   visibleColumns,
 }: {
+  canCreditWallet: boolean
+  canUpdateCustomer: boolean
   customer: AdminCustomerListItem
   isSelected: boolean
   isSubmitting: boolean
@@ -422,11 +484,23 @@ function CustomerRow({
   visibleColumns: CustomerColumnId[]
 }) {
   const health = customerHealth(customer)
-  const recommendedAction = mapRecommendedAction(customer)
+  const actionAccess = {
+    canCreditWallet,
+    canUpdateCustomer,
+  }
+  const availableActions = permittedAvailableActions(
+    customer.availableActions,
+    actionAccess,
+  )
+  const hasAction = (action: string) => availableActions.includes(action)
+  const recommendedAction = mapRecommendedAction(customer, actionAccess)
   const warningCount = visibleWarnings(customer.warnings).length
-  const canBlock = customer.availableActions.includes('BLOCK')
-  const canUnblock = customer.availableActions.includes('UNBLOCK')
-  const showAddNoteAction = recommendedAction !== 'ADD_NOTE'
+  const canBlock = hasAction('BLOCK')
+  const canUnblock = hasAction('UNBLOCK')
+  const showWalletAction =
+    hasAction('WALLET_CREDIT') && recommendedAction !== 'WALLET_CREDIT'
+  const showAddNoteAction =
+    hasAction('ADD_NOTE') && recommendedAction !== 'ADD_NOTE'
   const showBlockAction = canBlock && recommendedAction !== 'BLOCK'
   const showUnblockAction = canUnblock && recommendedAction !== 'UNBLOCK'
   const showColumn = (columnId: CustomerColumnId) => visibleColumns.includes(columnId)
@@ -596,6 +670,21 @@ function CustomerRow({
             {primaryActionLabel(customer)}
           </Button>
         ) : null}
+        {showWalletAction ? (
+          <button
+            aria-label={`Wallet credit for ${customer.fullName}`}
+            className="btn-icon disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isSubmitting}
+            title="Wallet credit"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenAction(customer, 'WALLET_CREDIT')
+            }}
+          >
+            <Wallet className="size-4" />
+          </button>
+        ) : null}
         {showAddNoteAction ? (
           <button
             aria-label={`Add note for ${customer.fullName}`}
@@ -731,6 +820,8 @@ export function CustomersPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
+  const canCreditWallet = usePermission('customers:wallet_credit')
+  const canUpdateCustomer = usePermission('customers:update')
   const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
   const [status, setStatus] = useState<'' | AdminCustomerStatus>('')
   const [city, setCity] = useState('')
@@ -1039,6 +1130,16 @@ export function CustomersPage() {
   }
 
   const openAction = (customer: AdminCustomerListItem, kind: CustomerActionKind) => {
+    if (
+      !canRunCustomerAction({
+        action: kind,
+        canCreditWallet,
+        canUpdateCustomer,
+      })
+    ) {
+      return
+    }
+
     setActionError(null)
     setActionTarget({ action: { kind }, customer })
   }
@@ -1559,6 +1660,8 @@ export function CustomersPage() {
                     <div>
                       {customers.map((customer) => (
                         <CustomerRow
+                          canCreditWallet={canCreditWallet}
+                          canUpdateCustomer={canUpdateCustomer}
                           customer={customer}
                           isSelected={customerSelection.isSelected(customer.customerId)}
                           isSubmitting={actionMutation.isPending}

@@ -1,4 +1,8 @@
 import { routePaths } from '../../../config/routes'
+import {
+  getPreferredRecoveryItem,
+  resolveNavigationItemForPath,
+} from '../../../routes/adminRouteRecovery'
 
 const PUBLIC_AUTH_PATHS = new Set<string>([
   routePaths.login,
@@ -46,4 +50,26 @@ export function safeAuthRedirectPath(path: string | null | undefined) {
   }
 
   return routePaths.dashboard
+}
+
+export function resolveAuthorizedAuthRedirectPath(
+  path: string | null | undefined,
+  can: (permission: string) => boolean,
+) {
+  const redirectPath = safeAuthRedirectPath(path)
+  const navigationItem = resolveNavigationItemForPath(redirectPath)
+
+  if (!navigationItem) {
+    return getPreferredRecoveryItem(can)?.href ?? routePaths.profile
+  }
+
+  if (
+    navigationItem.alwaysVisible ||
+    !navigationItem.permission ||
+    can(navigationItem.permission)
+  ) {
+    return redirectPath
+  }
+
+  return getPreferredRecoveryItem(can)?.href ?? routePaths.profile
 }

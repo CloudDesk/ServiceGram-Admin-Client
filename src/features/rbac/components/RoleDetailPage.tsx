@@ -19,7 +19,10 @@ import {
 } from 'lucide-react'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
-import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
+import {
+  DetailPageHeader,
+  DetailPageHeaderSkeleton,
+} from '../../../components/layout/DetailPageHeader'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { PageContainer } from '../../../components/layout/PageContainer'
@@ -267,7 +270,7 @@ function HeaderActions({
 function DetailSkeleton() {
   return (
     <PageContainer>
-      <Skeleton className="h-16 w-full rounded-[0.875rem]" />
+      <DetailPageHeaderSkeleton />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <Skeleton className="h-28 rounded-[0.875rem]" key={index} />

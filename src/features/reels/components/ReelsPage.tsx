@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Eye,
   Filter,
   PauseCircle,
   PencilLine,
@@ -37,6 +38,11 @@ import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { Skeleton } from '../../../components/ui/Skeleton'
+import {
+  isOpenableMediaUrl,
+  useMediaViewer,
+  type MediaViewerItem,
+} from '../../../components/media'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
 import { usePermission } from '../../../hooks/usePermission'
@@ -230,6 +236,60 @@ function humanizeCode(value: string | null | undefined) {
 function formatDateSafe(value: string | null | undefined) {
   if (!value) return 'Not available'
   return formatDate(value, true)
+}
+
+function buildReelListMediaItems(reel: AdminReel): MediaViewerItem[] {
+  const items: MediaViewerItem[] = []
+  const thumbnailUrl = isOpenableMediaUrl(reel.media.thumbnailUrl)
+    ? reel.media.thumbnailUrl
+    : null
+  const playbackUrl = isOpenableMediaUrl(reel.media.playbackUrl)
+    ? reel.media.playbackUrl
+    : null
+
+  if (thumbnailUrl) {
+    items.push({
+      description: `${humanizeCode(reel.media.uploadStatus)} thumbnail.`,
+      downloadUrl: thumbnailUrl,
+      height: reel.media.height ?? null,
+      id: `${reel.reelId}-thumbnail`,
+      kind: 'image',
+      ownerLabel: reel.vendor.shopName,
+      sourceLabel: 'Reel thumbnail',
+      src: thumbnailUrl,
+      title: `${reel.publicReelId} thumbnail`,
+      width: reel.media.width ?? null,
+    })
+  }
+
+  if (reel.media.cloudflareVideoUid || playbackUrl) {
+    items.push({
+      cloudflareVideoUid: reel.media.cloudflareVideoUid,
+      description: reel.media.durationSeconds
+        ? `${reel.media.durationSeconds} seconds`
+        : humanizeCode(reel.media.uploadStatus),
+      downloadUrl: playbackUrl,
+      height: reel.media.height ?? null,
+      id: `${reel.reelId}-video`,
+      kind: reel.media.cloudflareVideoUid ? 'cloudflare-video' : 'video',
+      ownerLabel: reel.vendor.shopName,
+      posterUrl: thumbnailUrl,
+      sourceLabel: 'Reel playback',
+      src: playbackUrl,
+      title: `${reel.publicReelId} video`,
+      width: reel.media.width ?? null,
+    })
+  }
+
+  return items
+}
+
+function getReelListVideoIndex(items: MediaViewerItem[]) {
+  const videoIndex = items.findIndex(
+    (item) => item.kind === 'cloudflare-video' || item.kind === 'video',
+  )
+
+  return videoIndex >= 0 ? videoIndex : 0
 }
 
 function getUploadStatusTone(status: ReelUploadStatus): ReelTone {
@@ -445,6 +505,7 @@ export function ReelsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
+  const { openMediaViewer } = useMediaViewer()
   const canReadVendors = usePermission('vendors:read')
   const canModerateReels = usePermission('reels:moderate')
   const canDeleteReels = usePermission('reels:delete')
@@ -785,6 +846,22 @@ export function ReelsPage() {
     navigate(`${routePaths.vendors}/${reel.vendor.vendorId}`)
   }
 
+  const viewReelMedia = (
+    reel: AdminReel,
+    event?: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    event?.stopPropagation()
+
+    const mediaItems = buildReelListMediaItems(reel)
+
+    if (mediaItems.length) {
+      openMediaViewer({
+        items: mediaItems,
+        startIndex: getReelListVideoIndex(mediaItems),
+      })
+    }
+  }
+
   const actionMutation = useMutation({
     mutationFn: async ({
       action,
@@ -981,9 +1058,20 @@ export function ReelsPage() {
   const renderRowActions = (reel: AdminReel) => {
     const hasAction = (action: ReelActionKind) =>
       reel.availableActions.includes(action)
+    const mediaItems = buildReelListMediaItems(reel)
 
     return (
       <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+        <Button
+          disabled={!mediaItems.length}
+          size="sm"
+          type="button"
+          variant="secondary"
+          onClick={(event) => viewReelMedia(reel, event)}
+        >
+          <Eye className="mr-2 size-4" />
+          Media
+        </Button>
         {canModerateReels && hasAction('APPROVE') ? (
           <Button
             size="sm"

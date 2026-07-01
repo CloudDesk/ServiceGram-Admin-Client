@@ -10,13 +10,17 @@ import { FormErrorSummary } from "../../../components/feedback/FormErrorSummary"
 import { routePaths } from "../../../config/routes";
 import { useToast } from "../../../hooks/useToast";
 import { storageKeys } from "../../../lib/storage";
+import { useAuthStore } from "../../../store/authStore";
 import { safeJsonParse } from "../../../utils/safeJson";
 import { PasswordInput } from "./PasswordInput";
 import { useLogin } from "../hooks/useLogin";
 import { LoginServiceError } from "../types/auth.types";
 import { type LoginFormValues, loginSchema } from "../schemas/auth.schema";
 import { getAdminDeviceId } from "../utils/device";
-import { safeAuthRedirectPath } from "../utils/redirect";
+import {
+  resolveAuthorizedAuthRedirectPath,
+  safeAuthRedirectPath,
+} from "../utils/redirect";
 
 const EMPTY_LOGIN_VALUES: LoginFormValues = {
   email: "",
@@ -75,6 +79,7 @@ export function LoginForm() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { pushToast } = useToast();
+  const can = useAuthStore((state) => state.can);
   const mutation = useLogin();
   const redirectNotice = useMemo(readAuthRedirectNotice, []);
   const redirectTo = safeAuthRedirectPath(
@@ -128,17 +133,20 @@ export function LoginForm() {
             ...values,
             deviceId: getAdminDeviceId(),
           });
+          const destination = resolveAuthorizedAuthRedirectPath(redirectTo, can);
 
           pushToast({
             tone: "success",
             title: "Signed in successfully.",
             description:
-              redirectTo === routePaths.dashboard
+              destination === routePaths.dashboard
                 ? "Loading your admin workspace."
-                : "Returning you to your previous page.",
+                : destination === redirectTo
+                  ? "Returning you to your previous page."
+                  : "Opening your available admin workspace.",
           });
           window.sessionStorage.removeItem(storageKeys.authRedirectNotice);
-          navigate(redirectTo, { replace: true });
+          navigate(destination, { replace: true });
         } catch (error) {
           if (error instanceof LoginServiceError) {
             if (error.status === 400) {

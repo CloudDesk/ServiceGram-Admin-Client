@@ -21,7 +21,10 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
-import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
+import {
+  DetailPageHeader,
+  DetailPageHeaderSkeleton,
+} from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
@@ -269,17 +272,14 @@ function HeaderActions({
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      <Link to={`${routePaths.content}/new`}>
-        <Button
-          disabled={!canUpdateContent}
-          size="sm"
-          type="button"
-          variant="secondary"
-        >
-          <FilePlus2 className="mr-2 size-4" />
-          New
-        </Button>
-      </Link>
+      {canUpdateContent ? (
+        <Link to={`${routePaths.content}/new`}>
+          <Button size="sm" type="button" variant="secondary">
+            <FilePlus2 className="mr-2 size-4" />
+            New
+          </Button>
+        </Link>
+      ) : null}
       {canEdit ? (
         <Button
           disabled={isSubmitting}
@@ -657,7 +657,7 @@ function ActionModal({
 function DetailSkeleton() {
   return (
     <PageContainer>
-      <Skeleton className="h-16 w-full rounded-[0.875rem]" />
+      <DetailPageHeaderSkeleton />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <Skeleton className="h-28 rounded-[0.875rem]" key={index} />

@@ -1,4 +1,7 @@
 import type { ApiErrorDetails } from '../../../types/api.types'
+import type { AdminOrdersListResponse } from '../../orders/types/order.types'
+import type { AdminVendorPayoutsListResponse } from '../../payouts/types/payout.types'
+import type { AdminReelsListResponse } from '../../reels/types/reel.types'
 
 export interface VendorListQueryParams {
   page?: number
@@ -46,9 +49,32 @@ export interface VendorRequiredReasonPayload {
   reason: string
 }
 
+export type VendorBrandLogoMimeType =
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/webp'
+
+export interface CreateVendorBrandLogoUploadIntentPayload {
+  fileName: string
+  mimeType: VendorBrandLogoMimeType
+  sizeBytes: number
+}
+
+export interface ConfirmVendorBrandLogoUploadPayload {
+  mediaAssetId: string
+  uploadedAt?: string
+  checksum?: string
+  reason: string
+}
+
+export interface RemoveVendorBrandLogoPayload {
+  reason: string
+}
+
 export interface VendorProfileUpdatePayload {
   shopName?: string
   ownerName?: string | null
+  mobileNumber?: string
   categoryId?: string
   addressLine1?: string
   addressLine2?: string | null
@@ -150,12 +176,36 @@ export interface VendorDocumentDownload {
   warnings: string[]
 }
 
+export interface VendorBrandLogo {
+  mediaAssetId: string
+  url: string | null
+  downloadUrl: string | null
+  expiresAt: string | null
+  fileName: string
+  mimeType: string
+  sizeBytes: number | null
+  status: string
+  accessLevel: string
+  providerStatus: string
+  warnings: string[]
+  updatedAt: string
+}
+
+export interface VendorContactPerson {
+  name: string
+  mobileNumber: string
+}
+
 export interface VendorListItem {
   vendorId: string
   publicVendorId: string
   shopName: string
   ownerName: string | null
   mobileNumber: string
+  businessEmail: string | null
+  alternativeMobileNumber: string | null
+  contactPersons: VendorContactPerson[]
+  brandLogo: VendorBrandLogo | null
   category: VendorCategory | null
   address: VendorAddress
   referralId: string | null
@@ -326,6 +376,26 @@ export interface VendorActionResult extends VendorListItem {
   addedNote?: VendorNote
 }
 
+export interface VendorBrandLogoUploadIntentResult {
+  mediaAssetId: string
+  fileName: string
+  mimeType: VendorBrandLogoMimeType
+  sizeBytes: number
+  status: string
+  uploadUrl: string | null
+  expiresAt: string | null
+  headers: Record<string, string>
+  providerStatus: string
+  warnings: string[]
+  acceptedMimeTypes: VendorBrandLogoMimeType[]
+  maxSizeBytes: number
+  recommendedDimensions: {
+    aspectRatio: string
+    minWidth: number
+    minHeight: number
+  }
+}
+
 export interface VendorPagination {
   page: number
   limit: number
@@ -363,6 +433,19 @@ export type VendorDetailResponse = VendorApiResponse<VendorDetail>
 
 export type VendorActionResponse = VendorApiResponse<VendorActionResult>
 
+export interface VendorDocumentDownloadTarget {
+  documentId: string
+  documentType: string
+  mediaAssetId: string | null
+  download: VendorDocumentDownload
+}
+
+export type VendorDocumentDownloadTargetResponse =
+  VendorApiResponse<VendorDocumentDownloadTarget>
+
+export type VendorBrandLogoUploadIntentResponse =
+  VendorApiResponse<VendorBrandLogoUploadIntentResult>
+
 export interface VendorServicesResponse extends VendorApiResponse<{
   summary: VendorServicesSummary
   services: VendorServiceRecord[]
@@ -372,6 +455,37 @@ export interface VendorServicesResponse extends VendorApiResponse<{
     services: VendorServiceRecord[]
   }
 }
+
+export type VendorOverviewSectionName =
+  | 'services'
+  | 'reels'
+  | 'orders'
+  | 'payouts'
+
+export interface VendorOverviewOmittedSection {
+  section: VendorOverviewSectionName
+  reason: 'NOT_REQUESTED' | 'MISSING_PERMISSION' | 'SERVICE_UNAVAILABLE'
+}
+
+export interface VendorOverview {
+  vendor: VendorDetail
+  sections: {
+    services: VendorServicesResponse['data'] | null
+    reels:
+      | Pick<AdminReelsListResponse, 'data' | 'pagination' | 'summary'>
+      | null
+    orders:
+      | Pick<AdminOrdersListResponse, 'data' | 'pagination' | 'summary'>
+      | null
+    payouts:
+      | Pick<AdminVendorPayoutsListResponse, 'data' | 'pagination' | 'summary'>
+      | null
+  }
+  omittedSections: VendorOverviewOmittedSection[]
+  refreshedAt: string
+}
+
+export type VendorOverviewResponse = VendorApiResponse<VendorOverview>
 
 export type VendorServiceActionResponse = VendorApiResponse<VendorServiceRecord>
 

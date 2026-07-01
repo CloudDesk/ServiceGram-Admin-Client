@@ -39,7 +39,10 @@ import {
   DynamicTable,
   type DynamicTableColumn,
 } from "../../../components/ui/Table";
-import { DetailPageHeader } from "../../../components/layout/DetailPageHeader";
+import {
+  DetailPageHeader,
+  DetailPageHeaderSkeleton,
+} from "../../../components/layout/DetailPageHeader";
 import { PageContainer } from "../../../components/layout/PageContainer";
 import { featureFlags } from "../../../config/featureFlags";
 import { routePaths } from "../../../config/routes";
@@ -933,6 +936,64 @@ function visibleAvailableActions(actions: string[]) {
     : actions.filter((action) => action !== "WALLET_CREDIT");
 }
 
+const customerUpdateActions = new Set([
+  "ADD_NOTE",
+  "BLOCK",
+  "EDIT_PROFILE",
+  "MANAGE_ADDRESSES",
+  "UNBLOCK",
+]);
+
+function canRunCustomerAction({
+  action,
+  canCreditWallet,
+  canUpdateCustomer,
+}: {
+  action: string;
+  canCreditWallet: boolean;
+  canUpdateCustomer: boolean;
+}) {
+  const normalizedAction = action.toUpperCase();
+
+  if (customerUpdateActions.has(normalizedAction)) {
+    return canUpdateCustomer;
+  }
+
+  if (normalizedAction === "WALLET_CREDIT") {
+    return featureFlags.customerWallet && canCreditWallet;
+  }
+
+  return false;
+}
+
+function permittedAvailableActions(
+  actions: string[],
+  access: {
+    canCreditWallet: boolean;
+    canUpdateCustomer: boolean;
+  },
+) {
+  return visibleAvailableActions(actions).filter((action) =>
+    canRunCustomerAction({ action, ...access }),
+  );
+}
+
+function permittedRecommendedAction(
+  customer: AdminCustomerDetail,
+  access: {
+    canCreditWallet: boolean;
+    canUpdateCustomer: boolean;
+  },
+) {
+  const nextRecommendedAction = visibleRecommendedAction(customer);
+
+  if (!nextRecommendedAction) return null;
+
+  return canRunCustomerAction({ action: nextRecommendedAction, ...access })
+    ? nextRecommendedAction
+    : null;
+}
+
 function customerNeedsAttention(customer: AdminCustomerDetail) {
   return (
     customer.status !== "ACTIVE" ||
@@ -1103,7 +1164,10 @@ function CustomerHeaderActions({
   onEditProfile: () => void;
   onSelectAction: (kind: CustomerActionKind) => void;
 }) {
-  const availableActions = visibleAvailableActions(customer.availableActions);
+  const availableActions = permittedAvailableActions(customer.availableActions, {
+    canCreditWallet,
+    canUpdateCustomer,
+  });
   const hasAction = (action: string) => availableActions.includes(action);
 
   return (
@@ -1290,10 +1354,16 @@ function CustomerActionRail({
   onEditProfile: () => void;
   onSelectAction: (kind: CustomerActionKind) => void;
 }) {
-  const availableActions = visibleAvailableActions(customer.availableActions);
+  const availableActions = permittedAvailableActions(customer.availableActions, {
+    canCreditWallet,
+    canUpdateCustomer,
+  });
   const hasAction = (action: string) => availableActions.includes(action);
   const firstWarning = visibleWarnings(customer.warnings)[0];
-  const nextRecommendedAction = visibleRecommendedAction(customer);
+  const nextRecommendedAction = permittedRecommendedAction(customer, {
+    canCreditWallet,
+    canUpdateCustomer,
+  });
   const recommendedAction = nextRecommendedAction?.toUpperCase();
   const healthy = !firstWarning && customer.status === "ACTIVE";
   const recommendedActionButton =
@@ -1448,10 +1518,24 @@ function CustomerActionRail({
   );
 }
 
-function CustomerSignalsPanel({ customer }: { customer: AdminCustomerDetail }) {
+function CustomerSignalsPanel({
+  canCreditWallet,
+  canUpdateCustomer,
+  customer,
+}: {
+  canCreditWallet: boolean;
+  canUpdateCustomer: boolean;
+  customer: AdminCustomerDetail;
+}) {
   const warnings = visibleWarnings(customer.warnings);
-  const availableActions = visibleAvailableActions(customer.availableActions);
-  const nextRecommendedAction = visibleRecommendedAction(customer);
+  const availableActions = permittedAvailableActions(customer.availableActions, {
+    canCreditWallet,
+    canUpdateCustomer,
+  });
+  const nextRecommendedAction = permittedRecommendedAction(customer, {
+    canCreditWallet,
+    canUpdateCustomer,
+  });
 
   return (
     <DetailPanel
@@ -1479,7 +1563,7 @@ function CustomerSignalsPanel({ customer }: { customer: AdminCustomerDetail }) {
       )}
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <DetailField
-          label="Available actions"
+          label="Available to you"
           value={
             availableActions.length
               ? availableActions.map(humanizeCode).join(", ")
@@ -1487,7 +1571,7 @@ function CustomerSignalsPanel({ customer }: { customer: AdminCustomerDetail }) {
           }
         />
         <DetailField
-          label="Next action"
+          label="Next permitted action"
           value={
             nextRecommendedAction ? humanizeCode(nextRecommendedAction) : null
           }
@@ -1559,60 +1643,36 @@ export function CustomerDetailPage() {
   const [selectedAction, setSelectedAction] =
     useState<CustomerActionSelection | null>(null);
 
-  const customerQuery = useQuery({
+  const customerOverviewQuery = useQuery({
     enabled: Boolean(customerId),
-    queryKey: ["customer-detail", customerId],
-    queryFn: () => customerService.getCustomerById(customerId as string),
+    queryKey: ["customer-overview", customerId],
+    queryFn: () => customerService.getCustomerOverview(customerId as string),
+    staleTime: 30_000,
   });
 
-  const customer = customerQuery.data?.data;
-
-  const ordersQuery = useQuery({
-    enabled: Boolean(customerId) && canReadOrders,
-    queryKey: ["customer-orders", customerId],
-    queryFn: () =>
-      orderService.getCustomerOrders(customerId as string, {
-        page: 1,
-        limit: 20,
-      }),
-  });
-
-  const customerOrders = ordersQuery.data;
-
-  const relatedVendorsQuery = useQuery({
-    enabled: Boolean(customerId),
-    queryKey: ["customer-related-vendors", customerId],
-    queryFn: () =>
-      customerService.getCustomerRelatedVendors(customerId as string, {
-        page: 1,
-        limit: 20,
-      }),
-  });
-
-  const customerRelatedVendors = relatedVendorsQuery.data;
-
-  const paymentsQuery = useQuery({
-    enabled: Boolean(customerId) && canReadPayments,
-    queryKey: ["customer-payments", customerId],
-    queryFn: () =>
-      paymentService.getCustomerPayments(customerId as string, {
-        page: 1,
-        limit: 20,
-      }),
-  });
-
-  const refundsQuery = useQuery({
-    enabled: Boolean(customerId) && canReadPayments,
-    queryKey: ["customer-refunds", customerId],
-    queryFn: () =>
-      paymentService.getCustomerRefunds(customerId as string, {
-        page: 1,
-        limit: 20,
-      }),
-  });
+  const customerOverview = customerOverviewQuery.data?.data;
+  const customer = customerOverview?.customer;
+  const customerOrders = customerOverview?.sections.orders;
+  const customerRelatedVendors = customerOverview?.sections.relatedVendors;
+  const customerPayments = customerOverview?.sections.payments;
+  const customerRefunds = customerOverview?.sections.refunds;
+  const customerQuery = customerOverviewQuery;
+  const overviewSectionQueryState = {
+    isError: customerOverviewQuery.isError,
+    isLoading: customerOverviewQuery.isLoading,
+    isFetching: customerOverviewQuery.isFetching,
+    refetch: customerOverviewQuery.refetch,
+  };
+  const ordersQuery = overviewSectionQueryState;
+  const relatedVendorsQuery = overviewSectionQueryState;
+  const paymentsQuery = overviewSectionQueryState;
+  const refundsQuery = overviewSectionQueryState;
 
   const refreshCustomer = async () => {
     await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["customer-overview", customerId],
+      }),
       queryClient.invalidateQueries({
         queryKey: ["customer-detail", customerId],
       }),
@@ -1885,6 +1945,9 @@ export function CustomerDetailPage() {
       setSelectedOrderAction(null);
       void Promise.all([
         queryClient.invalidateQueries({
+          queryKey: ["customer-overview", customerId],
+        }),
+        queryClient.invalidateQueries({
           queryKey: ["customer-orders", customerId],
         }),
         queryClient.invalidateQueries({ queryKey: ["orders"] }),
@@ -1944,6 +2007,9 @@ export function CustomerDetailPage() {
     onSuccess: (_response, variables) => {
       setSelectedPaymentAction(null);
       void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["customer-overview", customerId],
+        }),
         queryClient.invalidateQueries({
           queryKey: ["customer-payments", customerId],
         }),
@@ -2101,7 +2167,7 @@ export function CustomerDetailPage() {
   if (customerQuery.isLoading) {
     return (
       <PageContainer>
-        <Skeleton className="h-12 w-full" />
+        <DetailPageHeaderSkeleton />
         <Skeleton className="h-[28rem] w-full" />
       </PageContainer>
     );
@@ -2147,10 +2213,10 @@ export function CustomerDetailPage() {
     : "neutral";
   const relatedVendorRows = customerRelatedVendors?.data ?? [];
   const relatedVendorSummary = customerRelatedVendors?.summary;
-  const paymentRows = canReadPayments ? (paymentsQuery.data?.data ?? []) : [];
-  const refundRows = canReadPayments ? (refundsQuery.data?.data ?? []) : [];
-  const paymentSummary = paymentsQuery.data?.summary;
-  const refundSummary = refundsQuery.data?.summary;
+  const paymentRows = canReadPayments ? (customerPayments?.data ?? []) : [];
+  const refundRows = canReadPayments ? (customerRefunds?.data ?? []) : [];
+  const paymentSummary = customerPayments?.summary;
+  const refundSummary = customerRefunds?.summary;
   const financeReviewCount =
     (paymentSummary?.pending ?? 0) +
     (paymentSummary?.failed ?? 0) +
@@ -2246,7 +2312,11 @@ export function CustomerDetailPage() {
               </div>
             </DetailPanel>
 
-            <CustomerSignalsPanel customer={customer} />
+            <CustomerSignalsPanel
+              canCreditWallet={canCreditWallet}
+              canUpdateCustomer={canUpdateCustomer}
+              customer={customer}
+            />
           </div>
 
           <div id="orders" className="scroll-mt-24 space-y-3">
@@ -3015,7 +3085,7 @@ export function CustomerDetailPage() {
         key={
           selectedAddressAction
             ? `${selectedAddressAction.kind}-${selectedAddressAction.address?.addressId ?? "new"}`
-            : "closed"
+            : "customer-address-action-closed"
         }
         onClose={() => {
           if (!addressMutation.isPending) {
@@ -3054,7 +3124,7 @@ export function CustomerDetailPage() {
                   ? selectedPaymentAction.payment.paymentId
                   : selectedPaymentAction.refund.refundId
               }`
-            : "closed"
+            : "customer-payment-action-closed"
         }
         onClose={() => {
           if (!financeMutation.isPending) {
@@ -3073,7 +3143,7 @@ export function CustomerDetailPage() {
         key={
           selectedAction
             ? `${selectedAction.kind}-${customer.customerId}`
-            : "closed"
+            : "customer-action-closed"
         }
         onClose={() => {
           if (!actionMutation.isPending) {

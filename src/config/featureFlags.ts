@@ -1,5 +1,5 @@
 export const featureFlags = {
-  customerWallet: false,
+  customerWallet: true,
   mockLatency: true,
   reportExports: true,
 }

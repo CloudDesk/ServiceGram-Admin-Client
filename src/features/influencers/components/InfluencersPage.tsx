@@ -56,6 +56,7 @@ import type {
   AdminInfluencer,
   AdminInfluencersQueryParams,
   InfluencerActionKind,
+  InfluencerSocialProfile,
   InfluencersPagination,
   InfluencersSummary,
   InfluencerStatus,
@@ -244,6 +245,24 @@ function formatDateSafe(value: string | null | undefined) {
 
 function formatPaise(amountPaise: number, currency = 'INR') {
   return formatMoney(amountPaise / 100, currency)
+}
+
+function socialPlatformLabel(platform: InfluencerSocialProfile['platform']) {
+  if (platform === 'INSTAGRAM') return 'Instagram'
+  if (platform === 'YOUTUBE') return 'YouTube'
+  if (platform === 'FACEBOOK') return 'Facebook'
+  return 'X'
+}
+
+function socialProfilesSummary(
+  profiles: InfluencerSocialProfile[] | undefined,
+  fallbackHandle?: string | null,
+) {
+  if (profiles?.length) {
+    return profiles.map((profile) => socialPlatformLabel(profile.platform)).join(' · ')
+  }
+
+  return fallbackHandle ?? ''
 }
 
 function formatCommissionValue(value: unknown) {
@@ -871,7 +890,15 @@ export function InfluencersPage() {
           <p className="truncate font-semibold">{influencer.displayName}</p>
           <p className="mt-1 truncate text-xs text-muted">
             {influencer.publicInfluencerId}
-            {influencer.socialHandle ? ` · ${influencer.socialHandle}` : ''}
+            {socialProfilesSummary(
+              influencer.socialProfiles,
+              influencer.socialHandle,
+            )
+              ? ` · ${socialProfilesSummary(
+                  influencer.socialProfiles,
+                  influencer.socialHandle,
+                )}`
+              : ''}
           </p>
         </InfluencerCell>
       ) : null}
@@ -925,9 +952,11 @@ export function InfluencersPage() {
             </p>
           ) : (
             <p className="mt-1 truncate text-xs text-muted">
-              {influencer.nextRecommendedAction
+              {canReviewInfluencers && influencer.nextRecommendedAction
                 ? humanizeCode(influencer.nextRecommendedAction)
-                : 'No next action'}
+                : canReviewInfluencers
+                  ? 'No next action'
+                  : 'Read only'}
             </p>
           )}
         </InfluencerCell>

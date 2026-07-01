@@ -25,7 +25,10 @@ import {
   Store,
   TriangleAlert,
 } from 'lucide-react'
-import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
+import {
+  DetailPageHeader,
+  DetailPageHeaderSkeleton,
+} from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
@@ -1571,7 +1574,7 @@ export function SettingsDetailPage() {
   if (detailQuery.isLoading) {
     return (
       <PageContainer>
-        <Skeleton className="h-24 w-full rounded-[1rem]" />
+        <DetailPageHeaderSkeleton />
         <Skeleton className="h-[22rem] w-full rounded-[1rem]" />
       </PageContainer>
     )

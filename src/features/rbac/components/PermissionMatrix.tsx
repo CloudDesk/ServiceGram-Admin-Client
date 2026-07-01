@@ -39,36 +39,38 @@ export function PermissionMatrix({
                   {selectedCount} of {group.permissions.length} selected
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  disabled={disabled || allSelected || group.permissions.length === 0}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() =>
-                    group.permissions.forEach((permission) =>
-                      onToggle(permission.permissionId, true),
-                    )
-                  }
-                >
-                  <CheckSquare className="mr-2 size-4" />
-                  Select
-                </Button>
-                <Button
-                  disabled={disabled || selectedCount === 0}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                  onClick={() =>
-                    group.permissions.forEach((permission) =>
-                      onToggle(permission.permissionId, false),
-                    )
-                  }
-                >
-                  <Square className="mr-2 size-4" />
-                  Clear
-                </Button>
-              </div>
+              {!disabled ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    disabled={allSelected || group.permissions.length === 0}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={() =>
+                      group.permissions.forEach((permission) =>
+                        onToggle(permission.permissionId, true),
+                      )
+                    }
+                  >
+                    <CheckSquare className="mr-2 size-4" />
+                    Select
+                  </Button>
+                  <Button
+                    disabled={selectedCount === 0}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                    onClick={() =>
+                      group.permissions.forEach((permission) =>
+                        onToggle(permission.permissionId, false),
+                      )
+                    }
+                  >
+                    <Square className="mr-2 size-4" />
+                    Clear
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -80,7 +82,7 @@ export function PermissionMatrix({
                     className={cn(
                       'flex min-h-16 cursor-pointer items-start gap-3 rounded-[0.9rem] border border-border bg-surface p-3 text-sm transition-colors',
                       checked && 'border-primary/40 bg-primary/5',
-                      disabled && 'cursor-not-allowed opacity-70',
+                      disabled && 'cursor-default opacity-70',
                     )}
                     key={permission.permissionId}
                   >

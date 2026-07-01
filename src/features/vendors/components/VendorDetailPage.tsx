@@ -21,9 +21,11 @@ import {
   Tags,
   Trash2,
   Truck,
+  Upload,
+  X,
   XCircle,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { Badge } from "../../../components/ui/Badge";
@@ -35,7 +37,16 @@ import {
   DynamicTable,
   type DynamicTableColumn,
 } from "../../../components/ui/Table";
-import { DetailPageHeader } from "../../../components/layout/DetailPageHeader";
+import {
+  inferMediaViewerKind,
+  isOpenableMediaUrl,
+  useMediaViewer,
+  type MediaViewerItem,
+} from "../../../components/media";
+import {
+  DetailPageHeader,
+  DetailPageHeaderSkeleton,
+} from "../../../components/layout/DetailPageHeader";
 import { PageContainer } from "../../../components/layout/PageContainer";
 import { routePaths } from "../../../config/routes";
 import { useAuthStore } from "../../../store/authStore";
@@ -92,8 +103,10 @@ import {
   type VendorServiceActionSelection,
 } from "./VendorServiceActionModal";
 import type {
-  VendorDetail,
   VendorBankAccount,
+  VendorBrandLogoMimeType,
+  VendorContactPerson,
+  VendorDetail,
   VendorDocument,
   VendorProfileUpdatePayload,
   VendorServiceRecord,
@@ -103,7 +116,56 @@ import type {
 } from "../types/vendor.types";
 
 const hiddenVendorDetailActions = ["REQUEST_DOCUMENTS"] as const;
+const vendorProfileActions = ["EDIT_PROFILE"] as const;
+const vendorReviewActions = [
+  "ADD_NOTE",
+  "APPROVE",
+  "REACTIVATE",
+  "REJECT",
+  "REJECT_BANK_ACCOUNT",
+  "REJECT_DOCUMENT",
+  "REQUEST_DOCUMENTS",
+  "SUSPEND",
+  "VERIFY_BANK_ACCOUNT",
+  "VERIFY_DOCUMENT",
+] as const;
+const vendorDetailSectionIds = {
+  documents: "vendor-detail-documents",
+  payoutAccount: "vendor-detail-payout-account",
+  payouts: "vendor-detail-payouts",
+  reels: "vendor-detail-reels",
+} as const;
+
+interface VendorActionVisibility {
+  canApproveVendors: boolean;
+  canUpdateProfile: boolean;
+}
+
 type VendorTone = "success" | "warning" | "danger" | "info" | "neutral";
+
+type VendorBrandLogoAction = "change" | "remove";
+type VendorDetailSectionKey = keyof typeof vendorDetailSectionIds;
+
+interface VendorReviewJumpTarget {
+  description: string;
+  icon: ReactNode;
+  label: string;
+  section: VendorDetailSectionKey;
+}
+
+interface VendorBrandLogoMutationInput {
+  action: VendorBrandLogoAction;
+  file?: File;
+  reason: string;
+}
+
+const vendorBrandLogoMimeTypes: VendorBrandLogoMimeType[] = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+];
+const vendorBrandLogoMaxSizeBytes = 2 * 1024 * 1024;
+const vendorBrandLogoAccept = vendorBrandLogoMimeTypes.join(",");
 
 const orderStatuses: AdminOrderStatus[] = [
   "ORDER_PLACED",
@@ -245,6 +307,12 @@ function hasPayoutAction(payout: AdminPayoutSummary, action: string) {
     .includes(action);
 }
 
+function hasBankAccountAction(bankAccount: VendorBankAccount, action: string) {
+  return bankAccount.availableActions
+    .map((availableAction) => availableAction.toUpperCase())
+    .includes(action);
+}
+
 function statusFromRecommendedAction(action: string) {
   const normalized = action.toUpperCase();
   const markPrefix = "MARK_";
@@ -345,12 +413,40 @@ function formatServiceWarning(value: string) {
   return formatServicePriceType(value);
 }
 
-function getVisibleVendorDetailActions(actions: string[]) {
+function getVisibleVendorDetailActions(
+  actions: string[],
+  visibility?: VendorActionVisibility,
+) {
   return actions.filter(
-    (action) =>
-      !hiddenVendorDetailActions.includes(
-        action as (typeof hiddenVendorDetailActions)[number],
-      ),
+    (action) => {
+      const normalizedAction = action.toUpperCase();
+
+      if (
+        hiddenVendorDetailActions.includes(
+          normalizedAction as (typeof hiddenVendorDetailActions)[number],
+        )
+      ) {
+        return false;
+      }
+
+      if (
+        vendorProfileActions.includes(
+          normalizedAction as (typeof vendorProfileActions)[number],
+        )
+      ) {
+        return visibility?.canUpdateProfile ?? true;
+      }
+
+      if (
+        vendorReviewActions.includes(
+          normalizedAction as (typeof vendorReviewActions)[number],
+        )
+      ) {
+        return visibility?.canApproveVendors ?? true;
+      }
+
+      return true;
+    },
   );
 }
 
@@ -986,6 +1082,42 @@ function DetailField({
   );
 }
 
+function ContactPersonsField({
+  contacts,
+}: {
+  contacts: VendorContactPerson[] | null | undefined;
+}) {
+  const visibleContacts = contacts?.slice(0, 3) ?? [];
+
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-semibold uppercase text-muted">
+        Contact Persons
+      </p>
+      {visibleContacts.length > 0 ? (
+        <div className="space-y-1 text-sm text-foreground">
+          {visibleContacts.map((contact, index) => (
+            <p
+              className="break-words"
+              key={`${contact.mobileNumber}-${contact.name}-${index}`}
+            >
+              <span className="font-medium">
+                {contact.name || `Contact ${index + 1}`}
+              </span>
+              <span className="text-muted">
+                {" "}
+                · {contact.mobileNumber || "Mobile not available"}
+              </span>
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="break-words text-sm text-foreground">Not available</p>
+      )}
+    </div>
+  );
+}
+
 function getVendorStatusTone(status: VendorStatus) {
   if (status === "ACTIVE") {
     return "success";
@@ -1033,6 +1165,386 @@ function getVendorInitials(name: string) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function isVendorBrandLogoMimeType(
+  value: string,
+): value is VendorBrandLogoMimeType {
+  return vendorBrandLogoMimeTypes.includes(value as VendorBrandLogoMimeType);
+}
+
+function formatFileSize(value: number) {
+  if (value >= 1024 * 1024) {
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  return `${Math.max(1, Math.round(value / 1024))} KB`;
+}
+
+function getVendorLogoToneClasses(vendor: VendorDetail) {
+  if (vendor.vendorStatus === "SUSPENDED") {
+    return "border-danger/25 text-danger";
+  }
+
+  if (vendor.onboardingStatus !== "APPROVED" || vendor.warnings.length > 0) {
+    return "border-warning/25 text-warning";
+  }
+
+  return "border-success/25 text-success";
+}
+
+type VendorDocumentWithMediaMetadata = VendorDocument & {
+  fileName?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+};
+
+function buildVendorBrandLogoMediaItem(
+  vendor: VendorDetail,
+): MediaViewerItem | null {
+  const logoUrl = vendor.brandLogo?.url ?? vendor.brandLogo?.downloadUrl ?? null;
+
+  if (!isOpenableMediaUrl(logoUrl)) return null;
+
+  return {
+    description: "Brand logo shown across vendor records.",
+    downloadUrl: vendor.brandLogo?.downloadUrl ?? logoUrl,
+    expiresAt: vendor.brandLogo?.expiresAt,
+    fileName: vendor.brandLogo?.fileName,
+    id: `${vendor.vendorId}-brand-logo`,
+    kind: inferMediaViewerKind({
+      fileName: vendor.brandLogo?.fileName,
+      mimeType: vendor.brandLogo?.mimeType,
+      src: logoUrl,
+    }),
+    mimeType: vendor.brandLogo?.mimeType,
+    ownerLabel: vendor.shopName,
+    providerStatus: vendor.brandLogo?.providerStatus,
+    sizeBytes: vendor.brandLogo?.sizeBytes,
+    sourceLabel: "Vendor brand logo",
+    src: logoUrl,
+    title: `${vendor.shopName} brand logo`,
+    warnings: vendor.brandLogo?.warnings ?? [],
+  };
+}
+
+function buildVendorDocumentMediaItem(
+  vendor: VendorDetail,
+  document: VendorDocument,
+): MediaViewerItem | null {
+  const downloadUrl = document.download?.downloadUrl;
+
+  if (!isOpenableMediaUrl(downloadUrl)) return null;
+
+  const documentWithMetadata = document as VendorDocumentWithMediaMetadata;
+  const fileName = documentWithMetadata.fileName ?? document.documentType;
+  const mimeType = documentWithMetadata.mimeType ?? null;
+
+  return {
+    description: `${document.status} vendor document for ${vendor.shopName}.`,
+    downloadUrl,
+    expiresAt: document.download?.expiresAt,
+    fileName,
+    id: document.documentId,
+    kind: inferMediaViewerKind({
+      fileName,
+      mimeType,
+      src: downloadUrl,
+    }),
+    mimeType,
+    ownerLabel: vendor.shopName,
+    providerStatus: document.download?.providerStatus,
+    sizeBytes: documentWithMetadata.sizeBytes ?? null,
+    sourceLabel: "Vendor document",
+    src: downloadUrl,
+    title: document.documentType,
+    warnings: document.download?.warnings ?? [],
+  };
+}
+
+function buildVendorReelMediaItems(reel: AdminReel): MediaViewerItem[] {
+  const thumbnailUrl = isOpenableMediaUrl(reel.media.thumbnailUrl)
+    ? reel.media.thumbnailUrl
+    : null;
+  const playbackUrl = isOpenableMediaUrl(reel.media.playbackUrl)
+    ? reel.media.playbackUrl
+    : null;
+  const thumbnailItem: MediaViewerItem | null = thumbnailUrl
+    ? {
+        description: `${humanizeCode(reel.media.uploadStatus)} thumbnail.`,
+        downloadUrl: thumbnailUrl,
+        height: reel.media.height ?? null,
+        id: `${reel.reelId}-thumbnail`,
+        kind: "image",
+        ownerLabel: reel.vendor.shopName,
+        sourceLabel: "Vendor reel thumbnail",
+        src: thumbnailUrl,
+        title: `${reel.publicReelId} thumbnail`,
+        width: reel.media.width ?? null,
+      }
+    : null;
+  const videoItem: MediaViewerItem | null =
+    reel.media.cloudflareVideoUid || playbackUrl
+      ? {
+          cloudflareVideoUid: reel.media.cloudflareVideoUid,
+          description: reel.media.durationSeconds
+            ? `${reel.media.durationSeconds} seconds`
+            : humanizeCode(reel.media.uploadStatus),
+          downloadUrl: playbackUrl,
+          height: reel.media.height ?? null,
+          id: `${reel.reelId}-video`,
+          kind: reel.media.cloudflareVideoUid ? "cloudflare-video" : "video",
+          ownerLabel: reel.vendor.shopName,
+          posterUrl: thumbnailUrl,
+          sourceLabel: "Vendor reel playback",
+          src: playbackUrl,
+          title: `${reel.publicReelId} video`,
+          width: reel.media.width ?? null,
+        }
+      : null;
+  const relatedItems = [thumbnailItem, videoItem].filter(
+    (item): item is MediaViewerItem => Boolean(item),
+  );
+
+  if (!relatedItems.length) return [];
+
+  return [
+    {
+      cloudflareVideoUid: videoItem?.cloudflareVideoUid ?? null,
+      description: reel.media.durationSeconds
+        ? `${reel.media.durationSeconds} seconds`
+        : humanizeCode(reel.media.uploadStatus),
+      downloadUrl: videoItem?.downloadUrl ?? thumbnailItem?.downloadUrl ?? null,
+      height: reel.media.height ?? null,
+      id: `${reel.reelId}-media`,
+      kind: "reel",
+      ownerLabel: reel.vendor.shopName,
+      posterUrl: thumbnailUrl,
+      relatedItems,
+      sourceLabel: "Vendor reel media",
+      src: videoItem?.src ?? thumbnailItem?.src ?? null,
+      title: `${reel.publicReelId} media`,
+      width: reel.media.width ?? null,
+    },
+  ];
+}
+
+function VendorBrandLogoMark({
+  onOpen,
+  vendor,
+}: {
+  onOpen?: () => void;
+  vendor: VendorDetail;
+}) {
+  const logoUrl = vendor.brandLogo?.url ?? vendor.brandLogo?.downloadUrl ?? null;
+  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
+  const visibleLogoUrl = logoUrl && failedLogoUrl !== logoUrl ? logoUrl : null;
+  const markClassName = cn(
+    "flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-[1rem] border bg-surface text-base font-semibold",
+    getVendorLogoToneClasses(vendor),
+    onOpen && visibleLogoUrl
+      ? "transition hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      : null,
+  );
+  const content = visibleLogoUrl ? (
+    <img
+      alt={`${vendor.shopName} logo`}
+      className="size-full object-contain p-1.5"
+      loading="lazy"
+      src={visibleLogoUrl}
+      onError={() => setFailedLogoUrl(visibleLogoUrl)}
+    />
+  ) : (
+    <span>{getVendorInitials(vendor.shopName)}</span>
+  );
+
+  if (onOpen && visibleLogoUrl) {
+    return (
+      <button
+        aria-label={`View ${vendor.shopName} logo`}
+        className={markClassName}
+        type="button"
+        onClick={onOpen}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div className={markClassName}>{content}</div>;
+}
+
+interface VendorBrandLogoModalProps {
+  action: VendorBrandLogoAction | null;
+  error?: string | null;
+  isSubmitting: boolean;
+  vendor: VendorDetail;
+  onClose: () => void;
+  onSubmit: (values: VendorBrandLogoMutationInput) => void;
+}
+
+function VendorBrandLogoModal({
+  action,
+  error,
+  isSubmitting,
+  onClose,
+  onSubmit,
+  vendor,
+}: VendorBrandLogoModalProps) {
+  const [file, setFile] = useState<File | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+
+  if (!action) {
+    return null;
+  }
+
+  const isChange = action === "change";
+  const title = isChange ? "Change vendor logo" : "Remove vendor logo";
+  const description = isChange
+    ? "Upload the logo shown across the admin vendor records."
+    : "Remove the current vendor logo and return admin views to initials.";
+  const visibleError = formError ?? error;
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setFormError(null);
+
+    const trimmedReason = reason.trim();
+
+    if (!trimmedReason) {
+      setFormError("Reason is required.");
+      return;
+    }
+
+    if (isChange) {
+      if (!file) {
+        setFormError("Logo file is required.");
+        return;
+      }
+
+      if (!isVendorBrandLogoMimeType(file.type)) {
+        setFormError("Logo must be JPEG, PNG, or WebP.");
+        return;
+      }
+
+      if (file.size > vendorBrandLogoMaxSizeBytes) {
+        setFormError("Logo file must be 2 MB or smaller.");
+        return;
+      }
+
+      onSubmit({ action, file, reason: trimmedReason });
+      return;
+    }
+
+    onSubmit({ action, reason: trimmedReason });
+  };
+
+  return (
+    <div className="premium-overlay flex items-center justify-center p-4">
+      <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-overlay)]">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold tracking-[-0.03em] text-foreground">
+              {title}
+            </h2>
+            <p className="text-sm leading-6 text-muted">{description}</p>
+          </div>
+          <button
+            aria-label="Close logo modal"
+            className="rounded-full p-2 text-muted transition-colors hover:bg-surface-muted hover:text-foreground"
+            disabled={isSubmitting}
+            onClick={onClose}
+            type="button"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="mt-4 flex items-center gap-3 rounded-[1rem] border border-border bg-surface-muted/50 p-3">
+          <VendorBrandLogoMark vendor={vendor} />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">
+              {vendor.shopName}
+            </p>
+            <p className="mt-1 truncate text-sm text-muted">
+              {vendor.publicVendorId}
+            </p>
+          </div>
+        </div>
+
+        <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
+          {isChange ? (
+            <label className="block space-y-2">
+              <span className="text-sm font-semibold text-foreground">
+                Logo file <span className="text-danger">*</span>
+              </span>
+              <input
+                accept={vendorBrandLogoAccept}
+                className="form-input cursor-pointer file:mr-3 file:rounded-control file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-semibold file:text-secondary-foreground"
+                disabled={isSubmitting}
+                type="file"
+                onChange={(event) => {
+                  setFile(event.target.files?.[0] ?? null);
+                  setFormError(null);
+                }}
+              />
+              <span className="block text-xs text-muted">
+                JPEG, PNG, or WebP up to 2 MB.
+              </span>
+              {file ? (
+                <span className="block truncate text-xs text-foreground">
+                  {file.name} · {formatFileSize(file.size)}
+                </span>
+              ) : null}
+            </label>
+          ) : null}
+
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-foreground">
+              Reason <span className="text-danger">*</span>
+            </span>
+            <textarea
+              className="form-input min-h-28 resize-y"
+              disabled={isSubmitting}
+              onChange={(event) => {
+                setReason(event.target.value);
+                setFormError(null);
+              }}
+              placeholder="Enter reason"
+              value={reason}
+            />
+          </label>
+
+          {visibleError ? (
+            <div className="rounded-[0.75rem] border border-danger/20 bg-danger/5 p-3 text-sm text-danger">
+              {visibleError}
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+            <Button
+              disabled={isSubmitting}
+              size="sm"
+              type="button"
+              variant="ghost"
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+            <Button
+              isLoading={isSubmitting}
+              size="sm"
+              type="submit"
+              variant={isChange ? "primary" : "danger"}
+            >
+              {isChange ? "Change logo" : "Remove logo"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 function getDocumentMetricTone(vendor: VendorDetail): VendorTone {
@@ -1105,16 +1617,6 @@ function VendorHeaderStatus({ vendor }: { vendor: VendorDetail }) {
   );
 }
 
-function openDocumentDownload(document: VendorDocument) {
-  const downloadUrl = document.download?.downloadUrl;
-
-  if (!downloadUrl) {
-    return;
-  }
-
-  window.open(downloadUrl, "_blank", "noopener,noreferrer");
-}
-
 function getApprovalBlockMessage(vendor: VendorDetail) {
   const summary = vendor.documentSummary;
 
@@ -1138,6 +1640,60 @@ function getApprovalBlockMessage(vendor: VendorDetail) {
   const documentLabel = unverifiedCount === 1 ? "document is" : "documents are";
 
   return `Approval is blocked until ${unverifiedCount} ${documentLabel} verified. Verify the documents or request corrections before approving this vendor.`;
+}
+
+function scrollToVendorDetailSection(section: VendorDetailSectionKey) {
+  const sectionElement = document.getElementById(vendorDetailSectionIds[section]);
+
+  if (!sectionElement) return;
+
+  sectionElement.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  if (sectionElement instanceof HTMLElement) {
+    sectionElement.focus({ preventScroll: true });
+  }
+}
+
+function VendorReviewJumpPanel({
+  message,
+  targets,
+}: {
+  message: string | null;
+  targets: VendorReviewJumpTarget[];
+}) {
+  if (!targets.length) return null;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-surface border border-warning/20 bg-warning/10 p-3 text-sm text-warning lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex min-w-0 items-start gap-2">
+        <FileWarning className="mt-0.5 size-4 shrink-0" />
+        <div className="min-w-0">
+          <p className="font-semibold text-warning">Review needed</p>
+          <p className="mt-1 leading-6">
+            {message ??
+              "This vendor has items waiting for admin review. Jump to the relevant section below."}
+          </p>
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        {targets.map((target) => (
+          <Button
+            aria-controls={vendorDetailSectionIds[target.section]}
+            className="border border-warning/25 bg-surface text-warning hover:bg-warning/10"
+            key={target.section}
+            size="sm"
+            title={target.description}
+            type="button"
+            variant="secondary"
+            onClick={() => scrollToVendorDetailSection(target.section)}
+          >
+            {target.icon}
+            {target.label}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function getBankSummaryMessage(vendor: VendorDetail) {
@@ -1219,19 +1775,24 @@ function getDocumentHistoryRows(
 }
 
 function VendorHeaderActions({
+  canApproveVendors,
   canUpdateProfile,
   isSubmitting,
   onEditProfile,
   onSelectAction,
   vendor,
 }: {
+  canApproveVendors: boolean;
   canUpdateProfile: boolean;
   isSubmitting: boolean;
   onEditProfile: () => void;
   onSelectAction: (kind: VendorActionKind) => void;
   vendor: VendorDetail;
 }) {
-  const visibleActions = getVisibleVendorDetailActions(vendor.availableActions);
+  const visibleActions = getVisibleVendorDetailActions(vendor.availableActions, {
+    canApproveVendors,
+    canUpdateProfile,
+  });
   const hasAction = (action: string) => visibleActions.includes(action);
   const approvalBlockMessage = getApprovalBlockMessage(vendor);
 
@@ -1328,6 +1889,7 @@ export function VendorDetailPage({
   const { vendorId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { openMediaViewer } = useMediaViewer();
   const canApproveVendors = useAuthStore((state) =>
     state.can("vendors:approve"),
   );
@@ -1349,6 +1911,9 @@ export function VendorDetailPage({
   const [actionError, setActionError] = useState<string | null>(null);
   const [isProfileEditorOpen, setProfileEditorOpen] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [selectedLogoAction, setSelectedLogoAction] =
+    useState<VendorBrandLogoAction | null>(null);
+  const [brandLogoError, setBrandLogoError] = useState<string | null>(null);
   const [selectedAction, setSelectedAction] =
     useState<VendorActionSelection | null>(null);
   const [selectedReelAction, setSelectedReelAction] =
@@ -1365,61 +1930,38 @@ export function VendorDetailPage({
   const [payoutError, setPayoutError] = useState<string | null>(null);
   const [selectedHistoryDocument, setSelectedHistoryDocument] =
     useState<VendorDocument | null>(null);
+  const [documentPreviewError, setDocumentPreviewError] = useState<string | null>(
+    null,
+  );
 
-  const vendorQuery = useQuery({
+  const vendorOverviewQuery = useQuery({
     enabled: Boolean(vendorId),
-    queryKey: ["vendor-detail", vendorId],
-    queryFn: () => vendorService.getVendorById(vendorId as string),
+    queryKey: ["vendor-overview", vendorId],
+    queryFn: () => vendorService.getVendorOverview(vendorId as string),
+    staleTime: 30_000,
   });
 
-  const vendor = vendorQuery.data?.data;
-
-  const servicesQuery = useQuery({
-    enabled: Boolean(vendorId),
-    queryKey: ["vendor-services", vendorId],
-    queryFn: () => vendorService.getVendorServices(vendorId as string),
-  });
-
-  const vendorServices = servicesQuery.data?.data;
-
-  const ordersQuery = useQuery({
-    enabled: Boolean(vendorId) && canReadOrders,
-    queryKey: ["vendor-orders", vendorId],
-    queryFn: () =>
-      orderService.getVendorOrders(vendorId as string, {
-        page: 1,
-        limit: 20,
-      }),
-  });
-
-  const vendorOrders = ordersQuery.data;
-
-  const payoutsQuery = useQuery({
-    enabled: Boolean(vendorId) && canReadPayouts,
-    queryKey: ["vendor-payouts", vendorId],
-    queryFn: () =>
-      payoutService.getVendorPayouts(vendorId as string, {
-        page: 1,
-        limit: 20,
-      }),
-  });
-
-  const vendorPayouts = payoutsQuery.data;
-
-  const reelsQuery = useQuery({
-    enabled: Boolean(vendorId) && canReadReels,
-    queryKey: ["vendor-reels", vendorId],
-    queryFn: () =>
-      reelService.getVendorReels(vendorId as string, {
-        page: 1,
-        limit: 20,
-      }),
-  });
-
-  const vendorReels = reelsQuery.data;
+  const vendorQuery = vendorOverviewQuery;
+  const vendorOverview = vendorOverviewQuery.data?.data;
+  const vendor = vendorOverview?.vendor;
+  const vendorServices = vendorOverview?.sections.services ?? undefined;
+  const vendorOrders = vendorOverview?.sections.orders ?? undefined;
+  const vendorPayouts = vendorOverview?.sections.payouts ?? undefined;
+  const vendorReels = vendorOverview?.sections.reels ?? undefined;
+  const overviewSectionQueryState = {
+    isError: vendorOverviewQuery.isError,
+    isLoading: vendorOverviewQuery.isLoading,
+    isFetching: vendorOverviewQuery.isFetching,
+    refetch: vendorOverviewQuery.refetch,
+  };
+  const servicesQuery = overviewSectionQueryState;
+  const ordersQuery = overviewSectionQueryState;
+  const payoutsQuery = overviewSectionQueryState;
+  const reelsQuery = overviewSectionQueryState;
 
   const refreshVendor = async () => {
     await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["vendor-overview", vendorId] }),
       queryClient.invalidateQueries({ queryKey: ["vendor-detail", vendorId] }),
       queryClient.invalidateQueries({
         queryKey: ["vendor-services", vendorId],
@@ -1451,6 +1993,118 @@ export function VendorDetailPage({
         error instanceof Error
           ? error.message
           : "Vendor profile update failed.",
+      );
+    },
+  });
+
+  const brandLogoMutation = useMutation({
+    mutationFn: async (input: VendorBrandLogoMutationInput) => {
+      if (!vendor) {
+        throw new Error("Vendor details are unavailable.");
+      }
+
+      if (input.action === "remove") {
+        return vendorService.removeVendorBrandLogo(vendor.vendorId, {
+          reason: input.reason,
+        });
+      }
+
+      if (!input.file) {
+        throw new Error("Logo file is required.");
+      }
+
+      if (!isVendorBrandLogoMimeType(input.file.type)) {
+        throw new Error("Logo must be JPEG, PNG, or WebP.");
+      }
+
+      const uploadIntentResponse =
+        await vendorService.createVendorBrandLogoUploadIntent(vendor.vendorId, {
+          fileName: input.file.name,
+          mimeType: input.file.type,
+          sizeBytes: input.file.size,
+        });
+      const uploadIntent = uploadIntentResponse.data;
+
+      if (!uploadIntent.uploadUrl) {
+        throw new Error("Logo upload URL is unavailable.");
+      }
+
+      const uploadHeaders = new Headers(uploadIntent.headers);
+
+      if (!uploadHeaders.has("Content-Type")) {
+        uploadHeaders.set("Content-Type", input.file.type);
+      }
+
+      const uploadResponse = await fetch(uploadIntent.uploadUrl, {
+        method: "PUT",
+        headers: uploadHeaders,
+        body: input.file,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error("Logo upload failed. Please try again.");
+      }
+
+      return vendorService.confirmVendorBrandLogoUpload(vendor.vendorId, {
+        mediaAssetId: uploadIntent.mediaAssetId,
+        uploadedAt: new Date().toISOString(),
+        reason: input.reason,
+      });
+    },
+    onMutate: () => setBrandLogoError(null),
+    onSuccess: async () => {
+      setSelectedLogoAction(null);
+      await refreshVendor();
+    },
+    onError: (error) => {
+      setBrandLogoError(
+        error instanceof Error ? error.message : "Vendor logo update failed.",
+      );
+    },
+  });
+
+  const documentPreviewMutation = useMutation({
+    mutationFn: async (document: VendorDocument) => {
+      if (!vendor) {
+        throw new Error("Vendor details are unavailable.");
+      }
+
+      if (document.download?.downloadUrl) {
+        return { document };
+      }
+
+      const response = await vendorService.getVendorDocumentDownloadTarget(
+        vendor.vendorId,
+        document.documentId,
+      );
+
+      return {
+        document: {
+          ...document,
+          download: response.data.download,
+        },
+      };
+    },
+    onMutate: () => setDocumentPreviewError(null),
+    onSuccess: ({ document }) => {
+      if (!vendor) {
+        return;
+      }
+
+      const documentMediaItem = buildVendorDocumentMediaItem(vendor, document);
+
+      if (documentMediaItem) {
+        openMediaViewer({ items: [documentMediaItem] });
+        return;
+      }
+
+      setDocumentPreviewError("Preview is unavailable for this document.");
+    },
+    onError: (error) => {
+      setDocumentPreviewError(
+        error instanceof Error
+          ? error.message
+          : "We could not load this document preview.",
       );
     },
   });
@@ -1762,6 +2416,9 @@ export function VendorDetailPage({
       setSelectedOrderAction(null);
       void Promise.all([
         queryClient.invalidateQueries({
+          queryKey: ["vendor-overview", vendorId],
+        }),
+        queryClient.invalidateQueries({
           queryKey: ["vendor-orders", vendorId],
         }),
         queryClient.invalidateQueries({ queryKey: ["orders"] }),
@@ -1837,6 +2494,9 @@ export function VendorDetailPage({
       setSelectedPayoutAction(null);
       void Promise.all([
         queryClient.invalidateQueries({
+          queryKey: ["vendor-overview", vendorId],
+        }),
+        queryClient.invalidateQueries({
           queryKey: ["vendor-payouts", vendorId],
         }),
         queryClient.invalidateQueries({ queryKey: ["payouts"] }),
@@ -1906,6 +2566,7 @@ export function VendorDetailPage({
     onSuccess: (_response, variables) => {
       setSelectedReelAction(null);
       void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["vendor-overview", vendorId] }),
         queryClient.invalidateQueries({ queryKey: ["vendor-reels", vendorId] }),
         queryClient.invalidateQueries({ queryKey: ["reels"] }),
         queryClient.invalidateQueries({
@@ -2027,7 +2688,7 @@ export function VendorDetailPage({
   if (vendorQuery.isLoading) {
     return (
       <PageContainer>
-        <Skeleton className="h-12 w-full" />
+        <DetailPageHeaderSkeleton />
         <Skeleton className="h-[28rem] w-full" />
       </PageContainer>
     );
@@ -2056,9 +2717,10 @@ export function VendorDetailPage({
     );
   }
 
-  const approvalBlockMessage = vendor.availableActions.includes("APPROVE")
-    ? getApprovalBlockMessage(vendor)
-    : null;
+  const approvalBlockMessage =
+    canApproveVendors && vendor.availableActions.includes("APPROVE")
+      ? getApprovalBlockMessage(vendor)
+      : null;
   const activeHistoryDocument = selectedHistoryDocument
     ? (vendor.documents.find(
         (document) =>
@@ -2122,12 +2784,112 @@ export function VendorDetailPage({
       : (reelSummary?.live ?? 0) > 0
         ? "success"
         : "neutral";
+  const visibleVendorActions = getVisibleVendorDetailActions(
+    vendor.availableActions,
+    {
+      canApproveVendors,
+      canUpdateProfile: canUpdateVendors,
+    },
+  );
+  const documentsPendingReview = vendor.documents.filter(
+    (document) =>
+      vendor.onboardingStatus !== "APPROVED" && document.status !== "VERIFIED",
+  );
+  const bankAccountsPendingReview = vendor.bankAccounts.filter(
+    (bankAccount) =>
+      hasBankAccountAction(bankAccount, "VERIFY") ||
+      hasBankAccountAction(bankAccount, "REJECT"),
+  );
+  const payoutRowsPendingReview = payoutRows.filter(
+    (payout) =>
+      hasPayoutAction(payout, "APPROVE") ||
+      hasPayoutAction(payout, "HOLD") ||
+      hasPayoutAction(payout, "RELEASE_HOLD") ||
+      hasPayoutAction(payout, "MARK_PAID") ||
+      hasPayoutAction(payout, "MARK_FAILED"),
+  );
+  const reelsPendingReview = reelRows.filter(
+    (reel) => {
+      const reelActions = reel.availableActions.map((action) =>
+        action.toUpperCase(),
+      );
+
+      return (
+        reelActions.includes("APPROVE") ||
+        reelActions.includes("REJECT") ||
+        reelActions.includes("REQUEST_EDIT")
+      );
+    },
+  );
+  const reviewJumpTargets: VendorReviewJumpTarget[] = [
+    ...(canApproveVendors &&
+    (approvalBlockMessage || documentsPendingReview.length)
+      ? [
+          {
+            description: approvalBlockMessage
+              ? "Vendor approval is blocked by pending or rejected documents."
+              : `${documentsPendingReview.length} document ${documentsPendingReview.length === 1 ? "needs" : "need"} admin review.`,
+            icon: <FileCheck2 className="mr-2 size-4" />,
+            label: "Review documents",
+            section: "documents" as const,
+          },
+        ]
+      : []),
+    ...(canApproveVendors && bankAccountsPendingReview.length
+      ? [
+          {
+            description: `${bankAccountsPendingReview.length} payout account ${bankAccountsPendingReview.length === 1 ? "needs" : "need"} verification.`,
+            icon: <Landmark className="mr-2 size-4" />,
+            label: "Review payout account",
+            section: "payoutAccount" as const,
+          },
+        ]
+      : []),
+    ...(canReadPayouts && canApprovePayouts && payoutRowsPendingReview.length
+      ? [
+          {
+            description: `${payoutRowsPendingReview.length} payout ${payoutRowsPendingReview.length === 1 ? "needs" : "need"} admin action.`,
+            icon: <CreditCard className="mr-2 size-4" />,
+            label: "Review payouts",
+            section: "payouts" as const,
+          },
+        ]
+      : []),
+    ...(canReadReels && canModerateReels && reelsPendingReview.length
+      ? [
+          {
+            description: `${reelsPendingReview.length} reel ${reelsPendingReview.length === 1 ? "needs" : "need"} moderation.`,
+            icon: <Film className="mr-2 size-4" />,
+            label: "Review reels",
+            section: "reels" as const,
+          },
+        ]
+      : []),
+  ];
+  const hasVendorBrandLogo = Boolean(vendor.brandLogo);
+  const vendorBrandLogoMediaItem = buildVendorBrandLogoMediaItem(vendor);
+  const openVendorBrandLogo = () => {
+    if (vendorBrandLogoMediaItem) {
+      openMediaViewer({ items: [vendorBrandLogoMediaItem] });
+    }
+  };
+  const openVendorDocument = (document: VendorDocument) => {
+    documentPreviewMutation.mutate(document);
+  };
+  const openVendorReelMedia = (reel: AdminReel) => {
+    const mediaItems = buildVendorReelMediaItems(reel);
+
+    if (mediaItems.length) {
+      openMediaViewer({ items: mediaItems });
+    }
+  };
 
   return (
     <PageContainer>
       <DetailPageHeader
         actionNode={
           <VendorHeaderActions
+            canApproveVendors={canApproveVendors}
             canUpdateProfile={canUpdateVendors}
             isSubmitting={actionMutation.isPending || profileMutation.isPending}
             vendor={vendor}
@@ -2145,12 +2907,10 @@ export function VendorDetailPage({
         titleMetaNode={<VendorHeaderStatus vendor={vendor} />}
       />
 
-      {approvalBlockMessage ? (
-        <div className="flex items-start gap-2 rounded-surface border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
-          <FileWarning className="mt-0.5 size-4 shrink-0" />
-          <span>{approvalBlockMessage}</span>
-        </div>
-      ) : null}
+      <VendorReviewJumpPanel
+        message={approvalBlockMessage}
+        targets={reviewJumpTargets}
+      />
 
       <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
         <DetailMetricCard
@@ -2191,7 +2951,11 @@ export function VendorDetailPage({
         />
       </section>
 
-      <section className="space-y-4">
+      <section
+        className="scroll-mt-24 space-y-4 focus:outline-none"
+        id={vendorDetailSectionIds.payouts}
+        tabIndex={-1}
+      >
         <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
           <DetailMetricCard
             icon={<Landmark className="size-4" />}
@@ -2705,7 +3469,11 @@ export function VendorDetailPage({
         />
       </section>
 
-      <section className="space-y-4">
+      <section
+        className="scroll-mt-24 space-y-4 focus:outline-none"
+        id={vendorDetailSectionIds.reels}
+        tabIndex={-1}
+      >
         <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
           <DetailMetricCard
             icon={<Film className="size-4" />}
@@ -2769,6 +3537,16 @@ export function VendorDetailPage({
           inlineActionLimit={2}
           loading={canReadReels && reelsQuery.isLoading}
           rowActions={(reel) => [
+            {
+              icon: <Eye className="size-4" />,
+              isDisabled: buildVendorReelMediaItems(reel).length === 0,
+              key: "view-reel-media",
+              label: buildVendorReelMediaItems(reel).length
+                ? "View Media"
+                : "No media",
+              onClick: () => openVendorReelMedia(reel),
+              variant: "ghost",
+            },
             {
               icon: <CheckCircle2 className="size-4" />,
               isDisabled: reelMutation.isPending,
@@ -2873,7 +3651,11 @@ export function VendorDetailPage({
         />
       </section>
 
-      <section className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
+      <section
+        className="scroll-mt-24 space-y-4 rounded-[1rem] border border-border bg-surface p-4 focus:outline-none"
+        id={vendorDetailSectionIds.payoutAccount}
+        tabIndex={-1}
+      >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -2956,32 +3738,66 @@ export function VendorDetailPage({
 
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4 lg:col-span-2">
-          <div className="flex min-w-0 items-start gap-3">
-            <div
-              className={cn(
-                "flex size-12 shrink-0 items-center justify-center rounded-full border bg-surface text-base font-semibold",
-                vendor.vendorStatus === "SUSPENDED"
-                  ? "border-danger/25 text-danger"
-                  : vendor.onboardingStatus !== "APPROVED" ||
-                      vendor.warnings.length > 0
-                    ? "border-warning/25 text-warning"
-                    : "border-success/25 text-success",
-              )}
-            >
-              {getVendorInitials(vendor.shopName)}
+          <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <VendorBrandLogoMark
+                vendor={vendor}
+                onOpen={vendorBrandLogoMediaItem ? openVendorBrandLogo : undefined}
+              />
+              <div className="min-w-0">
+                <h2 className="truncate text-base font-semibold text-foreground">
+                  Vendor Information
+                </h2>
+                <p className="mt-1 truncate text-sm text-muted">
+                  {vendor.shopName} · {vendor.publicVendorId}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h2 className="truncate text-base font-semibold text-foreground">
-                Vendor Information
-              </h2>
-              <p className="mt-1 truncate text-sm text-muted">
-                {vendor.shopName} · {vendor.publicVendorId}
-              </p>
-            </div>
+            {canUpdateVendors ? (
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <Button
+                  disabled={brandLogoMutation.isPending}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setBrandLogoError(null);
+                    setSelectedLogoAction("change");
+                  }}
+                >
+                  <Upload className="mr-2 size-4" />
+                  Change logo
+                </Button>
+                {hasVendorBrandLogo ? (
+                  <Button
+                    disabled={brandLogoMutation.isPending}
+                    size="sm"
+                    type="button"
+                    variant="danger"
+                    onClick={() => {
+                      setBrandLogoError(null);
+                      setSelectedLogoAction("remove");
+                    }}
+                  >
+                    <Trash2 className="mr-2 size-4" />
+                    Remove logo
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
+            <DetailField
+              label="Brand Logo"
+              value={vendor.brandLogo?.fileName ?? null}
+            />
             <DetailField label="Owner" value={vendor.ownerName} />
             <DetailField label="Mobile" value={vendor.mobileNumber} />
+            <DetailField
+              label="Alternative Mobile"
+              value={vendor.alternativeMobileNumber}
+            />
+            <ContactPersonsField contacts={vendor.contactPersons} />
             <DetailField label="Vendor ID" value={vendor.vendorId} />
             <DetailField
               label="Public Vendor ID"
@@ -3017,10 +3833,8 @@ export function VendorDetailPage({
             <DetailField
               label="Available Actions"
               value={
-                getVisibleVendorDetailActions(vendor.availableActions).length
-                  ? getVisibleVendorDetailActions(vendor.availableActions).join(
-                      ", ",
-                    )
+                visibleVendorActions.length
+                  ? visibleVendorActions.join(", ")
                   : null
               }
             />
@@ -3053,7 +3867,16 @@ export function VendorDetailPage({
         </div>
       </section>
 
-      <section className="space-y-4">
+      <section
+        className="scroll-mt-24 space-y-4 focus:outline-none"
+        id={vendorDetailSectionIds.documents}
+        tabIndex={-1}
+      >
+        {documentPreviewError ? (
+          <div className="rounded-surface border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
+            {documentPreviewError}
+          </div>
+        ) : null}
         <DynamicTable
           actionColumnLabel="Document Actions"
           actionColumnMinWidth={410}
@@ -3072,15 +3895,17 @@ export function VendorDetailPage({
           rowActions={(document) => [
             {
               icon: <Eye className="size-4" />,
-              isDisabled: !document.download?.downloadUrl,
+              isDisabled:
+                documentPreviewMutation.isPending || !document.mediaAssetId,
               key: "view",
-              label: document.download?.downloadUrl ? "View" : "No preview",
-              onClick: openDocumentDownload,
+              label: document.mediaAssetId ? "View" : "No preview",
+              onClick: openVendorDocument,
               variant: "ghost",
             },
             {
               icon: <FileCheck2 className="size-4" />,
               isVisible:
+                canApproveVendors &&
                 vendor.onboardingStatus !== "APPROVED" &&
                 document.status !== "VERIFIED",
               key: "verify",
@@ -3091,6 +3916,7 @@ export function VendorDetailPage({
             {
               icon: <FileWarning className="size-4" />,
               isVisible:
+                canApproveVendors &&
                 vendor.onboardingStatus !== "APPROVED" &&
                 ["PENDING", "VERIFIED"].includes(document.status),
               key: "reject",
@@ -3183,7 +4009,7 @@ export function VendorDetailPage({
         key={
           selectedAction
             ? `${selectedAction.kind}-${selectedAction.document?.documentId ?? selectedAction.bankAccount?.bankAccountId ?? "vendor"}`
-            : "closed"
+            : "vendor-action-closed"
         }
         vendor={vendor}
         onClose={() => {
@@ -3202,7 +4028,7 @@ export function VendorDetailPage({
         key={
           selectedServiceAction
             ? `${selectedServiceAction.kind}-${selectedServiceAction.service?.vendorServiceId ?? "new"}`
-            : "closed"
+            : "vendor-service-action-closed"
         }
         vendor={vendor}
         onClose={() => {
@@ -3238,7 +4064,7 @@ export function VendorDetailPage({
         key={
           selectedPayoutAction
             ? `${selectedPayoutAction.kind}-${selectedPayoutAction.payout?.payoutId ?? "payout"}`
-            : "closed"
+            : "payout-action-closed"
         }
         onClose={() => {
           if (!payoutMutation.isPending) {
@@ -3256,7 +4082,7 @@ export function VendorDetailPage({
         key={
           selectedReelAction
             ? `${selectedReelAction.kind}-${selectedReelAction.reel.reelId}`
-            : "closed"
+            : "reel-action-closed"
         }
         onClose={() => {
           if (!reelMutation.isPending) {
@@ -3265,6 +4091,25 @@ export function VendorDetailPage({
           }
         }}
         onSubmit={submitReelAction}
+      />
+
+      <VendorBrandLogoModal
+        action={selectedLogoAction}
+        error={brandLogoError}
+        isSubmitting={brandLogoMutation.isPending}
+        key={
+          selectedLogoAction
+            ? `brand-logo-${selectedLogoAction}-${vendor.vendorId}-${vendor.brandLogo?.mediaAssetId ?? "none"}`
+            : "brand-logo-closed"
+        }
+        vendor={vendor}
+        onClose={() => {
+          if (!brandLogoMutation.isPending) {
+            setSelectedLogoAction(null);
+            setBrandLogoError(null);
+          }
+        }}
+        onSubmit={(values) => void brandLogoMutation.mutateAsync(values)}
       />
 
       {isProfileEditorOpen ? (

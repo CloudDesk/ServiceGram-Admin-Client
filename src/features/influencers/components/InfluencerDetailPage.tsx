@@ -15,7 +15,11 @@ import {
   XCircle,
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
@@ -23,7 +27,10 @@ import { DynamicTable, type DynamicTableColumn } from '../../../components/ui/Ta
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Skeleton } from '../../../components/ui/Skeleton'
-import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
+import {
+  DetailPageHeader,
+  DetailPageHeaderSkeleton,
+} from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
@@ -38,12 +45,18 @@ import {
 import type {
   AdminInfluencer,
   AdminInfluencerCommission,
+  AdminInfluencerPreferredCategory,
   AdminInfluencerReel,
+  InfluencerSocialProfile,
   InfluencerActionKind,
   InfluencerStatus,
 } from '../types/influencer.types'
 
 type InfluencerTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+type PreferredCategoryDisplay = Pick<
+  AdminInfluencerPreferredCategory,
+  'categoryCode' | 'categoryId' | 'name'
+>
 
 const influencerActionKinds: InfluencerActionKind[] = [
   'APPROVE',
@@ -119,6 +132,86 @@ function routeWithFilters(path: string, filters: Record<string, string | undefin
   return query ? `${path}?${query}` : path
 }
 
+function uniqueNonEmpty(values: (string | null | undefined)[]) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  )
+}
+
+function addPreferredCategory(
+  categoriesById: Map<string, PreferredCategoryDisplay>,
+  category: AdminInfluencerPreferredCategory | null | undefined,
+) {
+  if (!category?.categoryId || !category.name) return
+
+  categoriesById.set(category.categoryId, {
+    categoryCode: category.categoryCode,
+    categoryId: category.categoryId,
+    name: category.name,
+  })
+}
+
+function buildPreferredCategoryMap({
+  influencer,
+}: {
+  influencer: AdminInfluencer
+}) {
+  const categoriesById = new Map<string, PreferredCategoryDisplay>()
+
+  influencer.preferredCategories?.forEach((category) =>
+    addPreferredCategory(categoriesById, category),
+  )
+  influencer.application?.preferredCategories?.forEach((category) =>
+    addPreferredCategory(categoriesById, category),
+  )
+
+  return categoriesById
+}
+
+function fallbackCategoryLabel(categoryId: string) {
+  return categoryId.length > 12 ? `${categoryId.slice(0, 8)}...` : categoryId
+}
+
+function socialHandleUrl(handle: string | null | undefined) {
+  const trimmed = handle?.trim()
+
+  if (!trimmed) return null
+
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  if (/^(www\.)?instagram\.com\//i.test(trimmed)) {
+    return `https://${trimmed.replace(/^https?:\/\//i, '')}`
+  }
+
+  const normalized = trimmed
+    .replace(/^@/, '')
+    .replace(/^instagram\.com\//i, '')
+    .replace(/^\/+|\/+$/g, '')
+
+  return normalized
+    ? `https://www.instagram.com/${encodeURIComponent(normalized)}`
+    : null
+}
+
+function socialPlatformLabel(platform: InfluencerSocialProfile['platform']) {
+  if (platform === 'INSTAGRAM') return 'Instagram'
+  if (platform === 'YOUTUBE') return 'YouTube'
+  if (platform === 'FACEBOOK') return 'Facebook'
+  return 'X'
+}
+
+function formatFollowerCount(value: number | null | undefined) {
+  if (typeof value !== 'number') return null
+
+  return new Intl.NumberFormat('en-IN', {
+    notation: value >= 100000 ? 'compact' : 'standard',
+    maximumFractionDigits: 1,
+  }).format(value)
+}
+
 function isInfluencerActionKind(action: string): action is InfluencerActionKind {
   return influencerActionKinds.includes(action as InfluencerActionKind)
 }
@@ -146,6 +239,139 @@ function DetailField({
       <p className="break-words text-sm text-foreground">
         {value ?? 'Not available'}
       </p>
+    </div>
+  )
+}
+
+function DetailNodeField({
+  children,
+  label,
+}: {
+  children: ReactNode
+  label: string
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-semibold uppercase text-muted">{label}</p>
+      <div className="break-words text-sm text-foreground">{children}</div>
+    </div>
+  )
+}
+
+function SocialHandleLink({
+  handle,
+}: {
+  handle: string | null | undefined
+}) {
+  const url = socialHandleUrl(handle)
+
+  if (!handle) {
+    return <span>Not available</span>
+  }
+
+  if (!url) {
+    return <span>{handle}</span>
+  }
+
+  return (
+    <a
+      className="inline-flex max-w-full items-center gap-1.5 break-all font-medium text-primary transition hover:underline"
+      href={url}
+      rel="noreferrer"
+      target="_blank"
+    >
+      <span>{handle}</span>
+      <ArrowUpRight className="size-3.5 shrink-0" />
+    </a>
+  )
+}
+
+function SocialProfilesList({
+  fallbackHandle,
+  profiles,
+}: {
+  fallbackHandle?: string | null
+  profiles?: InfluencerSocialProfile[]
+}) {
+  if (!profiles?.length) {
+    return <SocialHandleLink handle={fallbackHandle} />
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {profiles.map((profile) => {
+        const followerCount = formatFollowerCount(profile.followerCount)
+
+        return (
+          <a
+            className="inline-flex max-w-full items-center justify-between gap-3 rounded-[0.75rem] border border-border bg-surface-muted/45 px-3 py-2 text-left transition hover:border-primary/40 hover:text-primary"
+            href={profile.profileUrl}
+            key={`${profile.platform}-${profile.profileUrl}`}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-foreground">
+                {socialPlatformLabel(profile.platform)}
+              </span>
+              <span className="block truncate text-xs text-muted">
+                {profile.handle ?? profile.profileUrl}
+                {followerCount ? ` · ${followerCount} followers` : ''}
+              </span>
+            </span>
+            <ArrowUpRight className="size-3.5 shrink-0 text-primary" />
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
+function PreferredCategoryLinks({
+  canReadSettings,
+  categoryIds,
+  categoriesById,
+  onNavigate,
+}: {
+  canReadSettings: boolean
+  categoryIds: string[]
+  categoriesById: Map<string, PreferredCategoryDisplay>
+  onNavigate: (path: string) => void
+}) {
+  const visibleCategoryIds = uniqueNonEmpty(categoryIds)
+
+  if (!visibleCategoryIds.length) {
+    return <span>Not available</span>
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {visibleCategoryIds.map((categoryId) => {
+        const category = categoriesById.get(categoryId)
+        const label = category?.name ?? fallbackCategoryLabel(categoryId)
+        const path = canReadSettings
+          ? `${routePaths.settings}/categories/${encodeURIComponent(categoryId)}`
+          : routeWithFilters(routePaths.influencers, {
+              categoryId,
+              categoryLabel: category?.name,
+            })
+
+        return (
+          <button
+            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-surface-muted/50 px-2.5 py-1 text-left text-xs font-semibold text-foreground transition hover:border-primary/35 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            key={categoryId}
+            title={category ? `${category.name} · ${category.categoryCode}` : categoryId}
+            type="button"
+            onClick={() => onNavigate(path)}
+          >
+            <span className="truncate">{label}</span>
+            {category?.categoryCode ? (
+              <span className="text-muted">{category.categoryCode}</span>
+            ) : null}
+            <ArrowUpRight className="size-3 shrink-0 text-muted" />
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -544,6 +770,14 @@ function OperationalSignalsPanel({
   const permittedActions = influencer.availableActions.filter((action) =>
     canRunInfluencerAction({ action, canReviewInfluencers }),
   )
+  const permittedRecommendedAction =
+    influencer.nextRecommendedAction &&
+    canRunInfluencerAction({
+      action: influencer.nextRecommendedAction,
+      canReviewInfluencers,
+    })
+      ? influencer.nextRecommendedAction
+      : null
 
   return (
     <SectionShell
@@ -574,7 +808,11 @@ function OperationalSignalsPanel({
         </div>
         <DetailField
           label="Recommended next"
-          value={humanizeCode(influencer.nextRecommendedAction)}
+          value={
+            permittedRecommendedAction
+              ? humanizeCode(permittedRecommendedAction)
+              : null
+          }
         />
       </div>
     </SectionShell>
@@ -609,6 +847,7 @@ export function InfluencerDetailPage() {
   const canReadOrders = usePermission('orders:read')
   const canReadReels = usePermission('reels:read')
   const canReadVendors = usePermission('vendors:read')
+  const canReadSettings = usePermission('settings:read')
   const canReviewInfluencers = usePermission('influencers:review')
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedAction, setSelectedAction] =
@@ -704,7 +943,7 @@ export function InfluencerDetailPage() {
   if (influencerQuery.isLoading) {
     return (
       <PageContainer>
-        <Skeleton className="h-32 rounded-2xl" />
+        <DetailPageHeaderSkeleton />
         <div className="grid gap-4 lg:grid-cols-4">
           <Skeleton className="h-28 rounded-2xl" />
           <Skeleton className="h-28 rounded-2xl" />
@@ -735,6 +974,9 @@ export function InfluencerDetailPage() {
   const creatorReelsPath = routeWithFilters(routePaths.reels, {
     search: influencer.publicInfluencerId,
     view: influencer.summary.pendingReelCount > 0 ? 'pending' : 'live',
+  })
+  const preferredCategoriesById = buildPreferredCategoryMap({
+    influencer,
   })
 
   return (
@@ -797,7 +1039,110 @@ export function InfluencerDetailPage() {
       </div>
 
       <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <LifecyclePanel influencer={influencer} />
+        <div className="space-y-3">
+          <LifecyclePanel influencer={influencer} />
+
+          <section className="grid gap-3 2xl:grid-cols-[1.15fr_0.85fr]">
+            <SectionShell
+              description="Customer identity stays active while creator capabilities are managed here."
+              icon={<BadgeCheck className="size-4" />}
+              title="Creator profile"
+            >
+              <div className="grid gap-4 md:grid-cols-2">
+                <DetailField label="Display name" value={influencer.displayName} />
+                <DetailNodeField label="Social profiles">
+                  <SocialProfilesList
+                    fallbackHandle={influencer.socialHandle}
+                    profiles={influencer.socialProfiles}
+                  />
+                </DetailNodeField>
+                <DetailField label="Customer status" value={influencer.customer.status} />
+                <DetailField
+                  label="City"
+                  value={influencer.customer.zone?.zoneName ?? influencer.customer.city}
+                />
+                <DetailField label="Mobile" value={influencer.customer.mobileNumber} />
+                <DetailField label="Email" value={influencer.customer.email} />
+                <DetailField
+                  label="Approved at"
+                  value={formatDateSafe(influencer.approvedAt)}
+                />
+                <DetailField
+                  label="Last commission"
+                  value={formatDateSafe(influencer.summary.lastCommissionAt)}
+                />
+              </div>
+              {influencer.bio ? (
+                <div className="mt-5 rounded-[0.875rem] border border-border bg-surface-muted/45 p-4">
+                  <p className="text-xs font-semibold uppercase text-muted">Bio</p>
+                  <p className="mt-2 text-sm leading-6 text-foreground">
+                    {influencer.bio}
+                  </p>
+                </div>
+              ) : null}
+            </SectionShell>
+
+            <SectionShell
+              description="Submitted creator application and latest review context."
+              icon={<UserRound className="size-4" />}
+              title="Application"
+            >
+              {influencer.application ? (
+                <div className="mt-5 space-y-4">
+                  <DetailField label="Status" value={influencer.application.status} />
+                  <DetailField label="City" value={influencer.application.city} />
+                  <DetailField
+                    label="Submitted"
+                    value={formatDateSafe(influencer.application.createdAt)}
+                  />
+                  <DetailField
+                    label="Reviewed"
+                    value={formatDateSafe(influencer.application.reviewedAt)}
+                  />
+                  <DetailNodeField label="Preferred categories">
+                    <PreferredCategoryLinks
+                      canReadSettings={canReadSettings}
+                      categoriesById={preferredCategoriesById}
+                      categoryIds={influencer.application.preferredCategoryIds}
+                      onNavigate={navigate}
+                    />
+                  </DetailNodeField>
+                  <DetailNodeField label="Social profiles">
+                    <SocialProfilesList
+                      fallbackHandle={influencer.application.socialHandle}
+                      profiles={influencer.application.socialProfiles}
+                    />
+                  </DetailNodeField>
+                  {influencer.application.motivation ? (
+                    <div className="rounded-[0.875rem] border border-border bg-surface-muted/45 p-4">
+                      <p className="text-xs font-semibold uppercase text-muted">
+                        Motivation
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-foreground">
+                        {influencer.application.motivation}
+                      </p>
+                    </div>
+                  ) : null}
+                  {applicationReason ? (
+                    <div className="rounded-[0.875rem] border border-border bg-surface-muted/45 p-4">
+                      <p className="text-xs font-semibold uppercase text-muted">
+                        Review reason
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-foreground">
+                        {applicationReason}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <EmptyState
+                  title="No application"
+                  description="This creator profile does not have an application payload."
+                />
+              )}
+            </SectionShell>
+          </section>
+        </div>
 
         <div className="space-y-3">
           <RelatedRecordsPanel
@@ -812,100 +1157,6 @@ export function InfluencerDetailPage() {
             influencer={influencer}
           />
         </div>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <SectionShell
-          description="Customer identity stays active while creator capabilities are managed here."
-          icon={<BadgeCheck className="size-4" />}
-          title="Creator profile"
-        >
-          <div className="grid gap-4 md:grid-cols-2">
-            <DetailField label="Display name" value={influencer.displayName} />
-            <DetailField label="Social handle" value={influencer.socialHandle} />
-            <DetailField label="Customer status" value={influencer.customer.status} />
-            <DetailField
-              label="City"
-              value={influencer.customer.zone?.zoneName ?? influencer.customer.city}
-            />
-            <DetailField label="Mobile" value={influencer.customer.mobileNumber} />
-            <DetailField label="Email" value={influencer.customer.email} />
-            <DetailField
-              label="Approved at"
-              value={formatDateSafe(influencer.approvedAt)}
-            />
-            <DetailField
-              label="Last commission"
-              value={formatDateSafe(influencer.summary.lastCommissionAt)}
-            />
-          </div>
-          {influencer.bio ? (
-            <div className="mt-5 rounded-[0.875rem] border border-border bg-surface-muted/45 p-4">
-              <p className="text-xs font-semibold uppercase text-muted">Bio</p>
-              <p className="mt-2 text-sm leading-6 text-foreground">
-                {influencer.bio}
-              </p>
-            </div>
-          ) : null}
-        </SectionShell>
-
-        <SectionShell
-          description="Submitted creator application and latest review context."
-          icon={<UserRound className="size-4" />}
-          title="Application"
-        >
-          {influencer.application ? (
-            <div className="mt-5 space-y-4">
-              <DetailField label="Status" value={influencer.application.status} />
-              <DetailField label="City" value={influencer.application.city} />
-              <DetailField
-                label="Submitted"
-                value={formatDateSafe(influencer.application.createdAt)}
-              />
-              <DetailField
-                label="Reviewed"
-                value={formatDateSafe(influencer.application.reviewedAt)}
-              />
-              <DetailField
-                label="Preferred categories"
-                value={
-                  influencer.application.preferredCategoryIds.length
-                    ? influencer.application.preferredCategoryIds.join(', ')
-                    : null
-                }
-              />
-              <DetailField
-                label="Social handle"
-                value={influencer.application.socialHandle}
-              />
-              {influencer.application.motivation ? (
-                <div className="rounded-[0.875rem] border border-border bg-surface-muted/45 p-4">
-                  <p className="text-xs font-semibold uppercase text-muted">
-                    Motivation
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-foreground">
-                    {influencer.application.motivation}
-                  </p>
-                </div>
-              ) : null}
-              {applicationReason ? (
-                <div className="rounded-[0.875rem] border border-border bg-surface-muted/45 p-4">
-                  <p className="text-xs font-semibold uppercase text-muted">
-                    Review reason
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-foreground">
-                    {applicationReason}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <EmptyState
-              title="No application"
-              description="This creator profile does not have an application payload."
-            />
-          )}
-        </SectionShell>
       </section>
 
       <SectionShell

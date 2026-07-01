@@ -25,8 +25,12 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { DynamicTable, type DynamicTableColumn } from '../../../components/ui/Table'
-import { DetailPageHeader } from '../../../components/layout/DetailPageHeader'
+import {
+  DetailPageHeader,
+  DetailPageHeaderSkeleton,
+} from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
+import { useMediaViewer, type MediaViewerItem } from '../../../components/media'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { formatDate } from '../../../utils/formatDate'
@@ -155,10 +159,12 @@ function canRunReelAction({
   canDeleteReels,
   canModerateReels,
 }: {
-  action: string
+  action: string | null | undefined
   canDeleteReels: boolean
   canModerateReels: boolean
 }) {
+  if (!action) return false
+
   if (!isReelActionKind(action)) return false
 
   if (action === 'SOFT_DELETE' || action === 'HARD_DELETE') {
@@ -206,6 +212,60 @@ function isOpenableUrl(value: string | null | undefined): value is string {
   } catch {
     return false
   }
+}
+
+function buildReelMediaViewerItems(reel: AdminReel): MediaViewerItem[] {
+  const items: MediaViewerItem[] = []
+  const thumbnailUrl = isOpenableUrl(reel.media.thumbnailUrl)
+    ? reel.media.thumbnailUrl
+    : null
+  const playbackUrl = isOpenableUrl(reel.media.playbackUrl)
+    ? reel.media.playbackUrl
+    : null
+
+  if (thumbnailUrl) {
+    items.push({
+      description: `${humanizeCode(reel.media.uploadStatus)} thumbnail used in reel review.`,
+      downloadUrl: thumbnailUrl,
+      height: reel.media.height ?? null,
+      id: `${reel.reelId}-thumbnail`,
+      kind: 'image',
+      ownerLabel: reel.vendor.shopName,
+      sourceLabel: 'Reel thumbnail',
+      src: thumbnailUrl,
+      title: `${reel.publicReelId} thumbnail`,
+      width: reel.media.width ?? null,
+    })
+  }
+
+  if (reel.media.cloudflareVideoUid || playbackUrl) {
+    items.push({
+      cloudflareVideoUid: reel.media.cloudflareVideoUid,
+      description: `${humanizeCode(reel.media.uploadStatus)} · ${formatDuration(
+        reel.media.durationSeconds,
+      )}`,
+      downloadUrl: playbackUrl,
+      height: reel.media.height ?? null,
+      id: `${reel.reelId}-video`,
+      kind: reel.media.cloudflareVideoUid ? 'cloudflare-video' : 'video',
+      ownerLabel: reel.vendor.shopName,
+      posterUrl: thumbnailUrl,
+      sourceLabel: 'Reel playback',
+      src: playbackUrl,
+      title: `${reel.publicReelId} video`,
+      width: reel.media.width ?? null,
+    })
+  }
+
+  return items
+}
+
+function findReelMediaIndex(items: MediaViewerItem[], kind: 'image' | 'video') {
+  return items.findIndex((item) =>
+    kind === 'image'
+      ? item.kind === 'image'
+      : item.kind === 'cloudflare-video' || item.kind === 'video',
+  )
 }
 
 function UrlDetailField({
@@ -265,16 +325,29 @@ function getModerationStatusTone(status: ReelModerationStatus) {
   return 'neutral'
 }
 
-function buildReelDetailMetrics(reel: AdminReel) {
+function buildReelDetailMetrics(
+  reel: AdminReel,
+  {
+    canDeleteReels,
+    canModerateReels,
+  }: { canDeleteReels: boolean; canModerateReels: boolean },
+) {
   const riskCount =
     reel.warnings.length + reel.blockingReasons.length + reel.missingFields.length
+  const canRunRecommendedAction = canRunReelAction({
+    action: reel.nextRecommendedAction,
+    canDeleteReels,
+    canModerateReels,
+  })
 
   return [
     {
       label: 'Moderation',
       value: humanizeCode(reel.moderation.status),
       meta: reel.nextRecommendedAction
-        ? `Next: ${humanizeCode(reel.nextRecommendedAction)}`
+        ? canRunRecommendedAction
+          ? `Next: ${humanizeCode(reel.nextRecommendedAction)}`
+          : 'No permitted actions'
         : 'No pending action',
       tone: getModerationStatusTone(reel.moderation.status),
       icon: <ShieldCheck className="size-4" />,
@@ -510,7 +583,10 @@ function RelatedRecordsPanel({
   onNavigate: (path: string) => void
   reel: AdminReel
 }) {
-  const canOpenPlayback = isOpenableUrl(reel.media.playbackUrl)
+  const { openMediaViewer } = useMediaViewer()
+  const mediaItems = buildReelMediaViewerItems(reel)
+  const videoIndex = findReelMediaIndex(mediaItems, 'video')
+  const canOpenPlayback = videoIndex >= 0
   const reelQueueView = reel.publish.customerVisibility === 'VISIBLE' ? 'live' : 'pending'
 
   return (
@@ -594,7 +670,7 @@ function RelatedRecordsPanel({
           value={reel.media.cloudflareVideoUid ?? reel.publicReelId}
           onOpen={() => {
             if (canOpenPlayback) {
-              window.open(reel.media.playbackUrl as string, '_blank', 'noreferrer')
+              openMediaViewer({ items: mediaItems, startIndex: videoIndex })
             }
           }}
         />
@@ -639,6 +715,11 @@ function OperationalSignalsPanel({
   const permittedActions = reel.availableActions.filter((action) =>
     canRunReelAction({ action, canDeleteReels, canModerateReels }),
   )
+  const canRunRecommendedAction = canRunReelAction({
+    action: reel.nextRecommendedAction,
+    canDeleteReels,
+    canModerateReels,
+  })
 
   return (
     <SectionShell
@@ -679,7 +760,11 @@ function OperationalSignalsPanel({
         </div>
         <DetailField
           label="Recommended next"
-          value={humanizeCode(reel.nextRecommendedAction)}
+          value={
+            canRunRecommendedAction
+              ? humanizeCode(reel.nextRecommendedAction)
+              : 'No permitted actions'
+          }
         />
       </div>
     </SectionShell>
@@ -687,8 +772,12 @@ function OperationalSignalsPanel({
 }
 
 function ReelMediaPanel({ reel }: { reel: AdminReel }) {
+  const { openMediaViewer } = useMediaViewer()
+  const mediaItems = buildReelMediaViewerItems(reel)
   const hasThumbnail = isOpenableUrl(reel.media.thumbnailUrl)
-  const hasPlayback = isOpenableUrl(reel.media.playbackUrl)
+  const thumbnailIndex = findReelMediaIndex(mediaItems, 'image')
+  const videoIndex = findReelMediaIndex(mediaItems, 'video')
+  const hasPlayback = videoIndex >= 0
 
   return (
     <SectionShell
@@ -698,11 +787,9 @@ function ReelMediaPanel({ reel }: { reel: AdminReel }) {
             size="sm"
             type="button"
             variant="secondary"
-            onClick={() =>
-              window.open(reel.media.playbackUrl as string, '_blank', 'noreferrer')
-            }
+            onClick={() => openMediaViewer({ items: mediaItems, startIndex: videoIndex })}
           >
-            <ArrowUpRight className="mr-2 size-4" />
+            <Eye className="mr-2 size-4" />
             Playback
           </Button>
         ) : null
@@ -715,11 +802,26 @@ function ReelMediaPanel({ reel }: { reel: AdminReel }) {
         <div className="overflow-hidden rounded-[0.875rem] border border-border bg-surface-muted/40">
           <div className="flex aspect-video items-center justify-center">
             {hasThumbnail ? (
-              <img
-                alt={`Thumbnail for ${reel.publicReelId}`}
-                className="h-full w-full object-cover"
-                src={reel.media.thumbnailUrl as string}
-              />
+              <button
+                className="group relative h-full w-full overflow-hidden text-left"
+                type="button"
+                onClick={() =>
+                  openMediaViewer({
+                    items: mediaItems,
+                    startIndex: thumbnailIndex >= 0 ? thumbnailIndex : 0,
+                  })
+                }
+              >
+                <img
+                  alt={`Thumbnail for ${reel.publicReelId}`}
+                  className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                  src={reel.media.thumbnailUrl as string}
+                />
+                <span className="absolute bottom-3 right-3 inline-flex items-center rounded-control bg-black/70 px-3 py-2 text-xs font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  <Eye className="mr-2 size-4" />
+                  View thumbnail
+                </span>
+              </button>
             ) : (
               <div className="flex flex-col items-center gap-2 text-muted">
                 <ImageIcon className="size-8" />
@@ -887,7 +989,7 @@ export function ReelDetailPage() {
   if (reelQuery.isLoading) {
     return (
       <PageContainer>
-        <Skeleton className="h-12 w-full" />
+        <DetailPageHeaderSkeleton />
         <Skeleton className="h-[28rem] w-full" />
       </PageContainer>
     )
@@ -916,7 +1018,10 @@ export function ReelDetailPage() {
     )
   }
 
-  const detailMetrics = buildReelDetailMetrics(reel)
+  const detailMetrics = buildReelDetailMetrics(reel, {
+    canDeleteReels,
+    canModerateReels,
+  })
 
   return (
     <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">

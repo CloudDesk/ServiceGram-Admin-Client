@@ -77,6 +77,22 @@ function sessionTimeTone(seconds: number | null) {
   return "text-[color:var(--adaptive-success-text)]";
 }
 
+function accessTokenTimeTone(seconds: number | null) {
+  if (seconds === null) {
+    return "text-adaptive-muted";
+  }
+
+  if (seconds <= 0 || seconds <= 60) {
+    return "text-[color:var(--adaptive-danger-text)]";
+  }
+
+  if (seconds <= 5 * 60) {
+    return "text-[color:var(--adaptive-warning-text)]";
+  }
+
+  return "text-[color:var(--adaptive-success-text)]";
+}
+
 export function Topbar() {
   const navigate = useNavigate();
   const clearSession = useAuthStore((state) => state.clearSession);
@@ -93,6 +109,16 @@ export function Topbar() {
   const profileRef = useRef<HTMLDivElement | null>(null);
   const title = pageChrome.title ?? "ServiceGram Admin";
   const description = pageChrome.description ?? "Admin operations console";
+  const accessTokenRemainingSeconds = remainingSecondsUntil(
+    session?.accessTokenExpiresAt,
+    now,
+  );
+  const accessTokenRemainingLabel = formatRemainingTime(
+    accessTokenRemainingSeconds,
+  );
+  const accessTokenRemainingTone = accessTokenTimeTone(
+    accessTokenRemainingSeconds,
+  );
   const sessionRemainingSeconds = remainingSecondsUntil(
     session?.refreshTokenExpiresAt,
     now,
@@ -101,7 +127,7 @@ export function Topbar() {
   const sessionRemainingTone = sessionTimeTone(sessionRemainingSeconds);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => setNow(Date.now()), 60_000);
+    const intervalId = window.setInterval(() => setNow(Date.now()), 15_000);
 
     return () => window.clearInterval(intervalId);
   }, []);
@@ -233,11 +259,22 @@ export function Topbar() {
                     </p>
                   </div>
                 </div>
-                <div className="mt-3 rounded-[0.75rem] border border-adaptive bg-[color:var(--adaptive-search-bg)] px-3 py-2">
+                <div className="mt-3 grid gap-2 rounded-[0.75rem] border border-adaptive bg-[color:var(--adaptive-search-bg)] px-3 py-2">
                   <div className="flex items-center justify-between gap-3 text-xs">
                     <span className="flex min-w-0 items-center gap-2 text-adaptive-muted">
                       <Clock3 className="size-3.5 shrink-0" />
-                      <span className="truncate">Session remaining</span>
+                      <span className="truncate">Access token</span>
+                    </span>
+                    <span
+                      className={`shrink-0 font-semibold ${accessTokenRemainingTone}`}
+                    >
+                      {accessTokenRemainingLabel}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <span className="flex min-w-0 items-center gap-2 text-adaptive-muted">
+                      <Clock3 className="size-3.5 shrink-0" />
+                      <span className="truncate">Login session</span>
                     </span>
                     <span
                       className={`shrink-0 font-semibold ${sessionRemainingTone}`}

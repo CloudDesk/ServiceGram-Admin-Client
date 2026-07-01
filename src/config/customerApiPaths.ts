@@ -1,6 +1,8 @@
 export const CUSTOMER_LIST_PATH = '/admin/customers'
 export const CUSTOMER_DETAIL_PATH = (customerId: string) =>
   `/admin/customers/${customerId}`
+export const CUSTOMER_OVERVIEW_PATH = (customerId: string) =>
+  `/admin/customers/${customerId}/overview`
 export const CUSTOMER_RELATED_VENDORS_PATH = (customerId: string) =>
   `/admin/customers/${customerId}/related-vendors`
 export const CUSTOMER_PROFILE_UPDATE_PATH = (customerId: string) =>
