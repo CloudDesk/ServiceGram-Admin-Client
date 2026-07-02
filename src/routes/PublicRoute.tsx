@@ -1,4 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { routePaths } from '../config/routes'
 import { useAuthStore } from '../store/authStore'
 import { useAuthSession } from '../features/auth/hooks/useAuthSession'
 import { resolveAuthorizedAuthRedirectPath } from '../features/auth/utils/redirect'
@@ -26,13 +27,15 @@ export function PublicRoute() {
   const location = useLocation()
   const { isHydrated, accessToken } = useAuthSession()
   const can = useAuthStore((state) => state.can)
+  const searchParams = new URLSearchParams(location.search)
+  const isReauthLogin =
+    location.pathname === routePaths.login && searchParams.get('reason') === 'reauth'
 
   if (!isHydrated) {
     return null
   }
 
-  if (accessToken) {
-    const searchParams = new URLSearchParams(location.search)
+  if (accessToken && !isReauthLogin) {
     const redirectTo = resolveAuthorizedAuthRedirectPath(
       searchParams.get('redirectTo') ?? redirectFromLocationState(location.state),
       can,

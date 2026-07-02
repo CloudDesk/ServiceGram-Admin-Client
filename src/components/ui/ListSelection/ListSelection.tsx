@@ -43,21 +43,26 @@ export function ListSelectionCheckbox({
     event.stopPropagation()
   }
 
+  const preventMouseFocusScroll = (event: MouseEvent<HTMLLabelElement>) => {
+    event.preventDefault()
+  }
+
   return (
     <label
       className={cn(
-        'inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-control text-foreground transition hover:bg-surface-muted focus-within:outline-none focus-within:ring-2 focus-within:ring-ring',
+        'relative inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-control text-foreground transition hover:bg-surface-muted focus-within:outline-none focus-within:ring-2 focus-within:ring-ring',
         disabled && 'cursor-not-allowed opacity-60',
         className,
       )}
       title={label}
       onClick={stopRowActivation}
+      onMouseDown={preventMouseFocusScroll}
     >
       <input
         ref={inputRef}
         aria-label={label}
         checked={checked}
-        className="peer sr-only"
+        className="peer absolute inset-0 size-full cursor-pointer opacity-0"
         disabled={disabled}
         type="checkbox"
         onChange={(event) => onChange(event.target.checked)}

@@ -80,6 +80,7 @@ export function LoginForm() {
   const [searchParams] = useSearchParams();
   const { pushToast } = useToast();
   const can = useAuthStore((state) => state.can);
+  const user = useAuthStore((state) => state.user);
   const mutation = useLogin();
   const redirectNotice = useMemo(readAuthRedirectNotice, []);
   const redirectTo = safeAuthRedirectPath(
@@ -88,14 +89,19 @@ export function LoginForm() {
       redirectFromLocationState(location.state),
   );
   const reason = searchParams.get("reason") ?? redirectNotice?.reason;
+  const isReauth = reason === "reauth";
+  const reauthEmail = isReauth ? user?.email ?? "" : "";
   const noticeMessage =
-    reason === "reauth"
-      ? redirectNotice?.message ??
-        "Please sign in again before performing this action."
+    isReauth
+      ? "Confirm your password to continue with this admin action."
       : reason === "expired"
         ? redirectNotice?.message ??
           "Your session has expired. Please log in again."
         : null;
+  const formTitle = isReauth ? "Confirm password" : "Welcome back";
+  const submitLabel = isReauth
+    ? "Confirm and continue"
+    : "Sign in to Admin Portal";
   const {
     clearErrors,
     formState: { errors },
@@ -112,8 +118,11 @@ export function LoginForm() {
   const emailField = register("email");
 
   useEffect(() => {
-    reset(EMPTY_LOGIN_VALUES);
-  }, [reset]);
+    reset({
+      email: reauthEmail,
+      password: "",
+    });
+  }, [reauthEmail, reset]);
 
   function clearLoginFeedback(field: keyof LoginFormValues) {
     clearErrors(field);
@@ -137,9 +146,13 @@ export function LoginForm() {
 
           pushToast({
             tone: "success",
-            title: "Signed in successfully.",
+            title: isReauth
+              ? "Password confirmed."
+              : "Signed in successfully.",
             description:
-              destination === routePaths.dashboard
+              isReauth
+                ? "Returning you to the admin action."
+                : destination === routePaths.dashboard
                 ? "Loading your admin workspace."
                 : destination === redirectTo
                   ? "Returning you to your previous page."
@@ -191,7 +204,7 @@ export function LoginForm() {
     >
       <div className="space-y-2">
         <h1 className="text-[1.9rem] font-semibold tracking-[-0.05em] text-foreground">
-          Welcome back
+          {formTitle}
         </h1>
       </div>
 
@@ -212,6 +225,7 @@ export function LoginForm() {
             hasError={Boolean(errors.email)}
             id="email"
             placeholder="admin@servicegram.in"
+            readOnly={Boolean(reauthEmail)}
             {...emailField}
             onChange={(event) => {
               clearLoginFeedback("email");
@@ -269,7 +283,7 @@ export function LoginForm() {
         type="submit"
         variant="ghost"
       >
-        Sign in to Admin Portal
+        {submitLabel}
       </Button>
 
       <div className="rounded-[1.25rem] border border-border/70 bg-surface/60 p-3 text-[0.8125rem] leading-5 text-muted">

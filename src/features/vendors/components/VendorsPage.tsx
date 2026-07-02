@@ -1727,8 +1727,8 @@ export function VendorsPage() {
                 />
               </div>
             ) : (
-              <div className="flex flex-col xl:min-h-0 xl:flex-1">
-                <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
+              <div className="flex flex-col overflow-hidden xl:min-h-0 xl:flex-1">
+                <div className="overflow-x-auto overscroll-contain xl:min-h-0 xl:flex-1 xl:overflow-auto">
                   <div
                     className="min-w-0 xl:min-w-[var(--vendor-grid-min-width)]"
                     style={vendorGridStyle}

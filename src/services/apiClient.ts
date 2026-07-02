@@ -149,13 +149,14 @@ async function handleUnauthorized(
     reason,
     redirectTo,
     message:
-      envelope?.message ??
-      (reason === 'reauth'
-        ? 'Please sign in again before performing this action.'
-        : 'Your session has expired. Please log in again.'),
+      reason === 'reauth'
+        ? 'Confirm your password to continue with this admin action.'
+        : envelope?.message ?? 'Your session has expired. Please log in again.',
   }
 
-  clearSession()
+  if (reason !== 'reauth') {
+    clearSession()
+  }
 
   if (window.location.pathname !== routePaths.login) {
     window.sessionStorage.setItem(

@@ -24,15 +24,19 @@ export function AdminLayout() {
 
   useLayoutEffect(() => {
     const isWorkspace = pageChrome.layout === "workspace";
+    const root = document.getElementById("root");
+
     document.documentElement.classList.toggle(
       "admin-workspace-scroll-lock",
       isWorkspace,
     );
     document.body.classList.toggle("admin-workspace-scroll-lock", isWorkspace);
+    root?.classList.toggle("admin-workspace-scroll-lock", isWorkspace);
 
     return () => {
       document.documentElement.classList.remove("admin-workspace-scroll-lock");
       document.body.classList.remove("admin-workspace-scroll-lock");
+      root?.classList.remove("admin-workspace-scroll-lock");
     };
   }, [pageChrome.layout]);
 

@@ -360,8 +360,14 @@ export interface VendorDetail extends VendorListItem {
 export interface VendorVerifiedDocument {
   documentId: string
   documentType: string
+  mediaAssetId?: string | null
   rejectionReason?: string | null
   status: string
+  verifiedByAdminId?: string | null
+  verifiedAt?: string | null
+  expiresAt?: string | null
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface VendorNote {
@@ -369,7 +375,24 @@ export interface VendorNote {
   note: string
 }
 
-export interface VendorActionResult extends VendorListItem {
+export interface VendorActionResult {
+  vendorId: string
+  publicVendorId?: string
+  shopName?: string
+  onboardingStatus?: VendorOnboardingStatus
+  vendorStatus?: VendorStatus
+  reviewNotes?: string | null
+  rejectionReason?: string | null
+  documentSummary?: VendorDocumentSummary | null
+  warnings?: string[]
+  availableActions?: string[]
+  nextRecommendedAction?: string | null
+  verifiedAt?: string | null
+  suspendedAt?: string | null
+  suspensionReason?: string | null
+  updatedAt?: string
+  notificationQueued?: boolean
+  notificationDispatch?: unknown
   verifiedDocument?: VendorVerifiedDocument
   rejectedDocument?: VendorVerifiedDocument
   bankAccount?: VendorBankAccount

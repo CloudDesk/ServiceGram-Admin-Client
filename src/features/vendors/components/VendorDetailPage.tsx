@@ -104,10 +104,14 @@ import {
 } from "./VendorServiceActionModal";
 import type {
   VendorBankAccount,
+  VendorBankAccountSummary,
   VendorBrandLogoMimeType,
   VendorContactPerson,
+  VendorActionResult,
   VendorDetail,
   VendorDocument,
+  VendorDocumentSummary,
+  VendorOverviewResponse,
   VendorProfileUpdatePayload,
   VendorServiceRecord,
   VendorReviewTimelineItem,
@@ -311,6 +315,140 @@ function hasBankAccountAction(bankAccount: VendorBankAccount, action: string) {
   return bankAccount.availableActions
     .map((availableAction) => availableAction.toUpperCase())
     .includes(action);
+}
+
+function patchVendorDocumentSummary(
+  current: VendorDocumentSummary | null,
+  next?: VendorDocumentSummary | null,
+) {
+  return next === undefined ? current : next;
+}
+
+function buildBankAccountSummary(
+  accounts: VendorBankAccount[],
+  current: VendorBankAccountSummary,
+): VendorBankAccountSummary {
+  const primary =
+    accounts.find((account) => account.isPrimary) ?? accounts[0] ?? null;
+  const summary = accounts.reduce(
+    (acc, account) => {
+      acc.total += 1;
+
+      if (account.status === "VERIFIED") acc.verified += 1;
+      if (account.status === "PENDING_VERIFICATION") acc.pending += 1;
+      if (account.status === "REJECTED") acc.rejected += 1;
+      if (account.status === "DISABLED") acc.disabled += 1;
+
+      return acc;
+    },
+    { total: 0, verified: 0, pending: 0, rejected: 0, disabled: 0 },
+  );
+  const warnings: string[] = [];
+
+  if (!primary) {
+    warnings.push("PRIMARY_BANK_ACCOUNT_MISSING");
+  } else if (primary.status === "PENDING_VERIFICATION") {
+    warnings.push("PRIMARY_BANK_ACCOUNT_PENDING_VERIFICATION");
+  } else if (primary.status === "REJECTED") {
+    warnings.push("PRIMARY_BANK_ACCOUNT_REJECTED");
+  } else if (primary.status === "DISABLED") {
+    warnings.push("PRIMARY_BANK_ACCOUNT_DISABLED");
+  }
+
+  return {
+    ...current,
+    ...summary,
+    hasPrimary: Boolean(primary),
+    primaryStatus: primary?.status ?? null,
+    primaryBankName: primary?.bankName ?? null,
+    primaryAccountNumberMasked: primary?.accountNumberMasked ?? null,
+    payoutReady: primary?.status === "VERIFIED",
+    warnings,
+    nextRecommendedAction: !primary
+      ? "ADD_BANK_ACCOUNT"
+      : primary.status === "PENDING_VERIFICATION"
+        ? "WAIT_FOR_ADMIN_BANK_REVIEW"
+        : primary.status === "REJECTED"
+          ? "UPDATE_BANK_ACCOUNT"
+          : null,
+  };
+}
+
+function patchVendorOverviewWithActionResult(
+  current: VendorOverviewResponse | undefined,
+  result: VendorActionResult,
+): VendorOverviewResponse | undefined {
+  if (!current || current.data.vendor.vendorId !== result.vendorId) {
+    return current;
+  }
+
+  const vendor = current.data.vendor;
+  const changedDocument = result.verifiedDocument ?? result.rejectedDocument;
+  const documents = changedDocument
+    ? vendor.documents.map((document) =>
+        document.documentId === changedDocument.documentId
+          ? {
+              ...document,
+              ...changedDocument,
+              rejectionReason:
+                changedDocument.rejectionReason === undefined
+                  ? document.rejectionReason
+                  : changedDocument.rejectionReason,
+            }
+          : document,
+      )
+    : vendor.documents;
+  const bankAccounts = result.bankAccount
+    ? vendor.bankAccounts.map((account) =>
+        account.bankAccountId === result.bankAccount?.bankAccountId
+          ? result.bankAccount
+          : account,
+      )
+    : vendor.bankAccounts;
+  const nextVendor: VendorDetail = {
+    ...vendor,
+    shopName: result.shopName ?? vendor.shopName,
+    onboardingStatus: result.onboardingStatus ?? vendor.onboardingStatus,
+    vendorStatus: result.vendorStatus ?? vendor.vendorStatus,
+    reviewNotes:
+      result.reviewNotes === undefined ? vendor.reviewNotes : result.reviewNotes,
+    rejectionReason:
+      result.rejectionReason === undefined
+        ? vendor.rejectionReason
+        : result.rejectionReason,
+    documentSummary: patchVendorDocumentSummary(
+      vendor.documentSummary,
+      result.documentSummary,
+    ),
+    warnings: result.warnings ?? vendor.warnings,
+    availableActions: result.availableActions ?? vendor.availableActions,
+    nextRecommendedAction:
+      result.nextRecommendedAction === undefined
+        ? vendor.nextRecommendedAction
+        : result.nextRecommendedAction,
+    verifiedAt:
+      result.verifiedAt === undefined ? vendor.verifiedAt : result.verifiedAt,
+    suspendedAt:
+      result.suspendedAt === undefined ? vendor.suspendedAt : result.suspendedAt,
+    suspensionReason:
+      result.suspensionReason === undefined
+        ? vendor.suspensionReason
+        : result.suspensionReason,
+    updatedAt: result.updatedAt ?? vendor.updatedAt,
+    documents,
+    bankAccounts,
+    bankAccountSummary: result.bankAccount
+      ? buildBankAccountSummary(bankAccounts, vendor.bankAccountSummary)
+      : vendor.bankAccountSummary,
+  };
+
+  return {
+    ...current,
+    data: {
+      ...current.data,
+      vendor: nextVendor,
+    },
+  };
 }
 
 function statusFromRecommendedAction(action: string) {
@@ -2239,9 +2377,26 @@ export function VendorDetailPage({
       );
     },
     onMutate: () => setActionError(null),
-    onSuccess: () => {
+    onSuccess: (response) => {
       setSelectedAction(null);
-      void refreshVendor();
+      queryClient.setQueryData<VendorOverviewResponse>(
+        ["vendor-overview", vendorId],
+        (current) =>
+          patchVendorOverviewWithActionResult(current, response.data),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["vendors"],
+        refetchType: "none",
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["vendor-onboarding"],
+        refetchType: "none",
+      });
+      window.setTimeout(() => {
+        void queryClient.invalidateQueries({
+          queryKey: ["vendor-overview", vendorId],
+        });
+      }, 1500);
     },
     onError: (error) => {
       setActionError(
