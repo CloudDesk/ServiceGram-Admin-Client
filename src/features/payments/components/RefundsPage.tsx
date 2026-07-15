@@ -58,6 +58,7 @@ import {
 } from './PaymentActionModal'
 import type {
   AdminFinancePagination,
+  AdminRefundChildSummary,
   AdminRefundStatus,
   AdminRefundSummary,
   AdminRefundsQueryParams,
@@ -261,34 +262,41 @@ function getRefundStatusTone(status: AdminRefundStatus): RefundTone {
 function buildRefundMetrics(
   refunds: AdminRefundSummary[],
   pagination?: AdminFinancePagination,
+  summary?: AdminRefundChildSummary,
 ): RefundMetric[] {
-  const total = pagination?.totalItems ?? refunds.length
-  const requested = refunds.filter((refund) => refund.status === 'REQUESTED').length
-  const processing = refunds.filter((refund) =>
-    ['APPROVED', 'PROCESSING'].includes(refund.status),
-  ).length
-  const approvedValue = refunds
-    .filter((refund) =>
-      ['APPROVED', 'PROCESSING', 'SUCCESS'].includes(refund.status),
-    )
-    .reduce((sum, refund) => sum + refund.amountPaise, 0)
+  const total = pagination?.totalItems ?? summary?.total ?? refunds.length
+  const requested =
+    summary?.requested ??
+    refunds.filter((refund) => refund.status === 'REQUESTED').length
+  const processing =
+    (summary ? summary.approved + summary.processing : undefined) ??
+    refunds.filter((refund) =>
+      ['APPROVED', 'PROCESSING'].includes(refund.status),
+    ).length
+  const approvedValue =
+    summary?.committedAmountPaise ??
+    refunds
+      .filter((refund) =>
+        ['APPROVED', 'PROCESSING', 'SUCCESS'].includes(refund.status),
+      )
+      .reduce((sum, refund) => sum + refund.amountPaise, 0)
 
   return [
     {
       label: 'Needs review',
-      meta: 'Requested refunds in visible rows',
+      meta: 'Requested refunds matching filters',
       tone: requested > 0 ? 'warning' : 'neutral',
       value: String(requested),
     },
     {
       label: 'Approved value',
-      meta: 'Approved, processing, or completed value in visible rows',
+      meta: 'Approved, processing, or completed value',
       tone: approvedValue > 0 ? 'success' : 'neutral',
       value: formatPaise(approvedValue),
     },
     {
       label: 'In process',
-      meta: 'Approved or processing refunds in visible rows',
+      meta: 'Approved or processing refunds',
       tone: processing > 0 ? 'info' : 'neutral',
       value: String(processing),
     },
@@ -301,39 +309,51 @@ function buildRefundMetrics(
   ]
 }
 
-function buildRefundQueueItems(refunds: AdminRefundSummary[]) {
+function buildRefundQueueItems(
+  summary: AdminRefundChildSummary | undefined,
+  refunds: AdminRefundSummary[],
+) {
   return [
     {
       key: 'all' as const,
-      label: 'All visible',
-      count: refunds.length,
+      label: 'All refunds',
+      count: summary?.total ?? refunds.length,
     },
     {
       key: 'requested' as const,
       label: 'Requested',
-      count: refunds.filter((refund) => refund.status === 'REQUESTED').length,
+      count:
+        summary?.requested ??
+        refunds.filter((refund) => refund.status === 'REQUESTED').length,
     },
     {
       key: 'approved' as const,
       label: 'Approved',
-      count: refunds.filter((refund) => refund.status === 'APPROVED').length,
+      count:
+        summary?.approved ??
+        refunds.filter((refund) => refund.status === 'APPROVED').length,
     },
     {
       key: 'processing' as const,
       label: 'Processing',
-      count: refunds.filter((refund) => refund.status === 'PROCESSING').length,
+      count:
+        summary?.processing ??
+        refunds.filter((refund) => refund.status === 'PROCESSING').length,
     },
     {
       key: 'successful' as const,
       label: 'Successful',
-      count: refunds.filter((refund) => refund.status === 'SUCCESS').length,
+      count:
+        summary?.successful ??
+        refunds.filter((refund) => refund.status === 'SUCCESS').length,
     },
     {
       key: 'exceptions' as const,
       label: 'Failed / rejected',
-      count: refunds.filter((refund) =>
-        ['FAILED', 'REJECTED'].includes(refund.status),
-      ).length,
+      count:
+        summary ? summary.failed + summary.rejected : refunds.filter((refund) =>
+          ['FAILED', 'REJECTED'].includes(refund.status),
+        ).length,
     },
   ]
 }
@@ -653,9 +673,44 @@ export function RefundsPage() {
     queryKey: ['refunds', query],
     queryFn: () => paymentService.getRefundList(query),
   })
+  const queueSummaryQuery = useMemo<AdminRefundsQueryParams>(
+    () => ({
+      page: 1,
+      limit: 1,
+      search: search.trim() || undefined,
+      city: city.trim() || undefined,
+      paymentId: paymentIds.length > 0 ? paymentIds : undefined,
+      orderId: orderIds.length > 0 ? orderIds : undefined,
+      customerId: customerIds.length > 0 ? customerIds : undefined,
+      vendorId: vendorIds.length > 0 ? vendorIds : undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      minAmountPaise: minAmountPaise ? Number(minAmountPaise) : undefined,
+      maxAmountPaise: maxAmountPaise ? Number(maxAmountPaise) : undefined,
+    }),
+    [
+      city,
+      customerIds,
+      dateFrom,
+      dateTo,
+      maxAmountPaise,
+      minAmountPaise,
+      orderIds,
+      paymentIds,
+      search,
+      vendorIds,
+    ],
+  )
+  const queueSummaryResultQuery = useQuery({
+    queryKey: ['refunds-summary', queueSummaryQuery],
+    queryFn: () => paymentService.getRefundList(queueSummaryQuery),
+    placeholderData: (previousData) => previousData,
+  })
 
   const refunds = refundsQuery.data?.data ?? []
   const pagination = refundsQuery.data?.pagination
+  const summary = refundsQuery.data?.summary
+  const queueSummary = queueSummaryResultQuery.data?.summary
   const refundSelection = useListSelection(refunds, (refund) => refund.refundId)
   const isInitialLoading = refundsQuery.isLoading && !refundsQuery.data
   const isRefreshing = refundsQuery.isFetching && Boolean(refundsQuery.data)
@@ -663,8 +718,8 @@ export function RefundsPage() {
     ? 'Refreshing now'
     : formatRefreshTime(refundsQuery.dataUpdatedAt)
 
-  const metrics = buildRefundMetrics(refunds, pagination)
-  const queueItems = buildRefundQueueItems(refunds)
+  const metrics = buildRefundMetrics(refunds, pagination, summary)
+  const queueItems = buildRefundQueueItems(queueSummary, refunds)
   const refundGridStyle = useMemo<RefundGridStyle>(
     () => ({
       '--refund-grid-template': getRefundGridTemplate(
@@ -1145,9 +1200,11 @@ export function RefundsPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h2 className="text-sm font-semibold text-foreground">
-                        Visible queues
+                        Refund queues
                       </h2>
-                      <p className="text-xs text-muted">Counts are loaded rows.</p>
+                      <p className="text-xs text-muted">
+                        Counts match current filters.
+                      </p>
                     </div>
                     <button
                       aria-label="Collapse refund filters"

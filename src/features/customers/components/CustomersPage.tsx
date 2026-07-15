@@ -982,20 +982,20 @@ export function CustomersPage() {
   const queueCountsQuery = useQuery({
     queryKey: ['customers', 'queue-counts', queueCountBaseQuery],
     queryFn: async (): Promise<CustomerQueueCounts> => {
-      const [summaryResponse, incompleteResponse] = await Promise.all([
-        customerService.getCustomerList(queueCountBaseQuery),
-        customerService.getCustomerList({
-          ...queueCountBaseQuery,
-          status: 'INCOMPLETE',
-        }),
-      ])
+      const summaryResponse = await customerService.getCustomerList(
+        queueCountBaseQuery,
+      )
+      const queueSummary = summaryResponse.summary.queueSummary
 
       return {
-        all: summaryResponse.pagination.totalItems,
-        active: summaryResponse.summary.active,
-        blocked: summaryResponse.summary.blocked,
-        incomplete: incompleteResponse.pagination.totalItems,
-        activeOrders: summaryResponse.summary.withActiveOrders,
+        all:
+          queueSummary?.allCustomers ?? summaryResponse.pagination.totalItems,
+        active: queueSummary?.active ?? summaryResponse.summary.active,
+        blocked: queueSummary?.blocked ?? summaryResponse.summary.blocked,
+        incomplete: queueSummary?.incomplete ?? 0,
+        activeOrders:
+          queueSummary?.activeOrders ??
+          summaryResponse.summary.withActiveOrders,
       }
     },
     placeholderData: (previousData) => previousData,

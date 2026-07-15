@@ -84,7 +84,8 @@ const actionContent: Record<VendorActionKind, ActionContent> = {
   },
   REACTIVATE: {
     title: 'Reactivate vendor',
-    description: 'Reactivate this vendor account and record the reason.',
+    description:
+      'Restore a suspended vendor or reopen a rejected application and record the reason.',
     submitLabel: 'Reactivate vendor',
     submitVariant: 'secondary',
     reasonLabel: 'Reactivation reason',

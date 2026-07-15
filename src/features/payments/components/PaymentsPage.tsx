@@ -52,6 +52,7 @@ import {
 } from './PaymentActionModal'
 import type {
   AdminPaymentGateway,
+  AdminPaymentChildSummary,
   AdminFinancePagination,
   AdminPaymentMethod,
   AdminPaymentsQueryParams,
@@ -267,37 +268,44 @@ function getPaymentStatusTone(status: AdminPaymentStatus): PaymentTone {
 function buildPaymentMetrics(
   payments: AdminPaymentSummary[],
   pagination?: AdminFinancePagination,
+  summary?: AdminPaymentChildSummary,
 ): PaymentMetric[] {
-  const total = pagination?.totalItems ?? payments.length
-  const successfulAmount = payments
-    .filter((payment) => payment.status === 'SUCCESS')
-    .reduce((sum, payment) => sum + payment.amountPaise, 0)
-  const needsReview = payments.filter(
-    (payment) =>
-      ['CREATED', 'PENDING', 'FAILED'].includes(payment.status) ||
-      payment.warnings.length > 0,
-  ).length
-  const refundRequests = payments.reduce(
-    (sum, payment) => sum + payment.refundSummary.requestedCount,
-    0,
-  )
+  const total = pagination?.totalItems ?? summary?.total ?? payments.length
+  const successfulAmount =
+    summary?.successfulAmountPaise ??
+    payments
+      .filter((payment) => payment.status === 'SUCCESS')
+      .reduce((sum, payment) => sum + payment.amountPaise, 0)
+  const needsReview =
+    summary?.queueSummary?.needsReview ??
+    payments.filter(
+      (payment) =>
+        ['CREATED', 'PENDING', 'FAILED'].includes(payment.status) ||
+        payment.warnings.length > 0,
+    ).length
+  const refundRequests =
+    summary?.requestedRefunds ??
+    payments.reduce(
+      (sum, payment) => sum + payment.refundSummary.requestedCount,
+      0,
+    )
 
   return [
     {
       label: 'Visible review',
-      meta: 'Pending, failed, or warning payments in visible rows',
+      meta: 'Pending, failed, or refund work matching filters',
       tone: needsReview > 0 ? 'warning' : 'neutral',
       value: String(needsReview),
     },
     {
       label: 'Successful value',
-      meta: 'Successful amount in visible rows',
+      meta: 'Successful amount matching filters',
       tone: 'success',
       value: formatPaise(successfulAmount),
     },
     {
       label: 'Refund requests',
-      meta: 'Open refund requests in visible rows',
+      meta: 'Open refund requests matching filters',
       tone: refundRequests > 0 ? 'danger' : 'neutral',
       value: String(refundRequests),
     },
@@ -310,34 +318,50 @@ function buildPaymentMetrics(
   ]
 }
 
-function buildPaymentQueueItems(payments: AdminPaymentSummary[]) {
+function buildPaymentQueueItems(
+  summary: AdminPaymentChildSummary | undefined,
+  payments: AdminPaymentSummary[],
+) {
+  const queueSummary = summary?.queueSummary
+
   return [
     {
       key: 'all' as const,
-      label: 'All visible',
-      count: payments.length,
+      label: 'All payments',
+      count: queueSummary?.allPayments ?? summary?.total ?? payments.length,
     },
     {
       key: 'needsReview' as const,
       label: 'Needs review',
-      count: payments.filter((payment) =>
-        ['CREATED', 'PENDING', 'FAILED'].includes(payment.status),
-      ).length,
+      count:
+        queueSummary?.needsReview ??
+        payments.filter((payment) =>
+          ['CREATED', 'PENDING', 'FAILED'].includes(payment.status),
+        ).length,
     },
     {
       key: 'successful' as const,
       label: 'Successful',
-      count: payments.filter((payment) => payment.status === 'SUCCESS').length,
+      count:
+        queueSummary?.successful ??
+        summary?.successful ??
+        payments.filter((payment) => payment.status === 'SUCCESS').length,
     },
     {
       key: 'failed' as const,
       label: 'Failed',
-      count: payments.filter((payment) => payment.status === 'FAILED').length,
+      count:
+        queueSummary?.failed ??
+        summary?.failed ??
+        payments.filter((payment) => payment.status === 'FAILED').length,
     },
     {
       key: 'cancelled' as const,
       label: 'Cancelled',
-      count: payments.filter((payment) => payment.status === 'CANCELLED').length,
+      count:
+        queueSummary?.cancelled ??
+        summary?.cancelled ??
+        payments.filter((payment) => payment.status === 'CANCELLED').length,
     },
   ]
 }
@@ -659,9 +683,52 @@ export function PaymentsPage() {
     queryKey: ['payments', query],
     queryFn: () => paymentService.getPaymentList(query),
   })
+  const queueSummaryQuery = useMemo<AdminPaymentsQueryParams>(
+    () => ({
+      page: 1,
+      limit: 1,
+      search: search.trim() || undefined,
+      status:
+        queue === 'all' && selectedStatuses.length > 0
+          ? selectedStatuses
+          : undefined,
+      method: selectedMethods.length > 0 ? selectedMethods : undefined,
+      gateway: selectedGateways.length > 0 ? selectedGateways : undefined,
+      city: city.trim() || undefined,
+      orderId: orderIds.length > 0 ? orderIds : undefined,
+      customerId: customerIds.length > 0 ? customerIds : undefined,
+      vendorId: vendorIds.length > 0 ? vendorIds : undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      minAmountPaise: minAmountPaise ? Number(minAmountPaise) : undefined,
+      maxAmountPaise: maxAmountPaise ? Number(maxAmountPaise) : undefined,
+    }),
+    [
+      city,
+      customerIds,
+      dateFrom,
+      dateTo,
+      maxAmountPaise,
+      minAmountPaise,
+      orderIds,
+      queue,
+      search,
+      selectedGateways,
+      selectedMethods,
+      selectedStatuses,
+      vendorIds,
+    ],
+  )
+  const queueSummaryResultQuery = useQuery({
+    queryKey: ['payments-summary', queueSummaryQuery],
+    queryFn: () => paymentService.getPaymentList(queueSummaryQuery),
+    placeholderData: (previousData) => previousData,
+  })
 
   const payments = paymentsQuery.data?.data ?? []
   const pagination = paymentsQuery.data?.pagination
+  const summary = paymentsQuery.data?.summary
+  const queueSummary = queueSummaryResultQuery.data?.summary
   const paymentSelection = useListSelection(payments, (payment) => payment.paymentId)
   const isInitialLoading = paymentsQuery.isLoading && !paymentsQuery.data
   const isRefreshing = paymentsQuery.isFetching && Boolean(paymentsQuery.data)
@@ -669,8 +736,8 @@ export function PaymentsPage() {
     ? 'Refreshing now'
     : formatRefreshTime(paymentsQuery.dataUpdatedAt)
 
-  const metrics = buildPaymentMetrics(payments, pagination)
-  const queueItems = buildPaymentQueueItems(payments)
+  const metrics = buildPaymentMetrics(payments, pagination, summary)
+  const queueItems = buildPaymentQueueItems(queueSummary, payments)
   const paymentGridStyle = useMemo<PaymentGridStyle>(
     () => ({
       '--payment-grid-template': getPaymentGridTemplate(
@@ -1117,9 +1184,11 @@ export function PaymentsPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h2 className="text-sm font-semibold text-foreground">
-                        Visible queues
+                        Payment queues
                       </h2>
-                      <p className="text-xs text-muted">Counts are loaded rows.</p>
+                      <p className="text-xs text-muted">
+                        Counts match current filters.
+                      </p>
                     </div>
                     <button
                       aria-label="Collapse payment filters"

@@ -43,6 +43,7 @@ import type {
   NotificationChannel,
   NotificationEvent,
   NotificationEventStatus,
+  NotificationEventsResponse,
   NotificationEventsQueryParams,
   NotificationRecipientType,
   NotificationTemplate,
@@ -501,6 +502,23 @@ function buildQueueItems(counts?: NotificationQueueCounts) {
       count: counts?.skipped,
     },
   ]
+}
+
+function queueCountsFromEventsResponse(
+  response?: NotificationEventsResponse,
+): NotificationQueueCounts | undefined {
+  if (!response) return undefined
+
+  const queueSummary = response.summary.queueSummary
+  const byStatus = response.summary.byStatus
+
+  return {
+    all: queueSummary?.allEvents ?? response.pagination.totalItems,
+    needsReview: queueSummary?.needsReview ?? byStatus.FAILED ?? 0,
+    queued: queueSummary?.queued ?? byStatus.QUEUED ?? 0,
+    sent: queueSummary?.sent ?? byStatus.SENT ?? 0,
+    skipped: queueSummary?.skipped ?? byStatus.SKIPPED ?? 0,
+  }
 }
 
 function TemplateEditModal({
@@ -1016,47 +1034,6 @@ export function NotificationsPage() {
     queryKey: ['notification-events', eventQueryParams],
     queryFn: () => notificationService.getEvents(eventQueryParams),
   })
-  const queueCountBaseQuery = useMemo<NotificationEventsQueryParams>(
-    () => ({
-      page: 1,
-      limit: 1,
-      search: eventSearch.trim() || undefined,
-      channel: eventChannels.length > 0 ? eventChannels : undefined,
-      recipientType:
-        recipientTypesState.length > 0 ? recipientTypesState : undefined,
-      templateCode: templateCodes.length > 0 ? templateCodes : undefined,
-      recipientUserId: recipientUserId.trim()
-        ? [recipientUserId.trim()]
-        : undefined,
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
-    }),
-    [
-      dateFrom,
-      dateTo,
-      eventChannels,
-      eventSearch,
-      recipientTypesState,
-      recipientUserId,
-      templateCodes,
-    ],
-  )
-  const queueCountsQuery = useQuery({
-    queryKey: ['notification-events', 'queue-counts', queueCountBaseQuery],
-    queryFn: async (): Promise<NotificationQueueCounts> => {
-      const response = await notificationService.getEvents(queueCountBaseQuery)
-      const byStatus = response.summary.byStatus
-
-      return {
-        all: response.pagination.totalItems,
-        needsReview: byStatus.FAILED ?? 0,
-        queued: byStatus.QUEUED ?? 0,
-        sent: byStatus.SENT ?? 0,
-        skipped: byStatus.SKIPPED ?? 0,
-      }
-    },
-    placeholderData: (previousData) => previousData,
-  })
   const updateTemplateMutation = useMutation({
     mutationFn: ({
       payload,
@@ -1099,12 +1076,13 @@ export function NotificationsPage() {
   const templateSummary = templatesQuery.data?.summary
   const isEventsLoading = eventsQuery.isLoading
   const isRefreshing = eventsQuery.isFetching || templatesQuery.isFetching
+  const queueCounts = queueCountsFromEventsResponse(eventsQuery.data)
   const metrics = buildNotificationMetrics(
     events,
     pagination?.totalItems ?? events.length,
-    queueCountsQuery.data,
+    queueCounts,
   )
-  const queueItems = buildQueueItems(queueCountsQuery.data)
+  const queueItems = buildQueueItems(queueCounts)
   const templateCodeOptions = useMemo<LookupOption[]>(() => {
     const uniqueTemplateCodes = Array.from(
       new Set(templates.map((template) => template.templateCode)),

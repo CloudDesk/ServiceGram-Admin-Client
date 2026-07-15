@@ -284,6 +284,13 @@ export interface AdminCustomersSummary {
   blocked: number
   withActiveOrders: number
   walletCreditPaise: number
+  queueSummary?: {
+    allCustomers: number
+    active: number
+    blocked: number
+    incomplete: number
+    activeOrders: number
+  }
 }
 
 export interface AdminCustomersPagination {

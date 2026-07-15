@@ -1,5 +1,13 @@
 import { type FormEvent, useMemo, useState } from 'react'
-import { Plus, Save, Settings2, Tags, Trash2, X } from 'lucide-react'
+import {
+  CircleAlert,
+  Plus,
+  Save,
+  Settings2,
+  Tags,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
 import type {
   VendorDetail,
@@ -160,6 +168,21 @@ function serviceActionDescription(
     : vendor.publicVendorId
 }
 
+function hasConfiguredCatalog(service?: VendorServiceRecord) {
+  return Boolean(
+    service?.pricing.catalog.isConfigured &&
+      service.pricing.catalog.configuredItemCount > 0,
+  )
+}
+
+function fixedPriceCatalogConflictCopy(service?: VendorServiceRecord) {
+  if (service?.pricing.priceType === 'FIXED') {
+    return 'This fixed-price service still has item prices. Remove every catalog item and save the catalog before it can be treated as a clean fixed-price service.'
+  }
+
+  return 'Remove item prices before switching this service to a fixed final price. Item prices are only valid with starting price or range pricing.'
+}
+
 export function VendorServiceActionModal({
   action,
   error,
@@ -198,6 +221,18 @@ export function VendorServiceActionModal({
   const isServiceForm = action?.kind === 'CREATE' || action?.kind === 'EDIT'
   const isCatalogForm = action?.kind === 'CATALOG'
   const isDisableForm = action?.kind === 'DISABLE'
+  const serviceHasConfiguredCatalog = hasConfiguredCatalog(service)
+  const isFixedPriceService = service?.pricing.priceType === 'FIXED'
+  const isSwitchingToFixedWithCatalog =
+    isServiceForm &&
+    priceType === 'FIXED' &&
+    service?.pricing.priceType !== 'FIXED' &&
+    serviceHasConfiguredCatalog
+  const isFixedCatalogAction = isCatalogForm && isFixedPriceService
+  const fixedCatalogCanOnlyClear =
+    isFixedCatalogAction && serviceHasConfiguredCatalog
+  const fixedCatalogLocked =
+    isFixedCatalogAction && !serviceHasConfiguredCatalog
   const categoryLabel = vendor.category
     ? `${vendor.category.name} (${vendor.category.categoryCode})`
     : 'No category assigned'
@@ -255,6 +290,11 @@ export function VendorServiceActionModal({
       minPricePaise > maxPricePaise
     ) {
       setFormError('Minimum price must be less than or equal to maximum price.')
+      return
+    }
+
+    if (isSwitchingToFixedWithCatalog) {
+      setFormError(fixedPriceCatalogConflictCopy(service))
       return
     }
 
@@ -323,6 +363,12 @@ export function VendorServiceActionModal({
           `${item.itemName} minimum quantity must be less than or equal to maximum quantity.`,
         )
       }
+    }
+
+    if (isFixedCatalogAction && items.length > 0) {
+      throw new Error(
+        'Fixed price services cannot keep item prices. Remove all catalog items, then save.',
+      )
     }
 
     onSubmit({
@@ -448,13 +494,29 @@ export function VendorServiceActionModal({
                     setPriceType(event.target.value as VendorServicePriceType)
                   }
                 >
-                  {priceTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
+                  {priceTypes.map((type) => {
+                    const optionDisabled =
+                      type === 'FIXED' &&
+                      serviceHasConfiguredCatalog &&
+                      service?.pricing.priceType !== 'FIXED'
+
+                    return (
+                      <option disabled={optionDisabled} key={type} value={type}>
+                        {type}
+                      </option>
+                    )
+                  })}
                 </select>
               </label>
+
+              {priceType === 'FIXED' && serviceHasConfiguredCatalog ? (
+                <div className="md:col-span-2 rounded-[0.75rem] border border-warning/25 bg-warning/10 p-3 text-sm text-warning">
+                  <div className="flex items-start gap-2">
+                    <CircleAlert className="mt-0.5 size-4 shrink-0" />
+                    <span>{fixedPriceCatalogConflictCopy(service)}</span>
+                  </div>
+                </div>
+              ) : null}
 
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-foreground">
@@ -518,11 +580,13 @@ export function VendorServiceActionModal({
                     Catalog items
                   </p>
                   <p className="text-xs text-muted">
-                    Saving replaces the full item list for this service.
+                    {isFixedCatalogAction
+                      ? 'Fixed price services can only clear existing item prices.'
+                      : 'Saving replaces the full item list for this service.'}
                   </p>
                 </div>
                 <Button
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isFixedCatalogAction}
                   size="sm"
                   type="button"
                   variant="secondary"
@@ -532,6 +596,19 @@ export function VendorServiceActionModal({
                   Add item
                 </Button>
               </div>
+
+              {fixedCatalogLocked || fixedCatalogCanOnlyClear ? (
+                <div className="rounded-[0.75rem] border border-warning/25 bg-warning/10 p-3 text-sm text-warning">
+                  <div className="flex items-start gap-2">
+                    <CircleAlert className="mt-0.5 size-4 shrink-0" />
+                    <span>
+                      {fixedCatalogLocked
+                        ? 'This is a fixed-price service, so item prices are locked. Switch the service to starting price or range before adding catalog items.'
+                        : 'This fixed-price service has legacy item prices. Remove all items and save to clear the conflict.'}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
 
               {catalogItems.length ? (
                 <div className="space-y-3">
@@ -562,6 +639,7 @@ export function VendorServiceActionModal({
                           </span>
                           <input
                             className="form-input"
+                            disabled={isSubmitting || isFixedCatalogAction}
                             maxLength={180}
                             value={item.itemName}
                             onChange={(event) =>
@@ -578,6 +656,7 @@ export function VendorServiceActionModal({
                           </span>
                           <input
                             className="form-input"
+                            disabled={isSubmitting || isFixedCatalogAction}
                             maxLength={80}
                             value={item.itemCode ?? ''}
                             onChange={(event) =>
@@ -594,6 +673,7 @@ export function VendorServiceActionModal({
                           </span>
                           <select
                             className="form-select"
+                            disabled={isSubmitting || isFixedCatalogAction}
                             value={item.pricingUnit}
                             onChange={(event) =>
                               updateCatalogItem(item.localId, {
@@ -616,6 +696,7 @@ export function VendorServiceActionModal({
                           </span>
                           <input
                             className="form-input"
+                            disabled={isSubmitting || isFixedCatalogAction}
                             inputMode="decimal"
                             min="0"
                             step="0.01"
@@ -641,6 +722,7 @@ export function VendorServiceActionModal({
                           </span>
                           <input
                             className="form-input"
+                            disabled={isSubmitting || isFixedCatalogAction}
                             inputMode="numeric"
                             min="1"
                             type="number"
@@ -659,6 +741,7 @@ export function VendorServiceActionModal({
                           </span>
                           <input
                             className="form-input"
+                            disabled={isSubmitting || isFixedCatalogAction}
                             inputMode="numeric"
                             min="1"
                             type="number"
@@ -677,6 +760,7 @@ export function VendorServiceActionModal({
                           </span>
                           <input
                             className="form-input"
+                            disabled={isSubmitting || isFixedCatalogAction}
                             inputMode="numeric"
                             min="0"
                             type="number"
@@ -694,6 +778,7 @@ export function VendorServiceActionModal({
                             <input
                               checked={item.isPopular}
                               className="size-4 accent-[var(--color-primary)]"
+                              disabled={isSubmitting || isFixedCatalogAction}
                               type="checkbox"
                               onChange={(event) =>
                                 updateCatalogItem(item.localId, {
@@ -708,6 +793,7 @@ export function VendorServiceActionModal({
                             <input
                               checked={item.isActive}
                               className="size-4 accent-[var(--color-primary)]"
+                              disabled={isSubmitting || isFixedCatalogAction}
                               type="checkbox"
                               onChange={(event) =>
                                 updateCatalogItem(item.localId, {
@@ -767,6 +853,7 @@ export function VendorServiceActionModal({
               Cancel
             </Button>
             <Button
+              disabled={isSwitchingToFixedWithCatalog || fixedCatalogLocked}
               isLoading={isSubmitting}
               type="submit"
               variant={isDisableForm ? 'danger' : 'primary'}

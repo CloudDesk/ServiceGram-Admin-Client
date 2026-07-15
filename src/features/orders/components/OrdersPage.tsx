@@ -1126,46 +1126,56 @@ function buildMetrics(
 }
 
 function buildQueueItems(summary: AdminOrdersSummary | undefined) {
+  const queueSummary = summary?.queueSummary
+
   return [
     {
       key: 'all' as const,
       label: 'All orders',
-      count: summary?.total ?? 0,
+      count: queueSummary?.allOrders ?? summary?.total ?? 0,
     },
     {
       key: 'attention' as const,
       label: 'Price review',
-      count: countOrderStatuses(summary, ['PRICE_REVISION_PENDING_CUSTOMER']),
+      count:
+        queueSummary?.priceReview ??
+        countOrderStatuses(summary, ['PRICE_REVISION_PENDING_CUSTOMER']),
     },
     {
       key: 'acceptance' as const,
       label: 'Vendor acceptance',
-      count: countOrderStatuses(summary, ['VENDOR_ACCEPTANCE_PENDING']),
+      count:
+        queueSummary?.vendorAcceptance ??
+        countOrderStatuses(summary, ['VENDOR_ACCEPTANCE_PENDING']),
     },
     {
       key: 'inProgress' as const,
       label: 'In progress',
-      count: countOrderStatuses(summary, ['SERVICE_IN_PROGRESS']),
+      count:
+        queueSummary?.inProgress ??
+        countOrderStatuses(summary, ['SERVICE_IN_PROGRESS']),
     },
     {
       key: 'delivery' as const,
       label: 'Delivery',
-      count: countOrderStatuses(summary, ['OUT_FOR_DELIVERY']),
+      count:
+        queueSummary?.delivery ??
+        countOrderStatuses(summary, ['OUT_FOR_DELIVERY']),
     },
     {
       key: 'payment' as const,
       label: 'Payment review',
-      count: summary?.paymentReview ?? 0,
+      count: queueSummary?.paymentReview ?? summary?.paymentReview ?? 0,
     },
     {
       key: 'completed' as const,
       label: 'Completed',
-      count: countOrderStatuses(summary, ['DELIVERED']),
+      count: queueSummary?.completed ?? countOrderStatuses(summary, ['DELIVERED']),
     },
     {
       key: 'cancelled' as const,
       label: 'Cancelled',
-      count: countOrderStatuses(summary, ['CANCELLED']),
+      count: queueSummary?.cancelled ?? countOrderStatuses(summary, ['CANCELLED']),
     },
   ]
 }
@@ -1426,16 +1436,8 @@ export function OrdersPage() {
       customerId: customerIds.length > 0 ? customerIds : undefined,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
-      orderStatus:
-        queue === 'all' && selectedOrderStatuses.length > 0
-          ? selectedOrderStatuses
-          : undefined,
       paymentMethod:
         selectedPaymentMethods.length > 0 ? selectedPaymentMethods : undefined,
-      paymentStatus:
-        queue === 'all' && selectedPaymentStatuses.length > 0
-          ? selectedPaymentStatuses
-          : undefined,
       vendorId: vendorIds.length > 0 ? vendorIds : undefined,
     }),
     [
@@ -1444,11 +1446,8 @@ export function OrdersPage() {
       customerIds,
       dateFrom,
       dateTo,
-      queue,
       search,
-      selectedOrderStatuses,
       selectedPaymentMethods,
-      selectedPaymentStatuses,
       vendorIds,
     ],
   )
@@ -1456,12 +1455,14 @@ export function OrdersPage() {
   const queueSummaryResultQuery = useQuery({
     queryKey: ['orders-summary', queueSummaryQuery],
     queryFn: () => orderService.getOrderList(queueSummaryQuery),
+    placeholderData: (previousData) => previousData,
   })
 
   const orders = ordersQuery.data?.data ?? []
   const pagination = ordersQuery.data?.pagination
   const currentSummary = ordersQuery.data?.summary
-  const queueSummary = queueSummaryResultQuery.data?.summary
+  const queueSummary =
+    queueSummaryResultQuery.data?.summary ?? (queue === 'all' ? currentSummary : undefined)
   const orderSelection = useListSelection(orders, (order) => order.orderId)
   const isInitialLoading = ordersQuery.isLoading && !ordersQuery.data
   const isRefreshing = ordersQuery.isFetching && Boolean(ordersQuery.data)

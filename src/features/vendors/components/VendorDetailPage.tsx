@@ -133,6 +133,30 @@ const vendorReviewActions = [
   "VERIFY_BANK_ACCOUNT",
   "VERIFY_DOCUMENT",
 ] as const;
+
+type VendorDetailActionContext = Pick<
+  VendorDetail,
+  "availableActions" | "onboardingStatus" | "vendorStatus"
+>;
+
+function isRejectedVendor(vendor: VendorDetailActionContext) {
+  return (
+    vendor.onboardingStatus === "REJECTED" &&
+    vendor.vendorStatus === "INACTIVE"
+  );
+}
+
+function getVendorDetailActionSource(vendor: VendorDetailActionContext) {
+  if (
+    !isRejectedVendor(vendor) ||
+    vendor.availableActions.includes("REACTIVATE")
+  ) {
+    return vendor.availableActions;
+  }
+
+  return [...vendor.availableActions, "REACTIVATE"];
+}
+
 const vendorDetailSectionIds = {
   documents: "vendor-detail-documents",
   payoutAccount: "vendor-detail-payout-account",
@@ -542,6 +566,10 @@ function formatServicePriceType(value: string) {
 function formatServiceWarning(value: string) {
   if (value === "CATALOG_USING_SUGGESTED_DEFAULT") {
     return "Using suggested catalog";
+  }
+
+  if (value === "FIXED_PRICE_WITH_ITEM_CATALOG") {
+    return "Fixed price has item catalog";
   }
 
   if (value === "SERVICE_INACTIVE") {
@@ -1927,10 +1955,13 @@ function VendorHeaderActions({
   onSelectAction: (kind: VendorActionKind) => void;
   vendor: VendorDetail;
 }) {
-  const visibleActions = getVisibleVendorDetailActions(vendor.availableActions, {
-    canApproveVendors,
-    canUpdateProfile,
-  });
+  const visibleActions = getVisibleVendorDetailActions(
+    getVendorDetailActionSource(vendor),
+    {
+      canApproveVendors,
+      canUpdateProfile,
+    },
+  );
   const hasAction = (action: string) => visibleActions.includes(action);
   const approvalBlockMessage = getApprovalBlockMessage(vendor);
 
@@ -2872,8 +2903,9 @@ export function VendorDetailPage({
     );
   }
 
+  const vendorActionSource = getVendorDetailActionSource(vendor);
   const approvalBlockMessage =
-    canApproveVendors && vendor.availableActions.includes("APPROVE")
+    canApproveVendors && vendorActionSource.includes("APPROVE")
       ? getApprovalBlockMessage(vendor)
       : null;
   const activeHistoryDocument = selectedHistoryDocument
@@ -2940,7 +2972,7 @@ export function VendorDetailPage({
         ? "success"
         : "neutral";
   const visibleVendorActions = getVisibleVendorDetailActions(
-    vendor.availableActions,
+    vendorActionSource,
     {
       canApproveVendors,
       canUpdateProfile: canUpdateVendors,

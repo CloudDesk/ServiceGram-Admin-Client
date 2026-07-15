@@ -156,6 +156,14 @@ export interface NotificationEventsResponse
     total: number
     byStatus: Record<string, number>
     byChannel: Record<string, number>
+    queueSummary?: {
+      allEvents: number
+      needsReview: number
+      failed: number
+      queued: number
+      sent: number
+      skipped: number
+    }
   }
 }
 

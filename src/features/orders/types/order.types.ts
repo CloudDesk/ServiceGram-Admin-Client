@@ -386,6 +386,17 @@ export interface AdminOrdersPagination {
   hasPreviousPage: boolean;
 }
 
+export interface AdminOrderQueueSummary {
+  allOrders: number;
+  priceReview: number;
+  vendorAcceptance: number;
+  inProgress: number;
+  delivery: number;
+  paymentReview: number;
+  completed: number;
+  cancelled: number;
+}
+
 export interface AdminOrdersSummary {
   total: number;
   active: number;
@@ -397,6 +408,7 @@ export interface AdminOrdersSummary {
   currency: string;
   byOrderStatus: Partial<Record<AdminOrderStatus, number>>;
   byPaymentStatus: Partial<Record<AdminOrderPaymentStatus, number>>;
+  queueSummary?: AdminOrderQueueSummary;
 }
 
 export interface AdminOrdersApiResponse<TData> {

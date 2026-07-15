@@ -65,6 +65,7 @@ type VendorQueueKey =
   | 'onboarding'
   | 'underReview'
   | 'documentsPending'
+  | 'rejected'
   | 'suspended'
 type VendorListActionKind = Extract<
   VendorActionKind,
@@ -134,6 +135,24 @@ interface VendorGridStyle extends CSSProperties {
 interface VendorActionTarget {
   action: VendorActionSelection
   vendor: VendorTableRow
+}
+
+function isRejectedVendor(vendor: VendorTableRow) {
+  return (
+    vendor.onboardingStatus === 'REJECTED' &&
+    vendor.vendorStatus === 'INACTIVE'
+  )
+}
+
+function getVendorActionSource(vendor: VendorTableRow) {
+  if (
+    !isRejectedVendor(vendor) ||
+    vendor.availableActions.includes('REACTIVATE')
+  ) {
+    return vendor.availableActions
+  }
+
+  return [...vendor.availableActions, 'REACTIVATE']
 }
 
 function getVisibleVendorActions(actions: string[]) {
@@ -271,7 +290,9 @@ function visibleRecommendedAction(vendor: VendorTableRow) {
 }
 
 function mapRecommendedAction(vendor: VendorTableRow): VendorListActionKind | null {
-  const action = visibleRecommendedAction(vendor)
+  const action =
+    visibleRecommendedAction(vendor) ??
+    (isRejectedVendor(vendor) ? 'REACTIVATE' : null)
 
   if (
     action === 'ADD_NOTE' ||
@@ -280,7 +301,10 @@ function mapRecommendedAction(vendor: VendorTableRow): VendorListActionKind | nu
     action === 'REJECT' ||
     action === 'SUSPEND'
   ) {
-    if (action === 'ADD_NOTE' || getVisibleVendorActions(vendor.availableActions).includes(action)) {
+    if (
+      action === 'ADD_NOTE' ||
+      getVisibleVendorActions(getVendorActionSource(vendor)).includes(action)
+    ) {
       return action
     }
   }
@@ -651,7 +675,7 @@ function VendorRow({
   visibleColumns: VendorColumnId[]
 }) {
   const recommendedAction = mapRecommendedAction(vendor)
-  const visibleActions = getVisibleVendorActions(vendor.availableActions)
+  const visibleActions = getVisibleVendorActions(getVendorActionSource(vendor))
   const hasAction = (action: VendorListActionKind) => visibleActions.includes(action)
   const approvalBlockMessage = getApprovalBlockMessage(vendor)
   const showColumn = (columnId: VendorColumnId) => visibleColumns.includes(columnId)
@@ -941,6 +965,7 @@ interface VendorQueueCounts {
   onboarding: number
   underReview: number
   documentsPending: number
+  rejected: number
   suspended: number
 }
 
@@ -965,6 +990,11 @@ function buildStableQueueItems(counts?: VendorQueueCounts) {
       key: 'documentsPending' as const,
       label: 'Documents pending',
       count: counts?.documentsPending,
+    },
+    {
+      key: 'rejected' as const,
+      label: 'Rejected',
+      count: counts?.rejected,
     },
     {
       key: 'suspended' as const,
@@ -1146,6 +1176,7 @@ export function VendorsPage() {
         onboarding,
         underReview,
         documentsPending,
+        rejected,
         suspended,
       ] = await Promise.all([
         vendorService.getVendorList({
@@ -1161,6 +1192,10 @@ export function VendorsPage() {
           ...queueCountBaseQuery,
           onboardingStatus: 'DOCUMENTS_PENDING',
         }),
+        vendorService.getVendorOnboardingQueue({
+          ...queueCountBaseQuery,
+          onboardingStatus: 'REJECTED',
+        }),
         vendorService.getVendorList({
           ...queueCountBaseQuery,
           vendorStatus: 'SUSPENDED',
@@ -1172,6 +1207,7 @@ export function VendorsPage() {
         onboarding: onboarding.pagination.totalItems,
         underReview: underReview.pagination.totalItems,
         documentsPending: documentsPending.pagination.totalItems,
+        rejected: rejected.pagination.totalItems,
         suspended: suspended.pagination.totalItems,
       }
     },
@@ -1264,6 +1300,12 @@ export function VendorsPage() {
       setOnboardingStatus('DOCUMENTS_PENDING')
     }
 
+    if (queue === 'rejected') {
+      setViewMode('onboarding')
+      setVendorStatus('')
+      setOnboardingStatus('REJECTED')
+    }
+
     if (queue === 'suspended') {
       setViewMode('active')
       setVendorStatus('SUSPENDED')
@@ -1288,6 +1330,10 @@ export function VendorsPage() {
 
     if (queue === 'documentsPending') {
       return viewMode === 'onboarding' && onboardingStatus === 'DOCUMENTS_PENDING'
+    }
+
+    if (queue === 'rejected') {
+      return viewMode === 'onboarding' && onboardingStatus === 'REJECTED'
     }
 
     return vendorStatus === 'SUSPENDED'

@@ -52,6 +52,7 @@ import {
   type PayoutActionSelection,
 } from './PayoutActionModal'
 import type {
+  AdminPayoutChildSummary,
   AdminPayoutMethod,
   AdminPayoutPagination,
   AdminPayoutStatus,
@@ -260,32 +261,39 @@ function getPayoutStatusTone(status: AdminPayoutStatus): PayoutTone {
 function buildPayoutMetrics(
   payouts: AdminPayoutSummary[],
   pagination?: AdminPayoutPagination,
+  summary?: AdminPayoutChildSummary,
 ): PayoutMetric[] {
-  const total = pagination?.totalItems ?? payouts.length
-  const needsReview = payouts.filter((payout) =>
-    ['PENDING', 'UNDER_REVIEW', 'HELD'].includes(payout.status),
-  ).length
-  const approved = payouts.filter((payout) => payout.status === 'APPROVED').length
-  const paidValue = payouts
-    .filter((payout) => payout.status === 'PAID')
-    .reduce((sum, payout) => sum + payout.totalAmountPaise, 0)
+  const total = pagination?.totalItems ?? summary?.total ?? payouts.length
+  const needsReview =
+    summary?.needsAttention ??
+    payouts.filter((payout) =>
+      ['PENDING', 'UNDER_REVIEW', 'HELD'].includes(payout.status),
+    ).length
+  const approved =
+    summary?.approved ??
+    payouts.filter((payout) => payout.status === 'APPROVED').length
+  const paidValue =
+    summary?.paidAmountPaise ??
+    payouts
+      .filter((payout) => payout.status === 'PAID')
+      .reduce((sum, payout) => sum + payout.totalAmountPaise, 0)
 
   return [
     {
       label: 'Visible review',
-      meta: 'Pending, under-review, or held payouts in visible rows',
+      meta: 'Pending, held, failed, or warning payouts',
       tone: needsReview > 0 ? 'warning' : 'neutral',
       value: String(needsReview),
     },
     {
       label: 'Ready to pay',
-      meta: 'Approved payouts in visible rows',
+      meta: 'Approved payouts matching filters',
       tone: approved > 0 ? 'info' : 'neutral',
       value: String(approved),
     },
     {
       label: 'Paid value',
-      meta: 'Paid amount in visible rows',
+      meta: 'Paid amount matching filters',
       tone: paidValue > 0 ? 'success' : 'neutral',
       value: formatPaise(paidValue),
     },
@@ -298,41 +306,52 @@ function buildPayoutMetrics(
   ]
 }
 
-function buildPayoutQueueItems(payouts: AdminPayoutSummary[]) {
+function buildPayoutQueueItems(
+  summary: AdminPayoutChildSummary | undefined,
+  payouts: AdminPayoutSummary[],
+) {
   return [
     {
       key: 'all' as const,
-      label: 'All visible',
-      count: payouts.length,
+      label: 'All payouts',
+      count: summary?.total ?? payouts.length,
     },
     {
       key: 'review' as const,
       label: 'Needs review',
-      count: payouts.filter((payout) =>
-        ['PENDING', 'UNDER_REVIEW'].includes(payout.status),
-      ).length,
+      count:
+        summary ? summary.pending + summary.underReview : payouts.filter((payout) =>
+          ['PENDING', 'UNDER_REVIEW'].includes(payout.status),
+        ).length,
     },
     {
       key: 'held' as const,
       label: 'Held',
-      count: payouts.filter((payout) => payout.status === 'HELD').length,
+      count:
+        summary?.held ??
+        payouts.filter((payout) => payout.status === 'HELD').length,
     },
     {
       key: 'approved' as const,
       label: 'Approved',
-      count: payouts.filter((payout) => payout.status === 'APPROVED').length,
+      count:
+        summary?.approved ??
+        payouts.filter((payout) => payout.status === 'APPROVED').length,
     },
     {
       key: 'paid' as const,
       label: 'Paid',
-      count: payouts.filter((payout) => payout.status === 'PAID').length,
+      count:
+        summary?.paid ??
+        payouts.filter((payout) => payout.status === 'PAID').length,
     },
     {
       key: 'exceptions' as const,
       label: 'Failed / cancelled',
-      count: payouts.filter((payout) =>
-        ['FAILED', 'CANCELLED'].includes(payout.status),
-      ).length,
+      count:
+        summary ? summary.failed + summary.cancelled : payouts.filter((payout) =>
+          ['FAILED', 'CANCELLED'].includes(payout.status),
+        ).length,
     },
   ]
 }
@@ -617,8 +636,40 @@ export function PayoutsPage() {
     queryKey: ['payouts', query],
     queryFn: () => payoutService.getPayoutList(query),
   })
+  const queueSummaryQuery = useMemo<AdminPayoutsQueryParams>(
+    () => ({
+      page: 1,
+      limit: 1,
+      search: search.trim() || undefined,
+      payoutMethod: selectedMethods.length > 0 ? selectedMethods : undefined,
+      city: city.trim() || undefined,
+      vendorId: vendorIds.length > 0 ? vendorIds : undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      minAmountPaise: minAmountPaise ? Number(minAmountPaise) : undefined,
+      maxAmountPaise: maxAmountPaise ? Number(maxAmountPaise) : undefined,
+    }),
+    [
+      city,
+      dateFrom,
+      dateTo,
+      maxAmountPaise,
+      minAmountPaise,
+      search,
+      selectedMethods,
+      vendorIds,
+    ],
+  )
+  const queueSummaryResultQuery = useQuery({
+    queryKey: ['payouts-summary', queueSummaryQuery],
+    queryFn: () => payoutService.getPayoutList(queueSummaryQuery),
+    placeholderData: (previousData) => previousData,
+  })
+
   const payouts = payoutsQuery.data?.data ?? []
   const pagination = payoutsQuery.data?.pagination
+  const summary = payoutsQuery.data?.summary
+  const queueSummary = queueSummaryResultQuery.data?.summary
   const payoutSelection = useListSelection(payouts, (payout) => payout.payoutId)
   const isInitialLoading = payoutsQuery.isLoading && !payoutsQuery.data
   const isRefreshing = payoutsQuery.isFetching && Boolean(payoutsQuery.data)
@@ -626,8 +677,8 @@ export function PayoutsPage() {
     ? 'Refreshing now'
     : formatRefreshTime(payoutsQuery.dataUpdatedAt)
 
-  const metrics = buildPayoutMetrics(payouts, pagination)
-  const queueItems = buildPayoutQueueItems(payouts)
+  const metrics = buildPayoutMetrics(payouts, pagination, summary)
+  const queueItems = buildPayoutQueueItems(queueSummary, payouts)
   const payoutGridStyle = useMemo<PayoutGridStyle>(
     () => ({
       '--payout-grid-template': getPayoutGridTemplate(
@@ -1111,9 +1162,11 @@ export function PayoutsPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h2 className="text-sm font-semibold text-foreground">
-                        Visible queues
+                        Payout queues
                       </h2>
-                      <p className="text-xs text-muted">Counts are loaded rows.</p>
+                      <p className="text-xs text-muted">
+                        Counts match current filters.
+                      </p>
                     </div>
                     <button
                       aria-label="Collapse payout filters"

@@ -166,6 +166,7 @@ export interface AdminPayoutsListResponse
   extends AdminPayoutApiResponse<AdminPayoutSummary[]> {
   data: AdminPayoutSummary[]
   pagination: AdminPayoutPagination
+  summary?: AdminPayoutChildSummary
 }
 
 export interface AdminPayoutChildSummary {

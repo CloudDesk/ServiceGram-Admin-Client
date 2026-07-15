@@ -676,8 +676,9 @@ export function InfluencersPage() {
     (setting) => setting.settingKey === 'influencer.commission.phase1',
   )
   const stableSummary = queueCountsQuery.data?.summary
-  const metrics = buildInfluencerMetrics(influencers, pagination, stableSummary ?? summary)
-  const queueItems = buildInfluencerQueueItems(stableSummary)
+  const queueSummary = stableSummary ?? summary
+  const metrics = buildInfluencerMetrics(influencers, pagination, queueSummary)
+  const queueItems = buildInfluencerQueueItems(queueSummary)
   const influencerGridStyle = useMemo<InfluencerGridStyle>(
     () => ({
       '--influencer-grid-template': getInfluencerGridTemplate(

@@ -86,6 +86,15 @@ export interface AdminPaymentChildSummary {
   byStatus: Record<string, number>
   byMethod: Record<string, number>
   byGateway: Record<string, number>
+  queueSummary?: {
+    allPayments: number
+    needsReview: number
+    successful: number
+    failed: number
+    cancelled: number
+    refundRequests: number
+    refundable: number
+  }
 }
 
 export interface AdminRefundChildSummary {
@@ -268,6 +277,7 @@ export interface AdminPaymentsListResponse
   extends AdminFinanceApiResponse<AdminPaymentSummary[]> {
   data: AdminPaymentSummary[]
   pagination: AdminFinancePagination
+  summary?: AdminPaymentChildSummary
 }
 
 export interface AdminCustomerPaymentsListResponse
@@ -279,6 +289,7 @@ export interface AdminRefundsListResponse
   extends AdminFinanceApiResponse<AdminRefundSummary[]> {
   data: AdminRefundSummary[]
   pagination: AdminFinancePagination
+  summary?: AdminRefundChildSummary
 }
 
 export interface AdminCustomerRefundsListResponse
