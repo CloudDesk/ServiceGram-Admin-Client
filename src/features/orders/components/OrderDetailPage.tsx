@@ -641,6 +641,14 @@ function hasActiveDeliveryOtp(order: AdminOrderDetail) {
   )
 }
 
+function canGenerateDeliveryOtp(order: AdminOrderDetail) {
+  return hasOrderAction(order, 'GENERATE_DELIVERY_OTP') && !hasActiveDeliveryOtp(order)
+}
+
+function canConfirmDeliveryOtp(order: AdminOrderDetail) {
+  return order.orderStatus === 'OUT_FOR_DELIVERY' && hasActiveDeliveryOtp(order)
+}
+
 function buildOrderAuditPath(order: AdminOrderDetail) {
   const params = new URLSearchParams({
     moduleCode: 'orders',
@@ -885,13 +893,13 @@ function ManualLogisticsPanel({
         )}
 
         <div className="mt-4 flex flex-wrap gap-2">
-          {canUpdateOrders && hasOrderAction(order, 'GENERATE_DELIVERY_OTP') ? (
+          {canUpdateOrders && canGenerateDeliveryOtp(order) ? (
             <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('GENERATE_DELIVERY_OTP')}>
               <ShieldCheck className="mr-2 size-4" />
               Generate OTP
             </Button>
           ) : null}
-          {canUpdateOrders && hasOrderAction(order, 'CONFIRM_DELIVERY_OTP') && hasActiveDeliveryOtp(order) ? (
+          {canUpdateOrders && canConfirmDeliveryOtp(order) ? (
             <Button disabled={isSubmitting} size="sm" onClick={() => onSelectAction('CONFIRM_DELIVERY_OTP')}>
               <CircleCheck className="mr-2 size-4" />
               Confirm OTP

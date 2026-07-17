@@ -378,6 +378,14 @@ function hasActiveDeliveryOtp(order: AdminOrderSummary) {
   return (order.counts?.activeOtpCount ?? 0) > 0
 }
 
+function canGenerateDeliveryOtp(order: AdminOrderSummary) {
+  return hasOrderAction(order, 'GENERATE_DELIVERY_OTP') && !hasActiveDeliveryOtp(order)
+}
+
+function canConfirmDeliveryOtp(order: AdminOrderSummary) {
+  return order.orderStatus === 'OUT_FOR_DELIVERY' && hasActiveDeliveryOtp(order)
+}
+
 function statusFromRecommendedAction(action: string) {
   const normalized = action.toUpperCase()
   const markPrefix = 'MARK_'
@@ -419,15 +427,14 @@ function mapRecommendedAction(order: AdminOrderSummary): OrderActionSelection | 
 
   if (
     action === 'GENERATE_DELIVERY_OTP' &&
-    hasOrderAction(order, 'GENERATE_DELIVERY_OTP')
+    canGenerateDeliveryOtp(order)
   ) {
     return { kind: 'GENERATE_DELIVERY_OTP' }
   }
 
   if (
     action === 'CONFIRM_DELIVERY_OTP' &&
-    hasOrderAction(order, 'CONFIRM_DELIVERY_OTP') &&
-    hasActiveDeliveryOtp(order)
+    canConfirmDeliveryOtp(order)
   ) {
     return { kind: 'CONFIRM_DELIVERY_OTP' }
   }
@@ -746,12 +753,11 @@ function OrderRow({
     primaryAction?.kind !== 'INITIATE_REFUND'
   const showDeliveryOtpAction =
     canUpdateOrders &&
-    hasOrderAction(order, 'GENERATE_DELIVERY_OTP') &&
+    canGenerateDeliveryOtp(order) &&
     primaryAction?.kind !== 'GENERATE_DELIVERY_OTP'
   const showConfirmDeliveryOtpAction =
     canUpdateOrders &&
-    hasOrderAction(order, 'CONFIRM_DELIVERY_OTP') &&
-    hasActiveDeliveryOtp(order) &&
+    canConfirmDeliveryOtp(order) &&
     primaryAction?.kind !== 'CONFIRM_DELIVERY_OTP'
   const showProofUploadAction =
     canUpdateOrders &&

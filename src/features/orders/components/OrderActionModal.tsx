@@ -115,7 +115,9 @@ export function OrderActionModal({
   const [issueType, setIssueType] = useState('')
   const [mimeType, setMimeType] = useState<OrderProofMimeType>('image/jpeg')
   const [note, setNote] = useState('')
-  const [notifyCustomer, setNotifyCustomer] = useState(false)
+  const [notifyCustomer, setNotifyCustomer] = useState(
+    action?.kind === 'GENERATE_DELIVERY_OTP',
+  )
   const [notifyVendor, setNotifyVendor] = useState(false)
   const [otpCode, setOtpCode] = useState('')
   const [packageCondition, setPackageCondition] = useState('')

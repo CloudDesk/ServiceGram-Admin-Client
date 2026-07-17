@@ -269,6 +269,14 @@ function hasActiveDeliveryOtp(order: AdminOrderSummary) {
   return (order.counts?.activeOtpCount ?? 0) > 0
 }
 
+function canGenerateDeliveryOtp(order: AdminOrderSummary) {
+  return hasOrderAction(order, 'GENERATE_DELIVERY_OTP') && !hasActiveDeliveryOtp(order)
+}
+
+function canConfirmDeliveryOtp(order: AdminOrderSummary) {
+  return order.orderStatus === 'OUT_FOR_DELIVERY' && hasActiveDeliveryOtp(order)
+}
+
 function actionTargetStatus(action: string) {
   return action.replace(/^MARK_/, '') as AdminOrderStatus
 }
@@ -287,14 +295,13 @@ function mapRecommendedAction(order: AdminOrderSummary): OrderActionSelection | 
       ? recommended
       : markActions[0]
 
-  if (recommended === 'GENERATE_DELIVERY_OTP' && hasOrderAction(order, recommended)) {
+  if (recommended === 'GENERATE_DELIVERY_OTP' && canGenerateDeliveryOtp(order)) {
     return { kind: 'GENERATE_DELIVERY_OTP' }
   }
 
   if (
     recommended === 'CONFIRM_DELIVERY_OTP' &&
-    hasOrderAction(order, recommended) &&
-    hasActiveDeliveryOtp(order)
+    canConfirmDeliveryOtp(order)
   ) {
     return { kind: 'CONFIRM_DELIVERY_OTP' }
   }
@@ -1132,7 +1139,7 @@ export function ManualLogisticsPage() {
       })
     }
 
-    if (canUpdateOrders && hasOrderAction(order, 'GENERATE_DELIVERY_OTP')) {
+    if (canUpdateOrders && canGenerateDeliveryOtp(order)) {
       actions.push({
         key: 'generate-otp',
         label: 'Generate OTP',
@@ -1144,8 +1151,7 @@ export function ManualLogisticsPage() {
 
     if (
       canUpdateOrders &&
-      hasOrderAction(order, 'CONFIRM_DELIVERY_OTP') &&
-      hasActiveDeliveryOtp(order)
+      canConfirmDeliveryOtp(order)
     ) {
       actions.push({
         key: 'confirm-otp',
