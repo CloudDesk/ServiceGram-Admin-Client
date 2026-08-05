@@ -1,6 +1,7 @@
 import {
   CreditCard,
   FileBarChart2,
+  FileCheck2,
   Film,
   BadgeCheck,
   Bell,
@@ -33,6 +34,7 @@ export const navigationItems: NavigationItem[] = [
   { label: 'Dashboard', href: routePaths.dashboard, icon: LayoutDashboard, permission: permissions.dashboard },
   { label: 'Customers', href: routePaths.customers, icon: Users, permission: permissions.customers },
   { label: 'Vendors', href: routePaths.vendors, icon: Wrench, permission: permissions.vendors },
+  { label: 'Document Review', href: routePaths.vendorDocuments, icon: FileCheck2, permission: permissions.vendors },
   { label: 'Orders', href: routePaths.orders, icon: PackageSearch, permission: permissions.orders },
   { label: 'Payments', href: routePaths.payments, icon: CreditCard, permission: permissions.payments },
   { label: 'Refunds', href: routePaths.refunds, icon: RotateCcw, permission: permissions.refunds },

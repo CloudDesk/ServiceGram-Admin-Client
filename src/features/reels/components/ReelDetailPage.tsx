@@ -33,6 +33,7 @@ import { PageContainer } from '../../../components/layout/PageContainer'
 import { useMediaViewer, type MediaViewerItem } from '../../../components/media'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
+import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { reelService } from '../services/reel.service'
 import {
@@ -59,6 +60,16 @@ const reelActionKinds: ReelActionKind[] = [
   'SOFT_DELETE',
   'HARD_DELETE',
 ]
+
+const reelDetailSectionIds = {
+  checklist: 'reel-checklist',
+  context: 'reel-context',
+  media: 'reel-media',
+  moderation: 'reel-moderation',
+  overview: 'reel-overview',
+  related: 'reel-related',
+  signals: 'reel-signals',
+} as const
 
 const checklistColumns: DynamicTableColumn<AdminReelChecklistItem>[] = [
   {
@@ -100,12 +111,20 @@ function DetailField({
   )
 }
 
-function toneClasses(tone: ReelTone) {
+function toneTextClasses(tone: ReelTone) {
   if (tone === 'success') return 'text-success'
   if (tone === 'warning') return 'text-warning'
   if (tone === 'danger') return 'text-danger'
   if (tone === 'info') return 'text-primary'
   return 'text-muted'
+}
+
+function metricToneClasses(tone: ReelTone) {
+  if (tone === 'success') return 'border-border bg-surface text-success'
+  if (tone === 'warning') return 'border-border bg-surface text-warning'
+  if (tone === 'danger') return 'border-border bg-surface text-danger'
+  if (tone === 'info') return 'border-border bg-surface text-primary'
+  return 'border-border bg-surface text-muted'
 }
 
 function humanizeCode(value: string | null | undefined) {
@@ -188,17 +207,26 @@ function DetailMetricCard({
   value: string
 }) {
   return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <div className="flex items-center justify-between gap-3">
-        <p className={`text-xs font-semibold uppercase tracking-normal ${toneClasses(tone)}`}>
-          {label}
-        </p>
-        <span className={toneClasses(tone)}>{icon}</span>
+    <article
+      className={cn(
+        'min-h-[4.35rem] rounded-[0.75rem] border p-2.5',
+        metricToneClasses(tone),
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-normal opacity-80">
+            {label}
+          </p>
+          <p className="mt-1 truncate text-lg font-semibold tracking-normal">
+            {value}
+          </p>
+        </div>
+        <span className={cn('mt-0.5 shrink-0 opacity-80', toneTextClasses(tone))}>
+          {icon}
+        </span>
       </div>
-      <p className={`mt-3 text-xl font-semibold tracking-normal ${toneClasses(tone)}`}>
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
+      <p className="mt-0.5 truncate text-xs leading-4 opacity-80">{meta}</p>
     </article>
   )
 }
@@ -215,7 +243,7 @@ function isOpenableUrl(value: string | null | undefined): value is string {
 }
 
 function buildReelMediaViewerItems(reel: AdminReel): MediaViewerItem[] {
-  const items: MediaViewerItem[] = []
+  const relatedItems: MediaViewerItem[] = []
   const thumbnailUrl = isOpenableUrl(reel.media.thumbnailUrl)
     ? reel.media.thumbnailUrl
     : null
@@ -224,7 +252,7 @@ function buildReelMediaViewerItems(reel: AdminReel): MediaViewerItem[] {
     : null
 
   if (thumbnailUrl) {
-    items.push({
+    relatedItems.push({
       description: `${humanizeCode(reel.media.uploadStatus)} thumbnail used in reel review.`,
       downloadUrl: thumbnailUrl,
       height: reel.media.height ?? null,
@@ -239,7 +267,7 @@ function buildReelMediaViewerItems(reel: AdminReel): MediaViewerItem[] {
   }
 
   if (reel.media.cloudflareVideoUid || playbackUrl) {
-    items.push({
+    relatedItems.push({
       cloudflareVideoUid: reel.media.cloudflareVideoUid,
       description: `${humanizeCode(reel.media.uploadStatus)} · ${formatDuration(
         reel.media.durationSeconds,
@@ -257,15 +285,47 @@ function buildReelMediaViewerItems(reel: AdminReel): MediaViewerItem[] {
     })
   }
 
-  return items
+  if (!relatedItems.length) return []
+
+  return [
+    {
+      description: `${humanizeCode(reel.media.uploadStatus)} · ${formatDuration(
+        reel.media.durationSeconds,
+      )}`,
+      downloadUrl: playbackUrl ?? thumbnailUrl,
+      height: reel.media.height ?? null,
+      id: `${reel.reelId}-media`,
+      kind: 'reel',
+      ownerLabel: reel.vendor.shopName,
+      relatedItems,
+      sourceLabel: 'Reel media',
+      src: playbackUrl ?? thumbnailUrl,
+      title: `${reel.publicReelId} media`,
+      width: reel.media.width ?? null,
+    },
+  ]
 }
 
 function findReelMediaIndex(items: MediaViewerItem[], kind: 'image' | 'video') {
-  return items.findIndex((item) =>
-    kind === 'image'
-      ? item.kind === 'image'
-      : item.kind === 'cloudflare-video' || item.kind === 'video',
-  )
+  return items.findIndex((item) => {
+    if (kind === 'image') {
+      return (
+        item.kind === 'image' ||
+        Boolean(item.relatedItems?.some((relatedItem) => relatedItem.kind === 'image'))
+      )
+    }
+
+    return (
+      item.kind === 'cloudflare-video' ||
+      item.kind === 'video' ||
+      Boolean(
+        item.relatedItems?.some(
+          (relatedItem) =>
+            relatedItem.kind === 'cloudflare-video' || relatedItem.kind === 'video',
+        ),
+      )
+    )
+  })
 }
 
 function UrlDetailField({
@@ -382,17 +442,89 @@ function buildReelDetailMetrics(
   }[]
 }
 
+function ReelDetailSectionNav({ reel }: { reel: AdminReel }) {
+  const signalCount =
+    reel.warnings.length + reel.blockingReasons.length + reel.missingFields.length
+  const mediaCount = buildReelMediaViewerItems(reel).length
+  const items = [
+    { href: `#${reelDetailSectionIds.overview}`, label: 'Overview' },
+    {
+      count: mediaCount,
+      href: `#${reelDetailSectionIds.media}`,
+      label: 'Media',
+    },
+    {
+      href: `#${reelDetailSectionIds.moderation}`,
+      label: 'Moderation',
+    },
+    {
+      href: `#${reelDetailSectionIds.context}`,
+      label: 'Context',
+    },
+    {
+      count: reel.reviewChecklist.length,
+      href: `#${reelDetailSectionIds.checklist}`,
+      label: 'Checklist',
+    },
+    { href: `#${reelDetailSectionIds.related}`, label: 'Related' },
+    {
+      count: signalCount,
+      href: `#${reelDetailSectionIds.signals}`,
+      label: 'Signals',
+    },
+  ]
+  const [activeHref, setActiveHref] = useState(`#${reelDetailSectionIds.overview}`)
+
+  return (
+    <nav
+      aria-label="Reel detail sections"
+      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
+    >
+      <div className="flex min-w-max items-center gap-5">
+        {items.map((item) => (
+          <a
+            aria-current={activeHref === item.href ? 'page' : undefined}
+            className={cn(
+              'inline-flex h-10 items-center gap-1.5 border-b-2 px-0.5 text-sm font-semibold transition',
+              activeHref === item.href
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted hover:text-foreground',
+            )}
+            href={item.href}
+            key={item.href}
+            onClick={() => setActiveHref(item.href)}
+          >
+            <span>{item.label}</span>
+            {typeof item.count === 'number' ? (
+              <span
+                className={cn(
+                  'rounded-full px-1.5 text-xs',
+                  activeHref === item.href
+                    ? 'bg-primary/10 text-primary'
+                    : 'bg-surface-muted text-muted',
+                )}
+              >
+                {item.count}
+              </span>
+            ) : null}
+          </a>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
 function ReelHeaderStatus({ reel }: { reel: AdminReel }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Badge tone={getModerationStatusTone(reel.moderation.status)}>
-        {reel.moderation.status}
+        {humanizeCode(reel.moderation.status)}
       </Badge>
       <Badge tone={getUploadStatusTone(reel.media.uploadStatus)}>
-        {reel.media.uploadStatus}
+        {humanizeCode(reel.media.uploadStatus)}
       </Badge>
       <Badge tone={reel.publish.customerVisibility === 'VISIBLE' ? 'success' : 'neutral'}>
-        {reel.publish.customerVisibility}
+        {humanizeCode(reel.publish.customerVisibility)}
       </Badge>
     </div>
   )
@@ -446,7 +578,7 @@ function ReelHeaderActions({
           onClick={() => onSelectAction('REQUEST_EDIT')}
         >
           <PencilLine className="mr-2 size-4" />
-          Request Edit
+          Request edit
         </Button>
       ) : null}
       {hasAction('PAUSE') ? (
@@ -479,7 +611,7 @@ function ReelHeaderActions({
           onClick={() => onSelectAction('SOFT_DELETE')}
         >
           <Trash2 className="mr-2 size-4" />
-          Soft Delete
+          Soft delete
         </Button>
       ) : null}
       {canDeleteReels && hasAction('HARD_DELETE') ? (
@@ -490,7 +622,7 @@ function ReelHeaderActions({
           onClick={() => onSelectAction('HARD_DELETE')}
         >
           <Trash2 className="mr-2 size-4" />
-          Hard Delete
+          Hard delete
         </Button>
       ) : null}
     </div>
@@ -501,17 +633,22 @@ function SectionShell({
   actionNode,
   children,
   description,
+  id,
   icon,
   title,
 }: {
   actionNode?: ReactNode
   children: ReactNode
   description?: string
+  id?: string
   icon?: ReactNode
   title: string
 }) {
   return (
-    <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+    <section
+      className="scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4 shadow-surface"
+      id={id}
+    >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -575,11 +712,13 @@ function RelatedRecordRow({
 function RelatedRecordsPanel({
   canReadInfluencers,
   canReadVendors,
+  id,
   onNavigate,
   reel,
 }: {
   canReadInfluencers: boolean
   canReadVendors: boolean
+  id?: string
   onNavigate: (path: string) => void
   reel: AdminReel
 }) {
@@ -592,6 +731,7 @@ function RelatedRecordsPanel({
   return (
     <SectionShell
       description="Primary operational records attached to this reel."
+      id={id}
       icon={<ArrowUpRight className="size-4" />}
       title="Related records"
     >
@@ -706,10 +846,12 @@ function SignalBadgeGroup({
 function OperationalSignalsPanel({
   canDeleteReels,
   canModerateReels,
+  id,
   reel,
 }: {
   canDeleteReels: boolean
   canModerateReels: boolean
+  id?: string
   reel: AdminReel
 }) {
   const permittedActions = reel.availableActions.filter((action) =>
@@ -724,6 +866,7 @@ function OperationalSignalsPanel({
   return (
     <SectionShell
       description="Backend workflow signals and actions permitted for this admin."
+      id={id}
       icon={<TriangleAlert className="size-4" />}
       title="Signals"
     >
@@ -771,7 +914,7 @@ function OperationalSignalsPanel({
   )
 }
 
-function ReelMediaPanel({ reel }: { reel: AdminReel }) {
+function ReelMediaPanel({ id, reel }: { id?: string; reel: AdminReel }) {
   const { openMediaViewer } = useMediaViewer()
   const mediaItems = buildReelMediaViewerItems(reel)
   const hasThumbnail = isOpenableUrl(reel.media.thumbnailUrl)
@@ -795,6 +938,7 @@ function ReelMediaPanel({ reel }: { reel: AdminReel }) {
         ) : null
       }
       description="Cloudflare Stream state and media URLs for review."
+      id={id}
       icon={<Video className="size-4" />}
       title="Media"
     >
@@ -1042,7 +1186,12 @@ export function ReelDetailPage() {
         titleMetaNode={<ReelHeaderStatus reel={reel} />}
       />
 
-      <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+      <ReelDetailSectionNav reel={reel} />
+
+      <section
+        className="grid scroll-mt-24 gap-2.5 md:grid-cols-2 xl:grid-cols-4"
+        id={reelDetailSectionIds.overview}
+      >
         {detailMetrics.map((metric) => (
           <DetailMetricCard
             icon={metric.icon}
@@ -1071,8 +1220,8 @@ export function ReelDetailPage() {
               label="Missing Fields"
               value={reel.missingFields.length ? reel.missingFields.join(', ') : null}
             />
-            <DetailField label="Created At" value={formatDateSafe(reel.createdAt)} />
-            <DetailField label="Updated At" value={formatDateSafe(reel.updatedAt)} />
+            <DetailField label="Created" value={formatDateSafe(reel.createdAt)} />
+            <DetailField label="Updated" value={formatDateSafe(reel.updatedAt)} />
           </div>
         </SectionShell>
 
@@ -1080,22 +1229,25 @@ export function ReelDetailPage() {
           <RelatedRecordsPanel
             canReadInfluencers={canReadInfluencers}
             canReadVendors={canReadVendors}
+            id={reelDetailSectionIds.related}
             reel={reel}
             onNavigate={navigate}
           />
           <OperationalSignalsPanel
             canDeleteReels={canDeleteReels}
             canModerateReels={canModerateReels}
+            id={reelDetailSectionIds.signals}
             reel={reel}
           />
         </div>
       </section>
 
       <section className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
-        <ReelMediaPanel reel={reel} />
+        <ReelMediaPanel id={reelDetailSectionIds.media} reel={reel} />
 
         <SectionShell
           description="Review decision state and customer visibility."
+          id={reelDetailSectionIds.moderation}
           icon={<ShieldCheck className="size-4" />}
           title="Moderation & publish"
         >
@@ -1131,6 +1283,7 @@ export function ReelDetailPage() {
 
       <SectionShell
         description="Vendor, zone, and category context used by moderation and customer discovery."
+        id={reelDetailSectionIds.context}
         icon={<Store className="size-4" />}
         title="Service context"
       >
@@ -1165,15 +1318,18 @@ export function ReelDetailPage() {
         </div>
       </SectionShell>
 
-      <DynamicTable
-        bodyMaxHeight={360}
-        columns={checklistColumns}
-        data={reel.reviewChecklist}
-        emptyDescription="No review checklist items were returned for this reel."
-        emptyTitle="No checklist"
-        getRowId={(row) => row.code}
-        title="Review Checklist"
-      />
+      <div className="scroll-mt-24" id={reelDetailSectionIds.checklist}>
+        <DynamicTable
+          bodyMaxHeight={360}
+          columns={checklistColumns}
+          data={reel.reviewChecklist}
+          emptyDescription="No review checklist items were returned for this reel."
+          emptyTitle="No checklist"
+          getRowId={(row) => row.code}
+          stickyHeader
+          title="Review Checklist"
+        />
+      </div>
 
       <ReelActionModal
         action={selectedAction}

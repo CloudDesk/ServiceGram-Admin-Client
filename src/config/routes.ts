@@ -10,6 +10,7 @@ export const routePaths = {
   customers: '/app/customers',
   customerWorkbenchPreview: '/app/customers/workbench-preview',
   vendors: '/app/vendors',
+  vendorDocuments: '/app/vendor-documents',
   vendorOnboarding: '/app/vendor-onboarding',
   orders: '/app/orders',
   manualLogistics: '/app/manual-logistics',

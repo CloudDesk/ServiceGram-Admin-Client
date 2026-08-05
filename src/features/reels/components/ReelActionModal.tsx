@@ -33,11 +33,23 @@ function actionTitle(kind: ReelActionKind) {
   return {
     APPROVE: 'Approve reel',
     REJECT: 'Reject reel',
-    REQUEST_EDIT: 'Request reel edit',
+    REQUEST_EDIT: 'Request edit',
     PAUSE: 'Pause reel',
     REMOVE: 'Remove reel',
     SOFT_DELETE: 'Soft delete reel',
     HARD_DELETE: 'Hard delete reel',
+  }[kind]
+}
+
+function submitLabel(kind: ReelActionKind) {
+  return {
+    APPROVE: 'Approve',
+    REJECT: 'Reject',
+    REQUEST_EDIT: 'Request edit',
+    PAUSE: 'Pause',
+    REMOVE: 'Remove',
+    SOFT_DELETE: 'Soft delete',
+    HARD_DELETE: 'Hard delete',
   }[kind]
 }
 
@@ -79,7 +91,7 @@ export function ReelActionModal({
       <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-overlay)]">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold tracking-[-0.03em] text-foreground">
+            <h2 className="text-lg font-semibold tracking-normal text-foreground">
               {actionTitle(action.kind)}
             </h2>
             <p className="mt-1 text-sm text-muted">
@@ -103,6 +115,11 @@ export function ReelActionModal({
             </span>
             <textarea
               className="form-input min-h-28 resize-y"
+              placeholder={
+                reasonRequired
+                  ? 'Add the reason for this decision'
+                  : 'Optional note for this approval'
+              }
               value={reason}
               onChange={(event) => setReason(event.target.value)}
             />
@@ -113,11 +130,22 @@ export function ReelActionModal({
             </div>
           ) : null}
           <div className="flex justify-end gap-2 border-t border-border pt-4">
-            <Button disabled={isSubmitting} size="sm" type="button" variant="ghost" onClick={onClose}>
+            <Button
+              disabled={isSubmitting}
+              size="sm"
+              type="button"
+              variant="ghost"
+              onClick={onClose}
+            >
               Cancel
             </Button>
-            <Button isLoading={isSubmitting} size="sm" type="submit" variant={isDangerAction(action.kind) ? 'danger' : 'primary'}>
-              Submit
+            <Button
+              isLoading={isSubmitting}
+              size="sm"
+              type="submit"
+              variant={isDangerAction(action.kind) ? 'danger' : 'primary'}
+            >
+              {submitLabel(action.kind)}
             </Button>
           </div>
         </form>

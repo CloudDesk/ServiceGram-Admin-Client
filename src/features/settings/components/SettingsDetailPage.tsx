@@ -77,6 +77,8 @@ const settingsDetailSectionIds = {
   currentValue: 'settings-current-value',
   defaultValue: 'settings-default-value',
   lifecycle: 'settings-lifecycle',
+  overview: 'settings-overview',
+  related: 'settings-related',
   serviceTypes: 'settings-service-types',
   settingProfile: 'settings-profile',
   signals: 'settings-signals',
@@ -200,7 +202,7 @@ function SectionShell({
 }) {
   return (
     <section
-      className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
+      className="scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4 shadow-surface"
       id={id}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -234,7 +236,7 @@ function JsonPanel({
   return (
     <section
       className={cn(
-        'min-w-0 scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface',
+        'min-w-0 scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4 shadow-surface',
         className,
       )}
       id={id}
@@ -417,6 +419,91 @@ function HeaderActions({
         </Button>
       ) : null}
     </>
+  )
+}
+
+function SettingsDetailSectionNav({
+  record,
+  recordType,
+}: {
+  record: RecordType
+  recordType: SettingsRecordType
+}) {
+  const navItems: { count?: number; href: string; label: string }[] =
+    recordType === 'settings'
+      ? [
+          { href: `#${settingsDetailSectionIds.overview}`, label: 'Overview' },
+          { href: `#${settingsDetailSectionIds.settingProfile}`, label: 'Profile' },
+          { href: `#${settingsDetailSectionIds.currentValue}`, label: 'Value' },
+          { href: `#${settingsDetailSectionIds.defaultValue}`, label: 'Default' },
+          { href: `#${settingsDetailSectionIds.related}`, label: 'Related' },
+          { href: `#${settingsDetailSectionIds.signals}`, label: 'Signals' },
+          { href: `#${settingsDetailSectionIds.lifecycle}`, label: 'Lifecycle' },
+        ]
+      : recordType === 'categories'
+        ? [
+            { href: `#${settingsDetailSectionIds.overview}`, label: 'Overview' },
+            { href: `#${settingsDetailSectionIds.categoryProfile}`, label: 'Profile' },
+            {
+              href: `#${settingsDetailSectionIds.bookingTemplate}`,
+              label: 'Booking',
+            },
+            {
+              href: `#${settingsDetailSectionIds.bookingFields}`,
+              label: 'Fields',
+            },
+            {
+              href: `#${settingsDetailSectionIds.serviceTypes}`,
+              label: 'Service types',
+            },
+            { href: `#${settingsDetailSectionIds.related}`, label: 'Related' },
+            {
+              count: (record as ServiceCategory).warnings.length,
+              href: `#${settingsDetailSectionIds.signals}`,
+              label: 'Signals',
+            },
+            { href: `#${settingsDetailSectionIds.lifecycle}`, label: 'Lifecycle' },
+          ]
+        : [
+            { href: `#${settingsDetailSectionIds.overview}`, label: 'Overview' },
+            { href: `#${settingsDetailSectionIds.zoneProfile}`, label: 'Profile' },
+            {
+              count: (record as ServiceZone).pincodeList.length,
+              href: `#${settingsDetailSectionIds.zoneCoverage}`,
+              label: 'Coverage',
+            },
+            { href: `#${settingsDetailSectionIds.zoneMetadata}`, label: 'Metadata' },
+            { href: `#${settingsDetailSectionIds.related}`, label: 'Related' },
+            {
+              count: (record as ServiceZone).warnings.length,
+              href: `#${settingsDetailSectionIds.signals}`,
+              label: 'Signals',
+            },
+            { href: `#${settingsDetailSectionIds.lifecycle}`, label: 'Lifecycle' },
+          ]
+
+  return (
+    <nav
+      aria-label="Settings detail sections"
+      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
+    >
+      <div className="flex min-w-max items-center gap-1.5 py-2">
+        {navItems.map((item) => (
+          <a
+            className="inline-flex min-h-9 items-center gap-2 rounded-[0.65rem] px-3 text-sm font-semibold text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            href={item.href}
+            key={item.href}
+          >
+            <span>{item.label}</span>
+            {typeof item.count === 'number' ? (
+              <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">
+                {item.count}
+              </span>
+            ) : null}
+          </a>
+        ))}
+      </div>
+    </nav>
   )
 }
 
@@ -616,6 +703,7 @@ function RelatedRecordsPanel({
     return (
       <SectionShell
         description="Places that help verify or audit this platform setting."
+        id={settingsDetailSectionIds.related}
         icon={<ArrowUpRight className="size-4" />}
         title="Related records"
       >
@@ -691,6 +779,7 @@ function RelatedRecordsPanel({
     return (
       <SectionShell
         description="Operational areas connected to this service category."
+        id={settingsDetailSectionIds.related}
         icon={<ArrowUpRight className="size-4" />}
         title="Related records"
       >
@@ -792,6 +881,7 @@ function RelatedRecordsPanel({
   return (
     <SectionShell
       description="Operational records that commonly depend on serviceable zones."
+      id={settingsDetailSectionIds.related}
       icon={<ArrowUpRight className="size-4" />}
       title="Related records"
     >
@@ -1219,7 +1309,7 @@ function SettingSections({ setting }: { setting: PlatformSetting }) {
   return (
     <>
       <section
-        className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
+        className="scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4 shadow-surface"
         id={settingsDetailSectionIds.settingProfile}
       >
         <h2 className="text-base font-semibold text-foreground">Setting Profile</h2>
@@ -1274,7 +1364,7 @@ function CategorySections({ category }: { category: ServiceCategory }) {
   return (
     <>
       <section
-        className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
+        className="scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4 shadow-surface"
         id={settingsDetailSectionIds.categoryProfile}
       >
         <h2 className="text-base font-semibold text-foreground">Category Profile</h2>
@@ -1311,7 +1401,7 @@ function CategorySections({ category }: { category: ServiceCategory }) {
       </section>
 
       <section
-        className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
+        className="scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4 shadow-surface"
         id={settingsDetailSectionIds.bookingTemplate}
       >
         <h2 className="text-base font-semibold text-foreground">Booking Template</h2>
@@ -1370,7 +1460,7 @@ function ZoneSections({ zone }: { zone: ServiceZone }) {
   return (
     <>
       <section
-        className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
+        className="scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4 shadow-surface"
         id={settingsDetailSectionIds.zoneProfile}
       >
         <h2 className="text-base font-semibold text-foreground">Zone Profile</h2>
@@ -1397,7 +1487,7 @@ function ZoneSections({ zone }: { zone: ServiceZone }) {
 
       <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section
-          className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
+          className="scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4 shadow-surface"
           id={settingsDetailSectionIds.zoneCoverage}
         >
           <h2 className="text-base font-semibold text-foreground">Pincode Coverage</h2>
@@ -1648,7 +1738,7 @@ export function SettingsDetailPage() {
   }
 
   return (
-    <PageContainer className="!px-3 !py-4 sm:!px-4 lg:!px-6">
+    <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
         actionNode={actionNode}
         description={humanizeCode(recordType)}
@@ -1663,7 +1753,12 @@ export function SettingsDetailPage() {
         }
       />
 
-      <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+      <SettingsDetailSectionNav record={record} recordType={recordType} />
+
+      <section
+        className="grid scroll-mt-24 shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4"
+        id={settingsDetailSectionIds.overview}
+      >
         <SummaryCard
           icon={<CheckCircle2 className="size-4 text-success" />}
           label="Status"
@@ -1744,7 +1839,11 @@ export function SettingsDetailPage() {
         action={selectedAction}
         error={mutation.error instanceof Error ? mutation.error.message : null}
         isSubmitting={mutation.isPending}
-        onClose={() => setSelectedAction(null)}
+        onClose={() => {
+          if (!mutation.isPending) {
+            setSelectedAction(null)
+          }
+        }}
         onSubmit={(values) => mutation.mutate(values)}
       />
     </PageContainer>

@@ -18,12 +18,12 @@ import {
   CheckCircle2,
   ClipboardList,
   Edit3,
+  Filter,
   FileJson,
   MapPinned,
   Plus,
   Power,
   RefreshCcw,
-  Search,
   Settings2,
   SlidersHorizontal,
   ToggleLeft,
@@ -96,6 +96,11 @@ type PolicyRuleActionSelection =
   | { action: 'CREATE'; record?: undefined }
   | { action: 'EDIT' | 'ACTIVATE' | 'ARCHIVE'; record: PolicyRule }
 type CatalogueAction = 'EDIT' | 'ACTIVATE' | 'DEACTIVATE'
+type SettingsPreviewTab = 'summary' | 'details' | 'activity'
+type SettingsPreviewSelection =
+  | { type: SettingsRecordType; record: Row }
+  | { type: 'policies'; record: PolicyRule }
+  | null
 type SettingsColumnId =
   | 'record'
   | 'category'
@@ -122,13 +127,23 @@ interface SettingsColumn {
   render: (row: Row, type: SettingsRecordType) => ReactNode
 }
 
+interface ActiveSettingsFilterChip {
+  key: string
+  label: string
+  onClear: () => void
+}
+
 const DEFAULT_PAGE_SIZE = 10
-const SETTINGS_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.settings.columnWidths.v1'
+const SETTINGS_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.settings.columnWidths.v2'
 const SETTINGS_DEFAULT_COLUMN_WIDTH = 220
 const SETTINGS_ACTION_COLUMN_ID = 'actions'
-const SETTINGS_ACTION_COLUMN_MIN_WIDTH = 300
+const SETTINGS_ACTION_COLUMN_DEFAULT_WIDTH = 292
+const SETTINGS_ACTION_COLUMN_MIN_WIDTH = 284
+const SETTINGS_ACTION_COLUMN_MAX_WIDTH = 320
 const SETTINGS_GRID_COLUMN_GAP = 12
 const SETTINGS_GRID_INLINE_PADDING = 24
+const SETTINGS_FILTER_CONTROL_CLASS_NAME =
+  'h-9 w-full rounded-[0.65rem] border border-border bg-surface px-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30'
 
 const policyFamilies: PolicyFamily[] = [
   'CUSTOMER_CATEGORY_PLACEMENT',
@@ -429,7 +444,7 @@ const defaultSettingsColumnWidths: SettingsColumnWidths = {
   order: 130,
   metadata: 230,
   updatedAt: 190,
-  actions: 320,
+  actions: SETTINGS_ACTION_COLUMN_DEFAULT_WIDTH,
 }
 
 function defaultVisibleColumns(type: SettingsRecordType) {
@@ -500,55 +515,11 @@ function getRowId(type: SettingsRecordType, row: Row) {
   return (row as ServiceZone).zoneId
 }
 
-function latestUpdated(rows: { updatedAt: string }[]) {
-  const timestamps = rows
-    .map((row) => new Date(row.updatedAt).getTime())
-    .filter((value) => Number.isFinite(value))
-
-  if (!timestamps.length) return null
-
-  return new Date(Math.max(...timestamps)).toISOString()
-}
-
-function countWarnings(type: SettingsRecordType, rows: Row[]) {
-  if (type === 'settings') {
-    return rows.filter((row) => (row as PlatformSetting).isSensitive).length
-  }
-
-  return rows.reduce(
-    (total, row) =>
-      total + ((row as ServiceCategory | ServiceZone).warnings?.length ?? 0),
-    0,
-  )
-}
-
 function hasCatalogueAction(
   record: Pick<ServiceCategory | ServiceZone, 'availableActions'>,
   action: CatalogueAction,
 ) {
   return record.availableActions.includes(action)
-}
-
-function canRunCatalogueAction({
-  action,
-  canUpdateSettings,
-  record,
-}: {
-  action: CatalogueAction
-  canUpdateSettings: boolean
-  record: Pick<ServiceCategory | ServiceZone, 'availableActions'>
-}) {
-  return canUpdateSettings && hasCatalogueAction(record, action)
-}
-
-function canUpdatePlatformSetting({
-  canUpdateSettings,
-  setting,
-}: {
-  canUpdateSettings: boolean
-  setting: PlatformSetting
-}) {
-  return canUpdateSettings && setting.isEditable
 }
 
 function getAuditEntityType(type: SettingsRecordType) {
@@ -679,9 +650,9 @@ function normalizeSettingsColumnWidths(value: unknown): SettingsColumnWidths {
     const width = record[columnId]
 
     if (typeof width === 'number' && Number.isFinite(width)) {
-      widths[columnId as SettingsColumnWidthId] = Math.max(
-        getSettingsColumnMinWidth(columnId as SettingsColumnWidthId),
-        Math.round(width),
+      widths[columnId as SettingsColumnWidthId] = clampSettingsColumnWidth(
+        columnId as SettingsColumnWidthId,
+        width,
       )
     }
   })
@@ -712,12 +683,28 @@ function getSettingsColumnMinWidth(columnId: SettingsColumnWidthId) {
   )
 }
 
+function clampSettingsColumnWidth(
+  columnId: SettingsColumnWidthId,
+  width: number,
+) {
+  const nextWidth = Math.max(
+    getSettingsColumnMinWidth(columnId),
+    Math.round(width),
+  )
+
+  if (columnId === SETTINGS_ACTION_COLUMN_ID) {
+    return Math.min(nextWidth, SETTINGS_ACTION_COLUMN_MAX_WIDTH)
+  }
+
+  return nextWidth
+}
+
 function getSettingsColumnWidth(
   columnWidths: SettingsColumnWidths,
   columnId: SettingsColumnWidthId,
 ) {
-  return Math.max(
-    getSettingsColumnMinWidth(columnId),
+  return clampSettingsColumnWidth(
+    columnId,
     columnWidths[columnId] ?? SETTINGS_DEFAULT_COLUMN_WIDTH,
   )
 }
@@ -795,11 +782,589 @@ function MetricCard({
   )
 }
 
+function ActiveSettingsFilterChips({
+  chips,
+  onClearAll,
+}: {
+  chips: ActiveSettingsFilterChip[]
+  onClearAll: () => void
+}) {
+  if (!chips.length) return null
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {chips.map((chip) => (
+        <span
+          className="inline-flex min-h-7 max-w-full items-center gap-2 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-foreground"
+          key={chip.key}
+        >
+          <span className="truncate">{chip.label}</span>
+          <button
+            aria-label={`Clear ${chip.label}`}
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-surface-muted hover:text-foreground"
+            type="button"
+            onClick={chip.onClear}
+          >
+            <X className="size-3.5" />
+          </button>
+        </span>
+      ))}
+      <button
+        className="min-h-7 rounded-full px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
+        type="button"
+        onClick={onClearAll}
+      >
+        Clear all
+      </button>
+    </div>
+  )
+}
+
+function SettingsSummaryField({
+  label,
+  value,
+}: {
+  label: string
+  value: ReactNode
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+        {label}
+      </p>
+      <div className="mt-1 min-w-0 text-sm font-medium text-foreground">
+        {value ?? 'Not available'}
+      </div>
+    </div>
+  )
+}
+
+function settingsActionLabel(action: SettingsActionSelection['action']) {
+  if (action === 'UPDATE') return 'Update'
+  if (action === 'EDIT') return 'Edit'
+  if (action === 'ACTIVATE') return 'Activate'
+  if (action === 'DEACTIVATE') return 'Deactivate'
+  return 'Create'
+}
+
+function policyActionLabel(action: PolicyRuleAction) {
+  if (action === 'CREATE') return 'Create'
+  if (action === 'EDIT') return 'Edit'
+  if (action === 'ACTIVATE') return 'Activate'
+  return 'Archive'
+}
+
+function getPrimarySettingsAction({
+  canUpdateSettings,
+  row,
+  type,
+}: {
+  canUpdateSettings: boolean
+  row: Row
+  type: SettingsRecordType
+}): SettingsActionSelection | null {
+  if (!canUpdateSettings) return null
+
+  if (type === 'settings') {
+    const setting = row as PlatformSetting
+
+    return setting.isEditable
+      ? { type: 'settings', action: 'UPDATE', record: setting }
+      : null
+  }
+
+  if (type === 'categories') {
+    const category = row as ServiceCategory
+
+    if (hasCatalogueAction(category, 'EDIT')) {
+      return { type: 'categories', action: 'EDIT', record: category }
+    }
+
+    const statusAction: CatalogueAction = category.isActive
+      ? 'DEACTIVATE'
+      : 'ACTIVATE'
+
+    return hasCatalogueAction(category, statusAction)
+      ? { type: 'categories', action: statusAction, record: category }
+      : null
+  }
+
+  const zone = row as ServiceZone
+  if (hasCatalogueAction(zone, 'EDIT')) {
+    return { type: 'zones', action: 'EDIT', record: zone }
+  }
+
+  const statusAction: CatalogueAction = zone.isActive ? 'DEACTIVATE' : 'ACTIVATE'
+
+  return hasCatalogueAction(zone, statusAction)
+    ? { type: 'zones', action: statusAction, record: zone }
+    : null
+}
+
+function getSecondarySettingsAction({
+  canUpdateSettings,
+  row,
+  type,
+}: {
+  canUpdateSettings: boolean
+  row: Row
+  type: SettingsRecordType
+}): SettingsActionSelection | null {
+  if (!canUpdateSettings || type === 'settings') return null
+
+  const catalogueRecord = row as ServiceCategory | ServiceZone
+  const statusAction: CatalogueAction = catalogueRecord.isActive
+    ? 'DEACTIVATE'
+    : 'ACTIVATE'
+
+  if (!hasCatalogueAction(catalogueRecord, statusAction)) return null
+
+  return type === 'categories'
+    ? {
+        type: 'categories',
+        action: statusAction,
+        record: catalogueRecord as ServiceCategory,
+      }
+    : {
+        type: 'zones',
+        action: statusAction,
+        record: catalogueRecord as ServiceZone,
+      }
+}
+
+function getSettingsRecordStatus(type: SettingsRecordType, row: Row) {
+  if (type === 'settings') {
+    const setting = row as PlatformSetting
+
+    return {
+      label: setting.isEditable ? 'Editable' : 'Locked',
+      tone: setting.isEditable ? 'success' : 'neutral',
+    } as const
+  }
+
+  const catalogueRecord = row as ServiceCategory | ServiceZone
+
+  return {
+    label: catalogueRecord.isActive ? 'Active' : 'Inactive',
+    tone: catalogueRecord.isActive ? 'success' : 'danger',
+  } as const
+}
+
+function SettingsRecordPreviewPanel({
+  canReadAudit,
+  canUpdateSettings,
+  isSubmitting,
+  onClose,
+  onOpenAction,
+  onOpenAudit,
+  onOpenDetail,
+  onOpenPolicyAction,
+  onOpenPolicyAudit,
+  selection,
+}: {
+  canReadAudit: boolean
+  canUpdateSettings: boolean
+  isSubmitting: boolean
+  onClose: () => void
+  onOpenAction: (selection: SettingsActionSelection) => void
+  onOpenAudit: (row: Row) => void
+  onOpenDetail: (row: Row) => void
+  onOpenPolicyAction: (selection: PolicyRuleActionSelection) => void
+  onOpenPolicyAudit: (rule: PolicyRule) => void
+  selection: Exclude<SettingsPreviewSelection, null>
+}) {
+  const [activeTab, setActiveTab] = useState<SettingsPreviewTab>('summary')
+  const isPolicy = selection.type === 'policies'
+  const previewTabs: { key: SettingsPreviewTab; label: string }[] = [
+    { key: 'summary', label: 'Summary' },
+    { key: 'details', label: isPolicy ? 'Scope' : 'Details' },
+    { key: 'activity', label: 'Actions' },
+  ]
+
+  if (isPolicy) {
+    const rule = selection.record
+    const secondaryAction: PolicyRuleAction =
+      rule.status === 'ACTIVE' ? 'ARCHIVE' : 'ACTIVATE'
+    const canEdit = canUpdateSettings && hasPolicyAction(rule, 'EDIT')
+    const canRunSecondary =
+      canUpdateSettings &&
+      hasPolicyAction(
+        rule,
+        secondaryAction === 'ARCHIVE' ? 'ARCHIVE' : 'ACTIVATE',
+      )
+
+    return (
+      <>
+        <button
+          aria-label="Close settings preview"
+          className="fixed inset-0 z-40 bg-black/20 xl:hidden"
+          type="button"
+          onClick={onClose}
+        />
+        <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
+          <div className="shrink-0 border-b border-border p-3">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h2 className="min-w-0 truncate text-base font-semibold text-foreground">
+                    {rule.displayName}
+                  </h2>
+                  <Badge tone={policyStatusTone(rule.status)}>
+                    {humanizeCode(rule.status)}
+                  </Badge>
+                </div>
+                <p className="mt-1 truncate text-xs text-muted">
+                  {rule.ruleKey} / v{rule.version}
+                </p>
+              </div>
+              <button
+                aria-label="Close settings preview panel"
+                className="btn-icon shrink-0"
+                title="Close"
+                type="button"
+                onClick={onClose}
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="shrink-0 border-b border-border bg-surface px-3">
+            <div className="flex gap-4 overflow-x-auto" role="tablist">
+              {previewTabs.map((tab) => (
+                <button
+                  aria-selected={activeTab === tab.key}
+                  className={cn(
+                    'relative min-h-10 shrink-0 text-sm font-semibold transition',
+                    activeTab === tab.key
+                      ? 'text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
+                      : 'text-muted hover:text-foreground',
+                  )}
+                  key={tab.key}
+                  role="tab"
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            {activeTab === 'summary' ? (
+              <div className="grid grid-cols-2 gap-3 rounded-[0.75rem] border border-border p-3">
+                <SettingsSummaryField label="Family" value={humanizeCode(rule.family)} />
+                <SettingsSummaryField label="Scope" value={humanizeCode(rule.scope.scopeType)} />
+                <SettingsSummaryField label="Priority" value={rule.priority} />
+                <SettingsSummaryField label="Updated" value={formatDate(rule.updatedAt, true)} />
+              </div>
+            ) : null}
+            {activeTab === 'details' ? (
+              <div className="space-y-3">
+                <div className="rounded-[0.75rem] border border-border p-3">
+                  <SettingsSummaryField
+                    label="Scope value"
+                    value={getPolicyScopeLabel(rule)}
+                  />
+                </div>
+                <div className="rounded-[0.75rem] border border-border p-3">
+                  <SettingsSummaryField
+                    label="Effective"
+                    value={`${formatDate(rule.effectiveFrom, true)} - ${
+                      rule.effectiveTo
+                        ? formatDate(rule.effectiveTo, true)
+                        : 'No end date'
+                    }`}
+                  />
+                </div>
+                <div className="rounded-[0.75rem] border border-border p-3">
+                  <SettingsSummaryField
+                    label="Config keys"
+                    value={
+                      Object.keys(rule.config ?? {}).slice(0, 5).join(', ') ||
+                      'No config keys'
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
+            {activeTab === 'activity' ? (
+              <div className="space-y-2">
+                {canEdit ? (
+                  <Button
+                    className="w-full"
+                    disabled={isSubmitting}
+                    size="sm"
+                    type="button"
+                    onClick={() => onOpenPolicyAction({ action: 'EDIT', record: rule })}
+                  >
+                    <Edit3 className="mr-2 size-4" />
+                    Edit policy
+                  </Button>
+                ) : null}
+                {canRunSecondary ? (
+                  <Button
+                    className="w-full"
+                    disabled={isSubmitting}
+                    size="sm"
+                    type="button"
+                    variant={secondaryAction === 'ARCHIVE' ? 'danger' : 'secondary'}
+                    onClick={() =>
+                      onOpenPolicyAction({ action: secondaryAction, record: rule })
+                    }
+                  >
+                    {secondaryAction === 'ARCHIVE' ? (
+                      <Archive className="mr-2 size-4" />
+                    ) : (
+                      <Power className="mr-2 size-4" />
+                    )}
+                    {policyActionLabel(secondaryAction)}
+                  </Button>
+                ) : null}
+                {canReadAudit ? (
+                  <Button
+                    className="w-full"
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={() => onOpenPolicyAudit(rule)}
+                  >
+                    <ClipboardList className="mr-2 size-4" />
+                    Open audit
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </aside>
+      </>
+    )
+  }
+
+  const row = selection.record
+  const type = selection.type
+  const primaryAction = getPrimarySettingsAction({
+    canUpdateSettings,
+    row,
+    type,
+  })
+  const secondaryAction = getSecondarySettingsAction({
+    canUpdateSettings,
+    row,
+    type,
+  })
+  const status = getSettingsRecordStatus(type, row)
+  const title =
+    type === 'settings'
+      ? (row as PlatformSetting).displayName
+      : type === 'categories'
+        ? (row as ServiceCategory).name
+        : (row as ServiceZone).zoneName
+  const identifier = getRowId(type, row)
+  const warnings =
+    type === 'settings'
+      ? []
+      : ((row as ServiceCategory | ServiceZone).warnings ?? [])
+
+  return (
+    <>
+      <button
+        aria-label="Close settings preview"
+        className="fixed inset-0 z-40 bg-black/20 xl:hidden"
+        type="button"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
+        <div className="shrink-0 border-b border-border p-3">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h2 className="min-w-0 truncate text-base font-semibold text-foreground">
+                  {title}
+                </h2>
+                <Badge tone={status.tone}>{status.label}</Badge>
+              </div>
+              <p className="mt-1 truncate text-xs text-muted">
+                {identifier} / {humanizeCode(type)}
+              </p>
+            </div>
+            <button
+              aria-label="Close settings preview panel"
+              className="btn-icon shrink-0"
+              title="Close"
+              type="button"
+              onClick={onClose}
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="shrink-0 border-b border-border bg-surface px-3">
+          <div className="flex gap-4 overflow-x-auto" role="tablist">
+            {previewTabs.map((tab) => (
+              <button
+                aria-selected={activeTab === tab.key}
+                className={cn(
+                  'relative min-h-10 shrink-0 text-sm font-semibold transition',
+                  activeTab === tab.key
+                    ? 'text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
+                    : 'text-muted hover:text-foreground',
+                )}
+                key={tab.key}
+                role="tab"
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {activeTab === 'summary' ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 rounded-[0.75rem] border border-border p-3">
+                <SettingsSummaryField
+                  label={type === 'zones' ? 'City' : 'Category'}
+                  value={
+                    type === 'settings'
+                      ? humanizeCode((row as PlatformSetting).category)
+                      : type === 'zones'
+                        ? (row as ServiceZone).city
+                        : (row as ServiceCategory).categoryCode
+                  }
+                />
+                <SettingsSummaryField
+                  label="Updated"
+                  value={formatDate(row.updatedAt, true)}
+                />
+                <SettingsSummaryField
+                  label={type === 'settings' ? 'Type' : 'Warnings'}
+                  value={
+                    type === 'settings'
+                      ? humanizeCode((row as PlatformSetting).valueType)
+                      : warnings.length
+                  }
+                />
+                <SettingsSummaryField
+                  label={type === 'zones' ? 'Pincodes' : 'State'}
+                  value={
+                    type === 'zones'
+                      ? (row as ServiceZone).pincodeList.length
+                      : status.label
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
+          {activeTab === 'details' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <SettingsSummaryField
+                  label={
+                    type === 'settings'
+                      ? 'Current value'
+                      : type === 'categories'
+                        ? 'Booking template'
+                        : 'Coverage'
+                  }
+                  value={
+                    type === 'settings' ? (
+                      <p className="line-clamp-4 break-words">
+                        {formatValue((row as PlatformSetting).value)}
+                      </p>
+                    ) : type === 'categories' ? (
+                      `${
+                        (row as ServiceCategory).bookingTemplate?.defaultPricingMode ??
+                        'Not configured'
+                      } / ${
+                        (row as ServiceCategory).bookingTemplate?.quoteMode ??
+                        'Instant'
+                      }`
+                    ) : (
+                      (row as ServiceZone).pincodeList.slice(0, 8).join(', ') ||
+                      'No pincodes'
+                    )
+                  }
+                />
+              </div>
+              {type !== 'settings' && warnings.length ? (
+                <div className="rounded-[0.75rem] border border-warning/25 bg-warning/10 p-3">
+                  <SettingsSummaryField
+                    label="Warnings"
+                    value={warnings.map(humanizeCode).join(', ')}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {activeTab === 'activity' ? (
+            <div className="space-y-2">
+              {primaryAction ? (
+                <Button
+                  className="w-full"
+                  disabled={isSubmitting}
+                  size="sm"
+                  type="button"
+                  onClick={() => onOpenAction(primaryAction)}
+                >
+                  <Edit3 className="mr-2 size-4" />
+                  {settingsActionLabel(primaryAction.action)}
+                </Button>
+              ) : null}
+              {secondaryAction && secondaryAction.action !== primaryAction?.action ? (
+                <Button
+                  className="w-full"
+                  disabled={isSubmitting}
+                  size="sm"
+                  type="button"
+                  variant={
+                    secondaryAction.action === 'DEACTIVATE' ? 'danger' : 'secondary'
+                  }
+                  onClick={() => onOpenAction(secondaryAction)}
+                >
+                  <Power className="mr-2 size-4" />
+                  {settingsActionLabel(secondaryAction.action)}
+                </Button>
+              ) : null}
+              <Button
+                className="w-full"
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => onOpenDetail(row)}
+              >
+                <ArrowUpRight className="mr-2 size-4" />
+                Open full detail
+              </Button>
+              {canReadAudit ? (
+                <Button
+                  className="w-full"
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => onOpenAudit(row)}
+                >
+                  <ClipboardList className="mr-2 size-4" />
+                  Open audit
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </aside>
+    </>
+  )
+}
+
 function SettingsRowsSkeleton() {
   return (
-    <div className="space-y-2.5 p-3">
+    <div className="space-y-0">
       {Array.from({ length: 8 }, (_, index) => (
-        <Skeleton className="h-20 w-full rounded-[1rem]" key={index} />
+        <Skeleton className="h-16 w-full border-b border-border" key={index} />
       ))}
     </div>
   )
@@ -831,7 +1396,8 @@ function SettingsPagination({
         <label className="flex items-center gap-2">
           <span>Rows</span>
           <select
-            className="form-input h-9 w-20 py-1"
+            aria-label="Rows per page"
+            className="h-9 rounded-[0.75rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
             value={pagination.limit}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
           >
@@ -843,7 +1409,7 @@ function SettingsPagination({
           </select>
         </label>
       </div>
-      <div className="flex items-center justify-end gap-2 text-foreground">
+      <div className="flex items-center gap-3 sm:justify-end">
         <button
           aria-label="Previous page"
           className="btn-icon"
@@ -853,8 +1419,8 @@ function SettingsPagination({
         >
           <ChevronLeft className="size-4" />
         </button>
-        <span className="min-w-24 text-center text-sm font-medium">
-          Page {pagination.page} of {pagination.totalPages}
+        <span className="text-sm font-medium text-foreground">
+          Page {pagination.page} of {Math.max(1, pagination.totalPages)}
         </span>
         <button
           aria-label="Next page"
@@ -873,11 +1439,13 @@ function SettingsPagination({
 function SettingsRow({
   canReadAudit,
   canUpdateSettings,
+  isPreviewed,
   isSelected,
   isSubmitting,
   onOpenAction,
   onOpenAudit,
   onOpenDetail,
+  onPreview,
   onSelect,
   row,
   type,
@@ -885,11 +1453,13 @@ function SettingsRow({
 }: {
   canReadAudit: boolean
   canUpdateSettings: boolean
+  isPreviewed: boolean
   isSelected: boolean
   isSubmitting: boolean
   onOpenAction: (selection: SettingsActionSelection) => void
   onOpenAudit: (row: Row) => void
   onOpenDetail: (row: Row) => void
+  onPreview: (row: Row) => void
   onSelect: (row: Row, selected: boolean) => void
   row: Row
   type: SettingsRecordType
@@ -898,52 +1468,16 @@ function SettingsRow({
   const visibleColumnDefinitions = settingsColumnsByType[type].filter((column) =>
     visibleColumns.includes(column.id),
   )
-  const setting = type === 'settings' ? (row as PlatformSetting) : null
-  const categoryRecord = type === 'categories' ? (row as ServiceCategory) : null
-  const zoneRecord = type === 'zones' ? (row as ServiceZone) : null
-  const categoryStatusAction: CatalogueAction | null = categoryRecord
-    ? categoryRecord.isActive
-      ? 'DEACTIVATE'
-      : 'ACTIVATE'
-    : null
-  const zoneStatusAction: CatalogueAction | null = zoneRecord
-    ? zoneRecord.isActive
-      ? 'DEACTIVATE'
-      : 'ACTIVATE'
-    : null
-  const canUpdateSetting = setting
-    ? canUpdatePlatformSetting({ canUpdateSettings, setting })
-    : false
-  const canEditCategory = categoryRecord
-    ? canRunCatalogueAction({
-        action: 'EDIT',
-        canUpdateSettings,
-        record: categoryRecord,
-      })
-    : false
-  const canToggleCategory =
-    categoryRecord && categoryStatusAction
-      ? canRunCatalogueAction({
-          action: categoryStatusAction,
-          canUpdateSettings,
-          record: categoryRecord,
-        })
-      : false
-  const canEditZone = zoneRecord
-    ? canRunCatalogueAction({
-        action: 'EDIT',
-        canUpdateSettings,
-        record: zoneRecord,
-      })
-    : false
-  const canToggleZone =
-    zoneRecord && zoneStatusAction
-      ? canRunCatalogueAction({
-          action: zoneStatusAction,
-          canUpdateSettings,
-          record: zoneRecord,
-        })
-      : false
+  const primaryAction = getPrimarySettingsAction({
+    canUpdateSettings,
+    row,
+    type,
+  })
+  const secondaryAction = getSecondarySettingsAction({
+    canUpdateSettings,
+    row,
+    type,
+  })
 
   const openAction = (
     event: MouseEvent<HTMLButtonElement>,
@@ -960,7 +1494,7 @@ function SettingsRow({
 
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      onOpenDetail(row)
+      onPreview(row)
     }
   }
 
@@ -968,12 +1502,14 @@ function SettingsRow({
     <div
       aria-selected={isSelected}
       className={cn(
-        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-3 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--settings-grid-template)] xl:items-center',
+        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--settings-grid-template)] xl:items-center',
         isSelected && 'bg-primary/5 hover:bg-primary/10',
+        isPreviewed &&
+          'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
       )}
       role="button"
       tabIndex={0}
-      onClick={() => onOpenDetail(row)}
+      onClick={() => onPreview(row)}
       onKeyDown={handleKeyDown}
     >
       <div className="flex min-w-0 items-start xl:items-center">
@@ -991,159 +1527,69 @@ function SettingsRow({
           {column.render(row, type)}
         </div>
       ))}
-      <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
-        <Button
-          size="sm"
+      <div className="flex min-w-0 flex-nowrap items-center justify-start gap-1.5 xl:sticky xl:right-0 xl:z-20 xl:justify-end xl:border-l xl:border-border xl:bg-inherit xl:pl-2 xl:shadow-[var(--sg-shadow-sticky-action)]">
+        {primaryAction ? (
+          <Button
+            className="w-[7.75rem] shrink-0 overflow-hidden px-2.5"
+            disabled={isSubmitting}
+            size="sm"
+            title={settingsActionLabel(primaryAction.action)}
+            type="button"
+            variant="secondary"
+            onClick={(event) => openAction(event, primaryAction)}
+          >
+            {primaryAction.action === 'UPDATE' || primaryAction.action === 'EDIT' ? (
+              <Edit3 className="mr-2 size-4 shrink-0" />
+            ) : (
+              <Power className="mr-2 size-4 shrink-0" />
+            )}
+            <span className="min-w-0 truncate">
+              {settingsActionLabel(primaryAction.action)}
+            </span>
+          </Button>
+        ) : null}
+        {secondaryAction && secondaryAction.action !== primaryAction?.action ? (
+          <Button
+            aria-label={settingsActionLabel(secondaryAction.action)}
+            className="size-9 shrink-0 px-0"
+            disabled={isSubmitting}
+            size="sm"
+            title={settingsActionLabel(secondaryAction.action)}
+            type="button"
+            variant={
+              secondaryAction.action === 'DEACTIVATE' ? 'danger' : 'secondary'
+            }
+            onClick={(event) => openAction(event, secondaryAction)}
+          >
+            <Power className="size-4 shrink-0" />
+            <span className="sr-only">{settingsActionLabel(secondaryAction.action)}</span>
+          </Button>
+        ) : null}
+        <button
+          aria-label={`Open ${getRowId(type, row)} detail`}
+          className="btn-icon shrink-0"
+          title="Open detail"
           type="button"
-          variant="ghost"
           onClick={(event) => {
             event.stopPropagation()
             onOpenDetail(row)
           }}
         >
-          <ArrowUpRight className="mr-2 size-4" />
-          Open
-        </Button>
-        {setting ? (
-          <Button
-            disabled={isSubmitting || !canUpdateSetting}
-            size="sm"
-            title={
-              !canUpdateSettings
-                ? 'Requires settings:update'
-                : !setting.isEditable
-                  ? 'Locked by backend'
-                  : 'Update setting'
-            }
-            type="button"
-            variant="secondary"
-            onClick={(event) =>
-              openAction(event, {
-                type: 'settings',
-                action: 'UPDATE',
-                record: setting,
-              })
-            }
-          >
-            <Edit3 className="mr-2 size-4" />
-            Update
-          </Button>
-        ) : null}
-        {categoryRecord ? (
-          <>
-            <Button
-              disabled={isSubmitting || !canEditCategory}
-              size="sm"
-              title={
-                !canUpdateSettings
-                  ? 'Requires settings:update'
-                  : !hasCatalogueAction(categoryRecord, 'EDIT')
-                    ? 'Edit unavailable from backend actions'
-                    : 'Edit category'
-              }
-              type="button"
-              variant="secondary"
-              onClick={(event) =>
-                openAction(event, {
-                  type: 'categories',
-                  action: 'EDIT',
-                  record: categoryRecord,
-                })
-              }
-            >
-              <Edit3 className="mr-2 size-4" />
-              Edit
-            </Button>
-            <Button
-              disabled={isSubmitting || !canToggleCategory}
-              size="sm"
-              title={
-                !canUpdateSettings
-                  ? 'Requires settings:update'
-                  : categoryStatusAction &&
-                      !hasCatalogueAction(categoryRecord, categoryStatusAction)
-                    ? 'State change unavailable from backend actions'
-                    : 'Change category state'
-              }
-              type="button"
-              variant="secondary"
-              onClick={(event) =>
-                openAction(event, {
-                  type: 'categories',
-                  action: categoryStatusAction ?? 'ACTIVATE',
-                  record: categoryRecord,
-                })
-              }
-            >
-              <Power className="mr-2 size-4" />
-              {categoryRecord.isActive ? 'Deactivate' : 'Activate'}
-            </Button>
-          </>
-        ) : null}
-        {zoneRecord ? (
-          <>
-            <Button
-              disabled={isSubmitting || !canEditZone}
-              size="sm"
-              title={
-                !canUpdateSettings
-                  ? 'Requires settings:update'
-                  : !hasCatalogueAction(zoneRecord, 'EDIT')
-                    ? 'Edit unavailable from backend actions'
-                    : 'Edit zone'
-              }
-              type="button"
-              variant="secondary"
-              onClick={(event) =>
-                openAction(event, {
-                  type: 'zones',
-                  action: 'EDIT',
-                  record: zoneRecord,
-                })
-              }
-            >
-              <Edit3 className="mr-2 size-4" />
-              Edit
-            </Button>
-            <Button
-              disabled={isSubmitting || !canToggleZone}
-              size="sm"
-              title={
-                !canUpdateSettings
-                  ? 'Requires settings:update'
-                  : zoneStatusAction && !hasCatalogueAction(zoneRecord, zoneStatusAction)
-                    ? 'State change unavailable from backend actions'
-                    : 'Change zone state'
-              }
-              type="button"
-              variant="secondary"
-              onClick={(event) =>
-                openAction(event, {
-                  type: 'zones',
-                  action: zoneStatusAction ?? 'ACTIVATE',
-                  record: zoneRecord,
-                })
-              }
-            >
-              <Power className="mr-2 size-4" />
-              {zoneRecord.isActive ? 'Deactivate' : 'Activate'}
-            </Button>
-          </>
-        ) : null}
+          <ArrowUpRight className="size-4" />
+        </button>
         {canReadAudit ? (
-          <Button
-            size="sm"
+          <button
+            aria-label={`Open audit history for ${getRowId(type, row)}`}
+            className="btn-icon shrink-0"
             title="Open audit history"
             type="button"
-            variant="ghost"
             onClick={(event) => {
               event.stopPropagation()
               onOpenAudit(row)
             }}
           >
-            <ClipboardList className="mr-2 size-4" />
-            Audit
-          </Button>
+            <ClipboardList className="size-4" />
+          </button>
         ) : null}
       </div>
     </div>
@@ -1821,10 +2267,12 @@ function PolicyRulesWorkspace({
   onOpenCategory,
   onOpenVendor,
   onOpenZone,
+  onPreview,
   onPreviewPricing,
   onRefresh,
   onSelectAction,
   rows,
+  selectedPolicyRuleId,
 }: {
   canReadAudit: boolean
   canReadVendors: boolean
@@ -1837,10 +2285,12 @@ function PolicyRulesWorkspace({
   onOpenCategory: (categoryId: string) => void
   onOpenVendor: (vendorId: string) => void
   onOpenZone: (zoneId: string) => void
+  onPreview: (row: PolicyRule) => void
   onPreviewPricing: () => void
   onRefresh: () => void
   onSelectAction: (action: PolicyRuleActionSelection) => void
   rows: PolicyRule[]
+  selectedPolicyRuleId?: string | null
 }) {
   if (isError) {
     return (
@@ -1910,13 +2360,15 @@ function PolicyRulesWorkspace({
       ) : (
         <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
           <div className="min-w-[78rem]">
-            <div className="sticky top-0 z-10 grid grid-cols-[minmax(17rem,1.4fr)_8rem_minmax(12rem,0.9fr)_8rem_minmax(13rem,0.9fr)_minmax(21rem,1fr)] gap-3 border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted">
+            <div className="sticky top-0 z-30 grid grid-cols-[minmax(17rem,1.4fr)_8rem_minmax(12rem,0.9fr)_8rem_minmax(13rem,0.9fr)_15rem] gap-3 border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted shadow-[0_1px_0_var(--adaptive-border)]">
               <div>Rule</div>
               <div>Status</div>
               <div>Scope</div>
               <div>Priority</div>
               <div>Effective</div>
-              <div className="text-right">Actions</div>
+              <div className="sticky right-0 z-40 bg-surface-muted pr-3 text-right shadow-[var(--sg-shadow-sticky-action)]">
+                Actions
+              </div>
             </div>
             <div>
               {rows.map((rule) => (
@@ -1924,12 +2376,14 @@ function PolicyRulesWorkspace({
                   canReadAudit={canReadAudit}
                   canReadVendors={canReadVendors}
                   canUpdateSettings={canUpdateSettings}
+                  isPreviewed={selectedPolicyRuleId === rule.policyRuleId}
                   key={rule.policyRuleId}
                   rule={rule}
                   onOpenAudit={onOpenAudit}
                   onOpenCategory={onOpenCategory}
                   onOpenVendor={onOpenVendor}
                   onOpenZone={onOpenZone}
+                  onPreview={onPreview}
                   onSelectAction={onSelectAction}
                 />
               ))}
@@ -1945,20 +2399,24 @@ function PolicyRuleRow({
   canReadAudit,
   canReadVendors,
   canUpdateSettings,
+  isPreviewed,
   onOpenAudit,
   onOpenCategory,
   onOpenVendor,
   onOpenZone,
+  onPreview,
   onSelectAction,
   rule,
 }: {
   canReadAudit: boolean
   canReadVendors: boolean
   canUpdateSettings: boolean
+  isPreviewed: boolean
   onOpenAudit: (row: PolicyRule) => void
   onOpenCategory: (categoryId: string) => void
   onOpenVendor: (vendorId: string) => void
   onOpenZone: (zoneId: string) => void
+  onPreview: (row: PolicyRule) => void
   onSelectAction: (action: PolicyRuleActionSelection) => void
   rule: PolicyRule
 }) {
@@ -1970,7 +2428,26 @@ function PolicyRuleRow({
     hasPolicyAction(rule, secondaryAction === 'ARCHIVE' ? 'ARCHIVE' : 'ACTIVATE')
 
   return (
-    <div className="grid grid-cols-[minmax(17rem,1.4fr)_8rem_minmax(12rem,0.9fr)_8rem_minmax(13rem,0.9fr)_minmax(21rem,1fr)] gap-3 border-b border-border bg-surface px-3 py-3 last:border-b-0">
+    <div
+      aria-label={`Preview policy rule ${rule.displayName}`}
+      aria-selected={isPreviewed}
+      className={cn(
+        'grid cursor-pointer grid-cols-[minmax(17rem,1.4fr)_8rem_minmax(12rem,0.9fr)_8rem_minmax(13rem,0.9fr)_15rem] gap-3 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+        isPreviewed &&
+          'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
+      )}
+      role="button"
+      tabIndex={0}
+      onClick={() => onPreview(rule)}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return
+
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onPreview(rule)
+        }
+      }}
+    >
       <div className="min-w-0">
         <p className="truncate font-semibold text-foreground">{rule.displayName}</p>
         <p className="truncate text-xs text-muted">{rule.ruleKey}</p>
@@ -1992,7 +2469,10 @@ function PolicyRuleRow({
             <button
               className="text-xs font-semibold text-primary hover:underline"
               type="button"
-              onClick={() => onOpenCategory(rule.scope.categoryId as string)}
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenCategory(rule.scope.categoryId as string)
+              }}
             >
               Category
             </button>
@@ -2001,7 +2481,10 @@ function PolicyRuleRow({
             <button
               className="text-xs font-semibold text-primary hover:underline"
               type="button"
-              onClick={() => onOpenZone(rule.scope.zoneId as string)}
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenZone(rule.scope.zoneId as string)
+              }}
             >
               Zone
             </button>
@@ -2010,7 +2493,10 @@ function PolicyRuleRow({
             <button
               className="text-xs font-semibold text-primary hover:underline"
               type="button"
-              onClick={() => onOpenVendor(rule.scope.vendorId as string)}
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenVendor(rule.scope.vendorId as string)
+              }}
             >
               Vendor
             </button>
@@ -2029,8 +2515,9 @@ function PolicyRuleRow({
           {rule.effectiveTo ? formatDate(rule.effectiveTo, true) : 'No end date'}
         </p>
       </div>
-      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+      <div className="sticky right-0 z-20 flex min-w-0 flex-nowrap items-center justify-end gap-1.5 border-l border-border bg-inherit pl-2 pr-3 shadow-[var(--sg-shadow-sticky-action)]">
         <Button
+          className="w-[7.75rem] shrink-0 overflow-hidden px-2.5"
           disabled={!canEdit}
           size="sm"
           title={
@@ -2042,12 +2529,17 @@ function PolicyRuleRow({
           }
           type="button"
           variant="secondary"
-          onClick={() => onSelectAction({ action: 'EDIT', record: rule })}
+          onClick={(event) => {
+            event.stopPropagation()
+            onSelectAction({ action: 'EDIT', record: rule })
+          }}
         >
-          <Edit3 className="mr-2 size-4" />
-          Edit
+          <Edit3 className="mr-2 size-4 shrink-0" />
+          <span className="min-w-0 truncate">Edit</span>
         </Button>
         <Button
+          aria-label={policyActionLabel(secondaryAction)}
+          className="size-9 shrink-0 px-0"
           disabled={!canRunSecondary}
           size="sm"
           title={
@@ -2059,26 +2551,30 @@ function PolicyRuleRow({
           }
           type="button"
           variant={secondaryAction === 'ARCHIVE' ? 'danger' : 'secondary'}
-          onClick={() => onSelectAction({ action: secondaryAction, record: rule })}
+          onClick={(event) => {
+            event.stopPropagation()
+            onSelectAction({ action: secondaryAction, record: rule })
+          }}
         >
           {secondaryAction === 'ARCHIVE' ? (
-            <Archive className="mr-2 size-4" />
+            <Archive className="size-4 shrink-0" />
           ) : (
-            <Power className="mr-2 size-4" />
+            <Power className="size-4 shrink-0" />
           )}
-          {humanizeCode(secondaryAction)}
+          <span className="sr-only">{policyActionLabel(secondaryAction)}</span>
         </Button>
         {canReadAudit ? (
-          <Button
-            size="sm"
+          <button
+            className="btn-icon shrink-0"
             title="Open audit history"
             type="button"
-            variant="ghost"
-            onClick={() => onOpenAudit(rule)}
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenAudit(rule)
+            }}
           >
-            <ClipboardList className="mr-2 size-4" />
-            Audit
-          </Button>
+            <ClipboardList className="size-4" />
+          </button>
         ) : null}
       </div>
     </div>
@@ -2133,7 +2629,9 @@ export function SettingsPage() {
   const [selectedAction, setSelectedAction] =
     useState<SettingsActionSelection | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [previewSelection, setPreviewSelection] =
+    useState<SettingsPreviewSelection>(null)
   const [visibleColumns, setVisibleColumns] = useState<SettingsColumnId[]>(
     defaultVisibleColumns(isSettingsRecordType(type) ? type : 'settings'),
   )
@@ -2232,6 +2730,7 @@ export function SettingsPage() {
     setSelectedPolicyAction(null)
     setSelectedAction(null)
     setColumnsOpen(false)
+    setPreviewSelection(null)
     if (isSettingsRecordType(nextType)) {
       setVisibleColumns(defaultVisibleColumns(nextType))
     }
@@ -2396,11 +2895,6 @@ export function SettingsPage() {
   const settingsSelection = useListSelection(rows, (row) =>
     getRowId(activeSettingsType, row),
   )
-  const warningCount = isSettingsRecordType(type)
-    ? countWarnings(activeSettingsType, rows)
-    : 0
-  const policyActiveCount = policyRows.filter((row) => row.status === 'ACTIVE').length
-  const latest = type === 'policies' ? latestUpdated(policyRows) : latestUpdated(rows)
   const isInitialLoading =
     type === 'policies'
       ? policyResult.isLoading && policyRows.length === 0
@@ -2410,7 +2904,7 @@ export function SettingsPage() {
       ? policyResult.isFetching && !isInitialLoading
       : result.isFetching && !isInitialLoading
   const refreshStatusLabel = isRefreshing
-    ? 'Refreshing...'
+    ? 'Refreshing'
     : formatRefreshTime(
         type === 'policies' ? policyResult.dataUpdatedAt : result.dataUpdatedAt,
       )
@@ -2445,10 +2939,7 @@ export function SettingsPage() {
 
       setColumnWidths((currentWidths) => ({
         ...currentWidths,
-        [columnId]: Math.max(
-          getSettingsColumnMinWidth(columnId),
-          Math.round(nextWidth),
-        ),
+        [columnId]: clampSettingsColumnWidth(columnId, nextWidth),
       }))
     }
 
@@ -2466,8 +2957,8 @@ export function SettingsPage() {
   const adjustColumnWidth = (columnId: SettingsColumnWidthId, delta: number) => {
     setColumnWidths((currentWidths) => ({
       ...currentWidths,
-      [columnId]: Math.max(
-        getSettingsColumnMinWidth(columnId),
+      [columnId]: clampSettingsColumnWidth(
+        columnId,
         getSettingsColumnWidth(currentWidths, columnId) + delta,
       ),
     }))
@@ -2507,6 +2998,69 @@ export function SettingsPage() {
     setPage(1)
   }
 
+  const activeFilterChips: ActiveSettingsFilterChip[] = []
+  const addActiveFilterChip = (
+    condition: boolean,
+    key: string,
+    label: string,
+    onClear: () => void,
+  ) => {
+    if (condition) activeFilterChips.push({ key, label, onClear })
+  }
+
+  addActiveFilterChip(Boolean(search.trim()), 'search', `Search: ${search.trim()}`, () => {
+    clearSeededSettingsParams()
+    setSearch('')
+    resetToFirstPage()
+  })
+  addActiveFilterChip(Boolean(category.trim()), 'category', `Category: ${category.trim()}`, () => {
+    clearSeededSettingsParams()
+    setCategory('')
+    resetToFirstPage()
+  })
+  addActiveFilterChip(Boolean(city.trim()), 'city', `City: ${city.trim()}`, () => {
+    clearSeededSettingsParams()
+    setCity('')
+    resetToFirstPage()
+  })
+  addActiveFilterChip(Boolean(isEditable), 'editable', `Editable: ${humanizeCode(isEditable)}`, () => {
+    clearSeededSettingsParams()
+    setIsEditable('')
+    resetToFirstPage()
+  })
+  addActiveFilterChip(Boolean(isActive), 'active', `Active: ${humanizeCode(isActive)}`, () => {
+    clearSeededSettingsParams()
+    setIsActive('')
+    resetToFirstPage()
+  })
+  addActiveFilterChip(
+    Boolean(policyFamily),
+    'policy-family',
+    `Family: ${humanizeCode(policyFamily)}`,
+    () => {
+      clearSeededSettingsParams()
+      setPolicyFamily('')
+    },
+  )
+  addActiveFilterChip(
+    Boolean(policyStatus),
+    'policy-status',
+    `Status: ${humanizeCode(policyStatus)}`,
+    () => {
+      clearSeededSettingsParams()
+      setPolicyStatus('')
+    },
+  )
+  addActiveFilterChip(
+    Boolean(policyScopeType),
+    'policy-scope',
+    `Scope: ${humanizeCode(policyScopeType)}`,
+    () => {
+      clearSeededSettingsParams()
+      setPolicyScopeType('')
+    },
+  )
+
   const openDetail = (row: Row) => {
     navigate(
       `${routePaths.settings}/${activeSettingsType}/${encodeURIComponent(
@@ -2536,326 +3090,67 @@ export function SettingsPage() {
   }
 
   return (
-    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
-      <PageContextHeader
-        description="Manage platform settings, category behavior, and service zones."
-        layout="workspace"
-        placement="topbar"
-        title="Settings"
-      />
+    <PageContainer className="flex min-h-full flex-col space-y-3 !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
+      <PageContextHeader layout="workspace" placement="topbar" title="Settings" />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            icon={<Settings2 className="size-4 text-primary" />}
-            label="Total records"
-            meta={recordLabel(type)}
-            value={type === 'policies' ? policyRows.length : (pagination?.totalItems ?? 0)}
-          />
-          <MetricCard
-            icon={<Search className="size-4 text-info" />}
-            label="Loaded rows"
-            meta={type === 'policies' ? 'Backend filter result' : 'Current page'}
-            value={type === 'policies' ? policyRows.length : rows.length}
-          />
-          <MetricCard
-            icon={<ToggleLeft className="size-4 text-warning" />}
-            label={
-              type === 'settings'
-                ? 'Sensitive'
-                : type === 'policies'
-                  ? 'Active rules'
-                  : 'Warnings'
-            }
-            meta={
-              type === 'settings'
-                ? 'Loaded page'
-                : type === 'policies'
-                  ? 'Filtered result'
-                  : 'Backend warnings'
-            }
-            value={type === 'policies' ? policyActiveCount : warningCount}
-          />
-          <MetricCard
-            icon={<RefreshCcw className="size-4 text-success" />}
-            label="Latest update"
-            meta={latest ? recordLabel(type) : 'No rows loaded'}
-            value={latest ? formatDate(latest, true) : 'None'}
-          />
-        </section>
-
-        <section
-          className={cn(
-            'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
-            filtersCollapsed
-              ? 'xl:grid-cols-[3rem_minmax(0,1fr)]'
-              : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
-          )}
+      <section className="flex min-w-0 flex-col xl:min-h-0 xl:flex-1">
+        <main
+          className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface xl:min-h-0 xl:flex-1"
+          id={type === 'policies' ? 'settings-policy-rules' : 'settings-records'}
         >
-          <aside
-            className={cn(
-              'flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface',
-              filtersCollapsed && 'items-center',
-            )}
-          >
-            {filtersCollapsed ? (
-              <button
-                aria-label="Expand settings filters"
-                className="mt-3 inline-flex size-9 items-center justify-center rounded-[0.65rem] text-muted transition hover:bg-surface-muted hover:text-foreground"
-                title="Expand filters"
-                type="button"
-                onClick={() => setFiltersCollapsed(false)}
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            ) : (
-              <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-sm font-semibold text-foreground">
-                      Settings workspace
-                    </h2>
-                    <p className="mt-1 text-xs text-muted">
-                      Switch record types and stack filters.
-                    </p>
-                  </div>
-                  <button
-                    aria-label="Collapse settings filters"
-                    className="btn-icon"
-                    title="Collapse filters"
-                    type="button"
-                    onClick={() => setFiltersCollapsed(true)}
-                  >
-                    <ChevronLeft className="size-4" />
-                  </button>
-                </div>
-
-                <div className="mt-3 space-y-2">
-                  {settingsTabs.map((tab) => (
-                    <button
-                      className={cn(
-                        'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border px-3 text-left text-sm transition',
-                        type === tab.type
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border bg-surface-muted/50 text-foreground hover:border-primary/35',
-                      )}
-                      key={tab.type}
-                      type="button"
-                      onClick={() => switchType(tab.type)}
-                    >
-                      <span className="flex items-center gap-2 font-medium">
-                        {tab.icon}
-                        {tab.label}
-                      </span>
-                      <span className="text-xs font-semibold">
-                        {type === tab.type
-                          ? type === 'policies'
-                            ? policyRows.length
-                            : (pagination?.totalItems ?? '...')
-                          : ''}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-4 border-t border-border pt-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Filter stack
-                    </h3>
-                    {hasActiveFilters ? (
-                      <button
-                        className="text-xs font-semibold text-primary"
-                        type="button"
-                        onClick={clearFilters}
-                      >
-                        Reset
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 space-y-3">
-                    {type === 'settings' ? (
-                      <>
-                        <label className="space-y-1">
-                          <span className="text-xs font-semibold text-muted">
-                            Category
-                          </span>
-                          <Input
-                            className="min-h-10"
-                            placeholder="orders, payouts"
-                            value={category}
-                            onChange={(event) => {
-                              clearSeededSettingsParams()
-                              setCategory(event.target.value)
-                              resetToFirstPage()
-                            }}
-                          />
-                        </label>
-                        <label className="space-y-1">
-                          <span className="text-xs font-semibold text-muted">
-                            Editable
-                          </span>
-                          <select
-                            className="form-input"
-                            value={isEditable}
-                            onChange={(event) => {
-                              clearSeededSettingsParams()
-                              setIsEditable(event.target.value)
-                              resetToFirstPage()
-                            }}
-                          >
-                            <option value="">All</option>
-                            <option value="true">Editable</option>
-                            <option value="false">Locked</option>
-                          </select>
-                        </label>
-                      </>
-                    ) : null}
-                    {type === 'zones' ? (
-                      <label className="space-y-1">
-                        <span className="text-xs font-semibold text-muted">
-                          City
-                        </span>
-                        <Input
-                          className="min-h-10"
-                          placeholder="Chennai"
-                          value={city}
-                          onChange={(event) => {
-                            clearSeededSettingsParams()
-                            setCity(event.target.value)
-                            resetToFirstPage()
-                          }}
-                        />
-                      </label>
-                    ) : null}
-                    {type === 'policies' ? (
-                      <>
-                        <label className="space-y-1">
-                          <span className="text-xs font-semibold text-muted">
-                            Family
-                          </span>
-                          <select
-                            className="form-input"
-                            value={policyFamily}
-                            onChange={(event) => {
-                              clearSeededSettingsParams()
-                              setPolicyFamily(event.target.value)
-                            }}
-                          >
-                            <option value="">All</option>
-                            {policyFamilies.map((option) => (
-                              <option key={option} value={option}>
-                                {humanizeCode(option)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="space-y-1">
-                          <span className="text-xs font-semibold text-muted">
-                            Status
-                          </span>
-                          <select
-                            className="form-input"
-                            value={policyStatus}
-                            onChange={(event) => {
-                              clearSeededSettingsParams()
-                              setPolicyStatus(event.target.value)
-                            }}
-                          >
-                            <option value="">All</option>
-                            {policyStatuses.map((option) => (
-                              <option key={option} value={option}>
-                                {humanizeCode(option)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="space-y-1">
-                          <span className="text-xs font-semibold text-muted">
-                            Scope
-                          </span>
-                          <select
-                            className="form-input"
-                            value={policyScopeType}
-                            onChange={(event) => {
-                              clearSeededSettingsParams()
-                              setPolicyScopeType(event.target.value)
-                            }}
-                          >
-                            <option value="">All</option>
-                            {policyScopeTypes.map((option) => (
-                              <option key={option} value={option}>
-                                {humanizeCode(option)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </>
-                    ) : null}
-                    {(type === 'categories' || type === 'zones') ? (
-                      <label className="space-y-1">
-                        <span className="text-xs font-semibold text-muted">
-                          Active
-                        </span>
-                        <select
-                          className="form-input"
-                          value={isActive}
-                          onChange={(event) => {
-                            clearSeededSettingsParams()
-                            setIsActive(event.target.value)
-                            resetToFirstPage()
-                          }}
-                        >
-                          <option value="">All</option>
-                          <option value="true">Active</option>
-                          <option value="false">Inactive</option>
-                        </select>
-                      </label>
-                    ) : null}
-                  </div>
-                </div>
+          <div className="shrink-0 border-b border-border bg-surface px-3 py-3 sm:px-4">
+            <div className="grid gap-3 xl:grid-cols-[minmax(11rem,0.32fr)_minmax(18rem,1fr)_auto] xl:items-center">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h1 className="text-base font-semibold text-foreground">Settings</h1>
+                <span
+                  className={cn(
+                    'rounded-full bg-surface-muted px-2 py-1 text-xs font-semibold',
+                    isRefreshing ? 'text-primary' : 'text-muted',
+                  )}
+                >
+                  {refreshStatusLabel}
+                </span>
               </div>
-            )}
-          </aside>
 
-          <main
-            className="flex min-w-0 scroll-mt-4 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0"
-            id={type === 'policies' ? 'settings-policy-rules' : 'settings-records'}
-          >
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  {settingsTabs.find((tab) => tab.type === type)?.label}
-                </h2>
-                <p className="text-sm text-muted">
-                  {type === 'policies'
-                    ? `${policyRows.length} policy rules from backend filters`
-                    : pagination
-                    ? `${pagination.totalItems} ${recordLabel(type)} · ${rows.length} loaded`
-                    : 'Search, filter, and update settings records from backend data.'}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {type !== 'policies' ? (
-                  <ListHeaderSearch
-                    className="w-full sm:w-72 lg:w-80"
-                    placeholder={`Search ${recordLabel(type)}`}
-                    value={search}
-                    onChange={(nextSearch) => {
-                      clearSeededSettingsParams()
-                      setSearch(nextSearch)
-                      resetToFirstPage()
-                    }}
-                  />
-                ) : null}
+              {type !== 'policies' ? (
+                <ListHeaderSearch
+                  ariaLabel="Search settings records"
+                  className="w-full min-w-0"
+                  placeholder={`Search ${recordLabel(type)}...`}
+                  value={search}
+                  onChange={(nextSearch) => {
+                    clearSeededSettingsParams()
+                    setSearch(nextSearch)
+                    resetToFirstPage()
+                  }}
+                />
+              ) : (
+                <div className="min-h-10 rounded-[0.75rem] border border-dashed border-border bg-surface-muted/40 px-3 py-2 text-sm text-muted">
+                  Policy rules are filtered by family, status, and scope.
+                </div>
+              )}
+
+              <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 xl:justify-end">
+                <Button
+                  aria-expanded={filtersOpen}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setFiltersOpen((current) => !current)}
+                >
+                  <Filter className="mr-2 size-4" />
+                  Filters
+                  {activeFilterChips.length ? (
+                    <span className="ml-1 size-2 rounded-full bg-primary" />
+                  ) : null}
+                </Button>
+
                 {type === 'zones' ? (
                   <Button
                     disabled={!canUpdateSettings}
                     size="sm"
                     title={
-                      canUpdateSettings
-                        ? 'Create zone'
-                        : 'Requires settings:update'
+                      canUpdateSettings ? 'Create zone' : 'Requires settings:update'
                     }
                     type="button"
                     variant="secondary"
@@ -2865,14 +3160,36 @@ export function SettingsPage() {
                     Zone
                   </Button>
                 ) : null}
-                <span
-                  className={cn(
-                    'text-xs font-medium',
-                    isRefreshing ? 'text-primary' : 'text-muted',
-                  )}
-                >
-                  {refreshStatusLabel}
-                </span>
+
+                {type === 'policies' ? (
+                  <>
+                    <Button
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setPricingPreviewOpen(true)}
+                    >
+                      <Calculator className="mr-2 size-4" />
+                      Preview
+                    </Button>
+                    <Button
+                      disabled={!canUpdateSettings}
+                      size="sm"
+                      title={
+                        canUpdateSettings
+                          ? 'Create policy rule'
+                          : 'Requires settings:update'
+                      }
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setSelectedPolicyAction({ action: 'CREATE' })}
+                    >
+                      <Plus className="mr-2 size-4" />
+                      Rule
+                    </Button>
+                  </>
+                ) : null}
+
                 {type !== 'policies' ? (
                   <div className="relative" ref={columnsMenuRef}>
                     <Button
@@ -2894,7 +3211,7 @@ export function SettingsPage() {
 
                     {columnsOpen ? (
                       <div
-                        className="absolute right-0 top-[calc(100%+0.5rem)] z-[60] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
+                        className="absolute right-0 top-[calc(100%+0.5rem)] z-[80] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
                         role="menu"
                       >
                         <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
@@ -2909,7 +3226,8 @@ export function SettingsPage() {
                             <label
                               className={cn(
                                 'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
-                                isRequiredLastColumn && 'cursor-not-allowed opacity-60',
+                                isRequiredLastColumn &&
+                                  'cursor-not-allowed opacity-60',
                               )}
                               key={column.id}
                             >
@@ -2928,6 +3246,7 @@ export function SettingsPage() {
                     ) : null}
                   </div>
                 ) : null}
+
                 <Button
                   size="sm"
                   type="button"
@@ -2949,7 +3268,207 @@ export function SettingsPage() {
               </div>
             </div>
 
-            {type === 'policies' ? (
+            <div className="mt-3 flex gap-2 overflow-x-auto rounded-[0.875rem] border border-border bg-surface-muted/45 p-1">
+              {settingsTabs.map((tab) => {
+                const isActiveTab = type === tab.type
+                const count =
+                  tab.type === type
+                    ? tab.type === 'policies'
+                      ? policyRows.length
+                      : pagination?.totalItems
+                    : undefined
+
+                return (
+                  <button
+                    className={cn(
+                      'inline-flex min-h-9 min-w-max flex-1 items-center justify-center gap-2 rounded-[0.65rem] px-3 text-sm font-semibold transition',
+                      isActiveTab
+                        ? 'bg-surface text-primary shadow-sm ring-1 ring-primary/25'
+                        : 'text-muted hover:bg-surface/75 hover:text-foreground',
+                    )}
+                    key={tab.type}
+                    type="button"
+                    onClick={() => switchType(tab.type)}
+                  >
+                    {tab.icon}
+                    <span>{tab.label}</span>
+                    {typeof count !== 'undefined' ? (
+                      <span
+                        className={cn(
+                          'rounded-full px-2 py-0.5 text-xs',
+                          isActiveTab
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-surface text-muted',
+                        )}
+                      >
+                        {count}
+                      </span>
+                    ) : null}
+                  </button>
+                )
+              })}
+            </div>
+
+            <ActiveSettingsFilterChips
+              chips={activeFilterChips}
+              onClearAll={clearFilters}
+            />
+
+            {filtersOpen ? (
+              <div className="mt-3 rounded-[0.875rem] border border-border bg-surface-muted/35 p-3">
+                <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(10rem,1fr))_auto] xl:items-end">
+                  {type === 'settings' ? (
+                    <>
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-muted">Category</span>
+                        <Input
+                          className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
+                          placeholder="orders, payouts"
+                          value={category}
+                          onChange={(event) => {
+                            clearSeededSettingsParams()
+                            setCategory(event.target.value)
+                            resetToFirstPage()
+                          }}
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-muted">Editable</span>
+                        <select
+                          className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
+                          value={isEditable}
+                          onChange={(event) => {
+                            clearSeededSettingsParams()
+                            setIsEditable(event.target.value)
+                            resetToFirstPage()
+                          }}
+                        >
+                          <option value="">All</option>
+                          <option value="true">Editable</option>
+                          <option value="false">Locked</option>
+                        </select>
+                      </label>
+                    </>
+                  ) : null}
+
+                  {type === 'zones' ? (
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">City</span>
+                      <Input
+                        className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
+                        placeholder="Chennai"
+                        value={city}
+                        onChange={(event) => {
+                          clearSeededSettingsParams()
+                          setCity(event.target.value)
+                          resetToFirstPage()
+                        }}
+                      />
+                    </label>
+                  ) : null}
+
+                  {type === 'policies' ? (
+                    <>
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-muted">Family</span>
+                        <select
+                          className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
+                          value={policyFamily}
+                          onChange={(event) => {
+                            clearSeededSettingsParams()
+                            setPolicyFamily(event.target.value)
+                          }}
+                        >
+                          <option value="">All</option>
+                          {policyFamilies.map((option) => (
+                            <option key={option} value={option}>
+                              {humanizeCode(option)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-muted">Status</span>
+                        <select
+                          className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
+                          value={policyStatus}
+                          onChange={(event) => {
+                            clearSeededSettingsParams()
+                            setPolicyStatus(event.target.value)
+                          }}
+                        >
+                          <option value="">All</option>
+                          {policyStatuses.map((option) => (
+                            <option key={option} value={option}>
+                              {humanizeCode(option)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-muted">Scope</span>
+                        <select
+                          className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
+                          value={policyScopeType}
+                          onChange={(event) => {
+                            clearSeededSettingsParams()
+                            setPolicyScopeType(event.target.value)
+                          }}
+                        >
+                          <option value="">All</option>
+                          {policyScopeTypes.map((option) => (
+                            <option key={option} value={option}>
+                              {humanizeCode(option)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
+                  ) : null}
+
+                  {(type === 'categories' || type === 'zones') ? (
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">Active</span>
+                      <select
+                        className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
+                        value={isActive}
+                        onChange={(event) => {
+                          clearSeededSettingsParams()
+                          setIsActive(event.target.value)
+                          resetToFirstPage()
+                        }}
+                      >
+                        <option value="">All</option>
+                        <option value="true">Active</option>
+                        <option value="false">Inactive</option>
+                      </select>
+                    </label>
+                  ) : null}
+
+                  <Button
+                    className="h-10 w-full"
+                    disabled={!hasActiveFilters}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={clearFilters}
+                  >
+                    Reset
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {type === 'policies' ? (
+            <div
+              className={cn(
+                'min-h-0 xl:flex-1',
+                previewSelection?.type === 'policies'
+                  ? 'grid xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-3 xl:p-3'
+                  : 'flex flex-col',
+              )}
+            >
               <PolicyRulesWorkspace
                 canReadAudit={canReadAudit}
                 canReadVendors={canReadVendors}
@@ -2958,42 +3477,77 @@ export function SettingsPage() {
                 isInitialLoading={isInitialLoading}
                 isRefreshing={isRefreshing}
                 rows={policyRows}
+                selectedPolicyRuleId={
+                  previewSelection?.type === 'policies'
+                    ? previewSelection.record.policyRuleId
+                    : null
+                }
                 onCreate={() => setSelectedPolicyAction({ action: 'CREATE' })}
                 onOpenAudit={openPolicyAudit}
                 onOpenCategory={openPolicyCategory}
                 onOpenVendor={openPolicyVendor}
                 onOpenZone={openPolicyZone}
+                onPreview={(rule) => setPreviewSelection({ type: 'policies', record: rule })}
                 onPreviewPricing={() => setPricingPreviewOpen(true)}
                 onRefresh={() => void policyResult.refetch()}
                 onSelectAction={setSelectedPolicyAction}
               />
-            ) : result.isError ? (
-              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <ErrorState
-                  description="We could not load settings data."
-                  title="Settings unavailable"
-                  onRetry={() => void result.refetch()}
+              {previewSelection?.type === 'policies' ? (
+                <SettingsRecordPreviewPanel
+                  canReadAudit={canReadAudit}
+                  canUpdateSettings={canUpdateSettings}
+                  isSubmitting={policyMutation.isPending}
+                  selection={previewSelection}
+                  onClose={() => setPreviewSelection(null)}
+                  onOpenAction={setSelectedAction}
+                  onOpenAudit={openAudit}
+                  onOpenDetail={openDetail}
+                  onOpenPolicyAction={setSelectedPolicyAction}
+                  onOpenPolicyAudit={openPolicyAudit}
                 />
-              </div>
-            ) : isInitialLoading ? (
-              <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <SettingsRowsSkeleton />
-              </div>
-            ) : rows.length === 0 ? (
-              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <EmptyState
-                  description="No settings records matched the current filters."
-                  title="No records found"
-                />
-              </div>
-            ) : (
-              <div className="flex flex-col xl:min-h-0 xl:flex-1">
+              ) : null}
+            </div>
+          ) : result.isError ? (
+            <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+              <ErrorState
+                description="We could not load settings data."
+                title="Settings unavailable"
+                onRetry={() => void result.refetch()}
+              />
+            </div>
+          ) : isInitialLoading ? (
+            <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+              <SettingsRowsSkeleton />
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+              <EmptyState
+                actionLabel={hasActiveFilters ? 'Clear filters' : undefined}
+                description={
+                  hasActiveFilters
+                    ? 'No records match the current filters.'
+                    : 'No settings records were returned.'
+                }
+                title="No records"
+                onAction={hasActiveFilters ? clearFilters : undefined}
+              />
+            </div>
+          ) : (
+            <div
+              className={cn(
+                'min-h-0 xl:flex-1',
+                previewSelection?.type === activeSettingsType
+                  ? 'grid xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-3 xl:p-3'
+                  : 'flex flex-col',
+              )}
+            >
+              <div className="flex min-w-0 flex-col overflow-hidden xl:min-h-0 xl:flex-1">
                 <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
                   <div
                     className="min-w-0 xl:min-w-[var(--settings-grid-min-width)]"
                     style={settingsGridStyle}
                   >
-                    <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--settings-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                    <div className="sticky top-0 z-30 hidden gap-3 grid-cols-[var(--settings-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted shadow-[0_1px_0_var(--adaptive-border)] xl:grid">
                       <div className="flex min-w-0 items-center">
                         <ListSelectionCheckbox
                           checked={settingsSelection.allVisibleSelected}
@@ -3039,7 +3593,7 @@ export function SettingsPage() {
                             </button>
                           </div>
                         ))}
-                      <div className="relative flex min-w-0 items-center justify-end pr-3 text-right">
+                      <div className="relative sticky right-0 z-40 flex min-w-0 items-center justify-end bg-surface-muted pr-3 text-right shadow-[var(--sg-shadow-sticky-action)]">
                         <span className="truncate">Actions</span>
                         <button
                           aria-label="Resize actions column"
@@ -3079,29 +3633,41 @@ export function SettingsPage() {
                     />
 
                     <div>
-                      {rows.map((row) => (
-                        <SettingsRow
-                          canReadAudit={canReadAudit}
-                          canUpdateSettings={canUpdateSettings}
-                          isSelected={settingsSelection.isSelected(
-                            getRowId(activeSettingsType, row),
-                          )}
-                          isSubmitting={mutation.isPending}
-                          key={getRowId(activeSettingsType, row)}
-                          row={row}
-                          type={activeSettingsType}
-                          visibleColumns={visibleColumns}
-                          onOpenAction={setSelectedAction}
-                          onOpenAudit={openAudit}
-                          onOpenDetail={openDetail}
-                          onSelect={(selectedRow, selected) =>
-                            settingsSelection.setItemSelected(
-                              getRowId(activeSettingsType, selectedRow),
-                              selected,
-                            )
-                          }
-                        />
-                      ))}
+                      {rows.map((row) => {
+                        const rowId = getRowId(activeSettingsType, row)
+                        const isPreviewed =
+                          previewSelection?.type === activeSettingsType &&
+                          getRowId(activeSettingsType, previewSelection.record) === rowId
+
+                        return (
+                          <SettingsRow
+                            canReadAudit={canReadAudit}
+                            canUpdateSettings={canUpdateSettings}
+                            isPreviewed={isPreviewed}
+                            isSelected={settingsSelection.isSelected(rowId)}
+                            isSubmitting={mutation.isPending}
+                            key={rowId}
+                            row={row}
+                            type={activeSettingsType}
+                            visibleColumns={visibleColumns}
+                            onOpenAction={setSelectedAction}
+                            onOpenAudit={openAudit}
+                            onOpenDetail={openDetail}
+                            onPreview={(selectedRow) =>
+                              setPreviewSelection({
+                                type: activeSettingsType,
+                                record: selectedRow,
+                              })
+                            }
+                            onSelect={(selectedRow, selected) =>
+                              settingsSelection.setItemSelected(
+                                getRowId(activeSettingsType, selectedRow),
+                                selected,
+                              )
+                            }
+                          />
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -3115,16 +3681,35 @@ export function SettingsPage() {
                   }}
                 />
               </div>
-            )}
-          </main>
-        </section>
-      </div>
+
+              {previewSelection?.type === activeSettingsType ? (
+                <SettingsRecordPreviewPanel
+                  canReadAudit={canReadAudit}
+                  canUpdateSettings={canUpdateSettings}
+                  isSubmitting={mutation.isPending}
+                  selection={previewSelection}
+                  onClose={() => setPreviewSelection(null)}
+                  onOpenAction={setSelectedAction}
+                  onOpenAudit={openAudit}
+                  onOpenDetail={openDetail}
+                  onOpenPolicyAction={setSelectedPolicyAction}
+                  onOpenPolicyAudit={openPolicyAudit}
+                />
+              ) : null}
+            </div>
+          )}
+        </main>
+      </section>
 
       <SettingsActionModal
         action={selectedAction}
         error={mutation.error instanceof Error ? mutation.error.message : null}
         isSubmitting={mutation.isPending}
-        onClose={() => setSelectedAction(null)}
+        onClose={() => {
+          if (!mutation.isPending) {
+            setSelectedAction(null)
+          }
+        }}
         onSubmit={(values) => mutation.mutate(values)}
       />
       <PolicyRuleActionModal
@@ -3133,7 +3718,11 @@ export function SettingsPage() {
           policyMutation.error instanceof Error ? policyMutation.error.message : null
         }
         isSubmitting={policyMutation.isPending}
-        onClose={() => setSelectedPolicyAction(null)}
+        onClose={() => {
+          if (!policyMutation.isPending) {
+            setSelectedPolicyAction(null)
+          }
+        }}
         onSubmit={(payload) => policyMutation.mutate(payload)}
       />
       {pricingPreviewOpen ? (

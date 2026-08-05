@@ -82,18 +82,49 @@ const mediaPurposes: OrderMediaPurpose[] = [
 
 const mimeTypes: OrderProofMimeType[] = ['image/jpeg', 'image/png', 'image/webp']
 
+function humanizeCode(value: string | null | undefined) {
+  if (!value) return 'Not available'
+
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+function mimeTypeLabel(value: OrderProofMimeType) {
+  return {
+    'image/jpeg': 'JPEG image',
+    'image/png': 'PNG image',
+    'image/webp': 'WebP image',
+  }[value]
+}
+
 function titleForAction(action: OrderActionSelection) {
   if (action.kind === 'UPDATE_STATUS') {
-    return `Mark ${action.targetStatus?.replaceAll('_', ' ').toLowerCase()}`
+    return `Mark ${humanizeCode(action.targetStatus)}`
   }
 
   return {
     CANCEL: 'Cancel order',
-    INITIATE_REFUND: 'Initiate refund',
+    INITIATE_REFUND: 'Start refund',
     GENERATE_DELIVERY_OTP: 'Generate delivery OTP',
     CONFIRM_DELIVERY_OTP: 'Confirm delivery OTP',
     ADD_NOTE: 'Add internal note',
-    CREATE_PROOF_UPLOAD_INTENT: 'Create proof upload intent',
+    CREATE_PROOF_UPLOAD_INTENT: 'Request proof upload',
+  }[action.kind]
+}
+
+function submitLabelForAction(action: OrderActionSelection) {
+  if (action.kind === 'UPDATE_STATUS') return 'Mark status'
+
+  return {
+    CANCEL: 'Cancel order',
+    INITIATE_REFUND: 'Start refund',
+    GENERATE_DELIVERY_OTP: 'Generate OTP',
+    CONFIRM_DELIVERY_OTP: 'Confirm OTP',
+    ADD_NOTE: 'Add note',
+    CREATE_PROOF_UPLOAD_INTENT: 'Request upload',
   }[action.kind]
 }
 
@@ -197,7 +228,7 @@ export function OrderActionModal({
       <div className="w-full max-w-xl rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-overlay)]">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold tracking-[-0.03em] text-foreground">
+            <h2 className="text-lg font-semibold tracking-normal text-foreground">
               {titleForAction(action)}
             </h2>
             <p className="text-sm text-muted">
@@ -240,7 +271,7 @@ export function OrderActionModal({
                   />
                 </label>
                 <label className="block space-y-2">
-                  <span className="text-sm font-semibold text-foreground">Proof media asset ID</span>
+                  <span className="text-sm font-semibold text-foreground">Proof asset</span>
                   <input
                     className="form-input"
                     value={proofMediaAssetId}
@@ -255,7 +286,11 @@ export function OrderActionModal({
                     onChange={(event) => setPackageCondition(event.target.value)}
                   >
                     <option value="">Not specified</option>
-                    {packageConditions.map((item) => <option key={item}>{item}</option>)}
+                    {packageConditions.map((item) => (
+                      <option key={item} value={item}>
+                        {humanizeCode(item)}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 {action.kind === 'UPDATE_STATUS' ? (
@@ -267,7 +302,11 @@ export function OrderActionModal({
                       onChange={(event) => setIssueType(event.target.value)}
                     >
                       <option value="">Not specified</option>
-                      {issueTypes.map((item) => <option key={item}>{item}</option>)}
+                      {issueTypes.map((item) => (
+                        <option key={item} value={item}>
+                          {humanizeCode(item)}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 ) : null}
@@ -302,11 +341,11 @@ export function OrderActionModal({
           {action.kind === 'INITIATE_REFUND' ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Payment ID</span>
+                <span className="text-sm font-semibold text-foreground">Payment reference</span>
                 <input className="form-input" value={paymentId} onChange={(event) => setPaymentId(event.target.value)} />
               </label>
               <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Amount paise</span>
+                <span className="text-sm font-semibold text-foreground">Refund amount (paise)</span>
                 <input className="form-input" type="number" value={amountPaise} onChange={(event) => setAmountPaise(event.target.value)} />
               </label>
             </div>
@@ -337,13 +376,21 @@ export function OrderActionModal({
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-foreground">Purpose</span>
                 <select className="form-input" value={purpose} onChange={(event) => setPurpose(event.target.value as OrderMediaPurpose)}>
-                  {mediaPurposes.map((item) => <option key={item}>{item}</option>)}
+                  {mediaPurposes.map((item) => (
+                    <option key={item} value={item}>
+                      {humanizeCode(item)}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">MIME type</span>
+                <span className="text-sm font-semibold text-foreground">File type</span>
                 <select className="form-input" value={mimeType} onChange={(event) => setMimeType(event.target.value as OrderProofMimeType)}>
-                  {mimeTypes.map((item) => <option key={item}>{item}</option>)}
+                  {mimeTypes.map((item) => (
+                    <option key={item} value={item}>
+                      {mimeTypeLabel(item)}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="block space-y-2">
@@ -351,7 +398,7 @@ export function OrderActionModal({
                 <input className="form-input" value={fileName} onChange={(event) => setFileName(event.target.value)} />
               </label>
               <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Size bytes *</span>
+                <span className="text-sm font-semibold text-foreground">File size (bytes) *</span>
                 <input className="form-input" type="number" value={sizeBytes} onChange={(event) => setSizeBytes(event.target.value)} />
               </label>
             </div>
@@ -383,7 +430,7 @@ export function OrderActionModal({
               Cancel
             </Button>
             <Button isLoading={isSubmitting} size="sm" type="submit" variant={action.kind === 'CANCEL' ? 'danger' : 'primary'}>
-              Submit
+              {submitLabelForAction(action)}
             </Button>
           </div>
         </form>

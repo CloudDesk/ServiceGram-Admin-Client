@@ -24,7 +24,6 @@ import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
 import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
-import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { adminUserService } from '../services/adminUser.service'
 import type {
@@ -38,6 +37,7 @@ const profileSectionIds = {
   account: 'profile-account',
   lifecycle: 'profile-lifecycle',
   permissions: 'profile-permissions',
+  related: 'profile-related',
   role: 'profile-role',
   scopes: 'profile-scopes',
   session: 'profile-session',
@@ -80,6 +80,36 @@ function roleTone(role: AdminUserRole | null): StatusTone {
   return role.isActive ? 'success' : 'warning'
 }
 
+function getProfileWarnings(profile: CurrentAdminUser) {
+  const items: string[] = []
+
+  if (profile.status === 'DISABLED') items.push('ADMIN_DISABLED')
+  if (profile.userStatus && profile.userStatus !== 'ACTIVE') {
+    items.push(`AUTH_${profile.userStatus}`)
+  }
+  if (!profile.role) items.push('NO_ROLE_ASSIGNED')
+  if (profile.role?.isActive === false) items.push('ROLE_INACTIVE')
+  if (!profile.lastLoginAt) items.push('NEVER_LOGGED_IN')
+  if (!profile.permissions.length) items.push('NO_PERMISSIONS_RETURNED')
+  if (!profile.scopes.length) items.push('NO_SCOPES_RETURNED')
+
+  return items
+}
+
+function initialsForName(value: string | null | undefined) {
+  const parts = (value ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+
+  if (!parts.length) return 'AD'
+
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('')
+}
+
 function formatRemainingSeconds(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return 'Not available'
@@ -95,14 +125,6 @@ function formatRemainingSeconds(value: number | null | undefined) {
   }
 
   return `${Math.max(minutes, 1)}m`
-}
-
-function toneClass(tone: StatusTone) {
-  if (tone === 'success') return 'text-success'
-  if (tone === 'warning') return 'text-warning'
-  if (tone === 'danger') return 'text-danger'
-  if (tone === 'info') return 'text-primary'
-  return 'text-muted'
 }
 
 function buildProfileAdminUsersListPath(profile: CurrentAdminUser) {
@@ -143,43 +165,162 @@ function DetailField({
   value: ReactNode
 }) {
   return (
-    <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface-muted/35 px-3 py-3">
+    <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface-muted/35 px-3 py-2.5">
       <p className="text-xs font-semibold uppercase tracking-normal text-muted">
         {label}
       </p>
-      <div className="mt-2 break-words text-sm font-medium text-foreground">
+      <div className="mt-1.5 break-words text-sm font-medium text-foreground">
         {value ?? 'Not available'}
       </div>
     </div>
   )
 }
 
-function SummaryCard({
-  icon,
+function ProfileFact({
   label,
   meta,
-  tone,
   value,
 }: {
-  icon: ReactNode
   label: string
-  meta: string
-  tone: StatusTone
+  meta?: ReactNode
   value: ReactNode
 }) {
   return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <div className="flex items-center justify-between gap-3">
-        <p className={cn('text-xs font-semibold uppercase tracking-normal', toneClass(tone))}>
-          {label}
-        </p>
-        <span className={toneClass(tone)}>{icon}</span>
+    <div className="min-w-0 border-border/80 py-1 sm:border-l sm:pl-4 sm:first:border-l-0 sm:first:pl-0">
+      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+        {label}
+      </p>
+      <div className="mt-1 truncate text-sm font-semibold text-foreground">
+        {value ?? 'Not available'}
       </div>
-      <div className={cn('mt-3 text-2xl font-semibold tracking-normal', toneClass(tone))}>
-        {value}
+      {meta ? <p className="mt-0.5 truncate text-xs text-muted">{meta}</p> : null}
+    </div>
+  )
+}
+
+function ProfileHeroCard({
+  canReadAdminUsers,
+  canReadAudit,
+  canUpdateAdminUsers,
+  isRefreshing,
+  onNavigate,
+  onRefresh,
+  profile,
+}: {
+  canReadAdminUsers: boolean
+  canReadAudit: boolean
+  canUpdateAdminUsers: boolean
+  isRefreshing: boolean
+  onNavigate: (path: string) => void
+  onRefresh: () => void
+  profile: CurrentAdminUser
+}) {
+  return (
+    <section className="rounded-[1rem] border border-border bg-surface p-4 shadow-surface">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex min-w-0 gap-3">
+          <div className="flex size-14 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-primary/10 text-base font-semibold text-primary">
+            {initialsForName(profile.fullName)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-xl font-semibold text-foreground sm:text-2xl">
+                {profile.fullName}
+              </h1>
+              <HeaderStatus profile={profile} />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <UserRound className="size-3.5 shrink-0" />
+                <span className="truncate">{profile.adminId}</span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <KeyRound className="size-3.5 shrink-0" />
+                <span className="truncate">{profile.email ?? profile.userId}</span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <ShieldCheck className="size-3.5 shrink-0" />
+                <span className="truncate">
+                  {profile.role?.roleName ?? 'No role'}
+                </span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <CalendarClock className="size-3.5 shrink-0" />
+                <span>Last login {formatDateSafe(profile.lastLoginAt)}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+          {canReadAdminUsers && canUpdateAdminUsers ? (
+            <Button
+              size="sm"
+              type="button"
+              onClick={() => onNavigate(`${routePaths.adminUsers}/${profile.adminId}`)}
+            >
+              <UserRound className="mr-2 size-4" />
+              Manage
+            </Button>
+          ) : null}
+          {canReadAdminUsers ? (
+            <Button
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => onNavigate(`${routePaths.adminUsers}/${profile.adminId}`)}
+            >
+              <ArrowUpRight className="mr-2 size-4" />
+              Record
+            </Button>
+          ) : null}
+          {canReadAudit ? (
+            <Button
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => onNavigate(buildProfileActorAuditPath(profile))}
+            >
+              <ClipboardList className="mr-2 size-4" />
+              Audit
+            </Button>
+          ) : null}
+          <Button
+            isLoading={isRefreshing}
+            size="sm"
+            type="button"
+            variant="secondary"
+            onClick={onRefresh}
+          >
+            <RefreshCcw className="mr-2 size-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
-    </article>
+
+      <div className="mt-4 grid gap-3 rounded-[0.875rem] border border-border bg-surface-muted/35 px-4 py-3 sm:grid-cols-2 xl:grid-cols-4">
+        <ProfileFact
+          label="Role"
+          meta={profile.role?.isSystem ? 'System role' : profile.role ? 'Custom role' : null}
+          value={profile.role?.roleCode ?? 'NO_ROLE'}
+        />
+        <ProfileFact
+          label="Permissions"
+          meta={`${profile.scopes.length} scope${profile.scopes.length === 1 ? '' : 's'}`}
+          value={profile.permissions.length}
+        />
+        <ProfileFact
+          label="Session"
+          meta={formatDateSafe(profile.session?.expiresAt)}
+          value={formatRemainingSeconds(profile.session?.remainingSeconds)}
+        />
+        <ProfileFact
+          label="Updated"
+          meta={`Permission v${profile.permissionVersion}`}
+          value={formatDateSafe(profile.updatedAt)}
+        />
+      </div>
+    </section>
   )
 }
 
@@ -200,10 +341,10 @@ function SectionShell({
 }) {
   return (
     <section
-      className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
+      className="scroll-mt-24 rounded-[0.875rem] border border-border bg-surface p-3 shadow-surface"
       id={id}
     >
-      <div className="mb-4 flex items-start justify-between gap-3">
+      <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             {icon ? <span className="text-primary">{icon}</span> : null}
@@ -212,7 +353,7 @@ function SectionShell({
             </h2>
           </div>
           {description ? (
-            <p className="mt-1 text-sm leading-5 text-muted">{description}</p>
+            <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
           ) : null}
         </div>
         {actionNode ? <div className="shrink-0">{actionNode}</div> : null}
@@ -224,14 +365,14 @@ function SectionShell({
 
 function DetailSkeleton() {
   return (
-    <PageContainer>
-      <Skeleton className="h-16 w-full rounded-[0.875rem]" />
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <PageContainer className="flex h-full min-h-0 flex-col !overflow-y-auto !px-3 !py-3 !pb-6 space-y-3 scroll-smooth sm:!px-4 lg:!px-6">
+      <Skeleton className="h-36 w-full rounded-[1rem]" />
+      <Skeleton className="h-12 w-full rounded-[0.875rem]" />
+      <div className="grid gap-3 xl:grid-cols-2">
         {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton className="h-28 rounded-[0.875rem]" key={index} />
+          <Skeleton className="h-48 rounded-[0.875rem]" key={index} />
         ))}
       </div>
-      <Skeleton className="h-72 w-full rounded-[0.875rem]" />
     </PageContainer>
   )
 }
@@ -257,10 +398,54 @@ function HeaderStatus({ profile }: { profile: CurrentAdminUser }) {
   )
 }
 
+function ProfileSectionNav({
+  onOpenSection,
+  warningCount,
+}: {
+  onOpenSection: (sectionId: ProfileSectionId) => void
+  warningCount: number
+}) {
+  const items = [
+    { label: 'Overview', sectionId: profileSectionIds.account },
+    { label: 'Access', sectionId: profileSectionIds.permissions },
+    { label: 'Security', sectionId: profileSectionIds.session },
+    { label: 'Activity', sectionId: profileSectionIds.related },
+    {
+      count: warningCount,
+      label: 'Guardrails',
+      sectionId: profileSectionIds.signals,
+    },
+  ]
+
+  return (
+    <nav
+      aria-label="Profile detail sections"
+      className="sticky top-0 z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
+    >
+      <div className="flex min-w-max items-center gap-1.5 py-2">
+        {items.map((item) => (
+          <button
+            className="inline-flex min-h-9 items-center gap-2 rounded-[0.65rem] px-3 text-sm font-semibold text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            key={`${item.label}-${item.sectionId}`}
+            type="button"
+            onClick={() => onOpenSection(item.sectionId)}
+          >
+            <span>{item.label}</span>
+            {typeof item.count === 'number' ? (
+              <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">
+                {item.count}
+              </span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
 function AccountPanel({ profile }: { profile: CurrentAdminUser }) {
   return (
     <SectionShell
-      description="Identity and account status for the active admin session."
       icon={<UserRound className="size-4" />}
       id={profileSectionIds.account}
       title="Account"
@@ -317,7 +502,6 @@ function RolePanel({
           </Button>
         ) : null
       }
-      description="Primary role and role-code claims applied to the current session."
       icon={<ShieldCheck className="size-4" />}
       id={profileSectionIds.role}
       title="Role"
@@ -362,7 +546,6 @@ function RolePanel({
 function LifecyclePanel({ profile }: { profile: CurrentAdminUser }) {
   return (
     <SectionShell
-      description="Timestamps and permission-version marker for the current admin profile."
       icon={<CalendarClock className="size-4" />}
       id={profileSectionIds.lifecycle}
       title="Lifecycle"
@@ -384,7 +567,6 @@ function scopeKey(scope: AdminUserScope) {
 function ScopesPanel({ scopes }: { scopes: AdminUserScope[] }) {
   return (
     <SectionShell
-      description="Object scope claims returned with the active admin session."
       icon={<KeyRound className="size-4" />}
       id={profileSectionIds.scopes}
       title="Scopes"
@@ -426,7 +608,6 @@ function SessionPanel({ profile }: { profile: CurrentAdminUser }) {
 
   return (
     <SectionShell
-      description="Current token and recent-auth timing returned by the profile API."
       icon={<KeyRound className="size-4" />}
       id={profileSectionIds.session}
       title="Session"
@@ -483,7 +664,6 @@ function PermissionsPanel({ permissions }: { permissions: string[] }) {
 
   return (
     <SectionShell
-      description="Effective permissions loaded from the current admin session."
       icon={<ShieldCheck className="size-4" />}
       id={profileSectionIds.permissions}
       title="Permissions"
@@ -557,28 +737,7 @@ function SignalsPanel({
   canUpdateAdminUsers: boolean
   profile: CurrentAdminUser
 }) {
-  const warnings = useMemo(() => {
-    const items: string[] = []
-
-    if (profile.status === 'DISABLED') items.push('ADMIN_DISABLED')
-    if (profile.userStatus && profile.userStatus !== 'ACTIVE') {
-      items.push(`AUTH_${profile.userStatus}`)
-    }
-    if (!profile.role) items.push('NO_ROLE_ASSIGNED')
-    if (profile.role?.isActive === false) items.push('ROLE_INACTIVE')
-    if (!profile.lastLoginAt) items.push('NEVER_LOGGED_IN')
-    if (!profile.permissions.length) items.push('NO_PERMISSIONS_RETURNED')
-    if (!profile.scopes.length) items.push('NO_SCOPES_RETURNED')
-
-    return items
-  }, [
-    profile.lastLoginAt,
-    profile.permissions.length,
-    profile.role,
-    profile.scopes.length,
-    profile.status,
-    profile.userStatus,
-  ])
+  const warnings = useMemo(() => getProfileWarnings(profile), [profile])
 
   const drillDowns = useMemo(() => {
     const items: string[] = []
@@ -601,7 +760,6 @@ function SignalsPanel({
 
   return (
     <SectionShell
-      description="Derived account warnings and permission-backed drill-downs."
       icon={<TriangleAlert className="size-4" />}
       id={profileSectionIds.signals}
       title="Signals"
@@ -700,8 +858,8 @@ function RelatedRecordsPanel({
 }) {
   return (
     <SectionShell
-      description="Connected admin modules for this account."
       icon={<ArrowUpRight className="size-4" />}
+      id={profileSectionIds.related}
       title="Related records"
     >
       <div className="divide-y divide-border">
@@ -834,105 +992,47 @@ export function ProfilePage() {
     )
   }
 
+  const profileWarnings = getProfileWarnings(profile)
+
   return (
-    <PageContainer>
-      <PageContextHeader
-        actionNode={
-          <div className="flex flex-wrap items-center gap-2">
-            {canReadAdminUsers ? (
-              <Button
-                size="sm"
-                type="button"
-                variant="secondary"
-                onClick={() => navigate(`${routePaths.adminUsers}/${profile.adminId}`)}
-              >
-                <ArrowUpRight className="mr-2 size-4" />
-                Record
-              </Button>
-            ) : null}
-            {canReadAdminUsers && canUpdateAdminUsers ? (
-              <Button
-                size="sm"
-                type="button"
-                onClick={() => navigate(`${routePaths.adminUsers}/${profile.adminId}`)}
-              >
-                <UserRound className="mr-2 size-4" />
-                Manage
-              </Button>
-            ) : null}
-            <Button
-              isLoading={profileQuery.isRefetching}
-              size="sm"
-              type="button"
-              variant="secondary"
-              onClick={() => void profileQuery.refetch()}
-            >
-              <RefreshCcw className="mr-2 size-4" />
-              Refresh
-            </Button>
-          </div>
-        }
-        description={profile.email ?? profile.userId}
-        title="My Profile"
-        titleMetaNode={<HeaderStatus profile={profile} />}
+    <PageContainer className="flex h-full min-h-0 flex-col !overflow-y-auto !px-3 !py-3 !pb-6 space-y-3 scroll-smooth sm:!px-4 lg:!px-6">
+      <PageContextHeader layout="workspace" placement="topbar" title="Profile" />
+
+      <ProfileHeroCard
+        canReadAdminUsers={canReadAdminUsers}
+        canReadAudit={canReadAudit}
+        canUpdateAdminUsers={canUpdateAdminUsers}
+        isRefreshing={profileQuery.isRefetching}
+        profile={profile}
+        onNavigate={navigate}
+        onRefresh={() => void profileQuery.refetch()}
       />
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          icon={<UserRound className="size-4" />}
-          label="Admin"
-          meta="Account lifecycle status"
-          tone={adminStatusTone(profile.status)}
-          value={humanizeCode(profile.status)}
-        />
-        <SummaryCard
-          icon={<KeyRound className="size-4" />}
-          label="Auth"
-          meta="Identity provider user status"
-          tone={authStatusTone(profile.userStatus)}
-          value={humanizeCode(profile.userStatus)}
-        />
-        <SummaryCard
-          icon={<ShieldCheck className="size-4" />}
-          label="Role"
-          meta={profile.role?.roleName ?? 'No role assigned'}
-          tone={roleTone(profile.role)}
-          value={profile.role?.roleCode ?? 'NO_ROLE'}
-        />
-        <SummaryCard
-          icon={<ClipboardList className="size-4" />}
-          label="Access"
-          meta={`${profile.scopes.length} scope${profile.scopes.length === 1 ? '' : 's'}`}
-          tone={profile.permissions.length ? 'info' : 'warning'}
-          value={profile.permissions.length}
-        />
-      </section>
+      <ProfileSectionNav
+        warningCount={profileWarnings.length}
+        onOpenSection={openSection}
+      />
 
-      <section className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
-        <div className="space-y-4">
-          <AccountPanel profile={profile} />
-          <PermissionsPanel permissions={profile.permissions} />
-        </div>
-        <div className="space-y-4">
-          <RolePanel
-            canReadRoles={canReadRoles}
-            profile={profile}
-            onNavigate={navigate}
-          />
-          <ScopesPanel scopes={profile.scopes} />
-          <SessionPanel profile={profile} />
-          <LifecyclePanel profile={profile} />
-        </div>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-2">
-        <SignalsPanel
-          canReadAdminUsers={canReadAdminUsers}
-          canReadAudit={canReadAudit}
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
+        <AccountPanel profile={profile} />
+        <RolePanel
           canReadRoles={canReadRoles}
-          canUpdateAdminUsers={canUpdateAdminUsers}
           profile={profile}
+          onNavigate={navigate}
         />
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
+        <PermissionsPanel permissions={profile.permissions} />
+        <ScopesPanel scopes={profile.scopes} />
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
+        <SessionPanel profile={profile} />
+        <LifecyclePanel profile={profile} />
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
         <RelatedRecordsPanel
           canReadAdminUsers={canReadAdminUsers}
           canReadAudit={canReadAudit}
@@ -941,6 +1041,13 @@ export function ProfilePage() {
           profile={profile}
           onNavigate={navigate}
           onOpenSection={openSection}
+        />
+        <SignalsPanel
+          canReadAdminUsers={canReadAdminUsers}
+          canReadAudit={canReadAudit}
+          canReadRoles={canReadRoles}
+          canUpdateAdminUsers={canUpdateAdminUsers}
+          profile={profile}
         />
       </section>
     </PageContainer>

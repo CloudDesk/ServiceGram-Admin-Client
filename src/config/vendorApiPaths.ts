@@ -1,4 +1,5 @@
 export const VENDOR_LIST_PATH = '/admin/vendors'
+export const VENDOR_DOCUMENTS_PATH = '/admin/vendor-documents'
 export const VENDOR_ONBOARDING_QUEUE_PATH = '/admin/vendors/onboarding-queue'
 export const VENDOR_DETAIL_PATH = (vendorId: string) =>
   `/admin/vendors/${vendorId}`

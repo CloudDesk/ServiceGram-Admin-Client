@@ -1,15 +1,21 @@
 import {
   ArrowUpRight,
   Ban,
+  Clock3,
   ChevronLeft,
   ChevronRight,
+  Eye,
   Filter,
   MapPin,
   MessageSquarePlus,
+  Phone,
   RefreshCcw,
+  ReceiptText,
+  ShieldAlert,
   SlidersHorizontal,
   UserCheck,
   Wallet,
+  X,
 } from 'lucide-react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -47,38 +53,37 @@ import type {
   AdminCustomerListItem,
   AdminCustomersPagination,
   AdminCustomersQueryParams,
-  AdminCustomersSummary,
   AdminCustomerStatus,
 } from '../types/customer.types'
 
 const DEFAULT_PAGE_SIZE = 10
 const CUSTOMER_DEFAULT_COLUMN_WIDTH = 220
-const CUSTOMER_GRID_COLUMN_GAP = 12
-const CUSTOMER_GRID_INLINE_PADDING = 24
+const CUSTOMER_GRID_COLUMN_GAP = 8
+const CUSTOMER_GRID_INLINE_PADDING = 20
 const customerDataColumns = [
   {
     id: 'customer',
     label: 'Customer',
-    defaultWidth: CUSTOMER_DEFAULT_COLUMN_WIDTH,
-    minWidth: 180,
+    defaultWidth: 300,
+    minWidth: 220,
   },
   {
     id: 'location',
     label: 'Location',
-    defaultWidth: CUSTOMER_DEFAULT_COLUMN_WIDTH,
-    minWidth: 150,
+    defaultWidth: 190,
+    minWidth: 140,
   },
   {
     id: 'health',
-    label: 'Health',
-    defaultWidth: CUSTOMER_DEFAULT_COLUMN_WIDTH,
-    minWidth: 145,
+    label: 'Signals',
+    defaultWidth: 170,
+    minWidth: 140,
   },
   {
     id: 'orders',
-    label: 'Orders',
-    defaultWidth: CUSTOMER_DEFAULT_COLUMN_WIDTH,
-    minWidth: 130,
+    label: 'Orders / Spend',
+    defaultWidth: 170,
+    minWidth: 135,
   },
   ...(featureFlags.customerWallet
     ? ([
@@ -92,9 +97,9 @@ const customerDataColumns = [
     : []),
   {
     id: 'lastLogin',
-    label: 'Last login',
-    defaultWidth: CUSTOMER_DEFAULT_COLUMN_WIDTH,
-    minWidth: 155,
+    label: 'Login',
+    defaultWidth: 140,
+    minWidth: 100,
   },
   {
     id: 'updatedAt',
@@ -106,13 +111,21 @@ const customerDataColumns = [
 const CUSTOMER_ACTION_COLUMN_ID = 'actions'
 const CUSTOMER_ACTION_COLUMN_DEFAULT_WIDTH = 176
 const CUSTOMER_ACTION_COLUMN_MIN_WIDTH = 156
-const CUSTOMER_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.customer.columnWidths.v3'
+const CUSTOMER_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.customer.columnWidths.v7'
+const CUSTOMER_FILTER_CONTROL_CLASS_NAME =
+  'h-9 w-full rounded-[0.65rem] border border-border bg-surface px-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30'
 
-type CustomerTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
 type CustomerColumnId = (typeof customerDataColumns)[number]['id']
 type CustomerColumnWidthId = CustomerColumnId | typeof CUSTOMER_ACTION_COLUMN_ID
 type CustomerColumnWidths = Partial<Record<CustomerColumnWidthId, number>>
-const defaultCustomerColumns: CustomerColumnId[] = ['customer', 'location']
+const defaultCustomerColumns = customerDataColumns
+  .filter(
+    (column) =>
+      column.id !== 'updatedAt' &&
+      column.id !== 'wallet' &&
+      column.id !== 'health',
+  )
+  .map((column) => column.id) as CustomerColumnId[]
 type QueueKey =
   | 'all'
   | 'active'
@@ -215,14 +228,6 @@ function loadCustomerColumnWidths() {
   }
 }
 
-function toneClasses(tone: CustomerTone) {
-  if (tone === 'success') return 'border-border bg-surface text-success'
-  if (tone === 'warning') return 'border-border bg-surface text-warning'
-  if (tone === 'danger') return 'border-border bg-surface text-danger'
-  if (tone === 'info') return 'border-border bg-surface text-primary'
-  return 'border-border bg-surface text-muted'
-}
-
 function statusTone(status: AdminCustomerStatus) {
   if (status === 'ACTIVE') return 'success'
   if (status === 'BLOCKED') return 'danger'
@@ -237,6 +242,43 @@ function humanizeCode(value: string | null | undefined) {
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
+}
+
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+}
+
+function customerAvatarClass(customer: AdminCustomerListItem) {
+  if (customer.status === 'BLOCKED') {
+    return 'bg-danger/10 text-danger ring-1 ring-danger/20'
+  }
+
+  if (customer.status === 'INCOMPLETE') {
+    return 'bg-warning/10 text-warning ring-1 ring-warning/20'
+  }
+
+  return 'bg-primary/10 text-primary ring-1 ring-primary/15'
+}
+
+function formatOrderCount(value: number) {
+  return `${value} ${value === 1 ? 'order' : 'orders'}`
+}
+
+function signalLabel(warning: string) {
+  const labels: Record<string, string> = {
+    CUSTOMER_BLOCKED: 'Customer blocked',
+    HAS_ACTIVE_ORDERS: 'Active orders',
+    HAS_WALLET_CREDIT: 'Wallet credit',
+    PROFILE_INCOMPLETE: 'Profile incomplete',
+    ZONE_MISSING: 'Zone missing',
+  }
+
+  return labels[warning] ?? humanizeCode(warning)
 }
 
 function customerNeedsAttention(customer: AdminCustomerListItem) {
@@ -400,7 +442,11 @@ function getCustomerGridTemplate(
 ) {
   const selectedWidths = customerDataColumns
     .filter((column) => visibleColumns.includes(column.id))
-    .map((column) => `${getCustomerColumnWidth(columnWidths, column.id)}px`)
+    .map((column) => {
+      const width = getCustomerColumnWidth(columnWidths, column.id)
+
+      return column.id === 'customer' ? `minmax(${width}px, 1fr)` : `${width}px`
+    })
 
   return [
     `${LIST_SELECTION_COLUMN_WIDTH}px`,
@@ -432,33 +478,354 @@ function getCustomerGridMinWidth(
   }px`
 }
 
-function MetricCard({
+interface ActiveFilterChip {
+  key: string
+  label: string
+  onClear: () => void
+}
+
+function ActiveFilterChips({
+  chips,
+  onClearAll,
+}: {
+  chips: ActiveFilterChip[]
+  onClearAll: () => void
+}) {
+  if (!chips.length) {
+    return null
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {chips.map((chip) => (
+        <span
+          className="inline-flex min-h-7 max-w-full items-center gap-2 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-foreground"
+          key={chip.key}
+        >
+          <span className="truncate">{chip.label}</span>
+          <button
+            aria-label={`Clear ${chip.label}`}
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-surface-muted hover:text-foreground"
+            type="button"
+            onClick={chip.onClear}
+          >
+            <X className="size-3.5" />
+          </button>
+        </span>
+      ))}
+      <button
+        className="min-h-7 rounded-full px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
+        type="button"
+        onClick={onClearAll}
+      >
+        Clear all
+      </button>
+    </div>
+  )
+}
+
+function CustomerPreviewField({
   label,
-  meta,
-  tone,
   value,
 }: {
   label: string
-  meta: string
-  tone: CustomerTone
-  value: string
+  value: string | number | null | undefined
 }) {
   return (
-    <button
-      className={cn(
-        'min-h-[4.35rem] rounded-[0.75rem] border p-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-surface',
-        toneClasses(tone),
-      )}
-      type="button"
-    >
-      <span className="text-xs font-semibold uppercase tracking-normal opacity-80">
+    <div className="flex items-start justify-between gap-3 border-b border-border py-2.5 last:border-b-0">
+      <span className="text-xs font-semibold uppercase tracking-normal text-muted">
         {label}
       </span>
-      <span className="mt-1 block text-lg font-semibold tracking-normal">
-        {value}
+      <span className="min-w-0 break-words text-right text-sm font-medium text-foreground">
+        {value ?? 'Not available'}
       </span>
-      <span className="mt-0.5 block text-xs leading-4 opacity-80">{meta}</span>
-    </button>
+    </div>
+  )
+}
+
+function CustomerPreviewPanel({
+  canCreditWallet,
+  canUpdateCustomer,
+  customer,
+  isSubmitting,
+  onClose,
+  onOpenAction,
+  onOpenDetails,
+}: {
+  canCreditWallet: boolean
+  canUpdateCustomer: boolean
+  customer: AdminCustomerListItem
+  isSubmitting: boolean
+  onClose: () => void
+  onOpenAction: (customer: AdminCustomerListItem, kind: CustomerActionKind) => void
+  onOpenDetails: (customer: AdminCustomerListItem) => void
+}) {
+  const health = customerHealth(customer)
+  const actionAccess = {
+    canCreditWallet,
+    canUpdateCustomer,
+  }
+  const warnings = visibleWarnings(customer.warnings)
+  const availableActions = permittedAvailableActions(
+    customer.availableActions,
+    actionAccess,
+  )
+  const recommendedAction = mapRecommendedAction(customer, actionAccess)
+  const hasAction = (action: string) => availableActions.includes(action)
+  const canBlock = hasAction('BLOCK')
+  const canUnblock = hasAction('UNBLOCK')
+  const canAddNote = hasAction('ADD_NOTE')
+  const canCredit =
+    featureFlags.customerWallet && canCreditWallet && hasAction('WALLET_CREDIT')
+
+  return (
+    <>
+      <button
+        aria-label="Close customer preview"
+        className="fixed inset-0 z-40 bg-black/20 xl:hidden"
+        type="button"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+              Customer preview
+            </p>
+            <div className="mt-2 flex min-w-0 items-start gap-3">
+              <div
+                className={cn(
+                  'flex size-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
+                  customerAvatarClass(customer),
+                )}
+              >
+                {getInitials(customer.fullName)}
+              </div>
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-semibold text-foreground">
+                  {customer.fullName}
+                </h3>
+                <p className="mt-1 break-all text-xs text-muted">
+                  {customer.customerId}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Badge tone={statusTone(customer.status)}>
+                    {customer.status}
+                  </Badge>
+                  {customerNeedsAttention(customer) ? (
+                    <Badge tone="warning">Needs review</Badge>
+                  ) : (
+                    <Badge tone="success">Healthy</Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+          <button
+            aria-label="Close preview"
+            className="btn-icon shrink-0"
+            title="Close preview"
+            type="button"
+            onClick={onClose}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <div className="rounded-[0.75rem] border border-border bg-surface-muted/45 p-3">
+            <div className="flex items-start gap-2">
+              <ShieldAlert
+                className={cn(
+                  'mt-0.5 size-4 shrink-0',
+                  recommendedAction || warnings.length
+                    ? 'text-warning'
+                    : 'text-success',
+                )}
+              />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">
+                  {recommendedAction
+                    ? humanizeCode(recommendedAction)
+                    : warnings[0]
+                      ? signalLabel(warnings[0])
+                      : 'No active warning'}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-muted">
+                  {recommendedAction
+                    ? 'Recommended by the backend workflow state.'
+                    : warnings.length
+                      ? 'Review warning signals before taking support action.'
+                      : 'This customer has no warnings in the current response.'}
+                </p>
+              </div>
+            </div>
+            {recommendedAction ? (
+              <Button
+                className="mt-3 w-full"
+                disabled={isSubmitting}
+                size="sm"
+                type="button"
+                variant={recommendedAction === 'BLOCK' ? 'danger' : 'primary'}
+                onClick={() => onOpenAction(customer, recommendedAction)}
+              >
+                <ArrowUpRight className="mr-2 size-4" />
+                {humanizeCode(recommendedAction)}
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="mt-3 rounded-[0.75rem] border border-border p-3">
+            <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Phone className="size-4 text-muted" />
+              Contact
+            </div>
+            <CustomerPreviewField
+              label="Mobile"
+              value={customer.mobileNumber ?? 'No mobile'}
+            />
+            <CustomerPreviewField
+              label="Email"
+              value={customer.email ?? 'No email'}
+            />
+            <CustomerPreviewField
+              label="City"
+              value={customer.city || customer.zone?.city || 'No city'}
+            />
+            <CustomerPreviewField
+              label="Zone"
+              value={customer.zone?.zoneName ?? 'No zone'}
+            />
+          </div>
+
+          <div className="mt-3 rounded-[0.75rem] border border-border p-3">
+            <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+              <ReceiptText className="size-4 text-muted" />
+              Activity
+            </div>
+            <CustomerPreviewField
+              label="Orders"
+              value={`${customer.orderSummary.totalOrders} total / ${customer.orderSummary.activeOrders} active`}
+            />
+            <CustomerPreviewField
+              label="Lifetime spend"
+              value={formatPaise(customer.orderSummary.lifetimeSpendPaise)}
+            />
+            <CustomerPreviewField
+              label="Last order"
+              value={formatDateSafe(customer.orderSummary.lastOrderAt)}
+            />
+            <CustomerPreviewField
+              label="Last login"
+              value={formatDateSafe(customer.lastLoginAt)}
+            />
+            <CustomerPreviewField
+              label="Notes"
+              value={`${customer.noteSummary.totalNotes} total`}
+            />
+            {featureFlags.customerWallet ? (
+              <CustomerPreviewField
+                label="Wallet"
+                value={`${formatPaise(customer.walletSummary.creditBalancePaise)} / ${customer.walletSummary.providerStatus}`}
+              />
+            ) : null}
+          </div>
+
+          <div className="mt-3 rounded-[0.75rem] border border-border p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Clock3 className="size-4 text-muted" />
+                Signals
+              </div>
+              <span className="text-xs font-semibold text-muted">
+                Health {health}
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-surface-muted">
+              <div
+                className={cn('h-2 rounded-full', healthColor(health))}
+                style={{ width: `${health}%` }}
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {warnings.length ? (
+                warnings.map((warning) => (
+                  <Badge key={warning} tone="warning">
+                    {signalLabel(warning)}
+                  </Badge>
+                ))
+              ) : (
+                <Badge tone="success">No warnings</Badge>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-border p-3">
+          <div className="grid gap-2">
+            <Button
+              size="sm"
+              type="button"
+              variant="primary"
+              onClick={() => onOpenDetails(customer)}
+            >
+              <Eye className="mr-2 size-4" />
+              Open full detail
+            </Button>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+              {canAddNote ? (
+                <Button
+                  disabled={isSubmitting}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => onOpenAction(customer, 'ADD_NOTE')}
+                >
+                  <MessageSquarePlus className="mr-2 size-4" />
+                  Add note
+                </Button>
+              ) : null}
+              {canCredit ? (
+                <Button
+                  disabled={isSubmitting}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => onOpenAction(customer, 'WALLET_CREDIT')}
+                >
+                  <Wallet className="mr-2 size-4" />
+                  Wallet credit
+                </Button>
+              ) : null}
+              {canBlock ? (
+                <Button
+                  disabled={isSubmitting}
+                  size="sm"
+                  type="button"
+                  variant="danger"
+                  onClick={() => onOpenAction(customer, 'BLOCK')}
+                >
+                  <Ban className="mr-2 size-4" />
+                  Block
+                </Button>
+              ) : null}
+              {canUnblock ? (
+                <Button
+                  disabled={isSubmitting}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => onOpenAction(customer, 'UNBLOCK')}
+                >
+                  <UserCheck className="mr-2 size-4" />
+                  Unblock
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </aside>
+    </>
   )
 }
 
@@ -466,21 +833,23 @@ function CustomerRow({
   canCreditWallet,
   canUpdateCustomer,
   customer,
+  isPreviewed,
   isSelected,
   isSubmitting,
   onOpenAction,
+  onPreview,
   onSelect,
-  onViewDetails,
   visibleColumns,
 }: {
   canCreditWallet: boolean
   canUpdateCustomer: boolean
   customer: AdminCustomerListItem
+  isPreviewed: boolean
   isSelected: boolean
   isSubmitting: boolean
   onOpenAction: (customer: AdminCustomerListItem, kind: CustomerActionKind) => void
+  onPreview: (customer: AdminCustomerListItem) => void
   onSelect: (customer: AdminCustomerListItem, selected: boolean) => void
-  onViewDetails: (customer: AdminCustomerListItem) => void
   visibleColumns: CustomerColumnId[]
 }) {
   const health = customerHealth(customer)
@@ -513,15 +882,16 @@ function CustomerRow({
 
   return (
     <article
-      aria-selected={isSelected}
+      aria-selected={isPreviewed}
       className={cn(
-        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--customer-grid-template)] xl:items-center',
+        'grid min-w-0 cursor-pointer gap-2 border-b border-border bg-surface px-3 py-2 transition last:border-b-0 hover:bg-surface-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--customer-grid-template)] xl:items-center',
+        isPreviewed && 'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
         isSelected && 'bg-primary/5 hover:bg-primary/10',
       )}
-      aria-label={`Open details for ${customer.fullName}`}
+      aria-label={`Preview ${customer.fullName}`}
       role="button"
       tabIndex={0}
-      onClick={() => onViewDetails(customer)}
+      onClick={() => onPreview(customer)}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) {
           return
@@ -529,7 +899,7 @@ function CustomerRow({
 
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
-          onViewDetails(customer)
+          onPreview(customer)
         }
       }}
     >
@@ -541,112 +911,120 @@ function CustomerRow({
         />
       </div>
       {showColumn('customer') ? (
-        <div className="flex min-w-0 items-start gap-3">
+        <div className="flex min-w-0 items-start gap-2.5">
           <div
             className={cn(
-              'flex size-10 shrink-0 items-center justify-center rounded-full border bg-surface text-sm font-semibold',
-              customer.status === 'BLOCKED'
-                ? 'border-danger/25 text-danger'
-                : customerNeedsAttention(customer)
-                  ? 'border-warning/25 text-warning'
-                  : 'border-success/25 text-success',
+              'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+              customerAvatarClass(customer),
             )}
           >
-            {customer.fullName
-              .split(' ')
-              .map((part) => part[0])
-              .join('')
-              .slice(0, 2)}
+            {getInitials(customer.fullName)}
           </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="truncate text-sm font-semibold text-foreground">
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <p className="min-w-0 truncate text-sm font-semibold text-foreground">
                 {customer.fullName}
               </p>
-              <Badge tone={statusTone(customer.status)}>{customer.status}</Badge>
+              <span className="shrink-0">
+                <Badge tone={statusTone(customer.status)}>{customer.status}</Badge>
+              </span>
+              {warningCount > 0 && !showColumn('health') ? (
+                <span
+                  className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-warning/10 px-1.5 text-xs font-semibold text-warning"
+                  title={visibleWarnings(customer.warnings).map(signalLabel).join(', ')}
+                >
+                  <ShieldAlert className="size-3" />
+                  {warningCount}
+                </span>
+              ) : null}
             </div>
-            <p className="mt-1 text-xs text-muted">
-              {customer.mobileNumber ?? 'No mobile'}
-            </p>
-            <p className="truncate text-xs text-muted">
-              {customer.email ?? 'No email'}
-            </p>
+            <div className="mt-0.5 flex min-w-0 items-center gap-x-1.5 overflow-hidden text-xs text-muted">
+              <span className="shrink-0">{customer.mobileNumber ?? 'No mobile'}</span>
+              <span className="shrink-0 text-border">/</span>
+              <span className="min-w-0 truncate">
+                {customer.email ?? 'No email'}
+              </span>
+            </div>
           </div>
         </div>
       ) : null}
 
       {showColumn('location') ? (
-        <div className="space-y-1 text-sm">
+        <div className="space-y-0.5 text-sm">
           <div className="flex items-center gap-2 text-foreground">
-            <MapPin className="size-4 text-muted" />
-            <span>{customer.city || customer.zone?.city || 'No city'}</span>
+            <MapPin className="size-3.5 text-muted" />
+            <span className="truncate">
+              {customer.city || customer.zone?.city || 'No city'}
+            </span>
           </div>
-          <p className="pl-6 text-xs text-muted">
+          <p className="truncate pl-5 text-xs text-muted">
             {customer.zone?.zoneName ?? 'No zone'}
           </p>
         </div>
       ) : null}
 
       {showColumn('health') ? (
-        <div className="w-full min-w-0 space-y-2 xl:max-w-72">
+        <div className="w-full min-w-0 space-y-1.5 xl:max-w-72">
           <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="text-muted">Health</span>
+            <span className="text-muted">
+              {customer.orderSummary.activeOrders} active
+            </span>
             <span className="font-semibold text-foreground">{health}</span>
           </div>
-          <div className="h-2 rounded-full bg-surface-muted">
+          <div className="h-1.5 rounded-full bg-surface-muted">
             <div
-              className={cn('h-2 rounded-full', healthColor(health))}
+              className={cn('h-1.5 rounded-full', healthColor(health))}
               style={{ width: `${health}%` }}
             />
           </div>
           <div className="flex justify-between text-xs text-muted">
-            <span>{customer.orderSummary.activeOrders} active</span>
             <span>{warningCount} warnings</span>
           </div>
         </div>
       ) : null}
 
       {showColumn('orders') ? (
-        <div className="space-y-1 text-sm">
-          <p className="text-xs text-muted">Orders</p>
+        <div className="text-sm">
           <p className="font-semibold text-foreground">
-            {customer.orderSummary.totalOrders}
+            {formatOrderCount(customer.orderSummary.totalOrders)}
           </p>
-          <p className="text-xs text-muted">
-            {customer.orderSummary.activeOrders} active
+          <p className="mt-0.5 text-xs text-muted">
+            {formatPaise(customer.orderSummary.lifetimeSpendPaise)} spend
           </p>
         </div>
       ) : null}
 
       {featureFlags.customerWallet && showColumn('wallet') ? (
-        <div className="space-y-1 text-sm">
-          <p className="text-xs text-muted">Wallet</p>
+        <div className="text-sm">
           <p className="font-semibold text-foreground">
             {formatPaise(customer.walletSummary.creditBalancePaise)}
           </p>
-          <p className="text-xs text-muted">
+          <p className="mt-0.5 truncate text-xs text-muted">
             {customer.walletSummary.providerStatus}
           </p>
         </div>
       ) : null}
 
       {showColumn('lastLogin') ? (
-        <div className="space-y-1 text-sm">
-          <p className="text-xs text-muted">Last login</p>
-          <p className="text-foreground">{formatDateSafe(customer.lastLoginAt)}</p>
+        <div className="text-sm">
+          <p className="truncate text-foreground">
+            {customer.lastLoginAt ? formatDateSafe(customer.lastLoginAt) : 'No login'}
+          </p>
+          <p className="mt-0.5 text-xs text-muted">Last login</p>
         </div>
       ) : null}
 
       {showColumn('updatedAt') ? (
-        <div className="space-y-1 text-sm">
-          <p className="text-xs text-muted">Updated</p>
+        <div className="text-sm">
           <p className="text-foreground">{formatDateSafe(customer.updatedAt)}</p>
+          <p className="mt-0.5 text-xs text-muted">Updated</p>
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+      <div className="flex flex-nowrap items-center gap-1.5 xl:sticky xl:right-0 xl:z-20 xl:justify-end xl:bg-inherit xl:pl-2 xl:shadow-[var(--sg-shadow-sticky-action)]">
         {recommendedAction ? (
           <Button
+            className="h-8 min-h-8 whitespace-nowrap px-2.5"
             disabled={isSubmitting}
             size="sm"
             type="button"
@@ -663,9 +1041,9 @@ function CustomerRow({
             }}
           >
             {recommendedAction === 'ADD_NOTE' ? (
-              <MessageSquarePlus className="mr-2 size-4" />
+              <MessageSquarePlus className="mr-1.5 size-3.5" />
             ) : (
-              <ArrowUpRight className="mr-2 size-4" />
+              <ArrowUpRight className="mr-1.5 size-3.5" />
             )}
             {primaryActionLabel(customer)}
           </Button>
@@ -673,7 +1051,7 @@ function CustomerRow({
         {showWalletAction ? (
           <button
             aria-label={`Wallet credit for ${customer.fullName}`}
-            className="btn-icon disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-icon size-8 min-h-8 shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSubmitting}
             title="Wallet credit"
             type="button"
@@ -682,13 +1060,13 @@ function CustomerRow({
               onOpenAction(customer, 'WALLET_CREDIT')
             }}
           >
-            <Wallet className="size-4" />
+            <Wallet className="size-3.5" />
           </button>
         ) : null}
         {showAddNoteAction ? (
           <button
             aria-label={`Add note for ${customer.fullName}`}
-            className="btn-icon disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-icon size-8 min-h-8 shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSubmitting}
             title="Add note"
             type="button"
@@ -697,13 +1075,13 @@ function CustomerRow({
               onOpenAction(customer, 'ADD_NOTE')
             }}
           >
-            <MessageSquarePlus className="size-4" />
+            <MessageSquarePlus className="size-3.5" />
           </button>
         ) : null}
         {showBlockAction ? (
           <button
             aria-label={`Block ${customer.fullName}`}
-            className="btn-icon text-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-icon size-8 min-h-8 shrink-0 text-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSubmitting}
             title="Block customer"
             type="button"
@@ -712,13 +1090,13 @@ function CustomerRow({
               onOpenAction(customer, 'BLOCK')
             }}
           >
-            <Ban className="size-4" />
+            <Ban className="size-3.5" />
           </button>
         ) : null}
         {showUnblockAction ? (
           <button
             aria-label={`Unblock ${customer.fullName}`}
-            className="btn-icon text-success hover:text-success disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-icon size-8 min-h-8 shrink-0 text-success hover:text-success disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSubmitting}
             title="Unblock customer"
             type="button"
@@ -727,7 +1105,7 @@ function CustomerRow({
               onOpenAction(customer, 'UNBLOCK')
             }}
           >
-            <UserCheck className="size-4" />
+            <UserCheck className="size-3.5" />
           </button>
         ) : null}
       </div>
@@ -808,9 +1186,9 @@ function CustomerPagination({
 
 function CustomerRowsSkeleton() {
   return (
-    <div className="space-y-2.5 p-3">
-      {Array.from({ length: 5 }, (_, index) => (
-        <Skeleton className="h-24 w-full rounded-[1rem]" key={index} />
+    <div className="space-y-1.5 p-3">
+      {Array.from({ length: 7 }, (_, index) => (
+        <Skeleton className="h-16 w-full rounded-[0.8rem]" key={index} />
       ))}
     </div>
   )
@@ -826,6 +1204,7 @@ export function CustomersPage() {
   const [status, setStatus] = useState<'' | AdminCustomerStatus>('')
   const [city, setCity] = useState('')
   const [hasOrders, setHasOrders] = useState('')
+  const [hasActiveOrders, setHasActiveOrders] = useState(false)
   const [hasWalletCredit, setHasWalletCredit] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -834,7 +1213,8 @@ export function CustomersPage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [previewCustomerId, setPreviewCustomerId] = useState<string | null>(null)
   const [visibleColumns, setVisibleColumns] = useState<CustomerColumnId[]>(
     defaultCustomerColumns,
   )
@@ -944,6 +1324,7 @@ export function CustomersPage() {
       status: status || undefined,
       city: city.trim() || undefined,
       hasOrders: hasOrders === '' ? undefined : hasOrders === 'true',
+      hasActiveOrders: hasActiveOrders || undefined,
       hasWalletCredit:
         featureFlags.customerWallet && hasWalletCredit !== ''
           ? hasWalletCredit === 'true'
@@ -955,6 +1336,7 @@ export function CustomersPage() {
       city,
       dateFrom,
       dateTo,
+      hasActiveOrders,
       hasOrders,
       hasWalletCredit,
       limit,
@@ -1003,7 +1385,9 @@ export function CustomersPage() {
 
   const customers = customersQuery.data?.data ?? []
   const pagination = customersQuery.data?.pagination
-  const summary = customersQuery.data?.summary
+  const previewCustomer =
+    customers.find((customer) => customer.customerId === previewCustomerId) ??
+    null
   const customerSelection = useListSelection(
     customers,
     (customer) => customer.customerId,
@@ -1011,20 +1395,8 @@ export function CustomersPage() {
   const isInitialLoading = customersQuery.isLoading && !customersQuery.data
   const isRefreshing = customersQuery.isFetching && Boolean(customersQuery.data)
   const refreshStatusLabel = isRefreshing
-    ? 'Refreshing now'
+    ? 'Refreshing'
     : formatRefreshTime(customersQuery.dataUpdatedAt)
-
-  const visibleAttentionCount = customers.filter(customerNeedsAttention).length
-  const visibleWarningCount = customers.reduce(
-    (total, customer) => total + visibleWarnings(customer.warnings).length,
-    0,
-  )
-  const metrics = buildMetrics({
-    customers,
-    summary,
-    visibleAttentionCount,
-    visibleWarningCount,
-  })
 
   const queueItems = buildQueueItems({
     counts: queueCountsQuery.data,
@@ -1050,10 +1422,16 @@ export function CustomersPage() {
       status ||
       city ||
       hasOrders ||
+      hasActiveOrders ||
       hasWalletFilter ||
       dateFrom ||
       dateTo,
   )
+
+  const hasAdvancedFilters = Boolean(
+    city || hasWalletFilter || dateFrom || dateTo,
+  )
+  const showFilters = filtersOpen || hasAdvancedFilters
 
   const clearSeededCustomerParams = () => {
     if (!searchParams.has('search')) return
@@ -1069,9 +1447,11 @@ export function CustomersPage() {
     setStatus('')
     setCity('')
     setHasOrders('')
+    setHasActiveOrders(false)
     setHasWalletCredit('')
     setDateFrom('')
     setDateTo('')
+    setFiltersOpen(false)
     setPage(1)
   }
 
@@ -1091,30 +1471,35 @@ export function CustomersPage() {
     if (queue === 'all') {
       setStatus('')
       setHasOrders('')
+      setHasActiveOrders(false)
       setHasWalletCredit('')
     }
 
     if (queue === 'active') {
       setStatus('ACTIVE')
       setHasOrders('')
+      setHasActiveOrders(false)
       setHasWalletCredit('')
     }
 
     if (queue === 'blocked') {
       setStatus('BLOCKED')
       setHasOrders('')
+      setHasActiveOrders(false)
       setHasWalletCredit('')
     }
 
     if (queue === 'incomplete') {
       setStatus('INCOMPLETE')
       setHasOrders('')
+      setHasActiveOrders(false)
       setHasWalletCredit('')
     }
 
     if (queue === 'activeOrders') {
       setStatus('')
-      setHasOrders('true')
+      setHasOrders('')
+      setHasActiveOrders(true)
       setHasWalletCredit('')
     }
 
@@ -1122,11 +1507,120 @@ export function CustomersPage() {
   }
 
   const isQueueActive = (queue: QueueKey) => {
-    if (queue === 'all') return !status && !hasOrders && !hasWalletFilter
-    if (queue === 'active') return status === 'ACTIVE' && !hasOrders && !hasWalletFilter
-    if (queue === 'blocked') return status === 'BLOCKED' && !hasOrders && !hasWalletFilter
-    if (queue === 'incomplete') return status === 'INCOMPLETE' && !hasOrders && !hasWalletFilter
-    return hasOrders === 'true' && !status && !hasWalletFilter
+    if (queue === 'all') {
+      return !status && !hasOrders && !hasActiveOrders && !hasWalletFilter
+    }
+    if (queue === 'active') {
+      return (
+        status === 'ACTIVE' &&
+        !hasOrders &&
+        !hasActiveOrders &&
+        !hasWalletFilter
+      )
+    }
+    if (queue === 'blocked') {
+      return (
+        status === 'BLOCKED' &&
+        !hasOrders &&
+        !hasActiveOrders &&
+        !hasWalletFilter
+      )
+    }
+    if (queue === 'incomplete') {
+      return (
+        status === 'INCOMPLETE' &&
+        !hasOrders &&
+        !hasActiveOrders &&
+        !hasWalletFilter
+      )
+    }
+
+    return hasActiveOrders && !status && !hasOrders && !hasWalletFilter
+  }
+
+  const activeQueue = queueItems
+    .filter((queue) => queue.key !== 'all')
+    .find((queue) => isQueueActive(queue.key))
+  const activeFilterChips: ActiveFilterChip[] = []
+
+  if (search.trim()) {
+    activeFilterChips.push({
+      key: 'search',
+      label: `Search: ${search.trim()}`,
+      onClear: () => {
+        clearSeededCustomerParams()
+        setSearch('')
+        setPage(1)
+      },
+    })
+  }
+
+  if (activeQueue) {
+    activeFilterChips.push({
+      key: `queue-${activeQueue.key}`,
+      label: `Queue: ${activeQueue.label}`,
+      onClear: () => {
+        setStatus('')
+        setHasOrders('')
+        setHasActiveOrders(false)
+        setHasWalletCredit('')
+        setPage(1)
+      },
+    })
+  } else if (status) {
+    activeFilterChips.push({
+      key: 'status',
+      label: `Status: ${status}`,
+      onClear: () => {
+        setStatus('')
+        setPage(1)
+      },
+    })
+  }
+
+  if (city.trim()) {
+    activeFilterChips.push({
+      key: 'city',
+      label: `City: ${city.trim()}`,
+      onClear: () => {
+        setCity('')
+        setPage(1)
+      },
+    })
+  }
+
+  if (hasOrders && !activeQueue) {
+    activeFilterChips.push({
+      key: 'hasOrders',
+      label: `Has orders: ${hasOrders === 'true' ? 'Yes' : 'No'}`,
+      onClear: () => {
+        setHasOrders('')
+        setPage(1)
+      },
+    })
+  }
+
+  if (hasWalletFilter) {
+    activeFilterChips.push({
+      key: 'wallet',
+      label: `Wallet credit: ${hasWalletCredit === 'true' ? 'Yes' : 'No'}`,
+      onClear: () => {
+        setHasWalletCredit('')
+        setPage(1)
+      },
+    })
+  }
+
+  if (dateFrom || dateTo) {
+    activeFilterChips.push({
+      key: 'created',
+      label: `Created: ${dateFrom || 'Any'} - ${dateTo || 'Any'}`,
+      onClear: () => {
+        setDateFrom('')
+        setDateTo('')
+        setPage(1)
+      },
+    })
   }
 
   const openAction = (customer: AdminCustomerListItem, kind: CustomerActionKind) => {
@@ -1225,331 +1719,268 @@ export function CustomersPage() {
   }
 
   return (
-    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
+    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
-        description="Search, filter, and manage customer accounts from backend data."
         layout="workspace"
         placement="topbar"
         title="Customers"
       />
 
-      <div className="flex flex-col gap-3 xl:min-h-0 xl:flex-1">
-        <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          {metrics.map((metric) => (
-            <MetricCard
-              key={metric.label}
-              label={metric.label}
-              meta={metric.meta}
-              tone={metric.tone}
-              value={metric.value}
+      <main className="flex min-w-0 flex-col overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface xl:min-h-0 xl:flex-1">
+        <div className="shrink-0 border-b border-border bg-surface px-3 py-3 sm:px-4">
+          <div className="grid gap-3 xl:grid-cols-[minmax(11rem,auto)_minmax(22rem,1fr)_auto] xl:items-center">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-foreground">Customers</h2>
+              <span
+                className={cn(
+                  'rounded-full border border-border bg-surface-muted/65 px-2 py-0.5 text-xs font-medium',
+                  isRefreshing ? 'text-primary' : 'text-muted',
+                )}
+              >
+                {refreshStatusLabel}
+              </span>
+            </div>
+
+            <ListHeaderSearch
+              className="w-full min-w-0"
+              placeholder="Search customers..."
+              value={search}
+              onChange={(nextSearch) => {
+                clearSeededCustomerParams()
+                setSearch(nextSearch)
+                resetToFirstPage()
+              }}
             />
-          ))}
-        </section>
 
-        <section
-          className={cn(
-            'grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[18rem_minmax(0,1fr)] xl:items-stretch xl:overflow-hidden',
-            filtersCollapsed &&
-              'xl:grid-cols-[4.25rem_minmax(0,1fr)]',
-          )}
-        >
-          <aside
-            className={cn(
-              'self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0 2xl:col-start-1 2xl:row-start-1',
-              filtersCollapsed
-                ? 'flex items-center justify-between gap-3 p-2.5 xl:flex-col xl:justify-start'
-                : 'space-y-3 p-3 xl:overflow-y-auto',
-            )}
-          >
-            {filtersCollapsed ? (
-              <>
-                <button
-                  aria-label="Expand customer filters"
-                  className="btn-icon"
-                  title="Expand filters"
-                  type="button"
-                  onClick={() => setFiltersCollapsed(false)}
-                >
-                  <ChevronRight className="size-4" />
-                </button>
-                <span
-                  aria-hidden="true"
-                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
-                >
-                  <Filter className="size-4" />
-                </span>
-                {hasActiveFilters ? (
-                  <span
-                    aria-label="Active filters"
-                    className="size-2 rounded-full bg-primary"
-                    title="Active filters"
-                  />
+            <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+              <Button
+                aria-expanded={showFilters}
+                className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => setFiltersOpen((current) => !current)}
+              >
+                <Filter className="mr-2 size-4" />
+                Filters
+                {activeFilterChips.length ? (
+                  <span className="ml-1 size-2 rounded-full bg-primary" />
                 ) : null}
-              </>
-            ) : (
-              <>
-                <div>
-                  <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-semibold text-foreground">
-                      Smart queues
-                    </h2>
-                    <button
-                      aria-label="Collapse customer filters"
-                      className="btn-icon"
-                      title="Collapse filters"
-                      type="button"
-                      onClick={() => setFiltersCollapsed(true)}
-                    >
-                      <ChevronLeft className="size-4" />
-                    </button>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {queueItems.map((queue) => (
-                      <button
-                        className={cn(
-                          'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border px-3 text-left text-sm transition',
-                          isQueueActive(queue.key)
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border bg-surface-muted/50 text-foreground hover:border-primary/35',
-                        )}
-                        key={queue.key}
-                        type="button"
-                        onClick={() => applyQueue(queue.key)}
-                      >
-                        <span className="font-medium">{queue.label}</span>
-                        <span className="text-xs font-semibold">
-                          {queue.count ?? '...'}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t border-border pt-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Filter stack
-                    </h3>
-                    {hasActiveFilters ? (
-                      <button
-                        className="text-xs font-semibold text-primary"
-                        type="button"
-                        onClick={resetFilters}
-                      >
-                        Reset
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 space-y-3">
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Status
-                      </span>
-                      <select
-                        className="form-input"
-                        value={status}
-                        onChange={(event) => {
-                          setStatus(event.target.value as '' | AdminCustomerStatus)
-                          resetToFirstPage()
-                        }}
-                      >
-                        <option value="">All</option>
-                        <option value="ACTIVE">ACTIVE</option>
-                        <option value="BLOCKED">BLOCKED</option>
-                        <option value="INCOMPLETE">INCOMPLETE</option>
-                      </select>
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        City
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        placeholder="Bengaluru"
-                        value={city}
-                        onChange={(event) => {
-                          setCity(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                      <label className="space-y-1">
-                        <span className="text-xs font-semibold text-muted">
-                          Has orders
-                        </span>
-                        <select
-                          className="form-input"
-                          value={hasOrders}
-                          onChange={(event) => {
-                            setHasOrders(event.target.value)
-                            resetToFirstPage()
-                          }}
-                        >
-                          <option value="">All</option>
-                          <option value="true">Yes</option>
-                          <option value="false">No</option>
-                        </select>
-                      </label>
-                      {/*
-                      <label className="space-y-1">
-                        <span className="text-xs font-semibold text-muted">Wallet credit</span>
-                        <select
-                          className="form-input"
-                          value={hasWalletCredit}
-                          onChange={(event) => {
-                            setHasWalletCredit(event.target.value)
-                            resetToFirstPage()
-                          }}
-                        >
-                          <option value="">All</option>
-                          <option value="true">Yes</option>
-                          <option value="false">No</option>
-                        </select>
-                      </label>
-                      */}
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                      <label className="space-y-1">
-                        <span className="text-xs font-semibold text-muted">
-                          Created from
-                        </span>
-                        <Input
-                          className="min-h-10"
-                          type="date"
-                          value={dateFrom}
-                          onChange={(event) => {
-                            setDateFrom(event.target.value)
-                            resetToFirstPage()
-                          }}
-                        />
-                      </label>
-                      <label className="space-y-1">
-                        <span className="text-xs font-semibold text-muted">
-                          Created to
-                        </span>
-                        <Input
-                          className="min-h-10"
-                          type="date"
-                          value={dateTo}
-                          onChange={(event) => {
-                            setDateTo(event.target.value)
-                            resetToFirstPage()
-                          }}
-                        />
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </aside>
-
-          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0 2xl:col-start-2 2xl:row-start-1">
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  Customer operations
-                </h2>
-                <p className="text-sm text-muted">
-                  {summary
-                    ? `${summary.visible} visible · ${summary.active} active · ${summary.blocked} blocked · ${summary.withActiveOrders} with active orders`
-                    : 'Search, filter, and manage customer accounts from backend data.'}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <ListHeaderSearch
-                  className="w-full sm:w-72 lg:w-80"
-                  placeholder="Search name, mobile, email"
-                  value={search}
-                  onChange={(nextSearch) => {
-                    clearSeededCustomerParams()
-                    setSearch(nextSearch)
-                    resetToFirstPage()
-                  }}
-                />
-                <span
-                  className={cn(
-                    'text-xs font-medium',
-                    isRefreshing ? 'text-primary' : 'text-muted',
-                  )}
-                >
-                  {refreshStatusLabel}
-                </span>
-                <div className="relative" ref={columnsMenuRef}>
-                  <Button
-                    aria-expanded={columnsOpen}
-                    aria-haspopup="menu"
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setColumnsOpen((current) => !current)}
-                  >
-                    <SlidersHorizontal className="mr-2 size-4" />
-                    Columns
-                    {visibleColumns.length ? (
-                      <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
-                        {visibleColumns.length}
-                      </span>
-                    ) : null}
-                  </Button>
-
-                  {columnsOpen ? (
-                    <div
-                      className="absolute right-0 top-[calc(100%+0.5rem)] z-[60] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
-                      role="menu"
-                    >
-                      <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
-                        Visible columns
-                      </p>
-                      {customerDataColumns.map((column) => {
-                        const isChecked = visibleColumns.includes(column.id)
-                        const isRequiredLastColumn =
-                          isChecked && visibleColumns.length === 1
-
-                        return (
-                          <label
-                            className={cn(
-                              'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
-                              isRequiredLastColumn && 'cursor-not-allowed opacity-60',
-                            )}
-                            key={column.id}
-                          >
-                            <input
-                              checked={isChecked}
-                              className="size-4 accent-[color:var(--adaptive-primary)]"
-                              disabled={isRequiredLastColumn}
-                              type="checkbox"
-                              onChange={() => toggleColumn(column.id)}
-                            />
-                            <span>{column.label}</span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  ) : null}
-                </div>
+              </Button>
+              <div className="relative" ref={columnsMenuRef}>
                 <Button
+                  aria-expanded={columnsOpen}
+                  aria-haspopup="menu"
+                  className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
                   size="sm"
                   type="button"
                   variant="secondary"
-                  onClick={() => void customersQuery.refetch()}
+                  onClick={() => setColumnsOpen((current) => !current)}
                 >
-                  <RefreshCcw
+                  <SlidersHorizontal className="mr-2 size-4" />
+                  Columns
+                  {visibleColumns.length ? (
+                    <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
+                      {visibleColumns.length}
+                    </span>
+                  ) : null}
+                </Button>
+
+                {columnsOpen ? (
+                  <div
+                    className="absolute right-0 top-[calc(100%+0.5rem)] z-[80] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
+                    role="menu"
+                  >
+                    <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
+                      Visible columns
+                    </p>
+                    {customerDataColumns.map((column) => {
+                      const isChecked = visibleColumns.includes(column.id)
+                      const isRequiredLastColumn =
+                        isChecked && visibleColumns.length === 1
+
+                      return (
+                        <label
+                          className={cn(
+                            'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
+                            isRequiredLastColumn && 'cursor-not-allowed opacity-60',
+                          )}
+                          key={column.id}
+                        >
+                          <input
+                            checked={isChecked}
+                            className="size-4 accent-[color:var(--adaptive-primary)]"
+                            disabled={isRequiredLastColumn}
+                            type="checkbox"
+                            onChange={() => toggleColumn(column.id)}
+                          />
+                          <span>{column.label}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </div>
+              <Button
+                className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => void customersQuery.refetch()}
+              >
+                <RefreshCcw
+                  className={cn(
+                    'mr-2 size-4',
+                    isRefreshing && 'animate-spin motion-reduce:animate-none',
+                  )}
+                />
+                Refresh
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-3 flex gap-1 overflow-x-auto rounded-[0.875rem] border border-border bg-surface-muted/40 p-1">
+            {queueItems.map((queue) => {
+              const isActive = isQueueActive(queue.key)
+
+              return (
+                <button
+                  aria-pressed={isActive}
+                  className={cn(
+                    'inline-flex h-8 shrink-0 items-center gap-2 rounded-[0.65rem] border px-2.5 text-sm font-medium transition',
+                    isActive
+                      ? 'border-primary/30 bg-surface text-primary shadow-[var(--sg-shadow-surface)]'
+                      : 'border-transparent text-muted hover:bg-surface hover:text-foreground',
+                  )}
+                  key={queue.key}
+                  type="button"
+                  onClick={() => applyQueue(queue.key)}
+                >
+                  <span>{queue.label}</span>
+                  <span
                     className={cn(
-                      'mr-2 size-4',
-                      isRefreshing && 'animate-spin motion-reduce:animate-none',
+                      'rounded-full px-2 py-0.5 text-xs font-semibold',
+                      isActive
+                        ? 'bg-primary/10 text-primary'
+                        : 'bg-surface text-muted',
                     )}
+                  >
+                    {queue.count ?? '...'}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          <ActiveFilterChips
+            chips={activeFilterChips}
+            onClearAll={resetFilters}
+          />
+
+          {showFilters ? (
+            <div className="mt-2 rounded-[0.75rem] border border-border bg-surface-muted/45 p-2.5">
+              <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-[minmax(9rem,0.8fr)_minmax(12rem,1fr)_minmax(9rem,0.8fr)_minmax(10rem,0.8fr)_minmax(10rem,0.8fr)_auto] lg:items-end">
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">
+                    Status
+                  </span>
+                  <select
+                    className={CUSTOMER_FILTER_CONTROL_CLASS_NAME}
+                    value={status}
+                    onChange={(event) => {
+                      setStatus(event.target.value as '' | AdminCustomerStatus)
+                      setHasActiveOrders(false)
+                      resetToFirstPage()
+                    }}
+                  >
+                    <option value="">All</option>
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="BLOCKED">BLOCKED</option>
+                    <option value="INCOMPLETE">INCOMPLETE</option>
+                  </select>
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">City</span>
+                  <Input
+                    className={CUSTOMER_FILTER_CONTROL_CLASS_NAME}
+                    placeholder="Bengaluru"
+                    value={city}
+                    onChange={(event) => {
+                      setCity(event.target.value)
+                      resetToFirstPage()
+                    }}
                   />
-                  Refresh
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">
+                    Has orders
+                  </span>
+                  <select
+                    className={CUSTOMER_FILTER_CONTROL_CLASS_NAME}
+                    value={hasOrders}
+                    onChange={(event) => {
+                      setHasOrders(event.target.value)
+                      setHasActiveOrders(false)
+                      resetToFirstPage()
+                    }}
+                  >
+                    <option value="">All</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">
+                    Created from
+                  </span>
+                  <Input
+                    className={CUSTOMER_FILTER_CONTROL_CLASS_NAME}
+                    type="date"
+                    value={dateFrom}
+                    onChange={(event) => {
+                      setDateFrom(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">
+                    Created to
+                  </span>
+                  <Input
+                    className={CUSTOMER_FILTER_CONTROL_CLASS_NAME}
+                    type="date"
+                    value={dateTo}
+                    onChange={(event) => {
+                      setDateTo(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </label>
+
+                <Button
+                  className="w-full lg:w-auto"
+                  disabled={!hasActiveFilters}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={resetFilters}
+                >
+                  Reset
                 </Button>
               </div>
             </div>
+          ) : null}
+        </div>
 
             {customersQuery.isError ? (
               <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
                 <ErrorState
-                  description="We could not load customer data. Please retry."
+                  description="Retry the customer list."
                   title="Customer data unavailable"
                   onRetry={() => void customersQuery.refetch()}
                 />
@@ -1561,140 +1992,172 @@ export function CustomersPage() {
             ) : customers.length === 0 ? (
               <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
                 <EmptyState
-                  description="No customers matched the selected filters."
+                  actionLabel={hasActiveFilters ? 'Clear filters' : undefined}
+                  description={
+                    hasActiveFilters
+                      ? 'No matches.'
+                      : 'Directory is empty.'
+                  }
                   title="No customers"
+                  onAction={hasActiveFilters ? resetFilters : undefined}
                 />
               </div>
             ) : (
-              <div className="flex flex-col xl:min-h-0 xl:flex-1">
-                <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
-                  <div
-                    className="min-w-0 xl:min-w-[var(--customer-grid-min-width)]"
-                    style={customerGridStyle}
-                  >
-                    <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--customer-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
-                      <div className="flex min-w-0 items-center">
-                        <ListSelectionCheckbox
-                          checked={customerSelection.allVisibleSelected}
-                          indeterminate={customerSelection.someVisibleSelected}
-                          label="Select visible customers"
-                          onChange={customerSelection.setVisibleSelected}
-                        />
-                      </div>
-                      {customerDataColumns
-                        .filter((column) => visibleColumns.includes(column.id))
-                        .map((column) => (
-                          <div
-                            className="relative flex min-w-0 items-center pr-3"
-                            key={column.id}
-                          >
-                            <span className="truncate">{column.label}</span>
-                            <button
-                              aria-label={`Resize ${column.label} column`}
-                              className="group absolute inset-y-0 right-0 flex w-3 cursor-col-resize items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                              title="Drag to resize"
-                              type="button"
-                              onDoubleClick={(event) => {
-                                event.preventDefault()
-                                event.stopPropagation()
-                                resetColumnWidth(column.id)
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === 'ArrowLeft') {
-                                  event.preventDefault()
-                                  adjustColumnWidth(column.id, -16)
-                                }
-
-                                if (event.key === 'ArrowRight') {
-                                  event.preventDefault()
-                                  adjustColumnWidth(column.id, 16)
-                                }
-                              }}
-                              onPointerDown={(event) =>
-                                startColumnResize(column.id, event)
-                              }
+              <div
+                className={cn(
+                  'grid xl:min-h-0 xl:flex-1',
+                  previewCustomer &&
+                    'xl:grid-cols-[minmax(0,1fr)_22rem] xl:gap-3 xl:p-3',
+                )}
+              >
+                <div className="flex min-w-0 flex-col xl:min-h-0">
+                  <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
+                    <div
+                      className="min-w-0 xl:min-w-[var(--customer-grid-min-width)]"
+                      style={customerGridStyle}
+                    >
+                      <div className="sticky top-0 z-30 hidden gap-2 grid-cols-[var(--customer-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted shadow-[0_1px_0_var(--adaptive-border)] xl:grid">
+                        <div className="flex min-w-0 items-center">
+                          <ListSelectionCheckbox
+                            checked={customerSelection.allVisibleSelected}
+                            indeterminate={customerSelection.someVisibleSelected}
+                            label="Select visible customers"
+                            onChange={customerSelection.setVisibleSelected}
+                          />
+                        </div>
+                        {customerDataColumns
+                          .filter((column) => visibleColumns.includes(column.id))
+                          .map((column) => (
+                            <div
+                              className="relative flex min-w-0 items-center pr-3"
+                              key={column.id}
                             >
-                              <span className="h-4 w-px rounded-full bg-border transition group-hover:bg-primary group-focus-visible:bg-primary" />
-                            </button>
-                          </div>
-                        ))}
-                      <div className="relative flex min-w-0 items-center justify-end pr-3 text-right">
-                        <span className="truncate">Actions</span>
-                        <button
-                          aria-label="Resize actions column"
-                          className="group absolute inset-y-0 right-0 flex w-3 cursor-col-resize items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          title="Drag to resize"
-                          type="button"
-                          onDoubleClick={(event) => {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            resetColumnWidth(CUSTOMER_ACTION_COLUMN_ID)
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === 'ArrowLeft') {
-                              event.preventDefault()
-                              adjustColumnWidth(CUSTOMER_ACTION_COLUMN_ID, -16)
-                            }
+                              <span className="truncate">{column.label}</span>
+                              <button
+                                aria-label={`Resize ${column.label} column`}
+                                className="group absolute inset-y-0 right-0 flex w-3 cursor-col-resize items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                title="Drag to resize"
+                                type="button"
+                                onDoubleClick={(event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  resetColumnWidth(column.id)
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'ArrowLeft') {
+                                    event.preventDefault()
+                                    adjustColumnWidth(column.id, -16)
+                                  }
 
-                            if (event.key === 'ArrowRight') {
+                                  if (event.key === 'ArrowRight') {
+                                    event.preventDefault()
+                                    adjustColumnWidth(column.id, 16)
+                                  }
+                                }}
+                                onPointerDown={(event) =>
+                                  startColumnResize(column.id, event)
+                                }
+                              >
+                                <span className="h-4 w-px rounded-full bg-border transition group-hover:bg-primary group-focus-visible:bg-primary" />
+                              </button>
+                            </div>
+                          ))}
+                        <div className="relative sticky right-0 z-40 flex min-w-0 items-center justify-end bg-surface-muted pr-3 text-right shadow-[var(--sg-shadow-sticky-action)]">
+                          <span className="truncate">Actions</span>
+                          <button
+                            aria-label="Resize actions column"
+                            className="group absolute inset-y-0 right-0 flex w-3 cursor-col-resize items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            title="Drag to resize"
+                            type="button"
+                            onDoubleClick={(event) => {
                               event.preventDefault()
-                              adjustColumnWidth(CUSTOMER_ACTION_COLUMN_ID, 16)
+                              event.stopPropagation()
+                              resetColumnWidth(CUSTOMER_ACTION_COLUMN_ID)
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'ArrowLeft') {
+                                event.preventDefault()
+                                adjustColumnWidth(CUSTOMER_ACTION_COLUMN_ID, -16)
+                              }
+
+                              if (event.key === 'ArrowRight') {
+                                event.preventDefault()
+                                adjustColumnWidth(CUSTOMER_ACTION_COLUMN_ID, 16)
+                              }
+                            }}
+                            onPointerDown={(event) =>
+                              startColumnResize(CUSTOMER_ACTION_COLUMN_ID, event)
                             }
-                          }}
-                          onPointerDown={(event) =>
-                            startColumnResize(CUSTOMER_ACTION_COLUMN_ID, event)
-                          }
-                        >
-                          <span className="h-4 w-px rounded-full bg-border transition group-hover:bg-primary group-focus-visible:bg-primary" />
-                        </button>
+                          >
+                            <span className="h-4 w-px rounded-full bg-border transition group-hover:bg-primary group-focus-visible:bg-primary" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <ListSelectionToolbar
-                      allVisibleSelected={customerSelection.allVisibleSelected}
-                      selectedCount={customerSelection.selectedCount}
-                      visibleCount={customerSelection.visibleCount}
-                      onClear={customerSelection.clearSelection}
-                      onSelectVisible={() => customerSelection.setVisibleSelected(true)}
-                    />
+                      <ListSelectionToolbar
+                        allVisibleSelected={customerSelection.allVisibleSelected}
+                        selectedCount={customerSelection.selectedCount}
+                        visibleCount={customerSelection.visibleCount}
+                        onClear={customerSelection.clearSelection}
+                        onSelectVisible={() =>
+                          customerSelection.setVisibleSelected(true)
+                        }
+                      />
 
-                    <div>
-                      {customers.map((customer) => (
-                        <CustomerRow
-                          canCreditWallet={canCreditWallet}
-                          canUpdateCustomer={canUpdateCustomer}
-                          customer={customer}
-                          isSelected={customerSelection.isSelected(customer.customerId)}
-                          isSubmitting={actionMutation.isPending}
-                          key={customer.customerId}
-                          visibleColumns={visibleColumns}
-                          onOpenAction={openAction}
-                          onSelect={(selectedCustomer, selected) =>
-                            customerSelection.setItemSelected(
-                              selectedCustomer.customerId,
-                              selected,
-                            )
-                          }
-                          onViewDetails={viewDetails}
-                        />
-                      ))}
+                      <div>
+                        {customers.map((customer) => (
+                          <CustomerRow
+                            canCreditWallet={canCreditWallet}
+                            canUpdateCustomer={canUpdateCustomer}
+                            customer={customer}
+                            isPreviewed={
+                              previewCustomerId === customer.customerId
+                            }
+                            isSelected={customerSelection.isSelected(
+                              customer.customerId,
+                            )}
+                            isSubmitting={actionMutation.isPending}
+                            key={customer.customerId}
+                            visibleColumns={visibleColumns}
+                            onOpenAction={openAction}
+                            onPreview={(previewCustomer) =>
+                              setPreviewCustomerId(previewCustomer.customerId)
+                            }
+                            onSelect={(selectedCustomer, selected) =>
+                              customerSelection.setItemSelected(
+                                selectedCustomer.customerId,
+                                selected,
+                              )
+                            }
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
+
+                  <CustomerPagination
+                    pagination={pagination}
+                    onPageChange={setPage}
+                    onPageSizeChange={(nextLimit) => {
+                      setLimit(nextLimit)
+                      setPage(1)
+                    }}
+                  />
                 </div>
 
-                <CustomerPagination
-                  pagination={pagination}
-                  onPageChange={setPage}
-                  onPageSizeChange={(nextLimit) => {
-                    setLimit(nextLimit)
-                    setPage(1)
-                  }}
-                />
+                {previewCustomer ? (
+                  <CustomerPreviewPanel
+                    canCreditWallet={canCreditWallet}
+                    canUpdateCustomer={canUpdateCustomer}
+                    customer={previewCustomer}
+                    isSubmitting={actionMutation.isPending}
+                    onClose={() => setPreviewCustomerId(null)}
+                    onOpenAction={openAction}
+                    onOpenDetails={viewDetails}
+                  />
+                ) : null}
               </div>
             )}
-          </main>
-
-        </section>
-      </div>
+      </main>
 
       {actionTarget ? (
         <CustomerActionModal
@@ -1713,46 +2176,6 @@ export function CustomersPage() {
       ) : null}
     </PageContainer>
   )
-}
-
-function buildMetrics({
-  customers,
-  summary,
-  visibleAttentionCount,
-  visibleWarningCount,
-}: {
-  customers: AdminCustomerListItem[]
-  summary?: AdminCustomersSummary
-  visibleAttentionCount: number
-  visibleWarningCount: number
-}) {
-  const activeOrderCount =
-    summary?.withActiveOrders ??
-    customers.filter((customer) => customer.orderSummary.activeOrders > 0).length
-  const blockedCount =
-    summary?.blocked ??
-    customers.filter((customer) => customer.status === 'BLOCKED').length
-
-  return [
-    {
-      label: 'Needs action',
-      value: String(visibleAttentionCount),
-      meta: `${visibleWarningCount} warning signals on this page`,
-      tone: 'warning' as const,
-    },
-    {
-      label: 'Active order risk',
-      value: String(activeOrderCount),
-      meta: 'Customers with live orders',
-      tone: 'success' as const,
-    },
-    {
-      label: 'Blocked',
-      value: String(blockedCount),
-      meta: 'Review before reactivation',
-      tone: 'danger' as const,
-    },
-  ]
 }
 
 function buildQueueItems({

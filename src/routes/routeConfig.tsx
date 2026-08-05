@@ -45,6 +45,7 @@ import { SettingsPage } from '../features/settings/components/SettingsPage'
 import { VendorOnboardingPage } from '../features/vendors/components/VendorOnboardingPage'
 import { VendorsPage } from '../features/vendors/components/VendorsPage'
 import { VendorDetailPage } from '../features/vendors/components/VendorDetailPage'
+import { VendorDocumentsPage } from '../features/vendor-documents/components/VendorDocumentsPage'
 import { AdminLayout } from '../layouts/AdminLayout'
 import { ModuleLayout } from '../layouts/ModuleLayout'
 import { ProtectedRoute } from './ProtectedRoute'
@@ -135,6 +136,10 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: routePaths.vendors,
                     element: <VendorsPage />,
+                  },
+                  {
+                    path: routePaths.vendorDocuments,
+                    element: <VendorDocumentsPage />,
                   },
                   {
                     path: `${routePaths.vendors}/:vendorId`,

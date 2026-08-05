@@ -26,6 +26,7 @@ import { Button } from '../../../components/ui/Button'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
+import { useTheme } from '../../../providers/themeContext'
 import type { StatusTone } from '../../../types/status.types'
 import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
@@ -56,15 +57,6 @@ interface DashboardAccess {
   canReadReels: boolean
   canReadVendors: boolean
 }
-
-const chartPalette = [
-  '#0066cc',
-  '#248a3d',
-  '#b45309',
-  '#ff3b30',
-  '#5e5ce6',
-  '#0f766e',
-] as const
 
 const orderStatusRouteAliases: Record<string, string> = {
   ACCEPTED: 'VENDOR_ACCEPTED',
@@ -529,21 +521,23 @@ function QueuePanel({
   onOpen: (path: string) => void
   queues: DashboardQueue[]
 }) {
+  const { theme } = useTheme()
+  const { charts } = theme
   const queueChartOption = useMemo<EChartsCoreOption>(() => {
     const chartQueues = [...queues].sort((left, right) => left.count - right.count)
 
     return {
       aria: { enabled: true },
-      color: [chartPalette[2]],
+      color: [charts.palette[2]],
       grid: { bottom: 12, containLabel: true, left: 4, right: 12, top: 8 },
       tooltip: { trigger: 'axis' },
       xAxis: {
-        axisLabel: { color: '#86868b' },
-        splitLine: { lineStyle: { color: 'rgba(0,0,0,0.06)' } },
+        axisLabel: { color: charts.axisMuted },
+        splitLine: { lineStyle: { color: charts.splitLine } },
         type: 'value',
       },
       yAxis: {
-        axisLabel: { color: '#1d1d1f' },
+        axisLabel: { color: charts.axisStrong },
         data: chartQueues.map((queue) => queue.label),
         type: 'category',
       },
@@ -560,7 +554,7 @@ function QueuePanel({
             return {
               itemStyle: {
                 borderRadius: [0, 5, 5, 0],
-                color: queue.count > 0 ? chartPalette[2] : '#d1d5db',
+                color: queue.count > 0 ? charts.palette[2] : charts.neutral,
               },
               routePath,
               value: queue.count,
@@ -571,7 +565,7 @@ function QueuePanel({
         },
       ],
     }
-  }, [access, queues])
+  }, [access, charts, queues])
 
   return (
     <SectionShell
@@ -654,6 +648,8 @@ function FinancePanel({
   widgets: DashboardFinanceWidget[]
   onOpen: (path: string) => void
 }) {
+  const { theme } = useTheme()
+  const { charts } = theme
   const financeChartOption = useMemo<EChartsCoreOption>(() => {
     const statusCodes = Array.from(
       new Set(
@@ -667,22 +663,22 @@ function FinancePanel({
 
     return {
       aria: { enabled: true },
-      color: [...chartPalette],
+      color: [...charts.palette],
       grid: { bottom: 24, containLabel: true, left: 8, right: 8, top: 12 },
       legend: {
         bottom: 0,
         icon: 'circle',
-        textStyle: { color: '#86868b', fontSize: 11 },
+        textStyle: { color: charts.axisMuted, fontSize: 11 },
       },
       tooltip: { trigger: 'axis' },
       xAxis: {
-        axisLabel: { color: '#1d1d1f' },
+        axisLabel: { color: charts.axisStrong },
         data: widgets.map((widget) => humanizeCode(widget.code)),
         type: 'category',
       },
       yAxis: {
-        axisLabel: { color: '#86868b' },
-        splitLine: { lineStyle: { color: 'rgba(0,0,0,0.06)' } },
+        axisLabel: { color: charts.axisMuted },
+        splitLine: { lineStyle: { color: charts.splitLine } },
         type: 'value',
       },
       series: statusCodes.map((status) => ({
@@ -702,7 +698,7 @@ function FinancePanel({
         type: 'bar',
       })),
     }
-  }, [access, widgets])
+  }, [access, charts, widgets])
 
   if (!permitted) {
     return (
@@ -834,6 +830,8 @@ function OrdersPanel({
   statusItems?: DashboardChartItem[]
   onOpen: (path: string) => void
 }) {
+  const { theme } = useTheme()
+  const { charts } = theme
   const resolvedStatusItems = useMemo(
     () => statusItems?.length ? statusItems : chartItemsFromRecord(byStatus, 'orderStatus'),
     [byStatus, statusItems],
@@ -866,16 +864,16 @@ function OrdersPanel({
   const orderStatusOption = useMemo<EChartsCoreOption>(
     () => ({
       aria: { enabled: true },
-      color: [chartPalette[0]],
+      color: [charts.palette[0]],
       grid: { bottom: 12, containLabel: true, left: 4, right: 12, top: 8 },
       tooltip: { trigger: 'axis' },
       xAxis: {
-        axisLabel: { color: '#86868b' },
-        splitLine: { lineStyle: { color: 'rgba(0,0,0,0.06)' } },
+        axisLabel: { color: charts.axisMuted },
+        splitLine: { lineStyle: { color: charts.splitLine } },
         type: 'value',
       },
       yAxis: {
-        axisLabel: { color: '#1d1d1f' },
+        axisLabel: { color: charts.axisStrong },
         data: [...resolvedStatusItems].reverse().map((item) => item.label),
         type: 'category',
       },
@@ -892,16 +890,16 @@ function OrdersPanel({
         },
       ],
     }),
-    [resolvedStatusItems],
+    [charts, resolvedStatusItems],
   )
   const paymentStatusOption = useMemo<EChartsCoreOption>(
     () => ({
       aria: { enabled: true },
-      color: [...chartPalette],
+      color: [...charts.palette],
       legend: {
         bottom: 0,
         icon: 'circle',
-        textStyle: { color: '#86868b', fontSize: 11 },
+        textStyle: { color: charts.axisMuted, fontSize: 11 },
       },
       series: [
         {
@@ -919,7 +917,7 @@ function OrdersPanel({
       ],
       tooltip: { trigger: 'item' },
     }),
-    [resolvedPaymentItems],
+    [charts, resolvedPaymentItems],
   )
   const matrixOption = useMemo<EChartsCoreOption>(() => {
     const orderLabels = Array.from(
@@ -940,19 +938,19 @@ function OrdersPanel({
       tooltip: { position: 'top' },
       visualMap: {
         calculable: false,
-        inRange: { color: ['#f5f5f7', '#80bfff', chartPalette[0]] },
+        inRange: { color: [...charts.heatmapRange] },
         max: maxCount,
         min: 0,
         show: false,
       },
       xAxis: {
-        axisLabel: { color: '#86868b', interval: 0 },
+        axisLabel: { color: charts.axisMuted, interval: 0 },
         data: paymentLabels,
         splitArea: { show: true },
         type: 'category',
       },
       yAxis: {
-        axisLabel: { color: '#1d1d1f' },
+        axisLabel: { color: charts.axisStrong },
         data: orderLabels,
         splitArea: { show: true },
         type: 'category',
@@ -969,7 +967,7 @@ function OrdersPanel({
           })),
           emphasis: {
             itemStyle: {
-              borderColor: '#1d1d1f',
+              borderColor: charts.border,
               borderWidth: 1,
             },
           },
@@ -978,7 +976,7 @@ function OrdersPanel({
         },
       ],
     }
-  }, [resolvedMatrixRows])
+  }, [charts, resolvedMatrixRows])
 
   return (
     <SectionShell
@@ -1077,35 +1075,37 @@ function TrendsPanel({
   points: DashboardTrendPoint[]
   onOpen: (path: string) => void
 }) {
+  const { theme } = useTheme()
+  const { charts } = theme
   const trendOption = useMemo<EChartsCoreOption>(
     () => ({
       aria: { enabled: true },
-      color: [chartPalette[0], chartPalette[1], chartPalette[2]],
+      color: [charts.palette[0], charts.palette[1], charts.palette[2]],
       grid: { bottom: 28, containLabel: true, left: 8, right: 36, top: 20 },
       legend: {
         bottom: 0,
         icon: 'circle',
-        textStyle: { color: '#86868b', fontSize: 11 },
+        textStyle: { color: charts.axisMuted, fontSize: 11 },
       },
       tooltip: {
         trigger: 'axis',
       },
       xAxis: {
-        axisLabel: { color: '#86868b', hideOverlap: true },
+        axisLabel: { color: charts.axisMuted, hideOverlap: true },
         boundaryGap: false,
         data: points.map((point) => point.label),
         type: 'category',
       },
       yAxis: [
         {
-          axisLabel: { color: '#86868b' },
+          axisLabel: { color: charts.axisMuted },
           name: 'Orders',
-          splitLine: { lineStyle: { color: 'rgba(0,0,0,0.06)' } },
+          splitLine: { lineStyle: { color: charts.splitLine } },
           type: 'value',
         },
         {
           axisLabel: {
-            color: '#86868b',
+            color: charts.axisMuted,
             formatter: (value: number) => formatShortMoneyPaise(value),
           },
           name: 'Value',
@@ -1151,7 +1151,7 @@ function TrendsPanel({
         },
       ],
     }),
-    [points],
+    [charts, points],
   )
 
   return (

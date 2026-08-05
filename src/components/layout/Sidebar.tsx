@@ -111,7 +111,7 @@ function SidebarPanel({
         )}
       >
         <div className={cn("min-w-0", isCollapsed && !isMobile && "hidden")}>
-          <h1 className="text-[1.2rem] font-semibold tracking-[-0.04em] text-[color:var(--adaptive-text-main)]">
+          <h1 className="text-[1.2rem] font-semibold tracking-normal text-[color:var(--sg-sidebar-text-main)]">
             ServiceGram
           </h1>
         </div>
@@ -129,7 +129,7 @@ function SidebarPanel({
           <button
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             className={cn(
-              "p-0 text-[color:var(--adaptive-text-muted)] transition hover:text-[color:var(--adaptive-text-main)]",
+              "p-0 text-[color:var(--sg-sidebar-text-muted)] transition hover:text-[color:var(--sg-sidebar-text-main)]",
               isCollapsed && "mx-auto",
             )}
             title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -170,8 +170,8 @@ function SidebarPanel({
                           ? "justify-center px-2.5 py-3"
                           : "gap-3 px-3.5 py-3",
                         isActive
-                          ? "premium-sidebar-link-active text-[color:var(--adaptive-text-main)]"
-                          : "text-[color:var(--adaptive-text-muted)] hover:text-[color:var(--adaptive-text-main)]",
+                          ? "premium-sidebar-link-active text-[color:var(--sg-sidebar-text-main)]"
+                          : "text-[color:var(--sg-sidebar-text-muted)] hover:text-[color:var(--sg-sidebar-text-main)]",
                       )
                     }
                     to={item.href}
@@ -226,9 +226,9 @@ function SidebarPanel({
         : null}
 
       {isMobile ? (
-        <div className="border-t border-[color:var(--adaptive-border)] px-3 py-3">
+        <div className="border-t border-[color:var(--sg-sidebar-border)] px-3 py-3">
           <button
-            className="premium-sidebar-link flex w-full items-center gap-3 px-3.5 py-3 text-sm font-medium text-adaptive-muted"
+            className="premium-sidebar-link flex w-full items-center gap-3 px-3.5 py-3 text-sm font-medium text-[color:var(--sg-sidebar-text-muted)]"
             type="button"
             onClick={() => {
               clearSession();

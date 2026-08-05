@@ -7,6 +7,7 @@ import {
   VENDOR_BRAND_LOGO_UPLOAD_INTENT_PATH,
   VENDOR_DETAIL_PATH,
   VENDOR_DOCUMENT_DOWNLOAD_TARGET_PATH,
+  VENDOR_DOCUMENTS_PATH,
   VENDOR_LIST_PATH,
   VENDOR_ONBOARDING_QUEUE_PATH,
   VENDOR_OVERVIEW_PATH,
@@ -33,6 +34,8 @@ import type {
   VendorActionResponse,
   VendorBrandLogoUploadIntentResponse,
   VendorDetailResponse,
+  VendorDocumentListQueryParams,
+  VendorDocumentListResponse,
   VendorDocumentDownloadTargetResponse,
   VendorDocumentVerificationPayload,
   VendorListQueryParams,
@@ -110,6 +113,20 @@ async function getVendorList(
     ),
   )
   return parseJsonResponse<VendorListResponse>(response)
+}
+
+async function getVendorDocuments(
+  query: VendorDocumentListQueryParams = {},
+): Promise<VendorDocumentListResponse> {
+  const queryString = buildQueryParams(query)
+  const response = await apiClient.request(
+    buildApiUrl(
+      queryString
+        ? `${VENDOR_DOCUMENTS_PATH}?${queryString}`
+        : VENDOR_DOCUMENTS_PATH,
+    ),
+  )
+  return parseJsonResponse<VendorDocumentListResponse>(response)
 }
 
 async function getVendorOnboardingQueue(
@@ -470,6 +487,7 @@ async function addVendorNote(
 
 export const vendorService = {
   getVendorList,
+  getVendorDocuments,
   getVendorOnboardingQueue,
   getVendorById,
   getVendorDocumentDownloadTarget,

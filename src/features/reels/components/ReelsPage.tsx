@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   Store,
   Trash2,
+  X,
   XCircle,
 } from 'lucide-react'
 import type {
@@ -62,9 +63,7 @@ import {
 } from './ReelActionModal'
 import type {
   AdminReel,
-  AdminReelsPagination,
   AdminReelsQueryParams,
-  AdminReelsSummary,
   ReelContentType,
   ReelModerationStatus,
   ReelUploadStatus,
@@ -73,15 +72,25 @@ import type {
 type ReelViewMode = 'pending' | 'live'
 type ReelTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
 type ReelQueueKey = ReelViewMode
+type ReelPreviewTab = 'summary' | 'review' | 'media'
 
 const DEFAULT_PAGE_SIZE = 10
 const REEL_DEFAULT_COLUMN_WIDTH = 220
 const REEL_GRID_COLUMN_GAP = 12
 const REEL_GRID_INLINE_PADDING = 24
 const REEL_ACTION_COLUMN_ID = 'actions'
-const REEL_ACTION_COLUMN_DEFAULT_WIDTH = 640
-const REEL_ACTION_COLUMN_MIN_WIDTH = 360
-const REEL_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.reel.columnWidths.v2'
+const REEL_ACTION_COLUMN_DEFAULT_WIDTH = 220
+const REEL_ACTION_COLUMN_MIN_WIDTH = 208
+const REEL_ACTION_COLUMN_MAX_WIDTH = 240
+const REEL_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.reel.columnWidths.v3'
+const REEL_FILTER_CONTROL_CLASS_NAME =
+  'h-9 w-full rounded-[0.65rem] border border-border bg-surface px-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30'
+
+interface ActiveFilterChip {
+  key: string
+  label: string
+  onClear: () => void
+}
 
 const reelContentTypes: ReelContentType[] = [
   'BEFORE_AFTER',
@@ -208,21 +217,6 @@ interface ReelGridStyle extends CSSProperties {
   '--reel-grid-min-width': string
 }
 
-interface ReelMetric {
-  label: string
-  meta: string
-  tone: ReelTone
-  value: string
-}
-
-function toneClasses(tone: ReelTone) {
-  if (tone === 'success') return 'text-success'
-  if (tone === 'warning') return 'text-warning'
-  if (tone === 'danger') return 'text-danger'
-  if (tone === 'info') return 'text-primary'
-  return 'text-muted'
-}
-
 function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
 
@@ -239,7 +233,7 @@ function formatDateSafe(value: string | null | undefined) {
 }
 
 function buildReelListMediaItems(reel: AdminReel): MediaViewerItem[] {
-  const items: MediaViewerItem[] = []
+  const relatedItems: MediaViewerItem[] = []
   const thumbnailUrl = isOpenableMediaUrl(reel.media.thumbnailUrl)
     ? reel.media.thumbnailUrl
     : null
@@ -248,7 +242,7 @@ function buildReelListMediaItems(reel: AdminReel): MediaViewerItem[] {
     : null
 
   if (thumbnailUrl) {
-    items.push({
+    relatedItems.push({
       description: `${humanizeCode(reel.media.uploadStatus)} thumbnail.`,
       downloadUrl: thumbnailUrl,
       height: reel.media.height ?? null,
@@ -263,7 +257,7 @@ function buildReelListMediaItems(reel: AdminReel): MediaViewerItem[] {
   }
 
   if (reel.media.cloudflareVideoUid || playbackUrl) {
-    items.push({
+    relatedItems.push({
       cloudflareVideoUid: reel.media.cloudflareVideoUid,
       description: reel.media.durationSeconds
         ? `${reel.media.durationSeconds} seconds`
@@ -281,7 +275,25 @@ function buildReelListMediaItems(reel: AdminReel): MediaViewerItem[] {
     })
   }
 
-  return items
+  if (!relatedItems.length) return []
+
+  return [
+    {
+      description: reel.media.durationSeconds
+        ? `${reel.media.durationSeconds} seconds`
+        : humanizeCode(reel.media.uploadStatus),
+      downloadUrl: playbackUrl ?? thumbnailUrl,
+      height: reel.media.height ?? null,
+      id: `${reel.reelId}-media`,
+      kind: 'reel',
+      ownerLabel: reel.vendor.shopName,
+      relatedItems,
+      sourceLabel: 'Reel media',
+      src: playbackUrl ?? thumbnailUrl,
+      title: `${reel.publicReelId} media`,
+      width: reel.media.width ?? null,
+    },
+  ]
 }
 
 function getReelListVideoIndex(items: MediaViewerItem[]) {
@@ -307,50 +319,6 @@ function getModerationStatusTone(status: ReelModerationStatus): ReelTone {
   }
   if (status === 'PAUSED') return 'info'
   return 'neutral'
-}
-
-function buildReelMetrics(
-  reels: AdminReel[],
-  pagination?: AdminReelsPagination,
-  summary?: AdminReelsSummary,
-): ReelMetric[] {
-  const total = pagination?.totalItems ?? summary?.total ?? reels.length
-  const needsReview =
-    summary?.byModerationStatus.PENDING_REVIEW ??
-    reels.filter((reel) => reel.moderation.status === 'PENDING_REVIEW').length
-  const readyMedia =
-    summary?.byUploadStatus.READY ??
-    reels.filter((reel) => reel.media.uploadStatus === 'READY').length
-  const live =
-    summary?.live ??
-    reels.filter((reel) => reel.publish.customerVisibility === 'VISIBLE').length
-
-  return [
-    {
-      label: 'Needs review',
-      meta: 'Reels waiting for moderation',
-      tone: needsReview > 0 ? 'warning' : 'neutral',
-      value: String(needsReview),
-    },
-    {
-      label: 'Ready media',
-      meta: 'Video processing completed',
-      tone: readyMedia > 0 ? 'success' : 'neutral',
-      value: String(readyMedia),
-    },
-    {
-      label: 'Live reels',
-      meta: 'Visible to customers',
-      tone: live > 0 ? 'info' : 'neutral',
-      value: String(live),
-    },
-    {
-      label: 'Matched reels',
-      meta: 'Total matching current filters',
-      tone: 'info',
-      value: String(total),
-    },
-  ]
 }
 
 interface ReelQueueCounts {
@@ -392,11 +360,24 @@ function getReelColumnMinWidth(columnId: ReelColumnWidthId) {
   return reelDataColumns.find((column) => column.id === columnId)?.minWidth ?? 140
 }
 
+function clampReelColumnWidth(columnId: ReelColumnWidthId, width: number) {
+  const nextWidth = Math.max(getReelColumnMinWidth(columnId), Math.round(width))
+
+  if (columnId === REEL_ACTION_COLUMN_ID) {
+    return Math.min(nextWidth, REEL_ACTION_COLUMN_MAX_WIDTH)
+  }
+
+  return nextWidth
+}
+
 function getReelColumnWidth(
   columnWidths: ReelColumnWidths,
   columnId: ReelColumnWidthId,
 ) {
-  return columnWidths[columnId] ?? getReelColumnDefaultWidth(columnId)
+  return clampReelColumnWidth(
+    columnId,
+    columnWidths[columnId] ?? getReelColumnDefaultWidth(columnId),
+  )
 }
 
 function getReelGridTemplate(
@@ -442,7 +423,12 @@ function loadReelColumnWidths(): ReelColumnWidths {
     const parsedValue = JSON.parse(storedValue) as ReelColumnWidths
 
     return Object.fromEntries(
-      Object.entries(parsedValue).filter(([, width]) => typeof width === 'number'),
+      Object.entries(parsedValue)
+        .filter(([, width]) => typeof width === 'number')
+        .map(([columnId, width]) => [
+          columnId,
+          clampReelColumnWidth(columnId as ReelColumnWidthId, width as number),
+        ]),
     ) as ReelColumnWidths
   } catch {
     return {}
@@ -452,21 +438,10 @@ function loadReelColumnWidths(): ReelColumnWidths {
 function formatRefreshTime(updatedAt: number) {
   if (!updatedAt) return 'Not refreshed yet'
 
-  return `Updated ${formatDate(new Date(updatedAt).toISOString(), true)}`
-}
-
-function MetricCard({ label, meta, tone, value }: ReelMetric) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <p className={cn('text-xs font-semibold uppercase tracking-normal', toneClasses(tone))}>
-        {label}
-      </p>
-      <p className={cn('mt-3 text-2xl font-semibold tracking-normal', toneClasses(tone))}>
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
-    </article>
-  )
+  return `Last refreshed ${new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(updatedAt))}`
 }
 
 function ReelRowsSkeleton() {
@@ -486,6 +461,510 @@ function ReelRowsSkeleton() {
   )
 }
 
+const reelActionPriority: ReelActionKind[] = [
+  'APPROVE',
+  'REQUEST_EDIT',
+  'REJECT',
+  'PAUSE',
+  'REMOVE',
+  'SOFT_DELETE',
+  'HARD_DELETE',
+]
+
+function isReelActionKind(action: string | null | undefined): action is ReelActionKind {
+  return Boolean(action) && reelActionPriority.includes(action as ReelActionKind)
+}
+
+function isDangerReelAction(kind: ReelActionKind) {
+  return (
+    kind === 'REJECT' ||
+    kind === 'REMOVE' ||
+    kind === 'SOFT_DELETE' ||
+    kind === 'HARD_DELETE'
+  )
+}
+
+function reelActionLabel(kind: ReelActionKind) {
+  return {
+    APPROVE: 'Approve',
+    REJECT: 'Reject',
+    REQUEST_EDIT: 'Request edit',
+    PAUSE: 'Pause',
+    REMOVE: 'Remove',
+    SOFT_DELETE: 'Soft delete',
+    HARD_DELETE: 'Hard delete',
+  }[kind]
+}
+
+function canRunReelListAction({
+  canDeleteReels,
+  canModerateReels,
+  kind,
+}: {
+  canDeleteReels: boolean
+  canModerateReels: boolean
+  kind: ReelActionKind
+}) {
+  if (kind === 'SOFT_DELETE' || kind === 'HARD_DELETE') return canDeleteReels
+
+  return canModerateReels
+}
+
+function canOpenReelAction({
+  canDeleteReels,
+  canModerateReels,
+  kind,
+  reel,
+}: {
+  canDeleteReels: boolean
+  canModerateReels: boolean
+  kind: ReelActionKind
+  reel: AdminReel
+}) {
+  return (
+    reel.availableActions.includes(kind) &&
+    canRunReelListAction({ canDeleteReels, canModerateReels, kind })
+  )
+}
+
+function getPrimaryReelAction({
+  canDeleteReels,
+  canModerateReels,
+  reel,
+}: {
+  canDeleteReels: boolean
+  canModerateReels: boolean
+  reel: AdminReel
+}) {
+  const recommendedAction = isReelActionKind(reel.nextRecommendedAction)
+    ? reel.nextRecommendedAction
+    : null
+
+  if (
+    recommendedAction &&
+    canOpenReelAction({
+      canDeleteReels,
+      canModerateReels,
+      kind: recommendedAction,
+      reel,
+    })
+  ) {
+    return recommendedAction
+  }
+
+  return (
+    reelActionPriority.find((kind) =>
+      canOpenReelAction({ canDeleteReels, canModerateReels, kind, reel }),
+    ) ?? null
+  )
+}
+
+function ActiveFilterChips({
+  chips,
+  onClearAll,
+}: {
+  chips: ActiveFilterChip[]
+  onClearAll: () => void
+}) {
+  if (!chips.length) return null
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {chips.map((chip) => (
+        <span
+          className="inline-flex min-h-7 max-w-full items-center gap-2 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-foreground"
+          key={chip.key}
+        >
+          <span className="truncate">{chip.label}</span>
+          <button
+            aria-label={`Clear ${chip.label}`}
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-surface-muted hover:text-foreground"
+            type="button"
+            onClick={chip.onClear}
+          >
+            <X className="size-3.5" />
+          </button>
+        </span>
+      ))}
+      <button
+        className="min-h-7 rounded-full px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
+        type="button"
+        onClick={onClearAll}
+      >
+        Clear all
+      </button>
+    </div>
+  )
+}
+
+function ReelSummaryField({
+  label,
+  value,
+}: {
+  label: string
+  value: ReactNode
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+        {label}
+      </p>
+      <div className="mt-1 min-w-0 text-sm font-medium text-foreground">
+        {value ?? 'Not available'}
+      </div>
+    </div>
+  )
+}
+
+function ReelPreviewPanel({
+  canDeleteReels,
+  canModerateReels,
+  canReadVendors,
+  isSubmitting,
+  onClose,
+  onOpenAction,
+  onOpenDetails,
+  onOpenMedia,
+  onOpenVendor,
+  reel,
+}: {
+  canDeleteReels: boolean
+  canModerateReels: boolean
+  canReadVendors: boolean
+  isSubmitting: boolean
+  onClose: () => void
+  onOpenAction: (kind: ReelActionKind, reel: AdminReel) => void
+  onOpenDetails: (reel: AdminReel) => void
+  onOpenMedia: (reel: AdminReel) => void
+  onOpenVendor: (reel: AdminReel) => void
+  reel: AdminReel
+}) {
+  const [activeTab, setActiveTab] = useState<ReelPreviewTab>('summary')
+  const mediaItems = buildReelListMediaItems(reel)
+  const primaryAction = getPrimaryReelAction({
+    canDeleteReels,
+    canModerateReels,
+    reel,
+  })
+  const previewTabs: { key: ReelPreviewTab; label: string }[] = [
+    { key: 'summary', label: 'Summary' },
+    { key: 'review', label: 'Review' },
+    { key: 'media', label: 'Media' },
+  ]
+  const secondaryActions = reelActionPriority.filter(
+    (kind) =>
+      kind !== primaryAction &&
+      canOpenReelAction({ canDeleteReels, canModerateReels, kind, reel }),
+  )
+
+  return (
+    <>
+      <button
+        aria-label="Close reel preview"
+        className="fixed inset-0 z-40 bg-black/20 xl:hidden"
+        type="button"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
+        <div className="shrink-0 border-b border-border p-3">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h2 className="min-w-0 truncate text-base font-semibold text-foreground">
+                  {reel.publicReelId}
+                </h2>
+                <Badge tone={getModerationStatusTone(reel.moderation.status)}>
+                  {humanizeCode(reel.moderation.status)}
+                </Badge>
+              </div>
+              <p className="mt-1 truncate text-xs text-muted">
+                {reel.vendor.shopName} / {reel.category?.name ?? 'No category'}
+              </p>
+            </div>
+            <button
+              aria-label="Close reel preview panel"
+              className="btn-icon shrink-0"
+              title="Close"
+              type="button"
+              onClick={onClose}
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <Badge tone={getUploadStatusTone(reel.media.uploadStatus)}>
+              {humanizeCode(reel.media.uploadStatus)}
+            </Badge>
+            <Badge
+              tone={
+                reel.publish.customerVisibility === 'VISIBLE'
+                  ? 'success'
+                  : 'neutral'
+              }
+            >
+              {humanizeCode(reel.publish.customerVisibility)}
+            </Badge>
+            {reel.warnings.length ? (
+              <Badge tone="warning">
+                {reel.warnings.length} warning
+                {reel.warnings.length === 1 ? '' : 's'}
+              </Badge>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="shrink-0 border-b border-border bg-surface px-3">
+          <div
+            aria-label="Reel preview sections"
+            className="flex gap-4 overflow-x-auto"
+            role="tablist"
+          >
+            {previewTabs.map((tab) => {
+              const isActive = activeTab === tab.key
+
+              return (
+                <button
+                  aria-selected={isActive}
+                  className={cn(
+                    'relative min-h-10 shrink-0 text-sm font-semibold transition',
+                    isActive
+                      ? 'text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
+                      : 'text-muted hover:text-foreground',
+                  )}
+                  key={tab.key}
+                  role="tab"
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {activeTab === 'summary' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border bg-surface-muted/45 p-3">
+                <ReelSummaryField
+                  label="Caption"
+                  value={
+                    <p className="line-clamp-3 text-sm">
+                      {reel.caption ?? 'No caption'}
+                    </p>
+                  }
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3 rounded-[0.75rem] border border-border p-3">
+                <ReelSummaryField
+                  label="Type"
+                  value={humanizeCode(reel.contentType)}
+                />
+                <ReelSummaryField
+                  label="Duration"
+                  value={
+                    reel.media.durationSeconds
+                      ? `${reel.media.durationSeconds} sec`
+                      : 'Not available'
+                  }
+                />
+                <ReelSummaryField
+                  label="Price"
+                  value={reel.priceIndicator ?? 'Not available'}
+                />
+                <ReelSummaryField
+                  label="Updated"
+                  value={formatDateSafe(reel.updatedAt)}
+                />
+              </div>
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <ReelSummaryField label="Vendor" value={reel.vendor.shopName} />
+                <p className="mt-1 truncate text-xs text-muted">
+                  {reel.vendor.publicVendorId} /{' '}
+                  {reel.vendor.zone?.zoneName ?? reel.vendor.city}
+                </p>
+                {canReadVendors ? (
+                  <Button
+                    className="mt-3"
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={() => onOpenVendor(reel)}
+                  >
+                    <Store className="mr-2 size-4" />
+                    Open vendor
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'review' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <ReelSummaryField
+                  label="Recommended next"
+                  value={
+                    reel.nextRecommendedAction
+                      ? humanizeCode(reel.nextRecommendedAction)
+                      : 'No immediate action'
+                  }
+                />
+              </div>
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                  Missing fields
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {reel.missingFields.length ? (
+                    reel.missingFields.map((field) => (
+                      <Badge key={field} tone="warning">
+                        {humanizeCode(field)}
+                      </Badge>
+                    ))
+                  ) : (
+                    <Badge tone="success">No missing fields</Badge>
+                  )}
+                </div>
+              </div>
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                  Blockers
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {reel.blockingReasons.length ? (
+                    reel.blockingReasons.map((reason) => (
+                      <Badge key={reason} tone="danger">
+                        {humanizeCode(reason)}
+                      </Badge>
+                    ))
+                  ) : (
+                    <Badge tone="success">No blockers</Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'media' ? (
+            <div className="space-y-3">
+              <div className="overflow-hidden rounded-[0.75rem] border border-border bg-surface-muted/45">
+                <div className="flex aspect-video items-center justify-center">
+                  {isOpenableMediaUrl(reel.media.thumbnailUrl) ? (
+                    <img
+                      alt={`Thumbnail for ${reel.publicReelId}`}
+                      className="h-full w-full object-cover"
+                      src={reel.media.thumbnailUrl}
+                    />
+                  ) : (
+                    <div className="text-sm text-muted">No thumbnail</div>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 rounded-[0.75rem] border border-border p-3">
+                <ReelSummaryField
+                  label="Upload"
+                  value={humanizeCode(reel.media.uploadStatus)}
+                />
+                <ReelSummaryField
+                  label="Video UID"
+                  value={reel.media.cloudflareVideoUid ?? 'Not available'}
+                />
+                <ReelSummaryField
+                  label="Size"
+                  value={
+                    reel.media.width && reel.media.height
+                      ? `${reel.media.width} x ${reel.media.height}`
+                      : 'Not available'
+                  }
+                />
+                <ReelSummaryField
+                  label="Aspect"
+                  value={reel.media.aspectRatio ?? 'Not available'}
+                />
+              </div>
+              <Button
+                className="w-full"
+                disabled={!mediaItems.length}
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => onOpenMedia(reel)}
+              >
+                <Eye className="mr-2 size-4" />
+                Open media
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="shrink-0 border-t border-border p-3">
+          <div className="space-y-2">
+            {primaryAction ? (
+              <Button
+                className="w-full"
+                disabled={isSubmitting}
+                size="sm"
+                type="button"
+                variant={isDangerReelAction(primaryAction) ? 'danger' : 'primary'}
+                onClick={() => onOpenAction(primaryAction, reel)}
+              >
+                {primaryAction === 'APPROVE' ? (
+                  <CheckCircle2 className="mr-2 size-4" />
+                ) : isDangerReelAction(primaryAction) ? (
+                  <XCircle className="mr-2 size-4" />
+                ) : (
+                  <PencilLine className="mr-2 size-4" />
+                )}
+                {reelActionLabel(primaryAction)}
+              </Button>
+            ) : null}
+
+            {secondaryActions.length ? (
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                {secondaryActions.map((kind) => (
+                  <Button
+                    disabled={isSubmitting}
+                    key={kind}
+                    size="sm"
+                    type="button"
+                    variant={isDangerReelAction(kind) ? 'danger' : 'secondary'}
+                    onClick={() => onOpenAction(kind, reel)}
+                  >
+                    {kind === 'APPROVE' ? (
+                      <CheckCircle2 className="mr-2 size-4" />
+                    ) : isDangerReelAction(kind) ? (
+                      <Trash2 className="mr-2 size-4" />
+                    ) : kind === 'PAUSE' ? (
+                      <PauseCircle className="mr-2 size-4" />
+                    ) : (
+                      <PencilLine className="mr-2 size-4" />
+                    )}
+                    {reelActionLabel(kind)}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+
+            <Button
+              className="w-full"
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => onOpenDetails(reel)}
+            >
+              <ArrowUpRight className="mr-2 size-4" />
+              Open full detail
+            </Button>
+          </div>
+        </div>
+      </aside>
+    </>
+  )
+}
+
 function ReelCell({
   children,
   label,
@@ -495,8 +974,8 @@ function ReelCell({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-xs text-muted">{label}</p>
-      <div className="mt-1 min-w-0 text-sm text-foreground">{children}</div>
+      <p className="text-xs text-muted xl:hidden">{label}</p>
+      <div className="mt-1 min-w-0 text-sm text-foreground xl:mt-0">{children}</div>
     </div>
   )
 }
@@ -544,7 +1023,8 @@ export function ReelsPage() {
   const [selectedModerationStatuses, setSelectedModerationStatuses] =
     useState<ReelModerationStatus[]>(() => seededModerationStatuses)
   const [columnsOpen, setColumnsOpen] = useState(false)
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [previewReelId, setPreviewReelId] = useState<string | null>(null)
   const [visibleColumns, setVisibleColumns] =
     useState<ReelColumnId[]>(defaultReelColumns)
   const [columnWidths, setColumnWidths] =
@@ -730,14 +1210,14 @@ export function ReelsPage() {
 
   const reels = reelsQuery.data?.data ?? []
   const pagination = reelsQuery.data?.pagination
-  const summary = reelsQuery.data?.summary
+  const previewReel =
+    reels.find((reel) => reel.reelId === previewReelId) ?? null
   const reelSelection = useListSelection(reels, (reel) => reel.reelId)
   const isInitialLoading = reelsQuery.isLoading && !reelsQuery.data
   const isRefreshing = reelsQuery.isFetching && Boolean(reelsQuery.data)
   const refreshStatusLabel = isRefreshing
-    ? 'Refreshing now'
+    ? 'Refreshing'
     : formatRefreshTime(reelsQuery.dataUpdatedAt)
-  const metrics = buildReelMetrics(reels, pagination, summary)
   const queueItems = buildReelQueueItems(queueCountsQuery.data)
   const reelGridStyle = useMemo<ReelGridStyle>(
     () => ({
@@ -783,6 +1263,96 @@ export function ReelsPage() {
     setPage(1)
   }
 
+  const activeFilterChips: ActiveFilterChip[] = []
+  const addActiveFilterChip = (
+    condition: boolean,
+    key: string,
+    label: string,
+    onClear: () => void,
+  ) => {
+    if (condition) activeFilterChips.push({ key, label, onClear })
+  }
+  const queueLabel = queueItems.find((queueItem) => queueItem.key === viewMode)?.label
+
+  addActiveFilterChip(viewMode !== 'pending', 'queue', `Queue: ${queueLabel ?? viewMode}`, () => {
+    applyQueue('pending')
+  })
+  addActiveFilterChip(Boolean(search.trim()), 'search', `Search: ${search.trim()}`, () => {
+    clearSeededReelParams()
+    setSearch('')
+    resetToFirstPage()
+  })
+  addActiveFilterChip(Boolean(city.trim()), 'city', `City: ${city.trim()}`, () => {
+    clearSeededReelParams()
+    setCity('')
+    resetToFirstPage()
+  })
+  addActiveFilterChip(
+    selectedCategories.length > 0,
+    'category',
+    `Category: ${selectedCategories[0]?.label ?? selectedCategories[0]?.value}${
+      selectedCategories.length > 1 ? ` +${selectedCategories.length - 1}` : ''
+    }`,
+    () => {
+      clearSeededReelParams()
+      setSelectedCategories([])
+      setSelectedVendors([])
+      resetToFirstPage()
+    },
+  )
+  addActiveFilterChip(
+    selectedVendors.length > 0,
+    'vendor',
+    `Vendor: ${selectedVendors[0]?.label ?? selectedVendors[0]?.value}${
+      selectedVendors.length > 1 ? ` +${selectedVendors.length - 1}` : ''
+    }`,
+    () => {
+      clearSeededReelParams()
+      setSelectedVendors([])
+      resetToFirstPage()
+    },
+  )
+  addActiveFilterChip(
+    selectedContentTypes.length > 0,
+    'content',
+    `Content: ${humanizeCode(selectedContentTypes[0] ?? '')}${
+      selectedContentTypes.length > 1 ? ` +${selectedContentTypes.length - 1}` : ''
+    }`,
+    () => {
+      clearSeededReelParams()
+      setSelectedContentTypes([])
+      resetToFirstPage()
+    },
+  )
+  addActiveFilterChip(
+    selectedUploadStatuses.length > 0,
+    'upload',
+    `Upload: ${humanizeCode(selectedUploadStatuses[0] ?? '')}${
+      selectedUploadStatuses.length > 1
+        ? ` +${selectedUploadStatuses.length - 1}`
+        : ''
+    }`,
+    () => {
+      clearSeededReelParams()
+      setSelectedUploadStatuses([])
+      resetToFirstPage()
+    },
+  )
+  addActiveFilterChip(
+    selectedModerationStatuses.length > 0,
+    'moderation',
+    `Moderation: ${humanizeCode(selectedModerationStatuses[0] ?? '')}${
+      selectedModerationStatuses.length > 1
+        ? ` +${selectedModerationStatuses.length - 1}`
+        : ''
+    }`,
+    () => {
+      clearSeededReelParams()
+      setSelectedModerationStatuses([])
+      resetToFirstPage()
+    },
+  )
+
   const startColumnResize = (
     columnId: ReelColumnWidthId,
     event: ReactPointerEvent<HTMLButtonElement>,
@@ -798,10 +1368,7 @@ export function ReelsPage() {
 
       setColumnWidths((currentWidths) => ({
         ...currentWidths,
-        [columnId]: Math.max(
-          getReelColumnMinWidth(columnId),
-          Math.round(nextWidth),
-        ),
+        [columnId]: clampReelColumnWidth(columnId, nextWidth),
       }))
     }
 
@@ -1056,372 +1623,117 @@ export function ReelsPage() {
   )
 
   const renderRowActions = (reel: AdminReel) => {
-    const hasAction = (action: ReelActionKind) =>
-      reel.availableActions.includes(action)
     const mediaItems = buildReelListMediaItems(reel)
+    const primaryAction = getPrimaryReelAction({
+      canDeleteReels,
+      canModerateReels,
+      reel,
+    })
+    const primaryActionText = primaryAction ? reelActionLabel(primaryAction) : ''
 
     return (
-      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-        <Button
+      <div className="flex min-w-0 flex-nowrap items-center justify-end gap-1.5 xl:sticky xl:right-0 xl:z-20 xl:border-l xl:border-border xl:bg-inherit xl:pl-2 xl:shadow-[var(--sg-shadow-sticky-action)]">
+        <button
+          aria-label={`Open media for ${reel.publicReelId}`}
+          className="btn-icon disabled:cursor-not-allowed disabled:opacity-60"
           disabled={!mediaItems.length}
-          size="sm"
+          title="Open media"
           type="button"
-          variant="secondary"
           onClick={(event) => viewReelMedia(reel, event)}
         >
-          <Eye className="mr-2 size-4" />
-          Media
-        </Button>
-        {canModerateReels && hasAction('APPROVE') ? (
+          <Eye className="size-4" />
+        </button>
+        {primaryAction ? (
           <Button
-            size="sm"
-            type="button"
-            variant="secondary"
+            className="w-[7.75rem] shrink-0 overflow-hidden px-2.5"
             disabled={actionMutation.isPending}
-            onClick={(event) => openReelAction('APPROVE', reel, event)}
+            size="sm"
+            title={primaryActionText}
+            type="button"
+            variant={isDangerReelAction(primaryAction) ? 'danger' : 'primary'}
+            onClick={(event) => openReelAction(primaryAction, reel, event)}
           >
-            <CheckCircle2 className="mr-2 size-4" />
-            Approve
+            {primaryAction === 'APPROVE' ? (
+              <CheckCircle2 className="mr-2 size-4 shrink-0" />
+            ) : isDangerReelAction(primaryAction) ? (
+              <XCircle className="mr-2 size-4 shrink-0" />
+            ) : primaryAction === 'PAUSE' ? (
+              <PauseCircle className="mr-2 size-4 shrink-0" />
+            ) : (
+              <PencilLine className="mr-2 size-4 shrink-0" />
+            )}
+            <span className="min-w-0 truncate">{primaryActionText}</span>
           </Button>
         ) : null}
-        {canModerateReels && hasAction('REJECT') ? (
-          <Button
-            size="sm"
-            type="button"
-            variant="danger"
-            disabled={actionMutation.isPending}
-            onClick={(event) => openReelAction('REJECT', reel, event)}
-          >
-            <XCircle className="mr-2 size-4" />
-            Reject
-          </Button>
-        ) : null}
-        {canModerateReels && hasAction('REQUEST_EDIT') ? (
-          <Button
-            size="sm"
-            type="button"
-            variant="secondary"
-            disabled={actionMutation.isPending}
-            onClick={(event) => openReelAction('REQUEST_EDIT', reel, event)}
-          >
-            <PencilLine className="mr-2 size-4" />
-            Request Edit
-          </Button>
-        ) : null}
-        {canModerateReels && hasAction('PAUSE') ? (
-          <Button
-            size="sm"
-            type="button"
-            variant="secondary"
-            disabled={actionMutation.isPending}
-            onClick={(event) => openReelAction('PAUSE', reel, event)}
-          >
-            <PauseCircle className="mr-2 size-4" />
-            Pause
-          </Button>
-        ) : null}
-        {canModerateReels && hasAction('REMOVE') ? (
-          <Button
-            size="sm"
-            type="button"
-            variant="danger"
-            disabled={actionMutation.isPending}
-            onClick={(event) => openReelAction('REMOVE', reel, event)}
-          >
-            <Trash2 className="mr-2 size-4" />
-            Remove
-          </Button>
-        ) : null}
-        {canDeleteReels && hasAction('SOFT_DELETE') ? (
-          <Button
-            size="sm"
-            type="button"
-            variant="danger"
-            disabled={actionMutation.isPending}
-            onClick={(event) => openReelAction('SOFT_DELETE', reel, event)}
-          >
-            <Trash2 className="mr-2 size-4" />
-            Soft Delete
-          </Button>
-        ) : null}
-        {canDeleteReels && hasAction('HARD_DELETE') ? (
-          <Button
-            size="sm"
-            type="button"
-            variant="danger"
-            disabled={actionMutation.isPending}
-            onClick={(event) => openReelAction('HARD_DELETE', reel, event)}
-          >
-            <Trash2 className="mr-2 size-4" />
-            Hard Delete
-          </Button>
-        ) : null}
-        <Button
-          size="sm"
+        <button
+          aria-label={`Open ${reel.publicReelId} details`}
+          className="btn-icon"
+          title="Open detail"
           type="button"
-          variant="ghost"
           onClick={(event) => {
             event.stopPropagation()
             viewDetails(reel)
           }}
         >
-          <ArrowUpRight className="mr-2 size-4" />
-          Open
-        </Button>
+          <ArrowUpRight className="size-4" />
+        </button>
       </div>
     )
   }
 
   return (
-    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
-      <PageContextHeader
-        description={
-          viewMode === 'pending'
-            ? 'Moderate reels waiting for review.'
-            : 'Review approved reels currently visible to customers.'
-        }
-        layout="workspace"
-        placement="topbar"
-        title="Reels"
-      />
+    <PageContainer className="flex min-h-full flex-col space-y-3 !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
+      <PageContextHeader layout="workspace" placement="topbar" title="Reels" />
 
-      <div className="flex flex-col gap-3 xl:min-h-0 xl:flex-1">
-        <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          {metrics.map((metric) => (
-            <MetricCard
-              key={metric.label}
-              label={metric.label}
-              meta={metric.meta}
-              tone={metric.tone}
-              value={metric.value}
-            />
-          ))}
-        </section>
+      {actionMessage ? (
+        <div className="rounded-[0.875rem] border border-success/25 bg-success/10 p-3 text-sm text-success">
+          {actionMessage}
+        </div>
+      ) : null}
 
-        {actionMessage ? (
-          <div className="rounded-[0.875rem] border border-success/25 bg-success/10 p-3 text-sm text-success">
-            {actionMessage}
-          </div>
-        ) : null}
-
-        <section
-          className={cn(
-            'grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[18rem_minmax(0,1fr)] xl:items-stretch xl:overflow-hidden',
-            filtersCollapsed && 'xl:grid-cols-[4.25rem_minmax(0,1fr)]',
-          )}
-        >
-          <aside
-            className={cn(
-              'self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0',
-              filtersCollapsed
-                ? 'flex items-center justify-between gap-3 p-2.5 xl:flex-col xl:justify-start'
-                : 'space-y-3 p-3 xl:overflow-y-auto',
-            )}
-          >
-            {filtersCollapsed ? (
-              <>
-                <button
-                  aria-label="Expand reel filters"
-                  className="btn-icon"
-                  title="Expand filters"
-                  type="button"
-                  onClick={() => setFiltersCollapsed(false)}
-                >
-                  <ChevronRight className="size-4" />
-                </button>
-                <span
-                  aria-hidden="true"
-                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
-                >
-                  <Filter className="size-4" />
-                </span>
-                {hasActiveFilters ? (
-                  <span
-                    aria-label="Active filters"
-                    className="size-2 rounded-full bg-primary"
-                    title="Active filters"
-                  />
-                ) : null}
-              </>
-            ) : (
-              <>
-                <div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-sm font-semibold text-foreground">
-                        Queue totals
-                      </h2>
-                      <p className="text-xs text-muted">Counts match base filters.</p>
-                    </div>
-                    <button
-                      aria-label="Collapse reel filters"
-                      className="btn-icon"
-                      title="Collapse filters"
-                      type="button"
-                      onClick={() => setFiltersCollapsed(true)}
-                    >
-                      <ChevronLeft className="size-4" />
-                    </button>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {queueItems.map((queueItem) => (
-                      <button
-                        className={cn(
-                          'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border px-3 text-left text-sm transition',
-                          viewMode === queueItem.key
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border bg-surface-muted/50 text-foreground hover:border-primary/35',
-                        )}
-                        key={queueItem.key}
-                        type="button"
-                        onClick={() => applyQueue(queueItem.key)}
-                      >
-                        <span className="font-medium">{queueItem.label}</span>
-                        <span className="text-xs font-semibold">
-                          {queueItem.count ?? '...'}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t border-border pt-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Filter stack
-                    </h3>
-                    {hasActiveFilters ? (
-                      <button
-                        className="text-xs font-semibold text-primary"
-                        type="button"
-                        onClick={clearReelFilters}
-                      >
-                        Reset
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 space-y-3">
-                    <MultiSelectFilter
-                      label="Content type"
-                      options={contentTypeOptions}
-                      placeholder="All content"
-                      values={selectedContentTypes}
-                      onChange={(values) => {
-                        clearSeededReelParams()
-                        setSelectedContentTypes(values as ReelContentType[])
-                        resetToFirstPage()
-                      }}
-                    />
-                    <MultiSelectFilter
-                      label="Upload status"
-                      options={uploadStatusOptions}
-                      placeholder="All upload states"
-                      values={selectedUploadStatuses}
-                      onChange={(values) => {
-                        clearSeededReelParams()
-                        setSelectedUploadStatuses(values as ReelUploadStatus[])
-                        resetToFirstPage()
-                      }}
-                    />
-                    <MultiSelectFilter
-                      label="Moderation status"
-                      options={moderationStatusOptions}
-                      placeholder="All moderation states"
-                      values={selectedModerationStatuses}
-                      onChange={(values) => {
-                        clearSeededReelParams()
-                        setSelectedModerationStatuses(
-                          values as ReelModerationStatus[],
-                        )
-                        resetToFirstPage()
-                      }}
-                    />
-                    <LookupMultiSelect
-                      fetchOptions={searchCategoryLookupOptions}
-                      label="Category"
-                      placeholder="Search category"
-                      queryKey={['lookup', 'categories', 'reels']}
-                      selectedOptions={selectedCategories}
-                      onChange={(options) => {
-                        clearSeededReelParams()
-                        setSelectedCategories(options)
-                        setSelectedVendors([])
-                        resetToFirstPage()
-                      }}
-                    />
-                    <LookupMultiSelect
-                      fetchOptions={(term) =>
-                        searchVendorLookupOptions(term, {
-                          categoryIds,
-                        })
-                      }
-                      label="Vendor"
-                      placeholder={
-                        categoryIds.length > 0
-                          ? 'Search matching vendors'
-                          : 'Search vendor'
-                      }
-                      queryKey={['lookup', 'vendors', 'reels', categoryIds]}
-                      selectedOptions={selectedVendors}
-                      onChange={(options) => {
-                        clearSeededReelParams()
-                        setSelectedVendors(options)
-                        resetToFirstPage()
-                      }}
-                    />
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        City
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        placeholder="Chennai"
-                        value={city}
-                        onChange={(event) => {
-                          clearSeededReelParams()
-                          setCity(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-              </>
-            )}
-          </aside>
-
-          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  Reel moderation
-                </h2>
-                <p className="text-sm text-muted">
-                  {pagination
-                    ? `${pagination.totalItems} reels matching current filters`
-                    : 'Search, filter, and moderate reels.'}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <ListHeaderSearch
-                  ariaLabel="Search reels"
-                  className="w-full sm:w-72 lg:w-80"
-                  placeholder="Search reel, caption, vendor"
-                  value={search}
-                  onChange={(nextSearch) => {
-                    clearSeededReelParams()
-                    setSearch(nextSearch)
-                    resetToFirstPage()
-                  }}
-                />
+      <section className="flex min-w-0 flex-col xl:min-h-0 xl:flex-1">
+        <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface xl:min-h-0 xl:flex-1">
+          <div className="shrink-0 border-b border-border bg-surface px-3 py-3 sm:px-4">
+            <div className="grid gap-3 xl:grid-cols-[minmax(8rem,auto)_minmax(24rem,1fr)_auto] xl:items-center">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold text-foreground">Reels</h2>
                 <span
                   className={cn(
-                    'text-xs font-medium',
+                    'rounded-full bg-surface-muted px-2 py-1 text-xs font-semibold',
                     isRefreshing ? 'text-primary' : 'text-muted',
                   )}
                 >
                   {refreshStatusLabel}
                 </span>
+              </div>
+
+              <ListHeaderSearch
+                ariaLabel="Search reels"
+                className="w-full min-w-0"
+                placeholder="Search reels, captions, vendors..."
+                value={search}
+                onChange={(nextSearch) => {
+                  clearSeededReelParams()
+                  setSearch(nextSearch)
+                  resetToFirstPage()
+                }}
+              />
+
+              <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 xl:justify-end">
+                <Button
+                  aria-expanded={filtersOpen}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setFiltersOpen((current) => !current)}
+                >
+                  <Filter className="mr-2 size-4" />
+                  Filters
+                  {activeFilterChips.length ? (
+                    <span className="ml-1 size-2 rounded-full bg-primary" />
+                  ) : null}
+                </Button>
+
                 <div className="relative" ref={columnsMenuRef}>
                   <Button
                     aria-expanded={columnsOpen}
@@ -1442,7 +1754,7 @@ export function ReelsPage() {
 
                   {columnsOpen ? (
                     <div
-                      className="absolute right-0 top-[calc(100%+0.5rem)] z-[60] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
+                      className="absolute right-0 top-[calc(100%+0.5rem)] z-[80] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
                       role="menu"
                     >
                       <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
@@ -1476,6 +1788,7 @@ export function ReelsPage() {
                     </div>
                   ) : null}
                 </div>
+
                 <Button
                   size="sm"
                   type="button"
@@ -1493,37 +1806,185 @@ export function ReelsPage() {
               </div>
             </div>
 
-            {reelsQuery.isError ? (
-              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <ErrorState
-                  description="We could not load reel data. Please retry."
-                  title="Reel data unavailable"
-                  onRetry={() => void reelsQuery.refetch()}
-                />
+            <div className="mt-3 flex gap-2 overflow-x-auto rounded-[0.875rem] border border-border bg-surface-muted/45 p-1">
+              {queueItems.map((queueItem) => {
+                const isActive = viewMode === queueItem.key
+
+                return (
+                  <button
+                    className={cn(
+                      'inline-flex min-h-9 min-w-max flex-1 items-center justify-center gap-2 rounded-[0.65rem] px-3 text-sm font-semibold transition',
+                      isActive
+                        ? 'bg-surface text-primary shadow-sm ring-1 ring-primary/25'
+                        : 'text-muted hover:bg-surface/75 hover:text-foreground',
+                    )}
+                    key={queueItem.key}
+                    type="button"
+                    onClick={() => applyQueue(queueItem.key)}
+                  >
+                    <span>{queueItem.label}</span>
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-xs',
+                        isActive
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-surface text-muted',
+                      )}
+                    >
+                      {queueItem.count ?? '...'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <ActiveFilterChips
+              chips={activeFilterChips}
+              onClearAll={clearReelFilters}
+            />
+
+            {filtersOpen ? (
+              <div className="mt-3 rounded-[0.875rem] border border-border bg-surface-muted/35 p-3">
+                <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[minmax(11rem,1fr)_minmax(11rem,1fr)_minmax(11rem,1fr)_minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(9rem,0.8fr)_auto] 2xl:items-end">
+                  <MultiSelectFilter
+                    label="Content"
+                    options={contentTypeOptions}
+                    placeholder="All content"
+                    values={selectedContentTypes}
+                    onChange={(values) => {
+                      clearSeededReelParams()
+                      setSelectedContentTypes(values as ReelContentType[])
+                      resetToFirstPage()
+                    }}
+                  />
+                  <MultiSelectFilter
+                    label="Upload"
+                    options={uploadStatusOptions}
+                    placeholder="All uploads"
+                    values={selectedUploadStatuses}
+                    onChange={(values) => {
+                      clearSeededReelParams()
+                      setSelectedUploadStatuses(values as ReelUploadStatus[])
+                      resetToFirstPage()
+                    }}
+                  />
+                  <MultiSelectFilter
+                    label="Moderation"
+                    options={moderationStatusOptions}
+                    placeholder="All statuses"
+                    values={selectedModerationStatuses}
+                    onChange={(values) => {
+                      clearSeededReelParams()
+                      setSelectedModerationStatuses(
+                        values as ReelModerationStatus[],
+                      )
+                      resetToFirstPage()
+                    }}
+                  />
+                  <LookupMultiSelect
+                    fetchOptions={searchCategoryLookupOptions}
+                    label="Category"
+                    placeholder="Search category"
+                    queryKey={['lookup', 'categories', 'reels']}
+                    selectedOptions={selectedCategories}
+                    onChange={(options) => {
+                      clearSeededReelParams()
+                      setSelectedCategories(options)
+                      setSelectedVendors([])
+                      resetToFirstPage()
+                    }}
+                  />
+                  <LookupMultiSelect
+                    fetchOptions={(term) =>
+                      searchVendorLookupOptions(term, {
+                        categoryIds,
+                      })
+                    }
+                    label="Vendor"
+                    placeholder={
+                      categoryIds.length > 0
+                        ? 'Search matching vendors'
+                        : 'Search vendor'
+                    }
+                    queryKey={['lookup', 'vendors', 'reels', categoryIds]}
+                    selectedOptions={selectedVendors}
+                    onChange={(options) => {
+                      clearSeededReelParams()
+                      setSelectedVendors(options)
+                      resetToFirstPage()
+                    }}
+                  />
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted">City</span>
+                    <Input
+                      className={REEL_FILTER_CONTROL_CLASS_NAME}
+                      placeholder="Chennai"
+                      value={city}
+                      onChange={(event) => {
+                        clearSeededReelParams()
+                        setCity(event.target.value)
+                        resetToFirstPage()
+                      }}
+                    />
+                  </label>
+                  <Button
+                    className="h-10 w-full"
+                    disabled={!hasActiveFilters}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={clearReelFilters}
+                  >
+                    Reset
+                  </Button>
+                </div>
               </div>
-            ) : isInitialLoading ? (
-              <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <ReelRowsSkeleton />
-              </div>
-            ) : reels.length === 0 ? (
-              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <EmptyState
-                  description={
-                    viewMode === 'pending'
-                      ? 'No reels are currently waiting for review.'
-                      : 'No live reels matched the current filters.'
-                  }
-                  title={viewMode === 'pending' ? 'Queue is empty' : 'No live reels'}
-                />
-              </div>
-            ) : (
-              <div className="flex flex-col xl:min-h-0 xl:flex-1">
+            ) : null}
+          </div>
+
+          {reelsQuery.isError ? (
+            <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+              <ErrorState
+                description="We could not load reel data. Please retry."
+                title="Reel data unavailable"
+                onRetry={() => void reelsQuery.refetch()}
+              />
+            </div>
+          ) : isInitialLoading ? (
+            <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+              <ReelRowsSkeleton />
+            </div>
+          ) : reels.length === 0 ? (
+            <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+              <EmptyState
+                actionLabel={hasActiveFilters ? 'Clear filters' : undefined}
+                description={
+                  hasActiveFilters
+                    ? 'No matches.'
+                    : viewMode === 'pending'
+                      ? 'No reels are waiting for review.'
+                      : 'No live reels.'
+                }
+                title={viewMode === 'pending' ? 'No reels' : 'No live reels'}
+                onAction={hasActiveFilters ? clearReelFilters : undefined}
+              />
+            </div>
+          ) : (
+            <div
+              className={cn(
+                'min-h-0 xl:flex-1',
+                previewReel
+                  ? 'grid xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-3 xl:p-3'
+                  : 'flex flex-col',
+              )}
+            >
+              <div className="flex min-w-0 flex-col overflow-hidden xl:min-h-0 xl:flex-1">
                 <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
                   <div
                     className="min-w-0 xl:min-w-[var(--reel-grid-min-width)]"
                     style={reelGridStyle}
                   >
-                    <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--reel-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                    <div className="sticky top-0 z-30 hidden gap-3 grid-cols-[var(--reel-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted shadow-[0_1px_0_var(--adaptive-border)] xl:grid">
                       <div className="flex min-w-0 items-center">
                         <ListSelectionCheckbox
                           checked={reelSelection.allVisibleSelected}
@@ -1552,7 +2013,7 @@ export function ReelsPage() {
                             />
                           </div>
                         ))}
-                      <div className="relative flex min-w-0 items-center justify-end pr-3">
+                      <div className="relative sticky right-0 z-40 flex min-w-0 items-center justify-end bg-surface-muted pr-3 text-right shadow-[var(--sg-shadow-sticky-action)]">
                         <span>Actions</span>
                         <button
                           aria-label="Resize actions column"
@@ -1573,57 +2034,66 @@ export function ReelsPage() {
                       selectedCount={reelSelection.selectedCount}
                       visibleCount={reelSelection.visibleCount}
                       onClear={reelSelection.clearSelection}
-                      onSelectVisible={() => reelSelection.setVisibleSelected(true)}
+                      onSelectVisible={() =>
+                        reelSelection.setVisibleSelected(true)
+                      }
                     />
 
                     <div className="divide-y divide-border">
-                      {reels.map((reel) => (
-                        <div
-                          aria-label={`Open reel ${reel.reelId}`}
-                          aria-selected={reelSelection.isSelected(reel.reelId)}
-                          className={cn(
-                            'grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--reel-grid-template)]',
-                            reelSelection.isSelected(reel.reelId) &&
-                              'bg-primary/5 hover:bg-primary/10',
-                          )}
-                          key={reel.reelId}
-                          role="button"
-                          style={reelGridStyle}
-                          tabIndex={0}
-                          onClick={() => viewDetails(reel)}
-                          onKeyDown={(event) => {
-                            if (event.target !== event.currentTarget) return
+                      {reels.map((reel) => {
+                        const isPreviewed = previewReelId === reel.reelId
+                        const isSelected = reelSelection.isSelected(reel.reelId)
 
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault()
-                              viewDetails(reel)
-                            }
-                          }}
-                        >
-                          <div className="flex min-w-0 items-start xl:items-center">
-                            <ListSelectionCheckbox
-                              checked={reelSelection.isSelected(reel.reelId)}
-                              label={`Select reel ${reel.reelId}`}
-                              onChange={(selected) =>
-                                reelSelection.setItemSelected(reel.reelId, selected)
+                        return (
+                          <div
+                            aria-label={`Preview reel ${reel.publicReelId}`}
+                            aria-selected={isPreviewed || isSelected}
+                            className={cn(
+                              'grid w-full cursor-pointer gap-3 px-3 py-2.5 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--reel-grid-template)]',
+                              isSelected && 'bg-primary/5 hover:bg-primary/10',
+                              isPreviewed &&
+                                'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
+                            )}
+                            key={reel.reelId}
+                            role="button"
+                            style={reelGridStyle}
+                            tabIndex={0}
+                            onClick={() => setPreviewReelId(reel.reelId)}
+                            onKeyDown={(event) => {
+                              if (event.target !== event.currentTarget) return
+
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
+                                setPreviewReelId(reel.reelId)
                               }
-                            />
-                          </div>
-                          <div className="grid gap-3 sm:grid-cols-2 xl:contents">
-                            {renderReelCells(reel)}
-                          </div>
-                          <div className="flex min-w-0 items-center justify-start xl:justify-end">
+                            }}
+                          >
+                            <div className="flex min-w-0 items-start xl:items-center">
+                              <ListSelectionCheckbox
+                                checked={isSelected}
+                                label={`Select reel ${reel.reelId}`}
+                                onChange={(selected) =>
+                                  reelSelection.setItemSelected(
+                                    reel.reelId,
+                                    selected,
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 xl:contents">
+                              {renderReelCells(reel)}
+                            </div>
                             {renderRowActions(reel)}
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
 
                 {pagination ? (
-                  <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border px-3 py-3 text-sm text-muted">
-                    <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-surface-muted px-3 py-2.5 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-3">
                       <span>
                         Showing {(pagination.page - 1) * pagination.limit + 1}-
                         {Math.min(
@@ -1635,7 +2105,8 @@ export function ReelsPage() {
                       <label className="flex items-center gap-2">
                         <span>Rows</span>
                         <select
-                          className="h-9 rounded-[0.65rem] border border-border bg-surface px-2 text-foreground outline-none"
+                          aria-label="Rows per page"
+                          className="h-9 rounded-[0.75rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
                           value={limit}
                           onChange={(event) => {
                             setLimit(Number(event.target.value))
@@ -1650,7 +2121,7 @@ export function ReelsPage() {
                         </select>
                       </label>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3 sm:justify-end">
                       <button
                         aria-label="Previous page"
                         className="btn-icon"
@@ -1660,8 +2131,8 @@ export function ReelsPage() {
                       >
                         <ChevronLeft className="size-4" />
                       </button>
-                      <span className="font-medium text-foreground">
-                        Page {pagination.page} of {pagination.totalPages}
+                      <span className="text-sm font-medium text-foreground">
+                        Page {pagination.page} of {Math.max(1, pagination.totalPages)}
                       </span>
                       <button
                         aria-label="Next page"
@@ -1676,16 +2147,35 @@ export function ReelsPage() {
                   </div>
                 ) : null}
               </div>
-            )}
-          </main>
-        </section>
-      </div>
+
+              {previewReel ? (
+                <ReelPreviewPanel
+                  canDeleteReels={canDeleteReels}
+                  canModerateReels={canModerateReels}
+                  canReadVendors={canReadVendors}
+                  isSubmitting={actionMutation.isPending}
+                  reel={previewReel}
+                  onClose={() => setPreviewReelId(null)}
+                  onOpenAction={openReelAction}
+                  onOpenDetails={viewDetails}
+                  onOpenMedia={viewReelMedia}
+                  onOpenVendor={viewVendor}
+                />
+              ) : null}
+            </div>
+          )}
+        </main>
+      </section>
 
       <ReelActionModal
         action={selectedAction}
         error={actionError}
         isSubmitting={actionMutation.isPending}
-        key={selectedAction ? `${selectedAction.kind}-${selectedAction.reel.reelId}` : 'closed'}
+        key={
+          selectedAction
+            ? `${selectedAction.kind}-${selectedAction.reel.reelId}`
+            : 'closed'
+        }
         onClose={() => {
           if (!actionMutation.isPending) {
             setSelectedAction(null)

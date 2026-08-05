@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   ArrowRight,
-  Download as DownloadIcon,
   ExternalLink,
   FileText,
   Film,
@@ -13,7 +12,6 @@ import { useMemo, useState } from 'react'
 import { PDFViewer } from '@embedpdf/react-pdf-viewer'
 import Lightbox, { type Slide } from 'yet-another-react-lightbox'
 import Captions from 'yet-another-react-lightbox/plugins/captions'
-import Download from 'yet-another-react-lightbox/plugins/download'
 import Fullscreen from 'yet-another-react-lightbox/plugins/fullscreen'
 import Thumbnails from 'yet-another-react-lightbox/plugins/thumbnails'
 import Video from 'yet-another-react-lightbox/plugins/video'
@@ -22,6 +20,7 @@ import 'yet-another-react-lightbox/styles.css'
 import 'yet-another-react-lightbox/plugins/captions.css'
 import 'yet-another-react-lightbox/plugins/thumbnails.css'
 import { Button } from '../ui/Button'
+import { useTheme } from '../../providers/themeContext'
 import { cn } from '../../utils/cn'
 import type { MediaViewerItem } from './MediaViewer.types'
 import {
@@ -42,6 +41,10 @@ interface LightboxEntry {
   slide: Slide
 }
 
+const mediaWarningLabels: Record<string, string> = {
+  VENDOR_APPROVED_DOCUMENT_LOCKED: 'Document locked after vendor approval',
+}
+
 function isLightboxItem(item: MediaViewerItem) {
   return item.kind === 'image' || item.kind === 'video'
 }
@@ -56,7 +59,6 @@ function buildDescription(item: MediaViewerItem) {
     item.ownerLabel,
     item.mimeType,
     item.sizeBytes == null ? null : formatMediaFileSize(item.sizeBytes),
-    item.expiresAt ? `Expires ${item.expiresAt}` : null,
   ]
     .filter(Boolean)
     .join(' · ')
@@ -69,12 +71,6 @@ function toLightboxSlide(item: MediaViewerItem): Slide | null {
 
   const shared = {
     description: buildDescription(item),
-    download: item.downloadUrl
-      ? {
-          filename: item.fileName ?? item.title,
-          url: item.downloadUrl,
-        }
-      : src,
     title: item.title,
   }
 
@@ -108,6 +104,22 @@ function toLightboxSlide(item: MediaViewerItem): Slide | null {
   return null
 }
 
+function humanizeMediaCode(value: string | null | undefined) {
+  const trimmed = value?.trim()
+  if (!trimmed) return null
+
+  const explicitLabel = mediaWarningLabels[trimmed]
+  if (explicitLabel) return explicitLabel
+
+  if (!/^[A-Z0-9_-]+$/.test(trimmed)) return trimmed
+
+  return trimmed
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+    .join(' ')
+}
+
 function metadataRows(item: MediaViewerItem) {
   return [
     { label: 'Type', value: mediaKindLabel(item.kind) },
@@ -117,10 +129,8 @@ function metadataRows(item: MediaViewerItem) {
       label: 'Size',
       value: item.sizeBytes == null ? null : formatMediaFileSize(item.sizeBytes),
     },
-    { label: 'Source', value: item.sourceLabel },
-    { label: 'Owner', value: item.ownerLabel },
-    { label: 'Provider', value: item.providerStatus },
-    { label: 'Expires', value: item.expiresAt },
+    { label: 'Source', value: humanizeMediaCode(item.sourceLabel) },
+    { label: 'Owner', value: humanizeMediaCode(item.ownerLabel) },
   ].filter((row) => Boolean(row.value))
 }
 
@@ -176,13 +186,17 @@ function isPortraitMedia(item: MediaViewerItem) {
   return Boolean(item.width && item.height && item.height > item.width)
 }
 
-function buildCloudflareIframeSrc(playbackId: string, item: MediaViewerItem) {
+function buildCloudflareIframeSrc(
+  playbackId: string,
+  item: MediaViewerItem,
+  primaryColor: string,
+) {
   const iframeUrl = new URL(
     `https://iframe.cloudflarestream.com/${encodeURIComponent(playbackId)}`,
   )
 
   iframeUrl.searchParams.set('preload', 'metadata')
-  iframeUrl.searchParams.set('primaryColor', '#0066cc')
+  iframeUrl.searchParams.set('primaryColor', primaryColor)
 
   if (item.posterUrl) {
     iframeUrl.searchParams.set('poster', item.posterUrl)
@@ -229,6 +243,7 @@ function HeaderActionButton({
 
 function MediaMetaPanel({ item }: { item: MediaViewerItem }) {
   const rows = metadataRows(item)
+  const warnings = item.warnings?.map(humanizeMediaCode).filter(Boolean)
 
   return (
     <aside className="flex min-h-0 flex-col gap-4 border-t border-border bg-surface p-4 lg:w-80 lg:border-l lg:border-t-0">
@@ -259,9 +274,9 @@ function MediaMetaPanel({ item }: { item: MediaViewerItem }) {
         </dl>
       ) : null}
 
-      {item.warnings?.length ? (
+      {warnings?.length ? (
         <div className="rounded-[0.75rem] border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
-          {item.warnings.join(', ')}
+          {warnings.join(', ')}
         </div>
       ) : null}
 
@@ -276,22 +291,12 @@ function MediaMetaPanel({ item }: { item: MediaViewerItem }) {
           <ExternalLink className="mr-2 size-4" />
           Open
         </Button>
-        <Button
-          disabled={!isOpenableMediaUrl(item.downloadUrl ?? item.src)}
-          size="sm"
-          type="button"
-          variant="secondary"
-          onClick={() => openExternal(item.downloadUrl ?? item.src)}
-        >
-          <DownloadIcon className="mr-2 size-4" />
-          Download
-        </Button>
       </div>
     </aside>
   )
 }
 
-function EmptyPreview({ item }: { item: MediaViewerItem }) {
+function EmptyPreview() {
   return (
     <div className="flex h-full min-h-[22rem] items-center justify-center p-6 text-center">
       <div className="max-w-md">
@@ -300,21 +305,8 @@ function EmptyPreview({ item }: { item: MediaViewerItem }) {
           Preview unavailable
         </h3>
         <p className="mt-2 text-sm leading-6 text-muted">
-          This media record does not have a viewable URL yet. Use the available
-          source action when the backend returns a signed media link.
+          This media record does not have a viewable URL yet.
         </p>
-        <div className="mt-5 flex justify-center">
-          <Button
-            disabled={!isOpenableMediaUrl(item.downloadUrl)}
-            size="sm"
-            type="button"
-            variant="secondary"
-            onClick={() => openExternal(item.downloadUrl)}
-          >
-            <ExternalLink className="mr-2 size-4" />
-            Open source
-          </Button>
-        </div>
       </div>
     </div>
   )
@@ -327,12 +319,17 @@ function CloudflareVideoPreview({
   item: MediaViewerItem
   mode?: 'fit' | 'standalone'
 }) {
+  const { theme } = useTheme()
   const cloudflareStreamSrc = resolveCloudflareStreamSrc(item)
   const isFitMode = mode === 'fit'
   const isPortrait = isPortraitMedia(item)
 
   if (cloudflareStreamSrc) {
-    const cloudflareIframeSrc = buildCloudflareIframeSrc(cloudflareStreamSrc, item)
+    const cloudflareIframeSrc = buildCloudflareIframeSrc(
+      cloudflareStreamSrc,
+      item,
+      theme.colors.primary,
+    )
 
     return (
       <div
@@ -375,7 +372,7 @@ function CloudflareVideoPreview({
     )
   }
 
-  return <EmptyPreview item={item} />
+  return <EmptyPreview />
 }
 
 function CompactUnavailable({ label }: { label: string }) {
@@ -467,10 +464,11 @@ function ReelMediaPreview({ item }: { item: MediaViewerItem }) {
 }
 
 function PdfPreview({ item }: { item: MediaViewerItem }) {
+  const { resolvedMode, theme } = useTheme()
   const src = item.src ?? item.downloadUrl
 
   if (!isOpenableMediaUrl(src)) {
-    return <EmptyPreview item={item} />
+    return <EmptyPreview />
   }
 
   return (
@@ -480,12 +478,17 @@ function PdfPreview({ item }: { item: MediaViewerItem }) {
           disabledCategories: ['annotation', 'redaction'],
           src,
           theme: {
-            light: {
+            dark: {
               accent: {
-                primary: '#0066cc',
+                primary: theme.colors.primary,
               },
             },
-            preference: 'light',
+            light: {
+              accent: {
+                primary: theme.colors.primary,
+              },
+            },
+            preference: resolvedMode,
           },
         }}
         style={{ height: '100%', width: '100%' }}
@@ -503,8 +506,8 @@ function DocumentPreview({ item }: { item: MediaViewerItem }) {
           Document preview
         </h3>
         <p className="mt-2 text-sm leading-6 text-muted">
-          This file type is download-first in the admin app. PDFs and image
-          documents open inline when the backend returns their file type.
+          This file type cannot be previewed inline here. Open it in a new tab
+          when a viewable link is available.
         </p>
         <div className="mt-5 flex flex-wrap justify-center gap-2">
           <Button
@@ -516,16 +519,6 @@ function DocumentPreview({ item }: { item: MediaViewerItem }) {
           >
             <ExternalLink className="mr-2 size-4" />
             Open
-          </Button>
-          <Button
-            disabled={!isOpenableMediaUrl(item.downloadUrl ?? item.src)}
-            size="sm"
-            type="button"
-            variant="primary"
-            onClick={() => openExternal(item.downloadUrl ?? item.src)}
-          >
-            <DownloadIcon className="mr-2 size-4" />
-            Download
           </Button>
         </div>
       </div>
@@ -543,7 +536,7 @@ function PreviewCanvas({ item }: { item: MediaViewerItem }) {
   if (item.kind === 'pdf') return <PdfPreview item={item} />
   if (item.kind === 'document') return <DocumentPreview item={item} />
 
-  return <EmptyPreview item={item} />
+  return <EmptyPreview />
 }
 
 export function MediaViewerDialog({
@@ -582,12 +575,11 @@ export function MediaViewerDialog({
           controller={{ closeOnBackdropClick: true }}
           index={lightboxIndex}
           labels={{
-            Download: 'Download media',
             'Hide captions': 'Hide media details',
             'Show captions': 'Show media details',
           }}
           open
-          plugins={[Captions, Download, Fullscreen, Thumbnails, Video, Zoom]}
+          plugins={[Captions, Fullscreen, Thumbnails, Video, Zoom]}
           slides={lightboxEntries.map((entry) => entry.slide)}
           video={{
             controls: true,

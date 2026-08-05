@@ -59,7 +59,6 @@ import {
 } from "../../orders/components/OrderActionModal";
 import type {
   AdminOrderPaymentStatus,
-  AdminOrdersSummary,
   AdminOrderStatus,
   AdminOrderSummary,
 } from "../../orders/types/order.types";
@@ -649,14 +648,6 @@ const walletCreditColumns: DynamicTableColumn<AdminCustomerWalletCredit>[] = [
 
 type CustomerTone = "success" | "warning" | "danger" | "info" | "neutral";
 
-function toneClasses(tone: CustomerTone) {
-  if (tone === "success") return "border-border bg-surface text-success";
-  if (tone === "warning") return "border-border bg-surface text-warning";
-  if (tone === "danger") return "border-border bg-surface text-danger";
-  if (tone === "info") return "border-border bg-surface text-primary";
-  return "border-border bg-surface text-muted";
-}
-
 function statusTone(status: AdminCustomerDetail["status"]) {
   if (status === "ACTIVE") return "success";
   if (status === "BLOCKED") return "danger";
@@ -902,13 +893,6 @@ function canRunOrderAction(
   return canUpdateOrders;
 }
 
-function getOrderSummaryTone(summary: AdminOrdersSummary | undefined) {
-  if (!summary?.total) return "neutral";
-  if (summary.needsAttention > 0 || summary.paymentReview > 0) return "warning";
-  if (summary.active > 0) return "info";
-  return "success";
-}
-
 function isWalletAction(action: string | null | undefined) {
   return action?.toUpperCase() === "WALLET_CREDIT";
 }
@@ -1034,40 +1018,20 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-function DetailMetricCard({
-  icon,
-  label,
-  meta,
-  tone,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  meta: string;
-  tone: CustomerTone;
-  value: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "min-h-[4.35rem] rounded-[0.75rem] border p-2.5",
-        toneClasses(tone),
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-normal opacity-80">
-            {label}
-          </p>
-          <p className="mt-1 truncate text-lg font-semibold tracking-normal">
-            {value}
-          </p>
-        </div>
-        <span className="mt-0.5 shrink-0 opacity-80">{icon}</span>
-      </div>
-      <p className="mt-0.5 truncate text-xs leading-4 opacity-80">{meta}</p>
-    </div>
-  );
+function customerAvatarClass(customer: AdminCustomerDetail) {
+  if (customer.status === "BLOCKED") {
+    return "bg-danger/10 text-danger ring-1 ring-danger/20";
+  }
+
+  if (customer.status === "INCOMPLETE") {
+    return "bg-warning/10 text-warning ring-1 ring-warning/20";
+  }
+
+  return "bg-primary/10 text-primary ring-1 ring-primary/15";
+}
+
+function formatOrderCount(value: number) {
+  return `${value} ${value === 1 ? "order" : "orders"}`;
 }
 
 function DetailPanel({
@@ -1090,7 +1054,7 @@ function DetailPanel({
         className,
       )}
     >
-      <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="mb-2 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             {icon ? <span className="text-primary">{icon}</span> : null}
@@ -1116,12 +1080,12 @@ function DetailField({
   value: string | number | null | undefined;
 }) {
   return (
-    <div className="rounded-[0.75rem] border border-border bg-surface-muted/45 p-3">
+    <div className="rounded-[0.65rem] border border-border bg-surface-muted/45 p-2.5">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-normal text-muted">
         {icon ? <span className="text-muted">{icon}</span> : null}
         <span>{label}</span>
       </div>
-      <p className="mt-1.5 break-words text-sm font-medium text-foreground">
+      <p className="mt-1 break-words text-sm font-medium text-foreground">
         {value ?? "Not available"}
       </p>
     </div>
@@ -1136,9 +1100,9 @@ function CustomerHeaderStatus({ customer }: { customer: AdminCustomerDetail }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Badge tone={statusTone(customer.status)}>Customer: {customerStatus}</Badge>
+      <Badge tone={statusTone(customer.status)}>{customerStatus}</Badge>
       {showUserStatus ? (
-        <Badge tone="neutral">User: {userStatus}</Badge>
+        <Badge tone="neutral">{userStatus}</Badge>
       ) : null}
       {customerNeedsAttention(customer) ? (
         <Badge tone="warning">Action needed</Badge>
@@ -1171,16 +1135,16 @@ function CustomerHeaderActions({
   const hasAction = (action: string) => availableActions.includes(action);
 
   return (
-    <div className="flex flex-wrap justify-end gap-2">
+    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
       {canUpdateCustomer && hasAction("EDIT_PROFILE") ? (
         <Button
           disabled={isSubmitting}
           size="sm"
-          variant="secondary"
+          variant="primary"
           onClick={onEditProfile}
         >
           <Edit3 className="mr-2 size-4" />
-          Edit Profile
+          Edit
         </Button>
       ) : null}
       {canUpdateCustomer && hasAction("BLOCK") ? (
@@ -1215,7 +1179,7 @@ function CustomerHeaderActions({
           onClick={() => onSelectAction("WALLET_CREDIT")}
         >
           <Wallet className="mr-2 size-4" />
-          Wallet Credit
+          Credit
         </Button>
       ) : null}
       {canUpdateCustomer && hasAction("ADD_NOTE") ? (
@@ -1226,120 +1190,14 @@ function CustomerHeaderActions({
           onClick={() => onSelectAction("ADD_NOTE")}
         >
           <MessageSquarePlus className="mr-2 size-4" />
-          Add Note
+          Note
         </Button>
       ) : null}
     </div>
   );
 }
 
-function CustomerIdentityPanel({
-  customer,
-}: {
-  customer: AdminCustomerDetail;
-}) {
-  const health = customerHealth(customer);
-
-  return (
-    <DetailPanel
-      className="lg:col-span-2"
-      description="Primary profile, contact, and service coverage from backend data."
-      icon={<UserRound className="size-4" />}
-      title="Customer profile"
-    >
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem]">
-        <div className="flex min-w-0 items-start gap-3 rounded-[0.75rem] border border-border bg-surface-muted/45 p-3">
-          <div
-            className={cn(
-              "flex size-12 shrink-0 items-center justify-center rounded-full border bg-surface text-base font-semibold",
-              customer.status === "BLOCKED"
-                ? "border-danger/25 text-danger"
-                : customerNeedsAttention(customer)
-                  ? "border-warning/25 text-warning"
-                  : "border-success/25 text-success",
-            )}
-          >
-            {getInitials(customer.fullName)}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-lg font-semibold text-foreground">
-                {customer.fullName}
-              </h2>
-              <Badge tone={statusTone(customer.status)}>
-                {customer.status}
-              </Badge>
-            </div>
-            <p className="mt-1 break-words text-xs text-muted">
-              {customer.customerId}
-            </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <DetailField
-                icon={<Phone className="size-3.5" />}
-                label="Mobile"
-                value={customer.mobileNumber}
-              />
-              <DetailField
-                icon={<Mail className="size-3.5" />}
-                label="Email"
-                value={customer.email}
-              />
-              <DetailField
-                icon={<MapPin className="size-3.5" />}
-                label="City"
-                value={customer.city || customer.zone?.city}
-              />
-              <DetailField
-                icon={<Home className="size-3.5" />}
-                label="Zone"
-                value={customer.zone?.zoneName}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-[0.75rem] border border-border bg-surface-muted/45 p-3">
-          <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="font-semibold uppercase tracking-normal text-muted">
-              Health
-            </span>
-            <span className="font-semibold text-foreground">{health}</span>
-          </div>
-          <div className="mt-3 h-2 rounded-full bg-surface">
-            <div
-              className={cn("h-2 rounded-full", healthColor(health))}
-              style={{ width: `${health}%` }}
-            />
-          </div>
-          <div className="mt-3 grid gap-2 text-xs text-muted">
-            <div className="flex items-center justify-between">
-              <span>Active orders</span>
-              <span className="font-semibold text-foreground">
-                {customer.orderSummary.activeOrders}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Warning signals</span>
-              <span className="font-semibold text-foreground">
-                {visibleWarnings(customer.warnings).length}
-              </span>
-            </div>
-            {featureFlags.customerWallet ? (
-              <div className="flex items-center justify-between">
-                <span>Wallet credit</span>
-                <span className="font-semibold text-foreground">
-                  {formatPaise(customer.walletSummary.creditBalancePaise)}
-                </span>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    </DetailPanel>
-  );
-}
-
-function CustomerActionRail({
+function CustomerHeroCard({
   canCreditWallet,
   canUpdateCustomer,
   customer,
@@ -1354,167 +1212,331 @@ function CustomerActionRail({
   onEditProfile: () => void;
   onSelectAction: (kind: CustomerActionKind) => void;
 }) {
-  const availableActions = permittedAvailableActions(customer.availableActions, {
-    canCreditWallet,
-    canUpdateCustomer,
-  });
-  const hasAction = (action: string) => availableActions.includes(action);
-  const firstWarning = visibleWarnings(customer.warnings)[0];
-  const nextRecommendedAction = permittedRecommendedAction(customer, {
-    canCreditWallet,
-    canUpdateCustomer,
-  });
-  const recommendedAction = nextRecommendedAction?.toUpperCase();
-  const healthy = !firstWarning && customer.status === "ACTIVE";
-  const recommendedActionButton =
-    recommendedAction === "EDIT_PROFILE" &&
-    canUpdateCustomer &&
-    hasAction("EDIT_PROFILE") ? (
-      <Button
-        className="mt-3 w-full justify-start"
-        disabled={isSubmitting}
-        size="sm"
-        variant="secondary"
-        onClick={onEditProfile}
-      >
-        <Edit3 className="mr-2 size-4" />
-        Review profile
-      </Button>
-    ) : recommendedAction === "ADD_NOTE" &&
-      canUpdateCustomer &&
-      hasAction("ADD_NOTE") ? (
-      <Button
-        className="mt-3 w-full justify-start"
-        disabled={isSubmitting}
-        size="sm"
-        variant="secondary"
-        onClick={() => onSelectAction("ADD_NOTE")}
-      >
-        <MessageSquarePlus className="mr-2 size-4" />
-        Add note
-      </Button>
-    ) : recommendedAction === "BLOCK" &&
-      canUpdateCustomer &&
-      hasAction("BLOCK") ? (
-      <Button
-        className="mt-3 w-full justify-start"
-        disabled={isSubmitting}
-        size="sm"
-        variant="danger"
-        onClick={() => onSelectAction("BLOCK")}
-      >
-        <Ban className="mr-2 size-4" />
-        Block customer
-      </Button>
-    ) : recommendedAction === "UNBLOCK" &&
-      canUpdateCustomer &&
-      hasAction("UNBLOCK") ? (
-      <Button
-        className="mt-3 w-full justify-start"
-        disabled={isSubmitting}
-        size="sm"
-        variant="secondary"
-        onClick={() => onSelectAction("UNBLOCK")}
-      >
-        <ShieldCheck className="mr-2 size-4" />
-        Unblock customer
-      </Button>
-    ) : recommendedAction === "WALLET_CREDIT" &&
-      featureFlags.customerWallet &&
-      canCreditWallet &&
-      hasAction("WALLET_CREDIT") ? (
-      <Button
-        className="mt-3 w-full justify-start"
-        disabled={isSubmitting}
-        size="sm"
-        variant="secondary"
-        onClick={() => onSelectAction("WALLET_CREDIT")}
-      >
-        <Wallet className="mr-2 size-4" />
-        Apply credit
-      </Button>
-    ) : null;
-
   return (
-    <aside className="space-y-3 xl:sticky xl:top-[4.75rem] xl:max-h-[calc(100vh-var(--spacing-topbar)-5.5rem)] xl:self-start xl:overflow-y-auto xl:pr-1">
-      <DetailPanel
-        description="Backend recommendation and recent operational context."
-        icon={<ShieldAlert className="size-4" />}
-        title="Recommendation"
-      >
-        <div
-          className={cn(
-            "rounded-[0.75rem] border p-3",
-            healthy
-              ? "border-success/25 bg-success/10 text-success"
-              : "border-warning/25 bg-warning/10 text-warning",
-          )}
-        >
-          <div className="flex items-start gap-2">
-            {healthy ? (
-              <CheckCircle2 className="mt-0.5 size-4" />
-            ) : (
-              <AlertTriangle className="mt-0.5 size-4" />
+    <section className="rounded-[1rem] border border-border bg-surface p-3 shadow-surface sm:p-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+          <div
+            className={cn(
+              "relative flex size-16 shrink-0 items-center justify-center rounded-full text-lg font-semibold sm:size-20",
+              customerAvatarClass(customer),
             )}
-            <div>
-              <p className="text-sm font-semibold">
-                {nextRecommendedAction
-                  ? humanizeCode(nextRecommendedAction)
-                  : healthy
-                    ? "No active warning"
-                    : signalLabel(firstWarning ?? "")}
-              </p>
-              <p className="mt-1 text-xs leading-5 opacity-80">
-                {nextRecommendedAction
-                  ? "Recommended by the backend workflow state."
-                  : healthy
-                    ? "This customer has no warnings in the current response."
-                    : "Review the customer record before taking support action."}
-              </p>
+          >
+            {getInitials(customer.fullName)}
+            {customer.status === "ACTIVE" ? (
+              <span className="absolute bottom-0 right-0 flex size-5 items-center justify-center rounded-full border-2 border-surface bg-success text-primary-foreground">
+                <CheckCircle2 className="size-3" />
+              </span>
+            ) : null}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-xl font-semibold text-foreground sm:text-2xl">
+                {customer.fullName}
+              </h1>
+              <CustomerHeaderStatus customer={customer} />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <UserRound className="size-3.5 shrink-0" />
+                <span className="truncate">{customer.customerId}</span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <Mail className="size-3.5 shrink-0" />
+                <span className="truncate">
+                  {customer.email ?? "No email"}
+                </span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <Phone className="size-3.5 shrink-0" />
+                <span className="truncate">
+                  {customer.mobileNumber ?? "No mobile"}
+                </span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <MapPin className="size-3.5 shrink-0" />
+                <span className="truncate">
+                  {customer.zone?.zoneName ||
+                    customer.city ||
+                    customer.zone?.city ||
+                    "No location"}
+                </span>
+              </span>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-muted">
+              <span>Customer since: {formatDateSafe(customer.createdAt)}</span>
+              <span>
+                Last active:{" "}
+                {formatDateSafe(customer.lastLoginAt ?? customer.updatedAt)}
+              </span>
             </div>
           </div>
         </div>
-        {recommendedActionButton}
-      </DetailPanel>
+        <CustomerHeaderActions
+          canCreditWallet={canCreditWallet}
+          canUpdateCustomer={canUpdateCustomer}
+          customer={customer}
+          isSubmitting={isSubmitting}
+          onEditProfile={onEditProfile}
+          onSelectAction={onSelectAction}
+        />
+      </div>
+    </section>
+  );
+}
 
-      <DetailPanel
-        icon={<Activity className="size-4" />}
-        title="Activity trail"
+function CustomerSummaryTile({
+  hint,
+  icon,
+  label,
+  tone = "neutral",
+  value,
+}: {
+  hint?: string;
+  icon: ReactNode;
+  label: string;
+  tone?: CustomerTone;
+  value: string;
+}) {
+  const toneClassName: Record<CustomerTone, string> = {
+    danger: "bg-danger/10 text-danger ring-danger/20",
+    info: "bg-primary/10 text-primary ring-primary/15",
+    neutral: "bg-surface-muted text-muted ring-border",
+    success: "bg-success/10 text-success ring-success/20",
+    warning: "bg-warning/10 text-warning ring-warning/20",
+  };
+
+  return (
+    <div className="flex min-h-[4.6rem] min-w-0 items-center gap-3 rounded-[0.75rem] border border-border bg-surface p-3 shadow-surface">
+      <span
+        className={cn(
+          "flex size-9 shrink-0 items-center justify-center rounded-full ring-1",
+          toneClassName[tone],
+        )}
       >
-        <div className="space-y-3 text-sm">
-          <div className="flex gap-2">
-            <ReceiptText className="mt-0.5 size-4 text-muted" />
-            <p>
-              <span className="font-medium text-foreground">Last order</span>
-              <br />
-              <span className="text-xs text-muted">
-                {formatDateSafe(customer.orderSummary.lastOrderAt)}
-              </span>
-            </p>
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-[0.7rem] font-semibold uppercase tracking-normal text-muted">
+          {label}
+        </p>
+        <p className="mt-1 truncate text-base font-semibold text-foreground">
+          {value}
+        </p>
+        {hint ? (
+          <p className="mt-0.5 truncate text-xs text-muted">{hint}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CustomerSummaryStrip({
+  customer,
+}: {
+  customer: AdminCustomerDetail;
+}) {
+  const warningsCount = visibleWarnings(customer.warnings).length;
+
+  return (
+    <section
+      aria-label="Customer summary"
+      className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6"
+    >
+      <CustomerSummaryTile
+        hint="All orders"
+        icon={<ReceiptText className="size-4" />}
+        label="Total orders"
+        value={String(customer.orderSummary.totalOrders)}
+      />
+      <CustomerSummaryTile
+        hint={formatOrderCount(customer.orderSummary.activeOrders)}
+        icon={<Package className="size-4" />}
+        label="Active orders"
+        tone={customer.orderSummary.activeOrders > 0 ? "warning" : "success"}
+        value={String(customer.orderSummary.activeOrders)}
+      />
+      <CustomerSummaryTile
+        icon={<CreditCard className="size-4" />}
+        label="Lifetime spend"
+        tone="info"
+        value={formatPaise(customer.orderSummary.lifetimeSpendPaise)}
+      />
+      <CustomerSummaryTile
+        hint={formatDateSafe(customer.noteSummary.lastNoteAt)}
+        icon={<MessageSquarePlus className="size-4" />}
+        label="Notes"
+        value={String(customer.noteSummary.totalNotes)}
+      />
+      <CustomerSummaryTile
+        icon={<Home className="size-4" />}
+        label={featureFlags.customerWallet ? "Wallet credit" : "Addresses"}
+        tone={
+          featureFlags.customerWallet &&
+          customer.walletSummary.creditBalancePaise > 0
+            ? "warning"
+            : "neutral"
+        }
+        value={
+          featureFlags.customerWallet
+            ? formatPaise(customer.walletSummary.creditBalancePaise)
+            : String(customer.addresses.length)
+        }
+      />
+      <CustomerSummaryTile
+        hint={customerNeedsAttention(customer) ? "Review needed" : "Clear"}
+        icon={
+          warningsCount > 0 ? (
+            <AlertTriangle className="size-4" />
+          ) : (
+            <CheckCircle2 className="size-4" />
+          )
+        }
+        label="Signals"
+        tone={warningsCount > 0 ? "warning" : "success"}
+        value={String(warningsCount)}
+      />
+    </section>
+  );
+}
+
+function CustomerContactPanel({
+  customer,
+}: {
+  customer: AdminCustomerDetail;
+}) {
+  return (
+    <DetailPanel icon={<Phone className="size-4" />} title="Contact">
+      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+        <DetailField
+          icon={<Phone className="size-3.5" />}
+          label="Mobile"
+          value={customer.mobileNumber}
+        />
+        <DetailField
+          icon={<Mail className="size-3.5" />}
+          label="Email"
+          value={customer.email}
+        />
+        <DetailField
+          icon={<MapPin className="size-3.5" />}
+          label="City"
+          value={customer.city || customer.zone?.city}
+        />
+        <DetailField
+          icon={<Home className="size-3.5" />}
+          label="Zone"
+          value={customer.zone?.zoneName}
+        />
+      </div>
+    </DetailPanel>
+  );
+}
+
+function CustomerAccountPanel({
+  customer,
+}: {
+  customer: AdminCustomerDetail;
+}) {
+  return (
+    <DetailPanel icon={<CalendarClock className="size-4" />} title="Account">
+      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+        <DetailField label="Customer ID" value={customer.customerId} />
+        <DetailField label="User ID" value={customer.userId} />
+        <DetailField
+          label="Last login"
+          value={formatDateSafe(customer.lastLoginAt)}
+        />
+        <DetailField label="Created" value={formatDateSafe(customer.createdAt)} />
+        <DetailField label="Updated" value={formatDateSafe(customer.updatedAt)} />
+        {featureFlags.customerWallet ? (
+          <DetailField
+            label="Wallet provider"
+            value={humanizeCode(customer.walletSummary.providerStatus)}
+          />
+        ) : null}
+      </div>
+    </DetailPanel>
+  );
+}
+
+function CustomerRecentActivityPanel({
+  customer,
+}: {
+  customer: AdminCustomerDetail;
+}) {
+  const latestOrder = [...customer.recentOrders].sort(
+    (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
+  )[0];
+  const latestNote = [...customer.notes].sort(
+    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
+  )[0];
+  const items = [
+    latestOrder
+      ? {
+          description: `${humanizeCode(latestOrder.orderStatus)} with ${latestOrder.vendor.shopName}`,
+          icon: <ReceiptText className="size-3.5" />,
+          meta: formatDateSafe(latestOrder.updatedAt),
+          title: `Latest order ${latestOrder.publicOrderId}`,
+        }
+      : null,
+    latestNote
+      ? {
+          description: latestNote.note,
+          icon: <MessageSquarePlus className="size-3.5" />,
+          meta: formatDateSafe(latestNote.createdAt),
+          title: "Latest note",
+        }
+      : null,
+    customer.lastLoginAt
+      ? {
+          description:
+            customer.email ?? customer.mobileNumber ?? customer.customerId,
+          icon: <Clock3 className="size-3.5" />,
+          meta: formatDateSafe(customer.lastLoginAt),
+          title: "Last login",
+        }
+      : null,
+    {
+      description: "Profile record updated",
+      icon: <Edit3 className="size-3.5" />,
+      meta: formatDateSafe(customer.updatedAt),
+      title: "Profile updated",
+    },
+    {
+      description: customer.customerId,
+      icon: <UserRound className="size-3.5" />,
+      meta: formatDateSafe(customer.createdAt),
+      title: "Customer created",
+    },
+  ].filter(Boolean) as {
+    description: string;
+    icon: ReactNode;
+    meta: string;
+    title: string;
+  }[];
+
+  return (
+    <DetailPanel icon={<Activity className="size-4" />} title="Recent activity">
+      <div className="relative space-y-3 pl-6 before:absolute before:bottom-2 before:left-[0.55rem] before:top-2 before:w-px before:bg-border">
+        {items.slice(0, 5).map((item) => (
+          <div className="relative" key={`${item.title}-${item.meta}`}>
+            <span className="absolute -left-6 flex size-5 items-center justify-center rounded-full border border-border bg-surface text-primary">
+              {item.icon}
+            </span>
+            <div className="min-w-0 rounded-[0.65rem] border border-border bg-surface-muted/35 p-2.5">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="font-medium text-foreground">{item.title}</p>
+                <span className="text-xs text-muted">{item.meta}</span>
+              </div>
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
+                {item.description}
+              </p>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <MessageSquarePlus className="mt-0.5 size-4 text-muted" />
-            <p>
-              <span className="font-medium text-foreground">Last note</span>
-              <br />
-              <span className="text-xs text-muted">
-                {formatDateSafe(customer.noteSummary.lastNoteAt)}
-              </span>
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Clock3 className="mt-0.5 size-4 text-muted" />
-            <p>
-              <span className="font-medium text-foreground">Last login</span>
-              <br />
-              <span className="text-xs text-muted">
-                {formatDateSafe(customer.lastLoginAt)}
-              </span>
-            </p>
-          </div>
-        </div>
-      </DetailPanel>
-    </aside>
+        ))}
+      </div>
+    </DetailPanel>
   );
 }
 
@@ -1528,10 +1550,7 @@ function CustomerSignalsPanel({
   customer: AdminCustomerDetail;
 }) {
   const warnings = visibleWarnings(customer.warnings);
-  const availableActions = permittedAvailableActions(customer.availableActions, {
-    canCreditWallet,
-    canUpdateCustomer,
-  });
+  const health = customerHealth(customer);
   const nextRecommendedAction = permittedRecommendedAction(customer, {
     canCreditWallet,
     canUpdateCustomer,
@@ -1539,7 +1558,6 @@ function CustomerSignalsPanel({
 
   return (
     <DetailPanel
-      description="Backend warnings and operational metadata."
       icon={<ShieldAlert className="size-4" />}
       title="Signals"
     >
@@ -1552,35 +1570,37 @@ function CustomerSignalsPanel({
           ))}
         </div>
       ) : (
-        <div className="rounded-[0.75rem] border border-success/20 bg-success/10 p-3 text-sm text-success">
-          <div className="flex items-start gap-2">
-            <CheckCircle2 className="mt-0.5 size-4" />
-            <p className="font-medium">
-              No warning signals in the current response.
-            </p>
-          </div>
-        </div>
+        <Badge tone="success">Clear</Badge>
       )}
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      <div className="mt-3 rounded-[0.65rem] border border-border bg-surface-muted/45 p-2.5">
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span className="font-semibold uppercase tracking-normal text-muted">
+            Health
+          </span>
+          <span className="font-semibold text-foreground">{health}</span>
+        </div>
+        <div className="mt-2 h-2 rounded-full bg-surface">
+          <div
+            className={cn("h-2 rounded-full", healthColor(health))}
+            style={{ width: `${health}%` }}
+          />
+        </div>
+      </div>
+      <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
         <DetailField
-          label="Available to you"
-          value={
-            availableActions.length
-              ? availableActions.map(humanizeCode).join(", ")
-              : null
-          }
-        />
-        <DetailField
-          label="Next permitted action"
+          label="Next action"
           value={
             nextRecommendedAction ? humanizeCode(nextRecommendedAction) : null
           }
         />
-        <DetailField label="User status" value={customer.userStatus} />
+        <DetailField
+          label="User status"
+          value={humanizeCode(customer.userStatus)}
+        />
         {featureFlags.customerWallet ? (
           <DetailField
             label="Wallet provider"
-            value={customer.walletSummary.providerStatus}
+            value={humanizeCode(customer.walletSummary.providerStatus)}
           />
         ) : null}
       </div>
@@ -1597,7 +1617,7 @@ function TableToolbar({
 }: {
   actionNode?: ReactNode;
   count: number;
-  description: string;
+  description?: string;
   icon: ReactNode;
   title: string;
 }) {
@@ -1609,10 +1629,90 @@ function TableToolbar({
           <h2 className="text-sm font-semibold text-foreground">{title}</h2>
           <Badge tone="neutral">{count}</Badge>
         </div>
-        <p className="mt-1 text-xs text-muted">{description}</p>
+        {description ? (
+          <p className="mt-1 text-xs text-muted">{description}</p>
+        ) : null}
       </div>
       {actionNode ? <div className="shrink-0">{actionNode}</div> : null}
     </div>
+  );
+}
+
+function CustomerDetailSectionNav({
+  canReadOrders,
+  canReadPayments,
+  customer,
+  orderCount,
+  relatedVendorCount,
+  paymentCount,
+  refundCount,
+}: {
+  canReadOrders: boolean;
+  canReadPayments: boolean;
+  customer: AdminCustomerDetail;
+  orderCount: number;
+  relatedVendorCount: number;
+  paymentCount: number;
+  refundCount: number;
+}) {
+  const items = [
+    { href: "#overview", label: "Overview" },
+    canReadOrders
+      ? { href: "#orders", label: "Orders", count: orderCount }
+      : null,
+    { href: "#related-vendors", label: "Vendors", count: relatedVendorCount },
+    canReadPayments
+      ? {
+          href: "#finance",
+          label: "Finance",
+          count: paymentCount + refundCount,
+        }
+      : null,
+    { href: "#addresses", label: "Addresses", count: customer.addresses.length },
+    { href: "#notes", label: "Notes", count: customer.notes.length },
+  ].filter(Boolean) as {
+    href: string;
+    label: string;
+  count?: number;
+  }[];
+  const [activeHref, setActiveHref] = useState("#overview");
+
+  return (
+    <nav
+      aria-label="Customer detail sections"
+      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
+    >
+      <div className="flex min-w-max items-center gap-5">
+        {items.map((item) => (
+          <a
+            aria-current={activeHref === item.href ? "page" : undefined}
+            className={cn(
+              "inline-flex h-10 items-center gap-1.5 border-b-2 px-0.5 text-sm font-semibold transition",
+              activeHref === item.href
+                ? "border-primary text-primary"
+                : "border-transparent text-muted hover:text-foreground",
+            )}
+            href={item.href}
+            key={item.href}
+            onClick={() => setActiveHref(item.href)}
+          >
+            <span>{item.label}</span>
+            {typeof item.count === "number" ? (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 text-xs",
+                  activeHref === item.href
+                    ? "bg-primary/10 text-primary"
+                    : "bg-surface-muted text-muted",
+                )}
+              >
+                {item.count}
+              </span>
+            ) : null}
+          </a>
+        ))}
+      </div>
+    </nav>
   );
 }
 
@@ -2196,7 +2296,6 @@ export function CustomerDetailPage() {
     );
   }
 
-  const health = customerHealth(customer);
   const canManageAddresses =
     canUpdateCustomer &&
     visibleAvailableActions(customer.availableActions).includes(
@@ -2208,415 +2307,244 @@ export function CustomerDetailPage() {
   const customerLogisticsPath = customerLogisticsQuery
     ? `${routePaths.manualLogistics}?${customerLogisticsQuery}`
     : routePaths.manualLogistics;
-  const orderSummaryTone: CustomerTone = canReadOrders
-    ? getOrderSummaryTone(orderSummary)
-    : "neutral";
   const relatedVendorRows = customerRelatedVendors?.data ?? [];
   const relatedVendorSummary = customerRelatedVendors?.summary;
   const paymentRows = canReadPayments ? (customerPayments?.data ?? []) : [];
   const refundRows = canReadPayments ? (customerRefunds?.data ?? []) : [];
   const paymentSummary = customerPayments?.summary;
   const refundSummary = customerRefunds?.summary;
-  const financeReviewCount =
-    (paymentSummary?.pending ?? 0) +
-    (paymentSummary?.failed ?? 0) +
-    (refundSummary?.pendingReview ?? 0);
 
   return (
-    <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
+    <PageContainer className="!px-3 !py-3 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
-        actionNode={
-          <CustomerHeaderActions
-            canCreditWallet={canCreditWallet}
-            canUpdateCustomer={canUpdateCustomer}
-            customer={customer}
-            isSubmitting={isSubmitting}
-            onEditProfile={openProfileEditor}
-            onSelectAction={openAction}
-          />
-        }
-        description={customer.email ?? customer.mobileNumber ?? customer.userId}
         listHref={routePaths.customers}
         listLabel="Customers"
         recordName={customer.fullName}
-        titleMetaNode={<CustomerHeaderStatus customer={customer} />}
       />
 
-      <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-        <DetailMetricCard
-          icon={<Activity className="size-4" />}
-          label="Health"
-          meta={
-            customerNeedsAttention(customer)
-              ? "Review warning signals"
-              : "No active warnings"
-          }
-          tone={health >= 80 ? "success" : health >= 55 ? "warning" : "danger"}
-          value={String(health)}
-        />
-        <DetailMetricCard
-          icon={<ReceiptText className="size-4" />}
-          label="Orders"
-          meta={`${customer.orderSummary.activeOrders} active orders`}
-          tone={customer.orderSummary.activeOrders ? "warning" : "neutral"}
-          value={String(customer.orderSummary.totalOrders)}
-        />
-        {featureFlags.customerWallet ? (
-          <DetailMetricCard
-            icon={<CreditCard className="size-4" />}
-            label="Wallet credit"
-            meta={customer.walletSummary.providerStatus}
-            tone={
-              customer.walletSummary.creditBalancePaise > 0 ? "info" : "neutral"
-            }
-            value={formatPaise(customer.walletSummary.creditBalancePaise)}
-          />
-        ) : null}
-        <DetailMetricCard
-          icon={<MessageSquarePlus className="size-4" />}
-          label="Notes"
-          meta={`Last note: ${formatDateSafe(customer.noteSummary.lastNoteAt)}`}
-          tone={customer.noteSummary.totalNotes ? "info" : "neutral"}
-          value={String(customer.noteSummary.totalNotes)}
-        />
-      </section>
+      <CustomerHeroCard
+        canCreditWallet={canCreditWallet}
+        canUpdateCustomer={canUpdateCustomer}
+        customer={customer}
+        isSubmitting={isSubmitting}
+        onEditProfile={openProfileEditor}
+        onSelectAction={openAction}
+      />
 
-      <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <CustomerDetailSectionNav
+        canReadOrders={canReadOrders}
+        canReadPayments={canReadPayments}
+        customer={customer}
+        orderCount={canReadOrders ? (orderSummary?.total ?? 0) : 0}
+        paymentCount={canReadPayments ? (paymentSummary?.total ?? 0) : 0}
+        refundCount={canReadPayments ? (refundSummary?.total ?? 0) : 0}
+        relatedVendorCount={relatedVendorSummary?.total ?? 0}
+      />
+
+      <section className="space-y-3" id="overview">
+        <CustomerSummaryStrip customer={customer} />
+
         <div className="min-w-0 space-y-3">
-          <CustomerIdentityPanel customer={customer} />
+          <div className="grid items-start gap-3 xl:grid-cols-[minmax(17rem,0.85fr)_minmax(0,1.15fr)]">
+            <div className="space-y-3">
+              <CustomerContactPanel customer={customer} />
+              <CustomerAccountPanel customer={customer} />
+            </div>
 
-          <div className="grid gap-3 lg:grid-cols-2">
-            <DetailPanel
-              icon={<CalendarClock className="size-4" />}
-              title="Lifecycle"
-            >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <DetailField label="Customer ID" value={customer.customerId} />
-                <DetailField label="User ID" value={customer.userId} />
-                <DetailField
-                  label="Last login"
-                  value={formatDateSafe(customer.lastLoginAt)}
-                />
-                <DetailField
-                  label="Created"
-                  value={formatDateSafe(customer.createdAt)}
-                />
-                <DetailField
-                  label="Updated"
-                  value={formatDateSafe(customer.updatedAt)}
-                />
-                <DetailField
-                  label="Lifetime spend"
-                  value={formatPaise(customer.orderSummary.lifetimeSpendPaise)}
-                />
-              </div>
-            </DetailPanel>
-
-            <CustomerSignalsPanel
-              canCreditWallet={canCreditWallet}
-              canUpdateCustomer={canUpdateCustomer}
-              customer={customer}
-            />
+            <div className="space-y-3">
+              <CustomerSignalsPanel
+                canCreditWallet={canCreditWallet}
+                canUpdateCustomer={canUpdateCustomer}
+                customer={customer}
+              />
+              <CustomerRecentActivityPanel customer={customer} />
+            </div>
           </div>
 
-          <div id="orders" className="scroll-mt-24 space-y-3">
-            <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-              <DetailMetricCard
-                icon={<ReceiptText className="size-4" />}
-                label="Orders"
-                meta={
-                  canReadOrders
-                    ? `${orderSummary?.delivered ?? 0} delivered · ${orderSummary?.cancelled ?? 0} cancelled`
-                    : "Orders permission required"
+          {canReadOrders ? (
+            <div id="orders" className="scroll-mt-24 space-y-3">
+              <DynamicTable
+                actionColumnLabel="Order Actions"
+                actionColumnMinWidth={360}
+                bodyMaxHeight={390}
+                columns={orderColumns}
+                data={orderRows}
+                emptyDescription="No orders yet."
+                emptyTitle="No orders"
+                error={
+                  ordersQuery.isError
+                    ? "We could not load this customer order history."
+                    : false
                 }
-                tone={orderSummaryTone}
-                value={
-                  canReadOrders ? String(orderSummary?.total ?? 0) : "Locked"
+                getRowId={(row) => row.orderId}
+                inlineActionLimit={2}
+                loading={canReadOrders && ordersQuery.isLoading}
+                stickyHeader
+                title="Customer orders"
+                toolbar={
+                  <TableToolbar
+                    actionNode={
+                      canReadOrders ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => navigate(customerLogisticsPath)}
+                          >
+                            <Truck className="mr-2 size-4" />
+                            Logistics
+                          </Button>
+                          <Button
+                            disabled={ordersQuery.isFetching}
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => void ordersQuery.refetch()}
+                          >
+                            <RotateCcw className="mr-2 size-4" />
+                            Refresh
+                          </Button>
+                        </div>
+                      ) : null
+                    }
+                    count={canReadOrders ? (orderSummary?.total ?? 0) : 0}
+                    icon={<ReceiptText className="size-4" />}
+                    title="Customer orders"
+                  />
                 }
-              />
-              <DetailMetricCard
-                icon={<Package className="size-4" />}
-                label="Active Orders"
-                meta="Current customer workload"
-                tone={(orderSummary?.active ?? 0) > 0 ? "info" : "neutral"}
-                value={
-                  canReadOrders ? String(orderSummary?.active ?? 0) : "Locked"
-                }
-              />
-              <DetailMetricCard
-                icon={<CreditCard className="size-4" />}
-                label="Payment Review"
-                meta="Pending, failed, or COD work"
-                tone={
-                  !canReadOrders
-                    ? "neutral"
-                    : (orderSummary?.paymentReview ?? 0) > 0
-                      ? "warning"
-                      : "success"
-                }
-                value={
-                  canReadOrders
-                    ? String(orderSummary?.paymentReview ?? 0)
-                    : "Locked"
-                }
-              />
-              <DetailMetricCard
-                icon={<AlertTriangle className="size-4" />}
-                label="Order Value"
-                meta={
-                  canReadOrders
-                    ? `${orderSummary?.needsAttention ?? 0} need attention`
-                    : "Orders permission required"
-                }
-                tone={
-                  !canReadOrders
-                    ? "neutral"
-                    : (orderSummary?.needsAttention ?? 0) > 0
-                      ? "warning"
-                      : "info"
-                }
-                value={
-                  canReadOrders
-                    ? formatPaise(
-                        orderSummary?.totalValuePaise,
-                        orderSummary?.currency,
-                      )
-                    : "Locked"
+                rowActions={(order) => {
+                  const recommendedAction = mapRecommendedOrderAction(order);
+
+                  return [
+                    {
+                      icon: <ArrowUpRight className="size-4" />,
+                      isDisabled: orderMutation.isPending,
+                      isVisible:
+                        Boolean(recommendedAction) &&
+                        Boolean(
+                          recommendedAction &&
+                          canRunOrderAction(
+                            recommendedAction,
+                            canUpdateOrders,
+                            canRefundPayments,
+                          ),
+                        ),
+                      key: "recommended-order-action",
+                      label: recommendedAction
+                        ? orderActionLabel(recommendedAction)
+                        : "Next Action",
+                      onClick: () => {
+                        if (recommendedAction) {
+                          openOrderAction(order, recommendedAction);
+                        }
+                      },
+                      variant:
+                        recommendedAction?.kind === "CANCEL"
+                          ? "danger"
+                          : "primary",
+                    },
+                    {
+                      icon: <MessageSquarePlus className="size-4" />,
+                      isDisabled: orderMutation.isPending,
+                      isVisible:
+                        canUpdateOrders && hasOrderAction(order, "ADD_NOTE"),
+                      key: "add-order-note",
+                      label: "Add Note",
+                      onClick: () =>
+                        openOrderAction(order, { kind: "ADD_NOTE" }),
+                      variant: "secondary",
+                    },
+                    {
+                      icon: <XCircle className="size-4" />,
+                      isDisabled: orderMutation.isPending,
+                      isVisible:
+                        canUpdateOrders &&
+                        hasOrderAction(order, "CANCEL") &&
+                        recommendedAction?.kind !== "CANCEL",
+                      key: "cancel-order",
+                      label: "Cancel",
+                      onClick: () => openOrderAction(order, { kind: "CANCEL" }),
+                      placement: "menu",
+                      variant: "danger",
+                    },
+                    {
+                      icon: <CreditCard className="size-4" />,
+                      isDisabled: orderMutation.isPending,
+                      isVisible:
+                        canRefundPayments &&
+                        hasOrderAction(order, "INITIATE_REFUND") &&
+                        recommendedAction?.kind !== "INITIATE_REFUND",
+                      key: "refund-order",
+                      label: "Refund",
+                      onClick: () =>
+                        openOrderAction(order, { kind: "INITIATE_REFUND" }),
+                      placement: "menu",
+                      variant: "secondary",
+                    },
+                    {
+                      icon: <RotateCcw className="size-4" />,
+                      isDisabled: orderMutation.isPending,
+                      isVisible:
+                        canUpdateOrders &&
+                        hasOrderAction(order, "GENERATE_DELIVERY_OTP") &&
+                        recommendedAction?.kind !== "GENERATE_DELIVERY_OTP",
+                      key: "generate-delivery-otp",
+                      label: "Generate OTP",
+                      onClick: () =>
+                        openOrderAction(order, {
+                          kind: "GENERATE_DELIVERY_OTP",
+                        }),
+                      placement: "menu",
+                      variant: "secondary",
+                    },
+                    {
+                      icon: <CheckCircle2 className="size-4" />,
+                      isDisabled: orderMutation.isPending,
+                      isVisible:
+                        canUpdateOrders &&
+                        hasOrderAction(order, "CONFIRM_DELIVERY_OTP") &&
+                        recommendedAction?.kind !== "CONFIRM_DELIVERY_OTP",
+                      key: "confirm-delivery-otp",
+                      label: "Confirm OTP",
+                      onClick: () =>
+                        openOrderAction(order, {
+                          kind: "CONFIRM_DELIVERY_OTP",
+                        }),
+                      placement: "menu",
+                      variant: "secondary",
+                    },
+                    {
+                      icon: <Truck className="size-4" />,
+                      isDisabled: orderMutation.isPending,
+                      key: "open-logistics",
+                      label: "Logistics",
+                      onClick: () =>
+                        navigate(
+                          `${routePaths.orders}/${order.orderId}/logistics`,
+                        ),
+                      placement: "menu",
+                      variant: "secondary",
+                    },
+                    {
+                      icon: <ArrowUpRight className="size-4" />,
+                      isDisabled: orderMutation.isPending,
+                      key: "open-order",
+                      label: "Open",
+                      onClick: () =>
+                        navigate(`${routePaths.orders}/${order.orderId}`),
+                      placement: "menu",
+                      variant: "ghost",
+                    },
+                  ];
+                }}
+                onRetry={() => void ordersQuery.refetch()}
+                onRowClick={(row) =>
+                  navigate(`${routePaths.orders}/${row.orderId}`)
                 }
               />
             </div>
-
-            <DynamicTable
-              actionColumnLabel="Order Actions"
-              actionColumnMinWidth={360}
-              bodyMaxHeight={390}
-              columns={orderColumns}
-              data={orderRows}
-              emptyDescription={
-                canReadOrders
-                  ? "This customer does not have orders yet."
-                  : "Your role does not include orders:read."
-              }
-              emptyTitle={canReadOrders ? "No orders" : "Orders unavailable"}
-              error={
-                ordersQuery.isError
-                  ? "We could not load this customer order history."
-                  : false
-              }
-              getRowId={(row) => row.orderId}
-              inlineActionLimit={2}
-              loading={canReadOrders && ordersQuery.isLoading}
-              stickyHeader
-              title="Customer orders"
-              toolbar={
-                <TableToolbar
-                  actionNode={
-                    canReadOrders ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => navigate(customerLogisticsPath)}
-                        >
-                          <Truck className="mr-2 size-4" />
-                          Logistics
-                        </Button>
-                        <Button
-                          disabled={ordersQuery.isFetching}
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => void ordersQuery.refetch()}
-                        >
-                          <RotateCcw className="mr-2 size-4" />
-                          Refresh
-                        </Button>
-                      </div>
-                    ) : null
-                  }
-                  count={canReadOrders ? (orderSummary?.total ?? 0) : 0}
-                  description="Customer order history with payment, logistics, warnings, and allowed admin actions."
-                  icon={<ReceiptText className="size-4" />}
-                  title="Customer orders"
-                />
-              }
-              rowActions={(order) => {
-                const recommendedAction = mapRecommendedOrderAction(order);
-
-                return [
-                  {
-                    icon: <ArrowUpRight className="size-4" />,
-                    isDisabled: orderMutation.isPending,
-                    isVisible:
-                      Boolean(recommendedAction) &&
-                      Boolean(
-                        recommendedAction &&
-                        canRunOrderAction(
-                          recommendedAction,
-                          canUpdateOrders,
-                          canRefundPayments,
-                        ),
-                      ),
-                    key: "recommended-order-action",
-                    label: recommendedAction
-                      ? orderActionLabel(recommendedAction)
-                      : "Next Action",
-                    onClick: () => {
-                      if (recommendedAction) {
-                        openOrderAction(order, recommendedAction);
-                      }
-                    },
-                    variant:
-                      recommendedAction?.kind === "CANCEL"
-                        ? "danger"
-                        : "primary",
-                  },
-                  {
-                    icon: <MessageSquarePlus className="size-4" />,
-                    isDisabled: orderMutation.isPending,
-                    isVisible:
-                      canUpdateOrders && hasOrderAction(order, "ADD_NOTE"),
-                    key: "add-order-note",
-                    label: "Add Note",
-                    onClick: () => openOrderAction(order, { kind: "ADD_NOTE" }),
-                    variant: "secondary",
-                  },
-                  {
-                    icon: <XCircle className="size-4" />,
-                    isDisabled: orderMutation.isPending,
-                    isVisible:
-                      canUpdateOrders &&
-                      hasOrderAction(order, "CANCEL") &&
-                      recommendedAction?.kind !== "CANCEL",
-                    key: "cancel-order",
-                    label: "Cancel",
-                    onClick: () => openOrderAction(order, { kind: "CANCEL" }),
-                    placement: "menu",
-                    variant: "danger",
-                  },
-                  {
-                    icon: <CreditCard className="size-4" />,
-                    isDisabled: orderMutation.isPending,
-                    isVisible:
-                      canRefundPayments &&
-                      hasOrderAction(order, "INITIATE_REFUND") &&
-                      recommendedAction?.kind !== "INITIATE_REFUND",
-                    key: "refund-order",
-                    label: "Refund",
-                    onClick: () =>
-                      openOrderAction(order, { kind: "INITIATE_REFUND" }),
-                    placement: "menu",
-                    variant: "secondary",
-                  },
-                  {
-                    icon: <RotateCcw className="size-4" />,
-                    isDisabled: orderMutation.isPending,
-                    isVisible:
-                      canUpdateOrders &&
-                      hasOrderAction(order, "GENERATE_DELIVERY_OTP") &&
-                      recommendedAction?.kind !== "GENERATE_DELIVERY_OTP",
-                    key: "generate-delivery-otp",
-                    label: "Generate OTP",
-                    onClick: () =>
-                      openOrderAction(order, {
-                        kind: "GENERATE_DELIVERY_OTP",
-                      }),
-                    placement: "menu",
-                    variant: "secondary",
-                  },
-                  {
-                    icon: <CheckCircle2 className="size-4" />,
-                    isDisabled: orderMutation.isPending,
-                    isVisible:
-                      canUpdateOrders &&
-                      hasOrderAction(order, "CONFIRM_DELIVERY_OTP") &&
-                      recommendedAction?.kind !== "CONFIRM_DELIVERY_OTP",
-                    key: "confirm-delivery-otp",
-                    label: "Confirm OTP",
-                    onClick: () =>
-                      openOrderAction(order, {
-                        kind: "CONFIRM_DELIVERY_OTP",
-                      }),
-                    placement: "menu",
-                    variant: "secondary",
-                  },
-                  {
-                    icon: <Truck className="size-4" />,
-                    isDisabled: orderMutation.isPending,
-                    key: "open-logistics",
-                    label: "Logistics",
-                    onClick: () =>
-                      navigate(`${routePaths.orders}/${order.orderId}/logistics`),
-                    placement: "menu",
-                    variant: "secondary",
-                  },
-                  {
-                    icon: <ArrowUpRight className="size-4" />,
-                    isDisabled: orderMutation.isPending,
-                    key: "open-order",
-                    label: "Open",
-                    onClick: () =>
-                      navigate(`${routePaths.orders}/${order.orderId}`),
-                    placement: "menu",
-                    variant: "ghost",
-                  },
-                ];
-              }}
-              onRetry={() => void ordersQuery.refetch()}
-              onRowClick={(row) =>
-                navigate(`${routePaths.orders}/${row.orderId}`)
-              }
-            />
-          </div>
+          ) : null}
 
           <div id="related-vendors" className="scroll-mt-24 space-y-3">
-            <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-              <DetailMetricCard
-                icon={<Store className="size-4" />}
-                label="Related Vendors"
-                meta={`${relatedVendorSummary?.saved ?? 0} saved · ${
-                  relatedVendorSummary?.ordered ?? 0
-                } ordered`}
-                tone={(relatedVendorSummary?.total ?? 0) > 0 ? "info" : "neutral"}
-                value={String(relatedVendorSummary?.total ?? 0)}
-              />
-              <DetailMetricCard
-                icon={<CheckCircle2 className="size-4" />}
-                label="Saved + Ordered"
-                meta="Preference and order relationship"
-                tone={
-                  (relatedVendorSummary?.savedAndOrdered ?? 0) > 0
-                    ? "success"
-                    : "neutral"
-                }
-                value={String(relatedVendorSummary?.savedAndOrdered ?? 0)}
-              />
-              <DetailMetricCard
-                icon={<Package className="size-4" />}
-                label="Vendor Active Orders"
-                meta="Open work across related vendors"
-                tone={
-                  (relatedVendorSummary?.activeOrders ?? 0) > 0
-                    ? "warning"
-                    : "neutral"
-                }
-                value={String(relatedVendorSummary?.activeOrders ?? 0)}
-              />
-              <DetailMetricCard
-                icon={<AlertTriangle className="size-4" />}
-                label="Vendor Visibility"
-                meta={`${relatedVendorSummary?.inactiveOrBlockedVendors ?? 0} inactive or blocked`}
-                tone={
-                  (relatedVendorSummary?.inactiveOrBlockedVendors ?? 0) > 0
-                    ? "warning"
-                    : "success"
-                }
-                value={formatPaise(
-                  relatedVendorSummary?.totalOrderValuePaise,
-                  relatedVendorSummary?.currency,
-                )}
-              />
-            </div>
-
             <DynamicTable
               actionColumnLabel="Vendor Actions"
               actionColumnMinWidth={260}
@@ -2649,7 +2577,6 @@ export function CustomerDetailPage() {
                     </Button>
                   }
                   count={relatedVendorSummary?.total ?? 0}
-                  description="Saved vendors and vendors this customer has ordered from, with order context and visibility signals."
                   icon={<Store className="size-4" />}
                   title="Related vendors"
                 />
@@ -2697,90 +2624,17 @@ export function CustomerDetailPage() {
             />
           </div>
 
-          <div id="finance" className="scroll-mt-24 space-y-3">
-            <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-              <DetailMetricCard
-                icon={<CreditCard className="size-4" />}
-                label="Payments"
-                meta={
-                  canReadPayments
-                    ? `${paymentSummary?.successful ?? 0} successful · ${paymentSummary?.failed ?? 0} failed`
-                    : "Payments permission required"
-                }
-                tone={
-                  !canReadPayments
-                    ? "neutral"
-                    : (paymentSummary?.failed ?? 0) > 0
-                      ? "warning"
-                      : "success"
-                }
-                value={
-                  canReadPayments ? String(paymentSummary?.total ?? 0) : "Locked"
-                }
-              />
-              <DetailMetricCard
-                icon={<ShieldCheck className="size-4" />}
-                label="Successful Value"
-                meta="Settled payment value"
-                tone="success"
-                value={
-                  canReadPayments
-                    ? formatPaise(
-                        paymentSummary?.successfulAmountPaise,
-                        paymentSummary?.currency,
-                      )
-                    : "Locked"
-                }
-              />
-              <DetailMetricCard
-                icon={<RotateCcw className="size-4" />}
-                label="Refunds"
-                meta={
-                  canReadPayments
-                    ? `${refundSummary?.requested ?? 0} requested · ${refundSummary?.successful ?? 0} successful`
-                    : "Payments permission required"
-                }
-                tone={
-                  !canReadPayments
-                    ? "neutral"
-                    : (refundSummary?.pendingReview ?? 0) > 0
-                      ? "warning"
-                      : "info"
-                }
-                value={
-                  canReadPayments ? String(refundSummary?.total ?? 0) : "Locked"
-                }
-              />
-              <DetailMetricCard
-                icon={<AlertTriangle className="size-4" />}
-                label="Finance Review"
-                meta="Pending payments, failed payments, refund review"
-                tone={
-                  !canReadPayments
-                    ? "neutral"
-                    : financeReviewCount > 0
-                      ? "warning"
-                      : "success"
-                }
-                value={canReadPayments ? String(financeReviewCount) : "Locked"}
-              />
-            </div>
-
-            <div className="grid gap-3 2xl:grid-cols-2">
-              <DynamicTable
+          {canReadPayments ? (
+            <div id="finance" className="scroll-mt-24 space-y-3">
+              <div className="grid gap-3 2xl:grid-cols-2">
+                <DynamicTable
                 actionColumnLabel="Payment Actions"
                 actionColumnMinWidth={280}
                 bodyMaxHeight={340}
                 columns={paymentColumns}
                 data={paymentRows}
-                emptyDescription={
-                  canReadPayments
-                    ? "This customer does not have payment records yet."
-                    : "Your role does not include payments:read."
-                }
-                emptyTitle={
-                  canReadPayments ? "No payments" : "Payments unavailable"
-                }
+                emptyDescription="No payment records."
+                emptyTitle="No payments"
                 error={
                   paymentsQuery.isError
                     ? "We could not load this customer payment history."
@@ -2807,7 +2661,6 @@ export function CustomerDetailPage() {
                       ) : null
                     }
                     count={canReadPayments ? (paymentSummary?.total ?? 0) : 0}
-                    description="Customer payment history with refund state and allowed finance actions."
                     icon={<CreditCard className="size-4" />}
                     title="Customer payments"
                   />
@@ -2843,22 +2696,16 @@ export function CustomerDetailPage() {
                 onRowClick={(row) =>
                   navigate(`${routePaths.payments}/${row.paymentId}`)
                 }
-              />
+                />
 
-              <DynamicTable
+                <DynamicTable
                 actionColumnLabel="Refund Actions"
                 actionColumnMinWidth={300}
                 bodyMaxHeight={340}
                 columns={refundColumns}
                 data={refundRows}
-                emptyDescription={
-                  canReadPayments
-                    ? "This customer does not have refund records yet."
-                    : "Your role does not include payments:read."
-                }
-                emptyTitle={
-                  canReadPayments ? "No refunds" : "Refunds unavailable"
-                }
+                emptyDescription="No refund records."
+                emptyTitle="No refunds"
                 error={
                   refundsQuery.isError
                     ? "We could not load this customer refund history."
@@ -2885,7 +2732,6 @@ export function CustomerDetailPage() {
                       ) : null
                     }
                     count={canReadPayments ? (refundSummary?.total ?? 0) : 0}
-                    description="Refund queue and history for this customer."
                     icon={<RotateCcw className="size-4" />}
                     title="Customer refunds"
                   />
@@ -2934,9 +2780,10 @@ export function CustomerDetailPage() {
                 onRowClick={(row) =>
                   navigate(`${routePaths.refunds}/${row.refundId}`)
                 }
-              />
+                />
+              </div>
             </div>
-          </div>
+          ) : null}
 
           <div id="addresses" className="scroll-mt-24">
             <DynamicTable
@@ -2944,7 +2791,7 @@ export function CustomerDetailPage() {
               bodyMaxHeight={280}
               columns={addressColumns}
               data={customer.addresses}
-              emptyDescription="No addresses were returned for this customer."
+              emptyDescription="No addresses."
               emptyTitle="No addresses"
               getRowId={(row) => row.addressId}
               stickyHeader
@@ -2992,7 +2839,6 @@ export function CustomerDetailPage() {
                     ) : null
                   }
                   count={customer.addresses.length}
-                  description="Saved service addresses and zone mapping."
                   icon={<MapPin className="size-4" />}
                   title="Addresses"
                 />
@@ -3012,7 +2858,7 @@ export function CustomerDetailPage() {
                   bodyMaxHeight={260}
                   columns={walletCreditColumns}
                   data={customer.walletCredits}
-                  emptyDescription="No wallet credits were returned for this customer."
+                  emptyDescription="No wallet credits."
                   emptyTitle="No wallet credits"
                   getRowId={(row) => row.walletCreditId}
                   stickyHeader
@@ -3020,7 +2866,6 @@ export function CustomerDetailPage() {
                   toolbar={
                     <TableToolbar
                       count={customer.walletCredits.length}
-                      description="Credit adjustments and wallet state."
                       icon={<CreditCard className="size-4" />}
                       title="Wallet credits"
                     />
@@ -3034,7 +2879,7 @@ export function CustomerDetailPage() {
                 bodyMaxHeight={260}
                 columns={noteColumns}
                 data={customer.notes}
-                emptyDescription="No internal notes were returned for this customer."
+                emptyDescription="No notes."
                 emptyTitle="No notes"
                 getRowId={(row) => row.noteId}
                 stickyHeader
@@ -3042,7 +2887,6 @@ export function CustomerDetailPage() {
                 toolbar={
                   <TableToolbar
                     count={customer.notes.length}
-                    description="Internal support notes for admin follow-up."
                     icon={<MessageSquarePlus className="size-4" />}
                     title="Internal notes"
                   />
@@ -3051,15 +2895,6 @@ export function CustomerDetailPage() {
             </div>
           </div>
         </div>
-
-        <CustomerActionRail
-          canCreditWallet={canCreditWallet}
-          canUpdateCustomer={canUpdateCustomer}
-          customer={customer}
-          isSubmitting={isSubmitting}
-          onEditProfile={openProfileEditor}
-          onSelectAction={openAction}
-        />
       </section>
 
       {isProfileEditorOpen ? (

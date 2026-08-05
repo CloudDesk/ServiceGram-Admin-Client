@@ -34,6 +34,7 @@ import {
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
+import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
 import { influencerService } from '../services/influencer.service'
@@ -45,6 +46,7 @@ import {
 import type {
   AdminInfluencer,
   AdminInfluencerCommission,
+  AdminInfluencerDetail,
   AdminInfluencerPreferredCategory,
   AdminInfluencerReel,
   InfluencerSocialProfile,
@@ -64,6 +66,16 @@ const influencerActionKinds: InfluencerActionKind[] = [
   'SUSPEND',
   'REACTIVATE',
 ]
+
+const influencerDetailSectionIds = {
+  overview: 'influencer-overview',
+  profile: 'influencer-profile',
+  application: 'influencer-application',
+  reels: 'influencer-reels',
+  commission: 'influencer-commission',
+  related: 'influencer-related',
+  signals: 'influencer-signals',
+} as const
 
 function statusTone(status: InfluencerStatus | string): InfluencerTone {
   if (status === 'APPROVED' || status === 'CONFIRMED' || status === 'READY') {
@@ -88,12 +100,20 @@ function statusTone(status: InfluencerStatus | string): InfluencerTone {
   return 'neutral'
 }
 
-function toneClasses(tone: InfluencerTone) {
+function toneTextClasses(tone: InfluencerTone) {
   if (tone === 'success') return 'text-success'
   if (tone === 'warning') return 'text-warning'
   if (tone === 'danger') return 'text-danger'
   if (tone === 'info') return 'text-primary'
   return 'text-muted'
+}
+
+function metricToneClasses(tone: InfluencerTone) {
+  if (tone === 'success') return 'border-success/20 bg-success/5'
+  if (tone === 'warning') return 'border-warning/25 bg-warning/5'
+  if (tone === 'danger') return 'border-danger/20 bg-danger/5'
+  if (tone === 'info') return 'border-primary/20 bg-primary/5'
+  return 'border-border bg-surface'
 }
 
 function humanizeCode(value: string | null | undefined) {
@@ -390,14 +410,29 @@ function MetricCard({
   value: string | number
 }) {
   return (
-    <div className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
+    <div
+      className={cn(
+        'min-h-[4.35rem] rounded-[0.75rem] border px-3 py-2.5 shadow-surface',
+        metricToneClasses(tone),
+      )}
+    >
       <div className="flex items-center justify-between gap-3">
-        <p className={`text-xs font-semibold uppercase tracking-normal ${toneClasses(tone)}`}>
+        <p
+          className={cn(
+            'text-xs font-semibold uppercase tracking-normal',
+            toneTextClasses(tone),
+          )}
+        >
           {label}
         </p>
-        <span className={toneClasses(tone)}>{icon}</span>
+        <span className={toneTextClasses(tone)}>{icon}</span>
       </div>
-      <p className={`mt-3 text-2xl font-semibold tracking-normal ${toneClasses(tone)}`}>
+      <p
+        className={cn(
+          'mt-2 text-xl font-semibold tracking-normal',
+          toneTextClasses(tone),
+        )}
+      >
         {value}
       </p>
       <p className="mt-1 text-xs text-muted">{meta}</p>
@@ -412,13 +447,15 @@ function InfluencerHeaderStatus({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Badge tone={statusTone(influencer.status)}>{influencer.status}</Badge>
+      <Badge tone={statusTone(influencer.status)}>
+        {humanizeCode(influencer.status)}
+      </Badge>
       {influencer.status === 'APPROVED' ? (
-        <Badge tone="success">Approved Creator</Badge>
+        <Badge tone="success">Approved creator</Badge>
       ) : null}
       {influencer.application ? (
         <Badge tone={statusTone(influencer.application.status)}>
-          Application {influencer.application.status}
+          Application {humanizeCode(influencer.application.status)}
         </Badge>
       ) : null}
     </div>
@@ -485,6 +522,65 @@ function InfluencerHeaderActions({
         </Button>
       ) : null}
     </div>
+  )
+}
+
+function InfluencerDetailSectionNav({
+  influencer,
+}: {
+  influencer: AdminInfluencerDetail
+}) {
+  const navItems: {
+    count?: number
+    href: string
+    label: string
+  }[] = [
+    { href: `#${influencerDetailSectionIds.overview}`, label: 'Overview' },
+    { href: `#${influencerDetailSectionIds.profile}`, label: 'Profile' },
+    {
+      href: `#${influencerDetailSectionIds.application}`,
+      label: 'Application',
+    },
+    {
+      count: influencer.reels.length,
+      href: `#${influencerDetailSectionIds.reels}`,
+      label: 'Reels',
+    },
+    {
+      count: influencer.commissions.length,
+      href: `#${influencerDetailSectionIds.commission}`,
+      label: 'Commission',
+    },
+    { href: `#${influencerDetailSectionIds.related}`, label: 'Related' },
+    {
+      count: influencer.warnings.length,
+      href: `#${influencerDetailSectionIds.signals}`,
+      label: 'Signals',
+    },
+  ]
+
+  return (
+    <nav
+      aria-label="Influencer detail sections"
+      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
+    >
+      <div className="flex min-w-max items-center gap-1.5 py-2">
+        {navItems.map((item) => (
+          <a
+            className="inline-flex min-h-9 items-center gap-2 rounded-[0.65rem] px-3 text-sm font-semibold text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            href={item.href}
+            key={item.href}
+          >
+            <span>{item.label}</span>
+            {typeof item.count === 'number' ? (
+              <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">
+                {item.count}
+              </span>
+            ) : null}
+          </a>
+        ))}
+      </div>
+    </nav>
   )
 }
 
@@ -599,17 +695,22 @@ function SectionShell({
   actionNode,
   children,
   description,
+  id,
   icon,
   title,
 }: {
   actionNode?: ReactNode
   children: ReactNode
   description?: string
+  id?: string
   icon?: ReactNode
   title: string
 }) {
   return (
-    <section className="rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+    <section
+      className="scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4 shadow-surface"
+      id={id}
+    >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -676,12 +777,14 @@ function RelatedRecordsPanel({
   canReadCustomers,
   canReadOrders,
   canReadReels,
+  id,
   influencer,
   onNavigate,
 }: {
   canReadCustomers: boolean
   canReadOrders: boolean
   canReadReels: boolean
+  id?: string
   influencer: AdminInfluencer
   onNavigate: (path: string) => void
 }) {
@@ -691,6 +794,7 @@ function RelatedRecordsPanel({
   return (
     <SectionShell
       description="Primary records connected to this creator profile."
+      id={id}
       icon={<ArrowUpRight className="size-4" />}
       title="Related records"
     >
@@ -762,9 +866,11 @@ function SignalBadgeGroup({
 
 function OperationalSignalsPanel({
   canReviewInfluencers,
+  id,
   influencer,
 }: {
   canReviewInfluencers: boolean
+  id?: string
   influencer: AdminInfluencer
 }) {
   const permittedActions = influencer.availableActions.filter((action) =>
@@ -782,6 +888,7 @@ function OperationalSignalsPanel({
   return (
     <SectionShell
       description="Backend workflow signals and actions permitted for this admin."
+      id={id}
       icon={<TriangleAlert className="size-4" />}
       title="Signals"
     >
@@ -1001,7 +1108,12 @@ export function InfluencerDetailPage() {
         titleMetaNode={<InfluencerHeaderStatus influencer={influencer} />}
       />
 
-      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+      <InfluencerDetailSectionNav influencer={influencer} />
+
+      <div
+        className="grid scroll-mt-24 gap-2.5 md:grid-cols-2 xl:grid-cols-4"
+        id={influencerDetailSectionIds.overview}
+      >
         <MetricCard
           icon={<Film className="size-4" />}
           label="Total reels"
@@ -1045,6 +1157,7 @@ export function InfluencerDetailPage() {
           <section className="grid gap-3 2xl:grid-cols-[1.15fr_0.85fr]">
             <SectionShell
               description="Customer identity stays active while creator capabilities are managed here."
+              id={influencerDetailSectionIds.profile}
               icon={<BadgeCheck className="size-4" />}
               title="Creator profile"
             >
@@ -1056,7 +1169,10 @@ export function InfluencerDetailPage() {
                     profiles={influencer.socialProfiles}
                   />
                 </DetailNodeField>
-                <DetailField label="Customer status" value={influencer.customer.status} />
+                <DetailField
+                  label="Customer status"
+                  value={humanizeCode(influencer.customer.status)}
+                />
                 <DetailField
                   label="City"
                   value={influencer.customer.zone?.zoneName ?? influencer.customer.city}
@@ -1084,12 +1200,16 @@ export function InfluencerDetailPage() {
 
             <SectionShell
               description="Submitted creator application and latest review context."
+              id={influencerDetailSectionIds.application}
               icon={<UserRound className="size-4" />}
               title="Application"
             >
               {influencer.application ? (
                 <div className="mt-5 space-y-4">
-                  <DetailField label="Status" value={influencer.application.status} />
+                  <DetailField
+                    label="Status"
+                    value={humanizeCode(influencer.application.status)}
+                  />
                   <DetailField label="City" value={influencer.application.city} />
                   <DetailField
                     label="Submitted"
@@ -1149,11 +1269,13 @@ export function InfluencerDetailPage() {
             canReadCustomers={canReadCustomers}
             canReadOrders={canReadOrders}
             canReadReels={canReadReels}
+            id={influencerDetailSectionIds.related}
             influencer={influencer}
             onNavigate={navigate}
           />
           <OperationalSignalsPanel
             canReviewInfluencers={canReviewInfluencers}
+            id={influencerDetailSectionIds.signals}
             influencer={influencer}
           />
         </div>
@@ -1174,6 +1296,7 @@ export function InfluencerDetailPage() {
           ) : null
         }
         description="Influencer reels still use the normal admin reel moderation queue."
+        id={influencerDetailSectionIds.reels}
         icon={<Film className="size-4" />}
         title="Recent creator reels"
       >
@@ -1189,6 +1312,7 @@ export function InfluencerDetailPage() {
             columns={reelColumns}
             data={influencer.reels}
             getRowId={(row) => row.reelId}
+            stickyHeader
             rowActions={(reel) => [
               {
                 icon: <ArrowUpRight className="size-4" />,
@@ -1219,6 +1343,7 @@ export function InfluencerDetailPage() {
 
       <SectionShell
         description="Phase 1 records manual commission entries; payout automation is not enabled."
+        id={influencerDetailSectionIds.commission}
         icon={<HandCoins className="size-4" />}
         title="Commission ledger"
       >
@@ -1234,6 +1359,7 @@ export function InfluencerDetailPage() {
             columns={commissionColumns}
             data={influencer.commissions}
             getRowId={(row) => row.commissionId}
+            stickyHeader
             rowActions={(commission) => [
               {
                 icon: <ReceiptText className="size-4" />,
@@ -1281,7 +1407,12 @@ export function InfluencerDetailPage() {
             ? `${selectedAction.kind}-${selectedAction.influencer.influencerProfileId}`
             : 'influencer-action-empty'
         }
-        onClose={() => setSelectedAction(null)}
+        onClose={() => {
+          if (!actionMutation.isPending) {
+            setSelectedAction(null)
+            setActionError(null)
+          }
+        }}
         onSubmit={(values) =>
           selectedAction
             ? actionMutation.mutate({ action: selectedAction, values })

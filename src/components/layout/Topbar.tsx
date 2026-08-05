@@ -4,7 +4,9 @@ import {
   Clock3,
   LogOut,
   Menu,
+  Moon,
   Settings,
+  Sun,
   User,
   UserCircle2,
 } from "lucide-react";
@@ -15,6 +17,7 @@ import { routePaths } from "../../config/routes";
 import { useAuthStore } from "../../store/authStore";
 import { useUiStore } from "../../store/uiStore";
 import { usePageChrome } from "../../providers/pageChromeContext";
+import { useTheme } from "../../providers/themeContext";
 import { GlobalSearch } from "../../features/search/components/GlobalSearch";
 import { authService } from "../../features/auth/services/auth.service";
 import { buildPathWithQueryParams } from "../../utils/buildQueryParams";
@@ -103,12 +106,14 @@ export function Topbar() {
   const session = useAuthStore((state) => state.session);
   const user = useAuthStore((state) => state.user);
   const openMobileSidebar = useUiStore((state) => state.openMobileSidebar);
+  const { resolvedMode, toggleResolvedMode } = useTheme();
   const { pageChrome } = usePageChrome();
   const [profileOpen, setProfileOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const profileRef = useRef<HTMLDivElement | null>(null);
   const title = pageChrome.title ?? "ServiceGram Admin";
-  const description = pageChrome.description ?? "Admin operations console";
+  const description =
+    pageChrome.description ?? (pageChrome.title ? undefined : "Admin operations console");
   const accessTokenRemainingSeconds = remainingSecondsUntil(
     session?.accessTokenExpiresAt,
     now,
@@ -125,6 +130,10 @@ export function Topbar() {
   );
   const sessionRemainingLabel = formatRemainingTime(sessionRemainingSeconds);
   const sessionRemainingTone = sessionTimeTone(sessionRemainingSeconds);
+  const isDarkTheme = resolvedMode === "dark";
+  const themeToggleLabel = isDarkTheme
+    ? "Switch to light theme"
+    : "Switch to dark theme";
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setNow(Date.now()), 15_000);
@@ -187,9 +196,11 @@ export function Topbar() {
           <h1 className="truncate text-sm font-semibold leading-5 text-adaptive-main sm:text-base">
             {title}
           </h1>
-          <p className="hidden truncate text-xs leading-4 text-adaptive-muted sm:block">
-            {description}
-          </p>
+          {description ? (
+            <p className="hidden truncate text-xs leading-4 text-adaptive-muted sm:block">
+              {description}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -198,6 +209,21 @@ export function Topbar() {
       </div>
 
       <div className="flex items-center justify-end gap-3">
+        <Button
+          aria-label={themeToggleLabel}
+          size="sm"
+          title={themeToggleLabel}
+          type="button"
+          variant="ghost"
+          onClick={toggleResolvedMode}
+        >
+          {isDarkTheme ? (
+            <Sun className="size-4" />
+          ) : (
+            <Moon className="size-4" />
+          )}
+        </Button>
+
         {canOpenNotifications ? (
           <Button
             aria-label="Alerts"

@@ -1,5 +1,5 @@
 import type { FormEvent, ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
@@ -12,7 +12,6 @@ import {
   Plus,
   Save,
   ShieldCheck,
-  ToggleLeft,
   TriangleAlert,
   Users,
   X,
@@ -31,7 +30,6 @@ import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
 import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
-import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { rbacService } from '../services/rbac.service'
 import { PermissionMatrix } from './PermissionMatrix'
@@ -44,9 +42,11 @@ import type {
 
 type ModalKind = 'EDIT_DETAILS' | 'MANAGE_PERMISSIONS'
 const roleDetailSectionIds = {
+  overview: 'role-overview',
   details: 'role-details',
   lifecycle: 'role-lifecycle',
   permissions: 'role-permissions',
+  related: 'role-related',
   signals: 'role-signals',
 } as const
 type RoleDetailSectionId =
@@ -72,20 +72,22 @@ function formatDateSafe(value: string | null | undefined) {
   }
 }
 
-function toneClass(tone: 'danger' | 'info' | 'neutral' | 'success' | 'warning') {
-  if (tone === 'success') return 'text-success'
-  if (tone === 'warning') return 'text-warning'
-  if (tone === 'danger') return 'text-danger'
-  if (tone === 'info') return 'text-primary'
-  return 'text-muted'
-}
-
 function statusTone(isActive: boolean): StatusTone {
   return isActive ? 'success' : 'danger'
 }
 
 function roleTypeLabel(role: RoleDetail) {
   return role.isSystem ? 'System' : 'Custom'
+}
+
+function getRoleWarnings(role: RoleDetail) {
+  const items: string[] = []
+
+  if (role.isSystem) items.push('SYSTEM_ROLE_LOCKED')
+  if (!role.isActive) items.push('ROLE_INACTIVE')
+  if (role.permissions.length === 0) items.push('NO_PERMISSIONS_ASSIGNED')
+
+  return items
 }
 
 function buildRolesCataloguePath(role: RoleDetail) {
@@ -129,35 +131,6 @@ function DetailField({
   )
 }
 
-function SummaryCard({
-  icon,
-  label,
-  meta,
-  tone,
-  value,
-}: {
-  icon: ReactNode
-  label: string
-  meta: string
-  tone: 'danger' | 'info' | 'neutral' | 'success' | 'warning'
-  value: ReactNode
-}) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <div className="flex items-center justify-between gap-3">
-        <p className={cn('text-xs font-semibold uppercase tracking-normal', toneClass(tone))}>
-          {label}
-        </p>
-        <span className={toneClass(tone)}>{icon}</span>
-      </div>
-      <div className={cn('mt-3 text-2xl font-semibold tracking-normal', toneClass(tone))}>
-        {value}
-      </div>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
-    </article>
-  )
-}
-
 function SectionShell({
   actionNode,
   children,
@@ -175,7 +148,7 @@ function SectionShell({
 }) {
   return (
     <section
-      className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
+      className="scroll-mt-24 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
       id={id}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -264,6 +237,129 @@ function HeaderActions({
         </Button>
       ) : null}
     </div>
+  )
+}
+
+function RoleHeroCard({
+  canCreateRole,
+  canManagePermissions,
+  canUpdateRole,
+  isSubmitting,
+  onSelect,
+  role,
+}: {
+  canCreateRole: boolean
+  canManagePermissions: boolean
+  canUpdateRole: boolean
+  isSubmitting: boolean
+  onSelect: (modal: ModalKind) => void
+  role: RoleDetail
+}) {
+  const moduleCount = new Set(
+    role.permissions.map((permission) => permission.moduleCode),
+  ).size
+
+  return (
+    <section className="rounded-[1rem] border border-border bg-surface p-3 shadow-surface sm:p-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+          <div className="flex size-14 shrink-0 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary ring-1 ring-primary/15 sm:size-16">
+            <KeyRound className="size-7" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-xl font-semibold text-foreground sm:text-2xl">
+                {role.roleName}
+              </h1>
+              <RoleStatus role={role} />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <ShieldCheck className="size-3.5 shrink-0" />
+                <span className="truncate">{role.roleCode}</span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <KeyRound className="size-3.5 shrink-0" />
+                <span>{role.permissions.length} permissions</span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <ClipboardList className="size-3.5 shrink-0" />
+                <span>{moduleCount} modules</span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <CalendarClock className="size-3.5 shrink-0" />
+                <span>Updated {formatDateSafe(role.updatedAt)}</span>
+              </span>
+            </div>
+            <p className="mt-3 line-clamp-2 max-w-4xl text-sm leading-5 text-muted">
+              {role.description ?? 'No role description added.'}
+            </p>
+          </div>
+        </div>
+        <HeaderActions
+          canCreateRole={canCreateRole}
+          canManagePermissions={canManagePermissions}
+          canUpdateRole={canUpdateRole}
+          isSubmitting={isSubmitting}
+          role={role}
+          onSelect={onSelect}
+        />
+      </div>
+    </section>
+  )
+}
+
+function RoleDetailSectionNav({
+  canReadAdminUsers,
+  canReadAudit,
+  role,
+}: {
+  canReadAdminUsers: boolean
+  canReadAudit: boolean
+  role: RoleDetail
+}) {
+  const warnings = getRoleWarnings(role)
+  const items = [
+    { href: `#${roleDetailSectionIds.overview}`, label: 'Overview' },
+    {
+      count: role.permissions.length,
+      href: `#${roleDetailSectionIds.permissions}`,
+      label: 'Permissions',
+    },
+    canReadAdminUsers
+      ? { href: `#${roleDetailSectionIds.related}`, label: 'Users' }
+      : null,
+    canReadAudit ? { href: `#${roleDetailSectionIds.related}`, label: 'Audit' } : null,
+    {
+      count: warnings.length,
+      href: `#${roleDetailSectionIds.signals}`,
+      label: 'Guardrails',
+    },
+    { href: `#${roleDetailSectionIds.lifecycle}`, label: 'Lifecycle' },
+  ].filter(Boolean) as { count?: number; href: string; label: string }[]
+
+  return (
+    <nav
+      aria-label="Role detail sections"
+      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
+    >
+      <div className="flex min-w-max items-center gap-1.5 py-2">
+        {items.map((item) => (
+          <a
+            className="inline-flex min-h-9 items-center gap-2 rounded-[0.65rem] px-3 text-sm font-semibold text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            href={item.href}
+            key={`${item.label}-${item.href}`}
+          >
+            <span>{item.label}</span>
+            {typeof item.count === 'number' ? (
+              <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">
+                {item.count}
+              </span>
+            ) : null}
+          </a>
+        ))}
+      </div>
+    </nav>
   )
 }
 
@@ -415,15 +511,7 @@ function SignalsPanel({
   canUpdateRole: boolean
   role: RoleDetail
 }) {
-  const warnings = useMemo(() => {
-    const items: string[] = []
-
-    if (role.isSystem) items.push('SYSTEM_ROLE_LOCKED')
-    if (!role.isActive) items.push('ROLE_INACTIVE')
-    if (role.permissions.length === 0) items.push('NO_PERMISSIONS_ASSIGNED')
-
-    return items
-  }, [role.isActive, role.isSystem, role.permissions.length])
+  const warnings = useMemo(() => getRoleWarnings(role), [role])
 
   const controls = useMemo(() => {
     const items: string[] = []
@@ -438,10 +526,10 @@ function SignalsPanel({
 
   return (
     <SectionShell
-      description="Derived role warnings and controls available to the current admin."
+      description="Access warnings and controls available to the current admin."
       icon={<TriangleAlert className="size-4" />}
       id={roleDetailSectionIds.signals}
-      title="Signals"
+      title="Guardrails"
     >
       <div className="space-y-4">
         <div>
@@ -488,9 +576,10 @@ function RelatedRecordsPanel({
 }) {
   return (
     <SectionShell
-      description="Modules and operational records connected to this role."
+      description="Admins, audit records, and role catalogue shortcuts."
       icon={<ArrowUpRight className="size-4" />}
-      title="Related records"
+      id={roleDetailSectionIds.related}
+      title="Connected access"
     >
       <div className="divide-y divide-border">
         <RelatedRecordRow
@@ -957,6 +1046,26 @@ export function RoleDetailPage() {
     role && !role.isSystem && canManageRolePermissions && canReadPermissions,
   )
 
+  useEffect(() => {
+    if (!role) return
+
+    const sectionId = window.location.hash.replace('#', '')
+
+    if (
+      !Object.values(roleDetailSectionIds).includes(
+        sectionId as RoleDetailSectionId,
+      )
+    ) {
+      return
+    }
+
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(sectionId)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [role])
+
   const openSection = (sectionId: RoleDetailSectionId) => {
     const section = document.getElementById(sectionId)
 
@@ -1053,65 +1162,33 @@ export function RoleDetailPage() {
     )
   }
 
-  const permissionModules = new Set(
-    role.permissions.map((permission) => permission.moduleCode),
-  ).size
-
   return (
-    <PageContainer className="!px-3 !py-4 sm:!px-4 lg:!px-6">
+    <PageContainer className="!px-3 !py-3 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
-        actionNode={
-          <HeaderActions
-            canCreateRole={canCreateRole}
-            canManagePermissions={canManagePermissions}
-            canUpdateRole={canUpdateRole}
-            isSubmitting={
-              updateDetailsMutation.isPending || updatePermissionsMutation.isPending
-            }
-            role={role}
-            onSelect={(modal) => {
-              setActionError(null)
-              setActiveModal(modal)
-            }}
-          />
-        }
-        description={role.description ?? role.roleCode}
         listHref={routePaths.roles}
         listLabel="Roles"
         recordName={role.roleName}
-        titleMetaNode={<RoleStatus role={role} />}
       />
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          icon={<ToggleLeft className="size-4" />}
-          label="Status"
-          meta="Role assignability"
-          tone={statusTone(role.isActive)}
-          value={role.isActive ? 'Active' : 'Inactive'}
-        />
-        <SummaryCard
-          icon={<Lock className="size-4" />}
-          label="Type"
-          meta={role.roleCode}
-          tone={role.isSystem ? 'info' : 'neutral'}
-          value={roleTypeLabel(role)}
-        />
-        <SummaryCard
-          icon={<ShieldCheck className="size-4" />}
-          label="Permissions"
-          meta={`${permissionModules} module${permissionModules === 1 ? '' : 's'}`}
-          tone={role.permissions.length ? 'warning' : 'danger'}
-          value={role.permissions.length}
-        />
-        <SummaryCard
-          icon={<CalendarClock className="size-4" />}
-          label="Updated"
-          meta="Backend timestamp"
-          tone="info"
-          value={formatDateSafe(role.updatedAt)}
-        />
-      </section>
+      <RoleHeroCard
+        canCreateRole={canCreateRole}
+        canManagePermissions={canManagePermissions}
+        canUpdateRole={canUpdateRole}
+        isSubmitting={
+          updateDetailsMutation.isPending || updatePermissionsMutation.isPending
+        }
+        role={role}
+        onSelect={(modal) => {
+          setActionError(null)
+          setActiveModal(modal)
+        }}
+      />
+
+      <RoleDetailSectionNav
+        canReadAdminUsers={canReadAdminUsers}
+        canReadAudit={canReadAudit}
+        role={role}
+      />
 
       {actionError && !activeModal ? (
         <div className="rounded-[0.875rem] border border-danger/25 bg-danger/10 p-3 text-sm text-danger">
@@ -1136,20 +1213,16 @@ export function RoleDetailPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
+      <section
+        className="scroll-mt-24 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]"
+        id={roleDetailSectionIds.overview}
+      >
+        <DetailsPanel role={role} />
         <LifecyclePanel role={role} />
-        <SignalsPanel
-          canManagePermissions={canManagePermissions}
-          canReadAdminUsers={canReadAdminUsers}
-          canReadAudit={canReadAudit}
-          canUpdateRole={canUpdateRole}
-          role={role}
-        />
       </section>
 
       <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
         <div className="space-y-3">
-          <DetailsPanel role={role} />
           <PermissionsPanel
             canReadPermissions={canReadPermissions}
             permissionGroups={permissionGroups}
@@ -1166,23 +1239,32 @@ export function RoleDetailPage() {
             onRetry={() => void permissionsQuery.refetch()}
           />
         </div>
-        <RelatedRecordsPanel
-          canManagePermissions={canManagePermissions}
-          canReadAdminUsers={canReadAdminUsers}
-          canReadAudit={canReadAudit}
-          canUpdateRole={canUpdateRole}
-          role={role}
-          onManagePermissions={() => {
-            setActionError(null)
-            setActiveModal('MANAGE_PERMISSIONS')
-          }}
-          onNavigate={navigate}
-          onOpenSection={openSection}
-          onUpdateRole={() => {
-            setActionError(null)
-            setActiveModal('EDIT_DETAILS')
-          }}
-        />
+        <div className="space-y-3">
+          <RelatedRecordsPanel
+            canManagePermissions={canManagePermissions}
+            canReadAdminUsers={canReadAdminUsers}
+            canReadAudit={canReadAudit}
+            canUpdateRole={canUpdateRole}
+            role={role}
+            onManagePermissions={() => {
+              setActionError(null)
+              setActiveModal('MANAGE_PERMISSIONS')
+            }}
+            onNavigate={navigate}
+            onOpenSection={openSection}
+            onUpdateRole={() => {
+              setActionError(null)
+              setActiveModal('EDIT_DETAILS')
+            }}
+          />
+          <SignalsPanel
+            canManagePermissions={canManagePermissions}
+            canReadAdminUsers={canReadAdminUsers}
+            canReadAudit={canReadAudit}
+            canUpdateRole={canUpdateRole}
+            role={role}
+          />
+        </div>
       </section>
 
       {activeModal === 'EDIT_DETAILS' ? (

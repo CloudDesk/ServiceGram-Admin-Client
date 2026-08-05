@@ -23,7 +23,7 @@ interface DetailPageHeaderProps {
 const detailHeaderDockClassName =
   'sticky top-0 z-20 -mx-4 pb-3 premium-page-surface sm:-mx-6 lg:-mx-10'
 const detailHeaderBarClassName =
-  'border-y border-border bg-surface/95 px-4 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:px-6 lg:px-10'
+  'border-y border-border bg-surface/95 px-4 py-2 shadow-[var(--sg-shadow-surface)] backdrop-blur-xl sm:px-6 lg:px-10'
 
 export function DetailPageHeaderSkeleton() {
   return (

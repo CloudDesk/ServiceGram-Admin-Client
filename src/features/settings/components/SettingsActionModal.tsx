@@ -53,6 +53,14 @@ interface SettingsActionModalProps {
   onSubmit: (values: SettingsActionFormValues) => void;
 }
 
+function actionLabel(action: SettingsActionSelection["action"]) {
+  if (action === "UPDATE") return "Update";
+  if (action === "EDIT") return "Edit";
+  if (action === "ACTIVATE") return "Activate";
+  if (action === "DEACTIVATE") return "Deactivate";
+  return "Create";
+}
+
 function title(action: SettingsActionSelection) {
   const typeLabel: Record<SettingsActionSelection["type"], string> = {
     settings: "setting",
@@ -60,7 +68,7 @@ function title(action: SettingsActionSelection) {
     serviceTypes: "service type",
     zones: "zone",
   };
-  return `${action.action.replace("_", " ").toLowerCase()} ${typeLabel[action.type]}`;
+  return `${actionLabel(action.action)} ${typeLabel[action.type]}`;
 }
 
 function parseValue(raw: string, valueType?: string): unknown {
@@ -349,7 +357,7 @@ function SettingsActionModalContent({
         className={`flex max-h-[calc(100vh-1.5rem)] w-full ${modalWidthClass} flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow-overlay)] sm:max-h-[calc(100vh-3rem)]`}
       >
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
-          <h2 className="text-lg font-semibold capitalize tracking-[-0.03em] text-foreground">
+          <h2 className="text-lg font-semibold tracking-normal text-foreground">
             {title(action)}
           </h2>
           <button
@@ -730,7 +738,7 @@ function SettingsActionModalContent({
               Cancel
             </Button>
             <Button isLoading={isSubmitting} size="sm" type="submit">
-              Submit
+              {actionLabel(action.action)}
             </Button>
           </div>
         </form>

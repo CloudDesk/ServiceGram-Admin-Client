@@ -212,7 +212,7 @@ export function LoginForm() {
 
       <div className="space-y-2">
         <label
-          className="text-[0.8125rem] font-bold tracking-[0.01em] text-foreground"
+          className="text-[0.8125rem] font-bold tracking-normal text-foreground"
           htmlFor="email"
         >
           Email
@@ -221,7 +221,7 @@ export function LoginForm() {
           <Mail className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <Input
             autoComplete="username"
-            className="min-h-12 rounded-[1.125rem] border-border bg-surface/80 pl-11 text-[0.9375rem] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] placeholder:text-muted focus-visible:border-foreground/20 focus-visible:bg-surface focus-visible:ring-foreground/10"
+            className="min-h-12 rounded-[1.125rem] border-border bg-surface/80 pl-11 text-[0.9375rem] text-foreground shadow-[var(--sg-shadow-inset-highlight)] placeholder:text-muted focus-visible:border-foreground/20 focus-visible:bg-surface focus-visible:ring-foreground/10"
             hasError={Boolean(errors.email)}
             id="email"
             placeholder="admin@servicegram.in"
@@ -238,7 +238,7 @@ export function LoginForm() {
 
       <div className="space-y-2">
         <label
-          className="text-[0.8125rem] font-bold tracking-[0.01em] text-foreground"
+          className="text-[0.8125rem] font-bold tracking-normal text-foreground"
           htmlFor="password"
         >
           Password
@@ -249,7 +249,7 @@ export function LoginForm() {
             autoComplete="current-password"
             hasError={Boolean(errors.password)}
             id="password"
-            inputClassName="min-h-12 rounded-[1.125rem] border-border bg-surface/80 pl-11 text-[0.9375rem] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] placeholder:text-muted focus-visible:border-foreground/20 focus-visible:bg-surface focus-visible:ring-foreground/10"
+            inputClassName="min-h-12 rounded-[1.125rem] border-border bg-surface/80 pl-11 text-[0.9375rem] text-foreground shadow-[var(--sg-shadow-inset-highlight)] placeholder:text-muted focus-visible:border-foreground/20 focus-visible:bg-surface focus-visible:ring-foreground/10"
             name="password"
             onBlur={() => undefined}
             onChange={(value) => {
@@ -278,7 +278,7 @@ export function LoginForm() {
       </div>
 
       <Button
-        className="min-h-[3.25rem] w-full rounded-[1.2rem] bg-foreground text-[0.9375rem] font-extrabold text-primary-foreground shadow-[0_20px_45px_rgba(15,23,42,0.24),inset_0_1px_0_rgba(255,255,255,0.2)] transition duration-200 hover:-translate-y-0.5 hover:bg-sidebar hover:shadow-[0_26px_60px_rgba(15,23,42,0.28),inset_0_1px_0_rgba(255,255,255,0.24)]"
+        className="min-h-[3.25rem] w-full rounded-[1.2rem] bg-foreground text-[0.9375rem] font-extrabold text-primary-foreground shadow-[var(--sg-shadow-overlay)] transition duration-200 hover:-translate-y-0.5 hover:bg-sidebar hover:shadow-[var(--sg-shadow-premium-lg)]"
         isLoading={mutation.isPending}
         type="submit"
         variant="ghost"

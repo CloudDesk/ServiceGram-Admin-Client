@@ -391,7 +391,7 @@ function DetailPanel({
   title: string
 }) {
   return (
-    <section id={id} className="scroll-mt-4 rounded-[1rem] border border-border bg-surface p-4">
+    <section id={id} className="scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -442,8 +442,12 @@ const orderSectionIds = {
   finance: 'order-finance',
   history: 'order-history',
   items: 'order-items',
+  logistics: 'order-logistics',
   notes: 'order-notes',
+  overview: 'order-overview',
   proofMedia: 'order-proof-media',
+  related: 'order-related',
+  signals: 'order-signals',
 } as const
 
 type OrderSectionId = (typeof orderSectionIds)[keyof typeof orderSectionIds]
@@ -489,6 +493,101 @@ function DetailMetricCard({
       </div>
       <p className="mt-0.5 truncate text-xs leading-4 opacity-80">{meta}</p>
     </div>
+  )
+}
+
+function OrderDetailSectionNav({
+  canReadPayments,
+  order,
+}: {
+  canReadPayments: boolean
+  order: AdminOrderDetail
+}) {
+  const items = [
+    { href: `#${orderSectionIds.overview}`, label: 'Overview' },
+    {
+      count: order.logisticsTimeline.length,
+      href: `#${orderSectionIds.logistics}`,
+      label: 'Logistics',
+    },
+    canReadPayments
+      ? {
+          count: order.payments.length + order.refunds.length,
+          href: `#${orderSectionIds.finance}`,
+          label: 'Finance',
+        }
+      : null,
+    {
+      count: order.statusHistory.length + order.logisticsTimeline.length,
+      href: `#${orderSectionIds.history}`,
+      label: 'History',
+    },
+    {
+      count: order.mediaAssets.length,
+      href: `#${orderSectionIds.proofMedia}`,
+      label: 'Proofs',
+    },
+    {
+      count: order.counts?.itemCount ?? order.items.length,
+      href: `#${orderSectionIds.items}`,
+      label: 'Items',
+    },
+    {
+      count: order.counts?.noteCount ?? order.notes.length,
+      href: `#${orderSectionIds.notes}`,
+      label: 'Notes',
+    },
+    { href: `#${orderSectionIds.related}`, label: 'Related' },
+    {
+      count: order.warnings.length,
+      href: `#${orderSectionIds.signals}`,
+      label: 'Signals',
+    },
+  ].filter(Boolean) as {
+    count?: number
+    href: string
+    label: string
+  }[]
+  const [activeHref, setActiveHref] = useState(
+    `#${orderSectionIds.overview}`,
+  )
+
+  return (
+    <nav
+      aria-label="Order detail sections"
+      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
+    >
+      <div className="flex min-w-max items-center gap-5">
+        {items.map((item) => (
+          <a
+            aria-current={activeHref === item.href ? 'page' : undefined}
+            className={cn(
+              'inline-flex h-10 items-center gap-1.5 border-b-2 px-0.5 text-sm font-semibold transition',
+              activeHref === item.href
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted hover:text-foreground',
+            )}
+            href={item.href}
+            key={item.href}
+            onClick={() => setActiveHref(item.href)}
+          >
+            <span>{item.label}</span>
+            {typeof item.count === 'number' ? (
+              <span
+                className={cn(
+                  'rounded-full px-1.5 text-xs',
+                  activeHref === item.href
+                    ? 'bg-primary/10 text-primary'
+                    : 'bg-surface-muted text-muted',
+                )}
+              >
+                {item.count}
+              </span>
+            ) : null}
+          </a>
+        ))}
+      </div>
+    </nav>
   )
 }
 
@@ -741,7 +840,7 @@ function OrderHeaderActions({
       {canUpdateOrders && hasOrderAction(order, 'CREATE_PROOF_UPLOAD_INTENT') ? (
         <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('CREATE_PROOF_UPLOAD_INTENT')}>
           <FileUp className="mr-2 size-4" />
-          Proof Upload
+          Request proof
         </Button>
       ) : null}
       {canUpdateOrders && hasOrderAction(order, 'CANCEL') ? (
@@ -908,7 +1007,7 @@ function ManualLogisticsPanel({
           {canUpdateOrders && hasOrderAction(order, 'CREATE_PROOF_UPLOAD_INTENT') ? (
             <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('CREATE_PROOF_UPLOAD_INTENT')}>
               <PackageCheck className="mr-2 size-4" />
-              Proof Upload
+              Request proof
             </Button>
           ) : null}
         </div>
@@ -990,6 +1089,7 @@ function RelatedRecordsPanel({
     <DetailPanel
       description="Primary records and child sections linked to this order."
       icon={<ArrowUpRight className="size-4" />}
+      id={orderSectionIds.related}
       title="Related records"
     >
       <div className="divide-y divide-border">
@@ -1133,6 +1233,7 @@ function OperationalSignalsPanel({ order }: { order: AdminOrderDetail }) {
     <DetailPanel
       description="Backend workflow signals that should drive admin attention."
       icon={<TriangleAlert className="size-4" />}
+      id={orderSectionIds.signals}
       title="Signals"
     >
       <div className="space-y-4">
@@ -1377,7 +1478,12 @@ export function OrderDetailPage({
 
       <PriceRevisionNotice order={order} />
 
-      <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+      <OrderDetailSectionNav canReadPayments={canReadPayments} order={order} />
+
+      <section
+        id={orderSectionIds.overview}
+        className="grid scroll-mt-24 gap-2.5 md:grid-cols-2 xl:grid-cols-4"
+      >
         <DetailMetricCard
           icon={<Route className="size-4" />}
           label="Order status"
@@ -1408,12 +1514,14 @@ export function OrderDetailPage({
         />
       </section>
 
-      <ManualLogisticsPanel
-        canUpdateOrders={canUpdateOrders}
-        isSubmitting={actionMutation.isPending}
-        order={order}
-        onSelectAction={openAction}
-      />
+      <div id={orderSectionIds.logistics} className="scroll-mt-24">
+        <ManualLogisticsPanel
+          canUpdateOrders={canUpdateOrders}
+          isSubmitting={actionMutation.isPending}
+          order={order}
+          onSelectAction={openAction}
+        />
+      </div>
 
       <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-3">
@@ -1437,8 +1545,8 @@ export function OrderDetailPage({
               <DetailField label="Delivered At" value={formatDateSafe(order.schedule.deliveredAt)} />
               <DetailField label="Cancellation Reason" value={order.cancellationReason} />
               <DetailField label="Active Delivery OTP" value={order.activeDeliveryOtp?.status} />
-              <DetailField label="Created At" value={formatDateSafe(order.createdAt)} />
-              <DetailField label="Updated At" value={formatDateSafe(order.updatedAt)} />
+              <DetailField label="Created" value={formatDateSafe(order.createdAt)} />
+              <DetailField label="Updated" value={formatDateSafe(order.updatedAt)} />
             </div>
           </DetailPanel>
 
@@ -1478,7 +1586,7 @@ export function OrderDetailPage({
           </div>
 
         {canReadPayments ? (
-          <div id={orderSectionIds.finance} className="grid scroll-mt-4 gap-3 2xl:grid-cols-2">
+          <div id={orderSectionIds.finance} className="grid scroll-mt-24 gap-3 2xl:grid-cols-2">
             <DynamicTable
               actionColumnLabel="Payment Actions"
               actionColumnMinWidth={180}
@@ -1558,7 +1666,7 @@ export function OrderDetailPage({
           <FinanceLockedPanel order={order} />
         )}
 
-        <div id={orderSectionIds.history} className="grid scroll-mt-4 gap-3 2xl:grid-cols-2">
+        <div id={orderSectionIds.history} className="grid scroll-mt-24 gap-3 2xl:grid-cols-2">
           <DynamicTable
             bodyMaxHeight={340}
             columns={statusColumns}
@@ -1598,7 +1706,7 @@ export function OrderDetailPage({
           />
         </div>
 
-        <div id={orderSectionIds.proofMedia} className="scroll-mt-4">
+        <div id={orderSectionIds.proofMedia} className="scroll-mt-24">
           <DynamicTable
             actionColumnLabel="Proof Actions"
             actionColumnMinWidth={210}
@@ -1621,7 +1729,7 @@ export function OrderDetailPage({
                       onClick={() => openAction('CREATE_PROOF_UPLOAD_INTENT')}
                     >
                       <FileUp className="mr-2 size-4" />
-                      Proof Upload
+                      Request proof
                     </Button>
                   ) : null
                 }
@@ -1635,7 +1743,7 @@ export function OrderDetailPage({
         </div>
 
         <div className="grid gap-3 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-          <div id={orderSectionIds.items} className="scroll-mt-4">
+          <div id={orderSectionIds.items} className="scroll-mt-24">
             <DynamicTable
               bodyMaxHeight={300}
               columns={itemColumns}
@@ -1656,7 +1764,7 @@ export function OrderDetailPage({
             />
           </div>
 
-          <div id={orderSectionIds.notes} className="scroll-mt-4">
+          <div id={orderSectionIds.notes} className="scroll-mt-24">
             <DynamicTable
               actionColumnLabel="Note Actions"
               actionColumnMinWidth={190}

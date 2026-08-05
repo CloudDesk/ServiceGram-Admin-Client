@@ -11,7 +11,6 @@ import {
   ArrowUpRight,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   Eye,
   FileJson,
   Filter,
@@ -51,6 +50,7 @@ const AUDIT_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.audit.columnWidths.v1'
 const AUDIT_DEFAULT_COLUMN_WIDTH = 220
 const AUDIT_GRID_COLUMN_GAP = 12
 const AUDIT_GRID_INLINE_PADDING = 24
+const AUDIT_ACTION_COLUMN_WIDTH = 224
 const emptyAuditLogs: AuditLog[] = []
 
 type AuditColumnId = 'action' | 'actor' | 'entity' | 'reason' | 'request' | 'createdAt'
@@ -373,14 +373,18 @@ function getAuditGridTemplate(
     .filter((column) => visibleColumns.includes(column.id))
     .map((column) => `${getAuditColumnWidth(columnWidths, column.id)}px`)
 
-  return [`${LIST_SELECTION_COLUMN_WIDTH}px`, ...selectedWidths].join(' ')
+  return [
+    `${LIST_SELECTION_COLUMN_WIDTH}px`,
+    ...selectedWidths,
+    `${AUDIT_ACTION_COLUMN_WIDTH}px`,
+  ].join(' ')
 }
 
 function getAuditGridMinWidth(
   visibleColumns: AuditColumnId[],
   columnWidths: AuditColumnWidths,
 ) {
-  const gridColumnCount = visibleColumns.length + 1
+  const gridColumnCount = visibleColumns.length + 2
   const gridGapWidth = Math.max(gridColumnCount - 1, 0) * AUDIT_GRID_COLUMN_GAP
   const visibleWidth = auditColumns
     .filter((column) => visibleColumns.includes(column.id))
@@ -389,32 +393,41 @@ function getAuditGridMinWidth(
   return `${
     visibleWidth +
     LIST_SELECTION_COLUMN_WIDTH +
+    AUDIT_ACTION_COLUMN_WIDTH +
     gridGapWidth +
     AUDIT_GRID_INLINE_PADDING
   }px`
 }
 
-function MetricCard({
-  icon,
-  label,
-  meta,
-  value,
+function ActiveFilterChips({
+  chips,
+  onClearAll,
 }: {
-  icon: ReactNode
-  label: string
-  meta: string
-  value: ReactNode
+  chips: { key: string; label: string; onClear: () => void }[]
+  onClearAll: () => void
 }) {
+  if (chips.length === 0) return null
+
   return (
-    <div className="min-h-[4.35rem] rounded-[0.75rem] border border-border bg-surface p-2.5">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-normal text-muted">
-        {icon}
-        {label}
-      </div>
-      <div className="mt-1 text-lg font-semibold tracking-normal text-foreground">
-        {value}
-      </div>
-      <p className="mt-0.5 text-xs leading-4 text-muted">{meta}</p>
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {chips.map((chip) => (
+        <button
+          className="inline-flex h-8 items-center gap-2 rounded-full border border-border bg-surface px-3 text-xs font-medium text-foreground transition hover:bg-surface-muted"
+          key={chip.key}
+          type="button"
+          onClick={chip.onClear}
+        >
+          <span>{chip.label}</span>
+          <X className="size-3.5 text-muted" />
+        </button>
+      ))}
+      <button
+        className="h-8 px-2 text-xs font-semibold text-primary"
+        type="button"
+        onClick={onClearAll}
+      >
+        Clear all
+      </button>
     </div>
   )
 }
@@ -423,7 +436,7 @@ function AuditRowsSkeleton() {
   return (
     <div className="space-y-2.5 p-3">
       {Array.from({ length: 8 }, (_, index) => (
-        <Skeleton className="h-20 w-full rounded-[1rem]" key={index} />
+        <Skeleton className="h-16 w-full rounded-[0.875rem]" key={index} />
       ))}
     </div>
   )
@@ -455,7 +468,8 @@ function AuditPaginationControls({
         <label className="flex items-center gap-2">
           <span>Rows</span>
           <select
-            className="form-input h-9 w-20 py-1"
+            aria-label="Rows per page"
+            className="h-9 rounded-[0.75rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
             value={pagination.limit}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
           >
@@ -467,7 +481,7 @@ function AuditPaginationControls({
           </select>
         </label>
       </div>
-      <div className="flex items-center justify-end gap-2 text-foreground">
+      <div className="flex items-center gap-3 sm:justify-end">
         <button
           aria-label="Previous page"
           className="btn-icon"
@@ -477,8 +491,8 @@ function AuditPaginationControls({
         >
           <ChevronLeft className="size-4" />
         </button>
-        <span className="min-w-24 text-center text-sm font-medium">
-          Page {pagination.page} of {pagination.totalPages}
+        <span className="text-sm font-medium text-foreground">
+          Page {pagination.page} of {Math.max(1, pagination.totalPages)}
         </span>
         <button
           aria-label="Next page"
@@ -747,13 +761,35 @@ function AuditDetailField({
   value: ReactNode
 }) {
   return (
-    <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface-muted/35 px-3 py-3">
+    <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface-muted/35 px-3 py-2.5">
       <p className="text-xs font-semibold uppercase tracking-normal text-muted">
         {label}
       </p>
-      <div className="mt-2 break-words text-sm font-medium text-foreground">
+      <div className="mt-1.5 break-words text-sm font-medium text-foreground">
         {value ?? 'Not available'}
       </div>
+    </div>
+  )
+}
+
+function AuditEventFact({
+  label,
+  meta,
+  value,
+}: {
+  label: string
+  meta?: ReactNode
+  value: ReactNode
+}) {
+  return (
+    <div className="min-w-0 border-border/80 py-1 sm:border-l sm:pl-4 sm:first:border-l-0 sm:first:pl-0">
+      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+        {label}
+      </p>
+      <div className="mt-1 truncate text-sm font-semibold text-foreground">
+        {value ?? 'Not available'}
+      </div>
+      {meta ? <p className="mt-0.5 truncate text-xs text-muted">{meta}</p> : null}
     </div>
   )
 }
@@ -770,12 +806,12 @@ function AuditDetailSection({
   title: string
 }) {
   return (
-    <section className="rounded-[0.875rem] border border-border bg-surface p-4">
-      <div className="mb-4 flex items-start justify-between gap-3">
+    <section className="rounded-[0.875rem] border border-border bg-surface p-3">
+      <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-base font-semibold text-foreground">{title}</h3>
           {description ? (
-            <p className="mt-1 text-sm leading-5 text-muted">{description}</p>
+            <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
           ) : null}
         </div>
         {actionNode ? <div className="shrink-0">{actionNode}</div> : null}
@@ -869,7 +905,7 @@ function AuditDetailModal({
   return (
     <div className="premium-overlay flex items-start justify-center overflow-y-auto p-3 sm:p-6 lg:items-center">
       <div className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-[var(--shadow-overlay)] sm:max-h-[calc(100vh-3rem)]">
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-4 py-3 sm:px-5">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone={moduleTone(log.moduleCode)}>
@@ -880,10 +916,12 @@ function AuditDetailModal({
                 {log.reason ? 'Reason recorded' : 'No reason'}
               </Badge>
             </div>
-            <h2 className="mt-3 break-words text-lg font-semibold text-foreground">
-              Audit event
+            <h2 className="mt-2 break-words text-lg font-semibold text-foreground">
+              {humanizeCode(log.actionCode)}
             </h2>
-            <p className="mt-1 break-all text-sm text-muted">{log.auditLogId}</p>
+            <p className="mt-1 break-all text-sm text-muted">
+              {humanizeCode(log.moduleCode)} · {log.auditLogId}
+            </p>
           </div>
           <button
             aria-label="Close audit detail"
@@ -895,32 +933,30 @@ function AuditDetailModal({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard
-              icon={<ShieldCheck className="size-4 text-primary" />}
-              label="Module"
-              meta={humanizeCode(log.actionCode)}
-              value={humanizeCode(log.moduleCode)}
-            />
-            <MetricCard
-              icon={<UserRound className="size-4 text-success" />}
-              label="Actor"
-              meta={humanizeCode(log.actor.actorType)}
-              value={actorLabel}
-            />
-            <MetricCard
-              icon={<FileJson className="size-4 text-info" />}
-              label="Changed fields"
-              meta="Top-level snapshot diff"
-              value={changedKeys.length}
-            />
-            <MetricCard
-              icon={<Clock3 className="size-4 text-warning" />}
-              label="Created"
-              meta={relativeDate(log.createdAt)}
-              value={formatDate(log.createdAt, true)}
-            />
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+          <section className="rounded-[0.875rem] border border-border bg-surface-muted/35 px-4 py-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <AuditEventFact
+                label="Actor"
+                meta={humanizeCode(log.actor.actorType)}
+                value={actorLabel}
+              />
+              <AuditEventFact
+                label="Entity"
+                meta={log.entityId ?? 'No entity id'}
+                value={humanizeCode(log.entityType)}
+              />
+              <AuditEventFact
+                label="Changed fields"
+                meta="Top-level diff"
+                value={changedKeys.length}
+              />
+              <AuditEventFact
+                label="Created"
+                meta={relativeDate(log.createdAt)}
+                value={formatDate(log.createdAt, true)}
+              />
+            </div>
           </section>
 
           <section className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.55fr)]">
@@ -951,7 +987,6 @@ function AuditDetailModal({
                     ) : null}
                   </div>
                 }
-                description="Actor identity returned with the audit row."
                 title="Actor"
               >
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -990,7 +1025,6 @@ function AuditDetailModal({
                     ) : null}
                   </div>
                 }
-                description="Entity context from the audit row. Some child entities do not have standalone admin detail routes."
                 title="Entity"
               >
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1013,7 +1047,6 @@ function AuditDetailModal({
 
             <div className="space-y-3">
               <AuditDetailSection
-                description="Fast paths from this immutable event to its related records and history."
                 title="Related records"
               >
                 <div className="divide-y divide-border">
@@ -1102,7 +1135,6 @@ function AuditDetailModal({
                     Filter action
                   </Button>
                 }
-                description="Module/action pair and request correlation."
                 title="Request"
               >
                 <div className="grid gap-3">
@@ -1123,7 +1155,6 @@ function AuditDetailModal({
               </AuditDetailSection>
 
               <AuditDetailSection
-                description="Top-level fields changed between old and new snapshots."
                 title="Change signals"
               >
                 <div className="flex flex-wrap gap-2">
@@ -1156,20 +1187,24 @@ function AuditDetailModal({
 }
 
 function AuditRow({
-  isExpanded,
+  actorAdminLink,
   isSelected,
   log,
   onInspect,
+  onOpenActorAdmin,
+  onOpenRelated,
   onSelect,
-  onToggle,
+  relatedEntityLink,
   visibleColumns,
 }: {
-  isExpanded: boolean
+  actorAdminLink: RelatedEntityLink | null
   isSelected: boolean
   log: AuditLog
   onInspect: () => void
+  onOpenActorAdmin: () => void
+  onOpenRelated: () => void
   onSelect: (log: AuditLog, selected: boolean) => void
-  onToggle: () => void
+  relatedEntityLink: RelatedEntityLink | null
   visibleColumns: AuditColumnId[]
 }) {
   const visibleColumnDefinitions = auditColumns.filter((column) =>
@@ -1183,23 +1218,22 @@ function AuditRow({
 
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      onToggle()
+      onInspect()
     }
   }
 
   return (
     <div className="border-b border-border last:border-b-0">
       <div
-        aria-label={`Toggle audit log ${log.auditLogId}`}
+        aria-label={`Inspect audit log ${log.auditLogId}`}
         aria-selected={isSelected}
         className={cn(
-          'grid w-full min-w-0 cursor-pointer gap-3 bg-surface px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--audit-grid-template)] xl:items-center',
+          'grid w-full min-w-0 cursor-pointer gap-3 bg-surface px-3 py-2.5 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--audit-grid-template)] xl:items-center',
           isSelected && 'bg-primary/5 hover:bg-primary/10',
-          isExpanded && 'bg-surface-muted/45',
         )}
         role="button"
         tabIndex={0}
-        onClick={onToggle}
+        onClick={onInspect}
         onKeyDown={handleKeyDown}
       >
         <div className="flex min-w-0 items-start xl:items-center">
@@ -1217,65 +1251,48 @@ function AuditRow({
             {column.render(log)}
           </div>
         ))}
-      </div>
-      {isExpanded ? (
-        <div className="bg-surface-muted/35 px-3 pb-3">
-          <div className="flex justify-end pb-2">
-            <Button size="sm" type="button" variant="secondary" onClick={onInspect}>
-              <Eye className="mr-2 size-4" />
-              Inspect
-            </Button>
-          </div>
-          <div className="grid gap-3 rounded-[0.875rem] border border-border bg-surface p-3 xl:grid-cols-2">
-            <div className="space-y-2 text-sm">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-                  Audit identity
-                </p>
-                <p className="mt-1 break-all font-medium text-foreground">
-                  {log.auditLogId}
-                </p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-                    Actor admin ID
-                  </p>
-                  <p className="mt-1 break-all text-foreground">
-                    {log.actor.actorAdminId ?? 'Not available'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-                    Actor user ID
-                  </p>
-                  <p className="mt-1 break-all text-foreground">
-                    {log.actor.actorUserId ?? 'Not available'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-                    Entity ID
-                  </p>
-                  <p className="mt-1 break-all text-foreground">
-                    {log.entityId ?? 'Not available'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-                    Request
-                  </p>
-                  <p className="mt-1 break-all text-foreground">{log.requestId}</p>
-                </div>
-              </div>
-            </div>
-            <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-1">
-              <JsonBlock title="Old value" value={log.oldValue} />
-              <JsonBlock title="New value" value={log.newValue} />
-            </div>
-          </div>
+        <div
+          className="flex min-w-0 flex-nowrap items-center gap-1.5 xl:justify-end"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Button size="sm" type="button" variant="secondary" onClick={onInspect}>
+            <Eye className="mr-2 size-4" />
+            Inspect
+          </Button>
+          {relatedEntityLink ? (
+            <button
+              aria-label={`Open ${relatedEntityLink.label}`}
+              className="btn-icon shrink-0"
+              disabled={!relatedEntityLink.canOpen}
+              title={
+                relatedEntityLink.canOpen
+                  ? `Open ${relatedEntityLink.label}`
+                  : `${relatedEntityLink.label} permission required`
+              }
+              type="button"
+              onClick={onOpenRelated}
+            >
+              <ArrowUpRight className="size-4" />
+            </button>
+          ) : null}
+          {actorAdminLink ? (
+            <button
+              aria-label="Open actor admin"
+              className="btn-icon shrink-0"
+              disabled={!actorAdminLink.canOpen}
+              title={
+                actorAdminLink.canOpen
+                  ? 'Open actor admin'
+                  : 'Admin user permission required'
+              }
+              type="button"
+              onClick={onOpenActorAdmin}
+            >
+              <UserRound className="size-4" />
+            </button>
+          ) : null}
         </div>
-      ) : null}
+      </div>
     </div>
   )
 }
@@ -1318,8 +1335,7 @@ export function AuditLogsPage() {
   const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') ?? '')
   const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
   const [columnsOpen, setColumnsOpen] = useState(false)
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
-  const [expandedLogId, setExpandedLogId] = useState<string | null>(null)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null)
   const [visibleColumns, setVisibleColumns] =
     useState<AuditColumnId[]>(defaultAuditColumns)
@@ -1381,7 +1397,6 @@ export function AuditLogsPage() {
 
   const resetToFirstPage = () => {
     setPage(1)
-    setExpandedLogId(null)
     setSelectedLog(null)
   }
 
@@ -1436,11 +1451,10 @@ export function AuditLogsPage() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6)
   }, [logs])
-  const latestLog = logs.at(0)
   const isInitialLoading = auditQuery.isLoading && logs.length === 0
   const isRefreshing = auditQuery.isFetching && !isInitialLoading
   const refreshStatusLabel = isRefreshing
-    ? 'Refreshing...'
+    ? 'Refreshing'
     : formatRefreshTime(auditQuery.dataUpdatedAt)
   const auditGridStyle = useMemo<AuditGridStyle>(
     () => ({
@@ -1587,7 +1601,6 @@ export function AuditLogsPage() {
     setDateTo(values.dateTo ?? '')
     setSearch(values.search ?? '')
     setPage(1)
-    setExpandedLogId(null)
     setSelectedLog(null)
     setSearchParams(buildAuditSearchParams(values), { replace: true })
   }
@@ -1619,7 +1632,6 @@ export function AuditLogsPage() {
 
   const applyRequestSearch = (log: AuditLog) => {
     setSearch(log.requestId)
-    setExpandedLogId(null)
     setSelectedLog(null)
     setSearchParams(
       buildAuditSearchParams({
@@ -1649,518 +1661,605 @@ export function AuditLogsPage() {
     navigate(selectedActorAdminLink.path)
   }
 
+  const openRelatedEntityForLog = (log: AuditLog) => {
+    const relatedLink = getRelatedEntityLink(log, entityAccess)
+
+    if (!relatedLink?.canOpen) return
+
+    navigate(relatedLink.path)
+  }
+
+  const openActorAdminForLog = (log: AuditLog) => {
+    const actorLink = getActorAdminLink(log, canReadAdminUsers)
+
+    if (!actorLink?.canOpen) return
+
+    navigate(actorLink.path)
+  }
+
+  const setTodayFilter = () => {
+    const today = new Date().toISOString().slice(0, 10)
+
+    clearSeededAuditParams()
+    setDateFrom(today)
+    setDateTo(today)
+    resetToFirstPage()
+  }
+
+  const activeFilterChips = [
+    moduleCode
+      ? {
+          key: 'module',
+          label: `Module: ${humanizeCode(moduleCode)}`,
+          onClear: () => {
+            clearSeededAuditParams()
+            setModuleCode('')
+            resetToFirstPage()
+          },
+        }
+      : null,
+    actionCode
+      ? {
+          key: 'action',
+          label: `Action: ${humanizeCode(actionCode)}`,
+          onClear: () => {
+            clearSeededAuditParams()
+            setActionCode('')
+            resetToFirstPage()
+          },
+        }
+      : null,
+    entityType
+      ? {
+          key: 'entity-type',
+          label: `Entity: ${humanizeCode(entityType)}`,
+          onClear: () => {
+            clearSeededAuditParams()
+            setEntityType('')
+            resetToFirstPage()
+          },
+        }
+      : null,
+    entityId
+      ? {
+          key: 'entity-id',
+          label: `Entity ID: ${entityId}`,
+          onClear: () => {
+            clearSeededAuditParams()
+            setEntityId('')
+            resetToFirstPage()
+          },
+        }
+      : null,
+    actorAdminId
+      ? {
+          key: 'actor-admin',
+          label: `Actor admin: ${actorAdminId}`,
+          onClear: () => {
+            clearSeededAuditParams()
+            setActorAdminId('')
+            resetToFirstPage()
+          },
+        }
+      : null,
+    actorUserId
+      ? {
+          key: 'actor-user',
+          label: `Actor user: ${actorUserId}`,
+          onClear: () => {
+            clearSeededAuditParams()
+            setActorUserId('')
+            resetToFirstPage()
+          },
+        }
+      : null,
+    dateFrom
+      ? {
+          key: 'date-from',
+          label: `From: ${dateFrom}`,
+          onClear: () => {
+            clearSeededAuditParams()
+            setDateFrom('')
+            resetToFirstPage()
+          },
+        }
+      : null,
+    dateTo
+      ? {
+          key: 'date-to',
+          label: `To: ${dateTo}`,
+          onClear: () => {
+            clearSeededAuditParams()
+            setDateTo('')
+            resetToFirstPage()
+          },
+        }
+      : null,
+    search
+      ? {
+          key: 'search',
+          label: `Search: ${search}`,
+          onClear: () => {
+            clearSeededAuditParams()
+            setSearch('')
+            setSelectedLog(null)
+          },
+        }
+      : null,
+  ].filter(Boolean) as { key: string; label: string; onClear: () => void }[]
+
+  const activeContextLabel = [
+    moduleCode ? `Module: ${humanizeCode(moduleCode)}` : null,
+    entityType ? `Entity: ${humanizeCode(entityType)}` : null,
+    actorAdminId || actorUserId ? 'Actor filtered' : null,
+    dateFrom || dateTo ? 'Date filtered' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  const resultSummary = pagination
+    ? `${visibleLogs.length} visible · ${pagination.totalItems} backend matches`
+    : 'Backend audit trail'
+
   return (
-    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
-      <PageContextHeader
-        description="Review administrative actions and entity-level audit history."
-        layout="workspace"
-        placement="topbar"
-        title="Audit Logs"
-      />
+    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
+      <PageContextHeader layout="workspace" placement="topbar" title="Audit Logs" />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            icon={<ShieldCheck className="size-4 text-primary" />}
-            label="Total matches"
-            meta="Backend filtered"
-            value={pagination?.totalItems ?? 0}
-          />
-          <MetricCard
-            icon={<FileJson className="size-4 text-info" />}
-            label="Visible logs"
-            meta={search ? 'Current page search' : 'Current page'}
-            value={visibleLogs.length}
-          />
-          <MetricCard
-            icon={<UserRound className="size-4 text-success" />}
-            label="Modules visible"
-            meta="From loaded rows"
-            value={visibleModules.length}
-          />
-          <MetricCard
-            icon={<Clock3 className="size-4 text-warning" />}
-            label="Latest log"
-            meta={latestLog ? humanizeCode(latestLog.moduleCode) : 'No rows loaded'}
-            value={latestLog ? relativeDate(latestLog.createdAt) : 'None'}
-          />
-        </section>
-
-        <section
-          className={cn(
-            'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
-            filtersCollapsed
-              ? 'xl:grid-cols-[3rem_minmax(0,1fr)]'
-              : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
-          )}
-        >
-          <aside
-            className={cn(
-              'flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface',
-              filtersCollapsed && 'items-center',
-            )}
-          >
-            {filtersCollapsed ? (
-              <button
-                aria-label="Expand audit filters"
-                className="mt-3 inline-flex size-9 items-center justify-center rounded-[0.65rem] text-muted transition hover:bg-surface-muted hover:text-foreground"
-                title="Expand filters"
-                type="button"
-                onClick={() => setFiltersCollapsed(false)}
+      <main
+        className="flex min-w-0 flex-col overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface xl:min-h-0 xl:flex-1"
+        id="audit-records"
+      >
+        <div className="shrink-0 border-b border-border bg-surface px-3 py-3 sm:px-4">
+          <div className="grid gap-3 xl:grid-cols-[minmax(9rem,auto)_minmax(22rem,1fr)_auto] xl:items-center">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-foreground">Audit Logs</h2>
+              <span
+                className={cn(
+                  'rounded-full border border-border bg-surface-muted/65 px-2 py-0.5 text-xs font-medium',
+                  isRefreshing ? 'text-primary' : 'text-muted',
+                )}
               >
-                <ChevronRight className="size-4" />
-              </button>
-            ) : (
-              <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-sm font-semibold text-foreground">
-                      Audit filters
-                    </h2>
-                    <p className="mt-1 text-xs text-muted">
-                      Exact fields for backend filtering.
-                    </p>
-                  </div>
-                  <button
-                    aria-label="Collapse audit filters"
-                    className="btn-icon"
-                    title="Collapse filters"
-                    type="button"
-                    onClick={() => setFiltersCollapsed(true)}
-                  >
-                    <ChevronLeft className="size-4" />
-                  </button>
-                </div>
+                {refreshStatusLabel}
+              </span>
+            </div>
 
-                {visibleModules.length ? (
-                  <div className="mt-4 border-t border-border pt-3">
-                    <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-                      Visible modules
-                    </p>
-                    <div className="mt-2 space-y-2">
-                      {visibleModules.map(([module, count]) => (
-                        <button
-                          className={cn(
-                            'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border px-3 text-left text-sm transition',
-                            moduleCode === module
-                              ? 'border-primary bg-primary/10 text-primary'
-                              : 'border-border bg-surface-muted/50 text-foreground hover:border-primary/35',
-                          )}
-                          key={module}
-                          type="button"
-                          onClick={() => {
-                            clearSeededAuditParams()
-                            setModuleCode(moduleCode === module ? '' : module)
-                            resetToFirstPage()
-                          }}
-                        >
-                          <span className="font-medium">{humanizeCode(module)}</span>
-                          <span className="text-xs font-semibold">{count}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+            <ListHeaderSearch
+              className="w-full min-w-0"
+              placeholder="Search loaded audit logs..."
+              value={search}
+              onChange={(nextSearch) => {
+                clearSeededAuditParams()
+                setSearch(nextSearch)
+                setSelectedLog(null)
+              }}
+            />
+
+            <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+              <Button
+                aria-expanded={filtersOpen}
+                className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => setFiltersOpen((current) => !current)}
+              >
+                <Filter className="mr-2 size-4" />
+                Filters
+                {hasActiveFilters ? (
+                  <span className="ml-1 size-2 rounded-full bg-primary" />
                 ) : null}
+              </Button>
 
-                <div className="mt-4 border-t border-border pt-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Filter stack
-                    </h3>
-                    {hasActiveFilters ? (
-                      <button
-                        className="text-xs font-semibold text-primary"
-                        type="button"
-                        onClick={clearFilters}
-                      >
-                        Reset
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 space-y-3">
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Module
-                      </span>
-                      <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-                        <Input
-                          className="min-h-10 pl-9"
-                          placeholder="vendors, payments"
-                          value={moduleCode}
-                          onChange={(event) => {
-                            clearSeededAuditParams()
-                            setModuleCode(event.target.value)
-                            resetToFirstPage()
-                          }}
-                        />
-                      </div>
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Action
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        placeholder="update, approve"
-                        value={actionCode}
-                        onChange={(event) => {
-                          clearSeededAuditParams()
-                          setActionCode(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Entity type
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        placeholder="vendor, order"
-                        value={entityType}
-                        onChange={(event) => {
-                          clearSeededAuditParams()
-                          setEntityType(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Entity ID
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        placeholder="UUID"
-                        value={entityId}
-                        onChange={(event) => {
-                          clearSeededAuditParams()
-                          setEntityId(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Actor admin ID
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        placeholder="UUID"
-                        value={actorAdminId}
-                        onChange={(event) => {
-                          clearSeededAuditParams()
-                          setActorAdminId(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Actor user ID
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        placeholder="UUID"
-                        value={actorUserId}
-                        onChange={(event) => {
-                          clearSeededAuditParams()
-                          setActorUserId(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                      <label className="space-y-1">
-                        <span className="text-xs font-semibold text-muted">
-                          From
-                        </span>
-                        <Input
-                          className="min-h-10"
-                          type="date"
-                          value={dateFrom}
-                          onChange={(event) => {
-                            clearSeededAuditParams()
-                            setDateFrom(event.target.value)
-                            resetToFirstPage()
-                          }}
-                        />
-                      </label>
-                      <label className="space-y-1">
-                        <span className="text-xs font-semibold text-muted">
-                          To
-                        </span>
-                        <Input
-                          className="min-h-10"
-                          type="date"
-                          value={dateTo}
-                          onChange={(event) => {
-                            clearSeededAuditParams()
-                            setDateTo(event.target.value)
-                            resetToFirstPage()
-                          }}
-                        />
-                      </label>
-                    </div>
-                    {dateRangeError ? (
-                      <p className="rounded-[0.75rem] border border-danger/20 bg-danger/10 px-3 py-2 text-xs font-medium text-danger">
-                        {dateRangeError}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            )}
-          </aside>
-
-          <main
-            className="flex min-w-0 scroll-mt-4 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0"
-            id="audit-records"
-          >
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  Audit trail
-                </h2>
-                <p className="text-sm text-muted">
-                  {pagination
-                    ? `${visibleLogs.length} visible on this page · ${pagination.totalItems} backend matches`
-                    : 'Search and inspect admin activity from backend audit data.'}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <ListHeaderSearch
-                  className="w-full sm:w-72 lg:w-80"
-                  placeholder="Search loaded audit logs"
-                  value={search}
-                  onChange={(nextSearch) => {
-                    clearSeededAuditParams()
-                    setSearch(nextSearch)
-                    setExpandedLogId(null)
-                    setSelectedLog(null)
-                  }}
-                />
-                <span
-                  className={cn(
-                    'text-xs font-medium',
-                    isRefreshing ? 'text-primary' : 'text-muted',
-                  )}
-                >
-                  {refreshStatusLabel}
-                </span>
-                <div className="relative" ref={columnsMenuRef}>
-                  <Button
-                    aria-expanded={columnsOpen}
-                    aria-haspopup="menu"
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setColumnsOpen((current) => !current)}
-                  >
-                    <SlidersHorizontal className="mr-2 size-4" />
-                    Columns
-                    {visibleColumns.length ? (
-                      <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
-                        {visibleColumns.length}
-                      </span>
-                    ) : null}
-                  </Button>
-
-                  {columnsOpen ? (
-                    <div
-                      className="absolute right-0 top-[calc(100%+0.5rem)] z-[60] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
-                      role="menu"
-                    >
-                      <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
-                        Visible columns
-                      </p>
-                      {auditColumns.map((column) => {
-                        const isChecked = visibleColumns.includes(column.id)
-                        const isRequiredLastColumn =
-                          isChecked && visibleColumns.length === 1
-
-                        return (
-                          <label
-                            className={cn(
-                              'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
-                              isRequiredLastColumn && 'cursor-not-allowed opacity-60',
-                            )}
-                            key={column.id}
-                          >
-                            <input
-                              checked={isChecked}
-                              className="size-4 accent-[color:var(--adaptive-primary)]"
-                              disabled={isRequiredLastColumn}
-                              type="checkbox"
-                              onChange={() => toggleColumn(column.id)}
-                            />
-                            <span>{column.label}</span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  ) : null}
-                </div>
+              <div className="relative" ref={columnsMenuRef}>
                 <Button
-                  disabled={Boolean(dateRangeError)}
+                  aria-expanded={columnsOpen}
+                  aria-haspopup="menu"
+                  className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
                   size="sm"
                   type="button"
                   variant="secondary"
-                  onClick={() => void auditQuery.refetch()}
+                  onClick={() => setColumnsOpen((current) => !current)}
                 >
-                  <RefreshCcw
-                    className={cn(
-                      'mr-2 size-4',
-                      isRefreshing && 'animate-spin motion-reduce:animate-none',
-                    )}
-                  />
-                  Refresh
+                  <SlidersHorizontal className="mr-2 size-4" />
+                  Columns
+                  {visibleColumns.length ? (
+                    <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
+                      {visibleColumns.length}
+                    </span>
+                  ) : null}
                 </Button>
+
+                {columnsOpen ? (
+                  <div
+                    className="absolute right-0 top-[calc(100%+0.5rem)] z-[80] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
+                    role="menu"
+                  >
+                    <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
+                      Visible columns
+                    </p>
+                    {auditColumns.map((column) => {
+                      const isChecked = visibleColumns.includes(column.id)
+                      const isRequiredLastColumn =
+                        isChecked && visibleColumns.length === 1
+
+                      return (
+                        <label
+                          className={cn(
+                            'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
+                            isRequiredLastColumn && 'cursor-not-allowed opacity-60',
+                          )}
+                          key={column.id}
+                        >
+                          <input
+                            checked={isChecked}
+                            className="size-4 accent-[color:var(--adaptive-primary)]"
+                            disabled={isRequiredLastColumn}
+                            type="checkbox"
+                            onChange={() => toggleColumn(column.id)}
+                          />
+                          <span>{column.label}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </div>
+
+              <Button
+                className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
+                disabled={Boolean(dateRangeError)}
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => void auditQuery.refetch()}
+              >
+                <RefreshCcw
+                  className={cn(
+                    'mr-2 size-4',
+                    isRefreshing && 'animate-spin motion-reduce:animate-none',
+                  )}
+                />
+                Refresh
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-3 flex gap-1 overflow-x-auto rounded-[0.875rem] border border-border bg-surface-muted/40 p-1">
+            <button
+              className={cn(
+                'inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[0.65rem] px-3 text-sm font-medium transition',
+                !hasActiveFilters
+                  ? 'bg-surface text-primary shadow-sm ring-1 ring-primary'
+                  : 'text-muted hover:bg-surface hover:text-foreground',
+              )}
+              type="button"
+              onClick={clearFilters}
+            >
+              All logs
+              <span className="rounded-full bg-surface-muted px-1.5 text-xs">
+                {pagination?.totalItems ?? '...'}
+              </span>
+            </button>
+            <button
+              className={cn(
+                'inline-flex h-9 shrink-0 items-center justify-center rounded-[0.65rem] px-3 text-sm font-medium transition',
+                dateFrom && dateTo && dateFrom === dateTo
+                  ? 'bg-surface text-primary shadow-sm ring-1 ring-primary'
+                  : 'text-muted hover:bg-surface hover:text-foreground',
+              )}
+              type="button"
+              onClick={setTodayFilter}
+            >
+              Today
+            </button>
+            {visibleModules.map(([module, count]) => (
+              <button
+                className={cn(
+                  'inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[0.65rem] px-3 text-sm font-medium transition',
+                  moduleCode === module
+                    ? 'bg-surface text-primary shadow-sm ring-1 ring-primary'
+                    : 'text-muted hover:bg-surface hover:text-foreground',
+                )}
+                key={module}
+                type="button"
+                onClick={() => {
+                  clearSeededAuditParams()
+                  setModuleCode(moduleCode === module ? '' : module)
+                  resetToFirstPage()
+                }}
+              >
+                {humanizeCode(module)}
+                <span className="rounded-full bg-surface-muted px-1.5 text-xs">
+                  {count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <ActiveFilterChips chips={activeFilterChips} onClearAll={clearFilters} />
+
+          {filtersOpen ? (
+            <div className="mt-2 rounded-[0.75rem] border border-border bg-surface-muted/45 p-2.5">
+              <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-[minmax(9rem,0.7fr)_minmax(9rem,0.7fr)_minmax(10rem,0.7fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_minmax(9rem,0.65fr)_minmax(9rem,0.65fr)_auto] xl:items-end">
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">Module</span>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                    <Input
+                      className="min-h-10 pl-9"
+                      placeholder="vendors"
+                      value={moduleCode}
+                      onChange={(event) => {
+                        clearSeededAuditParams()
+                        setModuleCode(event.target.value)
+                        resetToFirstPage()
+                      }}
+                    />
+                  </div>
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">Action</span>
+                  <Input
+                    className="min-h-10"
+                    placeholder="approve"
+                    value={actionCode}
+                    onChange={(event) => {
+                      clearSeededAuditParams()
+                      setActionCode(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">Entity type</span>
+                  <Input
+                    className="min-h-10"
+                    placeholder="order"
+                    value={entityType}
+                    onChange={(event) => {
+                      clearSeededAuditParams()
+                      setEntityType(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">Entity ID</span>
+                  <Input
+                    className="min-h-10"
+                    placeholder="UUID"
+                    value={entityId}
+                    onChange={(event) => {
+                      clearSeededAuditParams()
+                      setEntityId(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">Actor admin ID</span>
+                  <Input
+                    className="min-h-10"
+                    placeholder="UUID"
+                    value={actorAdminId}
+                    onChange={(event) => {
+                      clearSeededAuditParams()
+                      setActorAdminId(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">Actor user ID</span>
+                  <Input
+                    className="min-h-10"
+                    placeholder="UUID"
+                    value={actorUserId}
+                    onChange={(event) => {
+                      clearSeededAuditParams()
+                      setActorUserId(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">From</span>
+                  <Input
+                    className="min-h-10"
+                    type="date"
+                    value={dateFrom}
+                    onChange={(event) => {
+                      clearSeededAuditParams()
+                      setDateFrom(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">To</span>
+                  <Input
+                    className="min-h-10"
+                    type="date"
+                    value={dateTo}
+                    onChange={(event) => {
+                      clearSeededAuditParams()
+                      setDateTo(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </label>
+
+                <Button
+                  className="min-h-10 px-3"
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={clearFilters}
+                >
+                  Reset
+                </Button>
+              </div>
+
+              {dateRangeError ? (
+                <p className="mt-2 rounded-[0.65rem] border border-danger/20 bg-danger/10 px-3 py-2 text-xs font-medium text-danger">
+                  {dateRangeError}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+            <span>{resultSummary}</span>
+            <span>{activeContextLabel || 'Immutable admin activity'}</span>
+          </div>
+        </div>
+
+        {dateRangeError ? (
+          <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+            <ErrorState
+              description={dateRangeError}
+              title="Date range needs attention"
+            />
+          </div>
+        ) : auditQuery.isError ? (
+          <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+            <ErrorState
+              description={
+                auditQuery.error instanceof Error
+                  ? auditQuery.error.message
+                  : 'We could not load audit logs.'
+              }
+              title="Audit logs unavailable"
+              onRetry={() => void auditQuery.refetch()}
+            />
+          </div>
+        ) : isInitialLoading ? (
+          <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+            <AuditRowsSkeleton />
+          </div>
+        ) : visibleLogs.length === 0 ? (
+          <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+            <EmptyState
+              description={
+                logs.length
+                  ? 'No loaded audit logs matched the table search.'
+                  : 'No audit logs matched this filter.'
+              }
+              title="No audit logs"
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col xl:min-h-0 xl:flex-1">
+            <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
+              <div
+                className="min-w-0 xl:min-w-[var(--audit-grid-min-width)]"
+                style={auditGridStyle}
+              >
+                <div className="sticky top-0 z-30 hidden gap-3 grid-cols-[var(--audit-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                  <div className="flex min-w-0 items-center">
+                    <ListSelectionCheckbox
+                      checked={auditSelection.allVisibleSelected}
+                      indeterminate={auditSelection.someVisibleSelected}
+                      label="Select visible audit logs"
+                      onChange={auditSelection.setVisibleSelected}
+                    />
+                  </div>
+                  {auditColumns
+                    .filter((column) => visibleColumns.includes(column.id))
+                    .map((column) => (
+                      <div
+                        className="relative flex min-w-0 items-center pr-3"
+                        key={column.id}
+                      >
+                        <span className="truncate">{column.label}</span>
+                        <button
+                          aria-label={`Resize ${column.label} column`}
+                          className="group absolute inset-y-0 right-0 flex w-3 cursor-col-resize items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          title="Drag to resize"
+                          type="button"
+                          onDoubleClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            resetColumnWidth(column.id)
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'ArrowLeft') {
+                              event.preventDefault()
+                              adjustColumnWidth(column.id, -16)
+                            }
+
+                            if (event.key === 'ArrowRight') {
+                              event.preventDefault()
+                              adjustColumnWidth(column.id, 16)
+                            }
+                          }}
+                          onPointerDown={(event) => startColumnResize(column.id, event)}
+                        >
+                          <span className="h-4 w-px rounded-full bg-border transition group-hover:bg-primary group-focus-visible:bg-primary" />
+                        </button>
+                      </div>
+                    ))}
+                  <div className="min-w-0 text-right">Actions</div>
+                </div>
+
+                <ListSelectionToolbar
+                  allVisibleSelected={auditSelection.allVisibleSelected}
+                  selectedCount={auditSelection.selectedCount}
+                  visibleCount={auditSelection.visibleCount}
+                  onClear={auditSelection.clearSelection}
+                  onSelectVisible={() => auditSelection.setVisibleSelected(true)}
+                />
+
+                <div>
+                  {visibleLogs.map((log) => {
+                    const relatedEntityLink = getRelatedEntityLink(log, entityAccess)
+                    const actorAdminLink = getActorAdminLink(log, canReadAdminUsers)
+
+                    return (
+                      <AuditRow
+                        actorAdminLink={actorAdminLink}
+                        isSelected={auditSelection.isSelected(log.auditLogId)}
+                        key={log.auditLogId}
+                        log={log}
+                        relatedEntityLink={relatedEntityLink}
+                        visibleColumns={visibleColumns}
+                        onInspect={() => setSelectedLog(log)}
+                        onOpenActorAdmin={() => openActorAdminForLog(log)}
+                        onOpenRelated={() => openRelatedEntityForLog(log)}
+                        onSelect={(selectedLog, selected) =>
+                          auditSelection.setItemSelected(
+                            selectedLog.auditLogId,
+                            selected,
+                          )
+                        }
+                      />
+                    )
+                  })}
+                </div>
               </div>
             </div>
 
-            {dateRangeError ? (
-              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <ErrorState
-                  description={dateRangeError}
-                  title="Date range needs attention"
-                />
-              </div>
-            ) : auditQuery.isError ? (
-              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <ErrorState
-                  description={
-                    auditQuery.error instanceof Error
-                      ? auditQuery.error.message
-                      : 'We could not load audit logs.'
-                  }
-                  title="Audit logs unavailable"
-                  onRetry={() => void auditQuery.refetch()}
-                />
-              </div>
-            ) : isInitialLoading ? (
-              <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <AuditRowsSkeleton />
-              </div>
-            ) : visibleLogs.length === 0 ? (
-              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <EmptyState
-                  description={
-                    logs.length
-                      ? 'No loaded audit logs matched the table search.'
-                      : 'No audit logs matched this filter.'
-                  }
-                  title="No audit logs"
-                />
-              </div>
-            ) : (
-              <div className="flex flex-col xl:min-h-0 xl:flex-1">
-                <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
-                  <div
-                    className="min-w-0 xl:min-w-[var(--audit-grid-min-width)]"
-                    style={auditGridStyle}
-                  >
-                    <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--audit-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
-                      <div className="flex min-w-0 items-center">
-                        <ListSelectionCheckbox
-                          checked={auditSelection.allVisibleSelected}
-                          indeterminate={auditSelection.someVisibleSelected}
-                          label="Select visible audit logs"
-                          onChange={auditSelection.setVisibleSelected}
-                        />
-                      </div>
-                      {auditColumns
-                        .filter((column) => visibleColumns.includes(column.id))
-                        .map((column) => (
-                          <div
-                            className="relative flex min-w-0 items-center pr-3"
-                            key={column.id}
-                          >
-                            <span className="truncate">{column.label}</span>
-                            <button
-                              aria-label={`Resize ${column.label} column`}
-                              className="group absolute inset-y-0 right-0 flex w-3 cursor-col-resize items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                              title="Drag to resize"
-                              type="button"
-                              onDoubleClick={(event) => {
-                                event.preventDefault()
-                                event.stopPropagation()
-                                resetColumnWidth(column.id)
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === 'ArrowLeft') {
-                                  event.preventDefault()
-                                  adjustColumnWidth(column.id, -16)
-                                }
-
-                                if (event.key === 'ArrowRight') {
-                                  event.preventDefault()
-                                  adjustColumnWidth(column.id, 16)
-                                }
-                              }}
-                              onPointerDown={(event) =>
-                                startColumnResize(column.id, event)
-                              }
-                            >
-                              <span className="h-4 w-px rounded-full bg-border transition group-hover:bg-primary group-focus-visible:bg-primary" />
-                            </button>
-                          </div>
-                        ))}
-                    </div>
-                    <ListSelectionToolbar
-                      allVisibleSelected={auditSelection.allVisibleSelected}
-                      selectedCount={auditSelection.selectedCount}
-                      visibleCount={auditSelection.visibleCount}
-                      onClear={auditSelection.clearSelection}
-                      onSelectVisible={() => auditSelection.setVisibleSelected(true)}
-                    />
-
-                    <div>
-                      {visibleLogs.map((log) => (
-                        <AuditRow
-                          isExpanded={expandedLogId === log.auditLogId}
-                          isSelected={auditSelection.isSelected(log.auditLogId)}
-                          key={log.auditLogId}
-                          log={log}
-                          visibleColumns={visibleColumns}
-                          onInspect={() => setSelectedLog(log)}
-                          onSelect={(selectedLog, selected) =>
-                            auditSelection.setItemSelected(
-                              selectedLog.auditLogId,
-                              selected,
-                            )
-                          }
-                          onToggle={() =>
-                            setExpandedLogId((current) =>
-                              current === log.auditLogId ? null : log.auditLogId,
-                            )
-                          }
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <AuditPaginationControls
-                  pagination={pagination}
-                  onPageChange={(nextPage) => {
-                    setPage(nextPage)
-                    setExpandedLogId(null)
-                    setSelectedLog(null)
-                  }}
-                  onPageSizeChange={(nextLimit) => {
-                    setLimit(nextLimit)
-                    setPage(1)
-                    setExpandedLogId(null)
-                    setSelectedLog(null)
-                  }}
-                />
-              </div>
-            )}
-          </main>
-        </section>
-      </div>
+            <AuditPaginationControls
+              pagination={pagination}
+              onPageChange={(nextPage) => {
+                setPage(nextPage)
+                setSelectedLog(null)
+              }}
+              onPageSizeChange={(nextLimit) => {
+                setLimit(nextLimit)
+                setPage(1)
+                setSelectedLog(null)
+              }}
+            />
+          </div>
+        )}
+      </main>
 
       {selectedLog ? (
         <AuditDetailModal

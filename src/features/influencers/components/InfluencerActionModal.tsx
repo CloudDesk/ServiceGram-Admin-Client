@@ -50,6 +50,15 @@ function actionDescription(action: InfluencerActionSelection) {
   return `${name}'s application will move to rejected with the reason visible for operations history.`
 }
 
+function submitLabel(kind: InfluencerActionKind) {
+  return {
+    APPROVE: 'Approve',
+    REJECT: 'Reject',
+    SUSPEND: 'Suspend',
+    REACTIVATE: 'Reactivate',
+  }[kind]
+}
+
 export function InfluencerActionModal({
   action,
   error,
@@ -82,7 +91,7 @@ export function InfluencerActionModal({
       <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-overlay)]">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold tracking-[-0.03em] text-foreground">
+            <h2 className="text-lg font-semibold tracking-normal text-foreground">
               {actionTitle(action.kind)}
             </h2>
             <p className="mt-1 text-sm leading-6 text-muted">
@@ -143,7 +152,7 @@ export function InfluencerActionModal({
                   : 'primary'
               }
             >
-              Submit
+              {submitLabel(action.kind)}
             </Button>
           </div>
         </form>

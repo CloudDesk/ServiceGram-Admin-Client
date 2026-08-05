@@ -8,14 +8,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  ChevronLeft,
-  ChevronRight,
-  KeyRound,
+  ArrowUpRight,
+  Filter,
+  Lock,
   Plus,
   RefreshCcw,
   ShieldCheck,
   SlidersHorizontal,
-  ToggleLeft,
+  X,
 } from 'lucide-react'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Badge } from '../../../components/ui/Badge'
@@ -42,6 +42,7 @@ const ROLE_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.roles.columnWidths.v1'
 const ROLE_DEFAULT_COLUMN_WIDTH = 220
 const ROLE_GRID_COLUMN_GAP = 12
 const ROLE_GRID_INLINE_PADDING = 24
+const ROLE_ACTION_COLUMN_WIDTH = 228
 const emptyRoles: RoleSummary[] = []
 
 type RoleColumnId =
@@ -54,6 +55,7 @@ type RoleColumnId =
 type RoleColumnWidths = Record<RoleColumnId, number>
 type RoleTypeFilter = 'all' | 'system' | 'custom'
 type RoleStatusFilter = 'all' | 'active' | 'inactive'
+type RoleQueueKey = 'all' | 'active' | 'inactive' | 'system' | 'custom'
 
 interface RoleGridStyle extends CSSProperties {
   '--role-grid-template': string
@@ -76,7 +78,6 @@ const roleColumns: RoleColumn[] = [
       <div className="min-w-0">
         <p className="truncate font-semibold text-foreground">{role.roleName}</p>
         <p className="break-words text-xs text-muted">{role.roleCode}</p>
-        <p className="mt-1 truncate text-xs text-muted">{role.roleId}</p>
       </div>
     ),
   },
@@ -114,9 +115,9 @@ const roleColumns: RoleColumn[] = [
   {
     id: 'description',
     label: 'Description',
-    minWidth: 300,
+    minWidth: 260,
     render: (role) => (
-      <p className="line-clamp-2 text-sm text-foreground">
+      <p className="line-clamp-1 text-sm text-foreground">
         {role.description || <span className="text-muted">Not available</span>}
       </p>
     ),
@@ -237,14 +238,18 @@ function getRoleGridTemplate(
     .filter((column) => visibleColumns.includes(column.id))
     .map((column) => `${getRoleColumnWidth(columnWidths, column.id)}px`)
 
-  return [`${LIST_SELECTION_COLUMN_WIDTH}px`, ...selectedWidths].join(' ')
+  return [
+    `${LIST_SELECTION_COLUMN_WIDTH}px`,
+    ...selectedWidths,
+    `${ROLE_ACTION_COLUMN_WIDTH}px`,
+  ].join(' ')
 }
 
 function getRoleGridMinWidth(
   visibleColumns: RoleColumnId[],
   columnWidths: RoleColumnWidths,
 ) {
-  const gridColumnCount = visibleColumns.length + 1
+  const gridColumnCount = visibleColumns.length + 2
   const gridGapWidth = Math.max(gridColumnCount - 1, 0) * ROLE_GRID_COLUMN_GAP
   const visibleWidth = roleColumns
     .filter((column) => visibleColumns.includes(column.id))
@@ -253,32 +258,41 @@ function getRoleGridMinWidth(
   return `${
     visibleWidth +
     LIST_SELECTION_COLUMN_WIDTH +
+    ROLE_ACTION_COLUMN_WIDTH +
     gridGapWidth +
     ROLE_GRID_INLINE_PADDING
   }px`
 }
 
-function MetricCard({
-  icon,
-  label,
-  meta,
-  value,
+function ActiveFilterChips({
+  chips,
+  onClearAll,
 }: {
-  icon: ReactNode
-  label: string
-  meta: string
-  value: ReactNode
+  chips: { key: string; label: string; onClear: () => void }[]
+  onClearAll: () => void
 }) {
+  if (chips.length === 0) return null
+
   return (
-    <div className="min-h-[4.35rem] rounded-[0.75rem] border border-border bg-surface p-2.5">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-normal text-muted">
-        {icon}
-        {label}
-      </div>
-      <div className="mt-1 text-lg font-semibold tracking-normal text-foreground">
-        {value}
-      </div>
-      <p className="mt-0.5 text-xs leading-4 text-muted">{meta}</p>
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {chips.map((chip) => (
+        <button
+          className="inline-flex h-8 items-center gap-2 rounded-full border border-border bg-surface px-3 text-xs font-medium text-foreground transition hover:bg-surface-muted"
+          key={chip.key}
+          type="button"
+          onClick={chip.onClear}
+        >
+          <span>{chip.label}</span>
+          <X className="size-3.5 text-muted" />
+        </button>
+      ))}
+      <button
+        className="h-8 px-2 text-xs font-semibold text-primary"
+        type="button"
+        onClick={onClearAll}
+      >
+        Clear all
+      </button>
     </div>
   )
 }
@@ -295,13 +309,17 @@ function RoleRowsSkeleton() {
 
 function RoleRow({
   isSelected,
+  canManagePermissions,
   onOpenDetail,
+  onOpenPermissions,
   onSelect,
   role,
   visibleColumns,
 }: {
   isSelected: boolean
+  canManagePermissions: boolean
   onOpenDetail: (role: RoleSummary) => void
+  onOpenPermissions: (role: RoleSummary) => void
   onSelect: (role: RoleSummary, selected: boolean) => void
   role: RoleSummary
   visibleColumns: RoleColumnId[]
@@ -325,7 +343,7 @@ function RoleRow({
     <div
       aria-selected={isSelected}
       className={cn(
-        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-3 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--role-grid-template)] xl:items-center',
+        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--role-grid-template)] xl:items-center',
         isSelected && 'bg-primary/5 hover:bg-primary/10',
       )}
       role="button"
@@ -348,6 +366,35 @@ function RoleRow({
           {column.render(role)}
         </div>
       ))}
+      <div
+        className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <Button
+          size="sm"
+          type="button"
+          variant="secondary"
+          onClick={() => onOpenDetail(role)}
+        >
+          <ArrowUpRight className="mr-2 size-4" />
+          Open
+        </Button>
+        {canManagePermissions && !role.isSystem ? (
+          <Button
+            size="sm"
+            type="button"
+            onClick={() => onOpenPermissions(role)}
+          >
+            <ShieldCheck className="mr-2 size-4" />
+            Permissions
+          </Button>
+        ) : role.isSystem ? (
+          <Badge tone="info">
+            <Lock className="mr-1.5 size-3.5" />
+            Locked
+          </Badge>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -364,7 +411,7 @@ export function RolesPage() {
     readRoleStatusFilter(searchParams),
   )
   const [columnsOpen, setColumnsOpen] = useState(false)
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [visibleColumns, setVisibleColumns] =
     useState<RoleColumnId[]>(defaultVisibleColumns)
   const [columnWidths, setColumnWidths] =
@@ -416,31 +463,107 @@ export function RolesPage() {
   })
 
   const roles = rolesQuery.data?.data ?? emptyRoles
+  const baseRoles = useMemo(
+    () => roles.filter((role) => roleMatchesSearch(role, search)),
+    [roles, search],
+  )
   const filteredRoles = useMemo(
     () =>
-      roles.filter(
+      baseRoles.filter(
         (role) =>
-          roleMatchesSearch(role, search) &&
           roleMatchesType(role, typeFilter) &&
           roleMatchesStatus(role, statusFilter),
       ),
-    [roles, search, statusFilter, typeFilter],
+    [baseRoles, statusFilter, typeFilter],
   )
   const roleSelection = useListSelection(filteredRoles, (role) => role.roleId)
   const canCreateRoles = can('roles:create')
+  const canManagePermissions =
+    can('roles:manage_permissions') && can('permissions:read')
   const isInitialLoading = rolesQuery.isLoading && roles.length === 0
   const isRefreshing = rolesQuery.isFetching && !isInitialLoading
   const refreshStatusLabel = isRefreshing
-    ? 'Refreshing...'
+    ? 'Refreshing'
     : formatRefreshTime(rolesQuery.dataUpdatedAt)
   const hasActiveFilters =
     Boolean(search) || typeFilter !== 'all' || statusFilter !== 'all'
-  const activeRoles = roles.filter((role) => role.isActive).length
-  const customRoles = roles.filter((role) => !role.isSystem).length
-  const permissionTotal = roles.reduce(
-    (total, role) => total + role.permissionCount,
-    0,
+  const activeQueueKey: RoleQueueKey | null =
+    statusFilter === 'active' && typeFilter === 'all'
+      ? 'active'
+      : statusFilter === 'inactive' && typeFilter === 'all'
+        ? 'inactive'
+        : typeFilter === 'system' && statusFilter === 'all'
+          ? 'system'
+          : typeFilter === 'custom' && statusFilter === 'all'
+            ? 'custom'
+            : typeFilter === 'all' && statusFilter === 'all'
+              ? 'all'
+              : null
+  const queueItems = useMemo(
+    () => [
+      { count: baseRoles.length, key: 'all' as const, label: 'All roles' },
+      {
+        count: baseRoles.filter((role) => role.isActive).length,
+        key: 'active' as const,
+        label: 'Active',
+      },
+      {
+        count: baseRoles.filter((role) => !role.isActive).length,
+        key: 'inactive' as const,
+        label: 'Inactive',
+      },
+      {
+        count: baseRoles.filter((role) => role.isSystem).length,
+        key: 'system' as const,
+        label: 'System',
+      },
+      {
+        count: baseRoles.filter((role) => !role.isSystem).length,
+        key: 'custom' as const,
+        label: 'Custom',
+      },
+    ],
+    [baseRoles],
   )
+  const activeFilterChips = [
+    typeFilter !== 'all'
+      ? {
+          key: 'type',
+          label: `Type: ${typeFilter === 'system' ? 'System' : 'Custom'}`,
+          onClear: () => setTypeFilter('all'),
+        }
+      : null,
+    statusFilter !== 'all'
+      ? {
+          key: 'status',
+          label: `Status: ${statusFilter === 'active' ? 'Active' : 'Inactive'}`,
+          onClear: () => setStatusFilter('all'),
+        }
+      : null,
+  ].filter(Boolean) as { key: string; label: string; onClear: () => void }[]
+  const visibleSummary = `${filteredRoles.length} visible · ${roles.length} loaded`
+  const roleCountLabel =
+    rolesQuery.isLoading && roles.length === 0 ? '...' : String(roles.length)
+  const selectedQueueLabel =
+    activeQueueKey && activeQueueKey !== 'all'
+      ? queueItems.find((queue) => queue.key === activeQueueKey)?.label
+      : null
+  const appliedContextLabel = [
+    selectedQueueLabel ? `Queue: ${selectedQueueLabel}` : null,
+    search.trim() ? `Search: ${search.trim()}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  const clearableFilterChips = [
+    ...activeFilterChips,
+    search.trim()
+      ? {
+          key: 'search',
+          label: `Search: ${search.trim()}`,
+          onClear: () => setSearch(''),
+        }
+      : null,
+  ].filter(Boolean) as { key: string; label: string; onClear: () => void }[]
   const roleGridStyle = useMemo<RoleGridStyle>(
     () => ({
       '--role-grid-template': getRoleGridTemplate(visibleColumns, columnWidths),
@@ -534,257 +657,261 @@ export function RolesPage() {
     setStatusFilter('all')
   }
 
+  const applyQueue = (queueKey: RoleQueueKey) => {
+    clearSeededListParams()
+
+    if (queueKey === 'active') {
+      setTypeFilter('all')
+      setStatusFilter('active')
+      return
+    }
+
+    if (queueKey === 'inactive') {
+      setTypeFilter('all')
+      setStatusFilter('inactive')
+      return
+    }
+
+    if (queueKey === 'system') {
+      setTypeFilter('system')
+      setStatusFilter('all')
+      return
+    }
+
+    if (queueKey === 'custom') {
+      setTypeFilter('custom')
+      setStatusFilter('all')
+      return
+    }
+
+    setTypeFilter('all')
+    setStatusFilter('all')
+  }
+
   const openDetail = (role: RoleSummary) => {
     navigate(`${routePaths.roles}/${role.roleId}`)
   }
 
+  const openPermissions = (role: RoleSummary) => {
+    navigate(`${routePaths.roles}/${role.roleId}#role-permissions`)
+  }
+
   return (
-    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
+    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
-        description="Manage admin role access across platform modules."
         layout="workspace"
         placement="topbar"
         title="Roles"
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            icon={<KeyRound className="size-4 text-primary" />}
-            label="Total roles"
-            meta="Loaded catalogue"
-            value={roles.length}
-          />
-          <MetricCard
-            icon={<ToggleLeft className="size-4 text-success" />}
-            label="Active roles"
-            meta="Loaded catalogue"
-            value={activeRoles}
-          />
-          <MetricCard
-            icon={<ShieldCheck className="size-4 text-info" />}
-            label="Custom roles"
-            meta="Editable role family"
-            value={customRoles}
-          />
-          <MetricCard
-            icon={<ShieldCheck className="size-4 text-warning" />}
-            label="Permissions"
-            meta="Assigned across roles"
-            value={permissionTotal}
-          />
-        </section>
-
-        <section
-          className={cn(
-            'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
-            filtersCollapsed
-              ? 'xl:grid-cols-[3rem_minmax(0,1fr)]'
-              : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
-          )}
-        >
-          <aside
-            className={cn(
-              'flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface',
-              filtersCollapsed && 'items-center',
-            )}
-          >
-            {filtersCollapsed ? (
-              <button
-                aria-label="Expand role filters"
-                className="mt-3 inline-flex size-9 items-center justify-center rounded-[0.65rem] text-muted transition hover:bg-surface-muted hover:text-foreground"
-                title="Expand filters"
-                type="button"
-                onClick={() => setFiltersCollapsed(false)}
+      <main
+        className="flex min-w-0 flex-col overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface xl:min-h-0 xl:flex-1"
+        id="roles-records"
+      >
+        <div className="shrink-0 border-b border-border bg-surface px-3 py-3 sm:px-4">
+          <div className="grid gap-3 xl:grid-cols-[minmax(9rem,auto)_minmax(22rem,1fr)_auto] xl:items-center">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-foreground">Roles</h2>
+              <span
+                className={cn(
+                  'rounded-full border border-border bg-surface-muted/65 px-2 py-0.5 text-xs font-medium',
+                  isRefreshing ? 'text-primary' : 'text-muted',
+                )}
               >
-                <ChevronRight className="size-4" />
-              </button>
-            ) : (
-              <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-sm font-semibold text-foreground">
-                      Role filters
-                    </h2>
-                    <p className="mt-1 text-xs text-muted">
-                      Filters apply to the loaded role catalogue.
-                    </p>
-                  </div>
-                  <button
-                    aria-label="Collapse role filters"
-                    className="btn-icon"
-                    title="Collapse filters"
-                    type="button"
-                    onClick={() => setFiltersCollapsed(true)}
-                  >
-                    <ChevronLeft className="size-4" />
-                  </button>
-                </div>
+                {refreshStatusLabel}
+              </span>
+            </div>
 
-                <div className="mt-4 border-t border-border pt-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Filter stack
-                    </h3>
-                    {hasActiveFilters ? (
-                      <button
-                        className="text-xs font-semibold text-primary"
-                        type="button"
-                        onClick={clearFilters}
-                      >
-                        Reset
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 space-y-3">
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Role type
-                      </span>
-                      <select
-                        className="form-input"
-                        value={typeFilter}
-                        onChange={(event) => {
-                          clearSeededListParams()
-                          setTypeFilter(event.target.value as RoleTypeFilter)
-                        }}
-                      >
-                        <option value="all">All</option>
-                        <option value="system">System</option>
-                        <option value="custom">Custom</option>
-                      </select>
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Status
-                      </span>
-                      <select
-                        className="form-input"
-                        value={statusFilter}
-                        onChange={(event) => {
-                          clearSeededListParams()
-                          setStatusFilter(event.target.value as RoleStatusFilter)
-                        }}
-                      >
-                        <option value="all">All</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                      </select>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
-          </aside>
+            <ListHeaderSearch
+              className="w-full min-w-0"
+              placeholder="Search roles..."
+              value={search}
+              onChange={(nextSearch) => {
+                clearSeededListParams()
+                setSearch(nextSearch)
+              }}
+            />
 
-          <main
-            className="flex min-w-0 scroll-mt-4 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0"
-            id="roles-records"
-          >
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  Role catalogue
-                </h2>
-                <p className="text-sm text-muted">
-                  {filteredRoles.length} visible · {roles.length} loaded
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <ListHeaderSearch
-                  className="w-full sm:w-72 lg:w-80"
-                  placeholder="Search role, code, description"
-                  value={search}
-                  onChange={(nextSearch) => {
-                    clearSeededListParams()
-                    setSearch(nextSearch)
-                  }}
-                />
-                {canCreateRoles ? (
-                  <Link to={`${routePaths.roles}/new`}>
-                    <Button size="sm" type="button" variant="secondary">
-                      <Plus className="mr-2 size-4" />
-                      Role
-                    </Button>
-                  </Link>
+            <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+              <Button
+                aria-expanded={filtersOpen}
+                className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => setFiltersOpen((current) => !current)}
+              >
+                <Filter className="mr-2 size-4" />
+                Filters
+                {hasActiveFilters ? (
+                  <span className="ml-1 size-2 rounded-full bg-primary" />
                 ) : null}
-                <span
-                  className={cn(
-                    'text-xs font-medium',
-                    isRefreshing ? 'text-primary' : 'text-muted',
-                  )}
-                >
-                  {refreshStatusLabel}
-                </span>
-                <div className="relative" ref={columnsMenuRef}>
-                  <Button
-                    aria-expanded={columnsOpen}
-                    aria-haspopup="menu"
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setColumnsOpen((current) => !current)}
-                  >
-                    <SlidersHorizontal className="mr-2 size-4" />
-                    Columns
-                    {visibleColumns.length ? (
-                      <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
-                        {visibleColumns.length}
-                      </span>
-                    ) : null}
+              </Button>
+              {canCreateRoles ? (
+                <Link to={`${routePaths.roles}/new`}>
+                  <Button size="sm" type="button" variant="secondary">
+                    <Plus className="mr-2 size-4" />
+                    Role
                   </Button>
-
-                  {columnsOpen ? (
-                    <div
-                      className="absolute right-0 top-[calc(100%+0.5rem)] z-[60] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
-                      role="menu"
-                    >
-                      <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
-                        Visible columns
-                      </p>
-                      {roleColumns.map((column) => {
-                        const isChecked = visibleColumns.includes(column.id)
-                        const isRequiredLastColumn =
-                          isChecked && visibleColumns.length === 1
-
-                        return (
-                          <label
-                            className={cn(
-                              'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
-                              isRequiredLastColumn && 'cursor-not-allowed opacity-60',
-                            )}
-                            key={column.id}
-                          >
-                            <input
-                              checked={isChecked}
-                              className="size-4 accent-[color:var(--adaptive-primary)]"
-                              disabled={isRequiredLastColumn}
-                              type="checkbox"
-                              onChange={() => toggleColumn(column.id)}
-                            />
-                            <span>{column.label}</span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  ) : null}
-                </div>
+                </Link>
+              ) : null}
+              <div className="relative" ref={columnsMenuRef}>
                 <Button
+                  aria-expanded={columnsOpen}
+                  aria-haspopup="menu"
+                  className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
                   size="sm"
                   type="button"
                   variant="secondary"
-                  onClick={() => void rolesQuery.refetch()}
+                  onClick={() => setColumnsOpen((current) => !current)}
                 >
-                  <RefreshCcw
+                  <SlidersHorizontal className="mr-2 size-4" />
+                  Columns
+                  {visibleColumns.length ? (
+                    <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
+                      {visibleColumns.length}
+                    </span>
+                  ) : null}
+                </Button>
+
+                {columnsOpen ? (
+                  <div
+                    className="absolute right-0 top-[calc(100%+0.5rem)] z-[80] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
+                    role="menu"
+                  >
+                    <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
+                      Visible columns
+                    </p>
+                    {roleColumns.map((column) => {
+                      const isChecked = visibleColumns.includes(column.id)
+                      const isRequiredLastColumn =
+                        isChecked && visibleColumns.length === 1
+
+                      return (
+                        <label
+                          className={cn(
+                            'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
+                            isRequiredLastColumn && 'cursor-not-allowed opacity-60',
+                          )}
+                          key={column.id}
+                        >
+                          <input
+                            checked={isChecked}
+                            className="size-4 accent-[color:var(--adaptive-primary)]"
+                            disabled={isRequiredLastColumn}
+                            type="checkbox"
+                            onChange={() => toggleColumn(column.id)}
+                          />
+                          <span>{column.label}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </div>
+              <Button
+                className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => void rolesQuery.refetch()}
+              >
+                <RefreshCcw
+                  className={cn(
+                    'mr-2 size-4',
+                    isRefreshing && 'animate-spin motion-reduce:animate-none',
+                  )}
+                />
+                Refresh
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-3 flex gap-1 overflow-x-auto rounded-[0.875rem] border border-border bg-surface-muted/40 p-1">
+            {queueItems.map((queue) => {
+              const isActive = activeQueueKey === queue.key
+
+              return (
+                <button
+                  aria-pressed={isActive}
+                  className={cn(
+                    'inline-flex h-8 shrink-0 items-center gap-2 rounded-[0.65rem] border px-2.5 text-sm font-medium transition',
+                    isActive
+                      ? 'border-primary/30 bg-surface text-primary shadow-[var(--sg-shadow-surface)]'
+                      : 'border-transparent text-muted hover:bg-surface hover:text-foreground',
+                  )}
+                  key={queue.key}
+                  type="button"
+                  onClick={() => applyQueue(queue.key)}
+                >
+                  <span>{queue.label}</span>
+                  <span
                     className={cn(
-                      'mr-2 size-4',
-                      isRefreshing && 'animate-spin motion-reduce:animate-none',
+                      'rounded-full px-2 py-0.5 text-xs font-semibold',
+                      isActive ? 'bg-primary/10 text-primary' : 'bg-surface text-muted',
                     )}
-                  />
-                  Refresh
+                  >
+                    {queue.count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          <ActiveFilterChips chips={clearableFilterChips} onClearAll={clearFilters} />
+
+          {filtersOpen ? (
+            <div className="mt-2 rounded-[0.75rem] border border-border bg-surface-muted/45 p-2.5">
+              <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-[minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_auto] lg:items-end">
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">Role type</span>
+                  <select
+                    className="form-input min-h-10"
+                    value={typeFilter}
+                    onChange={(event) => {
+                      clearSeededListParams()
+                      setTypeFilter(event.target.value as RoleTypeFilter)
+                    }}
+                  >
+                    <option value="all">All</option>
+                    <option value="system">System</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">Status</span>
+                  <select
+                    className="form-input min-h-10"
+                    value={statusFilter}
+                    onChange={(event) => {
+                      clearSeededListParams()
+                      setStatusFilter(event.target.value as RoleStatusFilter)
+                    }}
+                  >
+                    <option value="all">All</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </label>
+                <Button
+                  className="min-h-10"
+                  disabled={!hasActiveFilters}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={clearFilters}
+                >
+                  Reset
                 </Button>
               </div>
             </div>
+          ) : null}
+
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+            <span>{visibleSummary}</span>
+            <span>{appliedContextLabel || `${roleCountLabel} roles in catalogue`}</span>
+          </div>
+        </div>
 
             {rolesQuery.isError ? (
               <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
@@ -815,7 +942,7 @@ export function RolesPage() {
                   className="min-w-0 xl:min-w-[var(--role-grid-min-width)]"
                   style={roleGridStyle}
                 >
-                  <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--role-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                  <div className="sticky top-0 z-30 hidden gap-3 grid-cols-[var(--role-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
                     <div className="flex min-w-0 items-center">
                       <ListSelectionCheckbox
                         checked={roleSelection.allVisibleSelected}
@@ -861,6 +988,7 @@ export function RolesPage() {
                           </button>
                         </div>
                       ))}
+                    <div className="min-w-0 text-right">Actions</div>
                   </div>
                   <ListSelectionToolbar
                     allVisibleSelected={roleSelection.allVisibleSelected}
@@ -873,11 +1001,13 @@ export function RolesPage() {
                   <div>
                     {filteredRoles.map((role) => (
                       <RoleRow
+                        canManagePermissions={canManagePermissions}
                         isSelected={roleSelection.isSelected(role.roleId)}
                         key={role.roleId}
                         role={role}
                         visibleColumns={visibleColumns}
                         onOpenDetail={openDetail}
+                        onOpenPermissions={openPermissions}
                         onSelect={(selectedRole, selected) =>
                           roleSelection.setItemSelected(selectedRole.roleId, selected)
                         }
@@ -887,9 +1017,7 @@ export function RolesPage() {
                 </div>
               </div>
             )}
-          </main>
-        </section>
-      </div>
+      </main>
     </PageContainer>
   )
 }

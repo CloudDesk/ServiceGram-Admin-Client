@@ -472,7 +472,7 @@ function DynamicRowActionMenu<T>({
     open && position && typeof document !== 'undefined'
       ? createPortal(
           <div
-            className="premium-common-surface fixed overflow-y-auto rounded-[1rem] p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.22)]"
+            className="premium-common-surface fixed overflow-y-auto rounded-[1rem] p-1.5 shadow-[var(--sg-shadow-overlay)]"
             onClick={(event) => event.stopPropagation()}
             ref={menuRef}
             role="menu"

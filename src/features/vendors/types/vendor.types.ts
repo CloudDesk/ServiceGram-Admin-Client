@@ -239,6 +239,81 @@ export interface VendorDocument {
   updatedAt: string
 }
 
+export type VendorDocumentStatus =
+  | 'PENDING'
+  | 'VERIFIED'
+  | 'REJECTED'
+  | 'EXPIRED'
+
+export type VendorDocumentMediaStatus =
+  | 'UPLOAD_REQUESTED'
+  | 'AVAILABLE'
+  | 'FAILED'
+  | 'DELETED'
+
+export type VendorDocumentType =
+  | 'BUSINESS_REGISTRATION'
+  | 'ADDRESS_PROOF'
+  | 'OWNER_ID_PROOF'
+  | 'BANK_PROOF'
+  | 'SHOP_PHOTO'
+  | 'GST_CERTIFICATE'
+
+export interface VendorDocumentListQueryParams {
+  page?: number
+  limit?: number
+  search?: string
+  city?: string
+  categoryId?: string
+  documentStatus?: VendorDocumentStatus
+  documentType?: VendorDocumentType
+  mediaStatus?: VendorDocumentMediaStatus
+  onboardingStatus?: VendorOnboardingStatus
+  vendorStatus?: VendorStatus
+}
+
+export interface VendorDocumentListMedia {
+  mediaAssetId: string
+  fileName: string
+  mimeType: string
+  sizeBytes: number | null
+  status: VendorDocumentMediaStatus
+  accessLevel: string
+  updatedAt: string
+}
+
+export interface VendorDocumentListVendor {
+  vendorId: string
+  publicVendorId: string
+  shopName: string
+  ownerName: string | null
+  mobileNumber: string
+  businessEmail: string | null
+  city: string
+  category: VendorCategory | null
+  zone: VendorZone | null
+  onboardingStatus: VendorOnboardingStatus
+  vendorStatus: VendorStatus
+}
+
+export interface VendorDocumentListItem {
+  documentId: string
+  documentType: VendorDocumentType
+  mediaAssetId: string | null
+  status: VendorDocumentStatus
+  rejectionReason: string | null
+  verifiedByAdminId: string | null
+  verifiedAt: string | null
+  expiresAt: string | null
+  createdAt: string
+  updatedAt: string
+  media: VendorDocumentListMedia | null
+  vendor: VendorDocumentListVendor
+  warnings: string[]
+  availableActions: string[]
+  nextRecommendedAction: string | null
+}
+
 export interface VendorReviewTimelineItem {
   reviewEventId: string
   adminId: string | null
@@ -447,6 +522,13 @@ export interface VendorListResponse extends VendorApiResponse<
   VendorListItem[]
 > {
   data: VendorListItem[]
+  pagination: VendorPagination
+}
+
+export interface VendorDocumentListResponse extends VendorApiResponse<
+  VendorDocumentListItem[]
+> {
+  data: VendorDocumentListItem[]
   pagination: VendorPagination
 }
 

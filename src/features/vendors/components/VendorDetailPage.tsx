@@ -17,7 +17,6 @@ import {
   PencilLine,
   Plus,
   RotateCcw,
-  ShoppingBag,
   Tags,
   Trash2,
   Truck,
@@ -61,7 +60,6 @@ import {
 } from "../../orders/components/OrderActionModal";
 import type {
   AdminOrderPaymentStatus,
-  AdminOrdersSummary,
   AdminOrderStatus,
   AdminOrderSummary,
 } from "../../orders/types/order.types";
@@ -138,6 +136,10 @@ type VendorDetailActionContext = Pick<
   VendorDetail,
   "availableActions" | "onboardingStatus" | "vendorStatus"
 >;
+type VendorHeaderActionKind = Extract<
+  VendorActionKind,
+  "ADD_NOTE" | "APPROVE" | "REACTIVATE" | "REJECT" | "SUSPEND"
+>;
 
 function isRejectedVendor(vendor: VendorDetailActionContext) {
   return (
@@ -158,10 +160,15 @@ function getVendorDetailActionSource(vendor: VendorDetailActionContext) {
 }
 
 const vendorDetailSectionIds = {
+  overview: "vendor-detail-overview",
   documents: "vendor-detail-documents",
   payoutAccount: "vendor-detail-payout-account",
+  activity: "vendor-detail-activity",
   payouts: "vendor-detail-payouts",
+  orders: "vendor-detail-orders",
+  services: "vendor-detail-services",
   reels: "vendor-detail-reels",
+  profile: "vendor-detail-profile",
 } as const;
 
 interface VendorActionVisibility {
@@ -549,13 +556,6 @@ function canRunOrderAction(
   return canUpdateOrders;
 }
 
-function getOrderSummaryTone(summary: AdminOrdersSummary | undefined) {
-  if (!summary?.total) return "neutral";
-  if (summary.needsAttention > 0 || summary.paymentReview > 0) return "warning";
-  if (summary.active > 0) return "info";
-  return "success";
-}
-
 function formatServicePriceType(value: string) {
   return value
     .split("_")
@@ -614,6 +614,47 @@ function getVisibleVendorDetailActions(
       return true;
     },
   );
+}
+
+function toVendorHeaderActionKind(
+  action: string | null | undefined,
+): VendorHeaderActionKind | null {
+  const normalizedAction = action?.toUpperCase();
+
+  if (
+    normalizedAction === "ADD_NOTE" ||
+    normalizedAction === "APPROVE" ||
+    normalizedAction === "REACTIVATE" ||
+    normalizedAction === "REJECT" ||
+    normalizedAction === "SUSPEND"
+  ) {
+    return normalizedAction;
+  }
+
+  return null;
+}
+
+function getRecommendedVendorHeaderAction(
+  vendor: VendorDetail,
+  visibleActions: string[],
+) {
+  const recommendedAction = toVendorHeaderActionKind(
+    vendor.nextRecommendedAction,
+  );
+
+  if (
+    recommendedAction &&
+    (recommendedAction === "ADD_NOTE" ||
+      visibleActions.includes(recommendedAction))
+  ) {
+    return recommendedAction;
+  }
+
+  if (isRejectedVendor(vendor) && visibleActions.includes("REACTIVATE")) {
+    return "REACTIVATE";
+  }
+
+  return null;
 }
 
 const documentColumns: DynamicTableColumn<VendorDocument>[] = [
@@ -1316,14 +1357,6 @@ function getOnboardingStatusTone(status: VendorOnboardingStatus) {
   return "info";
 }
 
-function toneClasses(tone: VendorTone) {
-  if (tone === "success") return "border-border bg-surface text-success";
-  if (tone === "warning") return "border-border bg-surface text-warning";
-  if (tone === "danger") return "border-border bg-surface text-danger";
-  if (tone === "info") return "border-border bg-surface text-primary";
-  return "border-border bg-surface text-muted";
-}
-
 function getVendorInitials(name: string) {
   return name
     .split(" ")
@@ -1713,63 +1746,6 @@ function VendorBrandLogoModal({
   );
 }
 
-function getDocumentMetricTone(vendor: VendorDetail): VendorTone {
-  const summary = vendor.documentSummary;
-
-  if (!summary || summary.total === 0) return "warning";
-  if (summary.rejected || summary.expired) return "danger";
-  if (summary.verified === summary.total) return "success";
-  return "warning";
-}
-
-function getPayoutMetricTone(vendor: VendorDetail): VendorTone {
-  if (vendor.bankAccountSummary.payoutReady) return "success";
-  if (
-    vendor.bankAccountSummary.primaryStatus === "REJECTED" ||
-    vendor.bankAccountSummary.primaryStatus === "DISABLED"
-  ) {
-    return "danger";
-  }
-
-  return "warning";
-}
-
-function DetailMetricCard({
-  icon,
-  label,
-  meta,
-  tone,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  meta: string;
-  tone: VendorTone;
-  value: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "min-h-[4.35rem] rounded-[0.75rem] border p-2.5",
-        toneClasses(tone),
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-normal opacity-80">
-            {label}
-          </p>
-          <p className="mt-1 truncate text-lg font-semibold tracking-normal">
-            {value}
-          </p>
-        </div>
-        <span className="mt-0.5 shrink-0 opacity-80">{icon}</span>
-      </div>
-      <p className="mt-0.5 truncate text-xs leading-4 opacity-80">{meta}</p>
-    </div>
-  );
-}
-
 function VendorHeaderStatus({ vendor }: { vendor: VendorDetail }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -1823,42 +1799,223 @@ function scrollToVendorDetailSection(section: VendorDetailSectionKey) {
 function VendorReviewJumpPanel({
   message,
   targets,
+  vendor,
 }: {
   message: string | null;
   targets: VendorReviewJumpTarget[];
+  vendor: VendorDetail;
 }) {
-  if (!targets.length) return null;
+  const hasReviewWork = Boolean(message) || targets.length > 0;
+  const title = message
+    ? "Approval blocked"
+    : hasReviewWork
+      ? "Review needed"
+      : vendor.vendorStatus === "ACTIVE" && vendor.onboardingStatus === "APPROVED"
+        ? "Vendor ready"
+        : "Review vendor";
+  const summaryTone: VendorTone = message
+    ? "warning"
+    : vendor.vendorStatus === "SUSPENDED"
+      ? "danger"
+      : hasReviewWork
+        ? "warning"
+        : "success";
 
   return (
-    <div className="flex flex-col gap-3 rounded-surface border border-warning/20 bg-warning/10 p-3 text-sm text-warning lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex min-w-0 items-start gap-2">
-        <FileWarning className="mt-0.5 size-4 shrink-0" />
-        <div className="min-w-0">
-          <p className="font-semibold text-warning">Review needed</p>
-          <p className="mt-1 leading-6">
-            {message ??
-              "This vendor has items waiting for admin review. Jump to the relevant section below."}
-          </p>
+    <section
+      className={cn(
+        "rounded-[0.875rem] border bg-surface p-3",
+        summaryTone === "warning" && "border-warning/20 bg-warning/10",
+        summaryTone === "danger" && "border-danger/20 bg-danger/10",
+      )}
+    >
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(26rem,auto)] xl:items-center">
+        <div className="flex min-w-0 items-start gap-2">
+          <FileWarning
+            className={cn(
+              "mt-0.5 size-4 shrink-0",
+              summaryTone === "danger"
+                ? "text-danger"
+                : summaryTone === "success"
+                  ? "text-success"
+                  : "text-warning",
+            )}
+          />
+          <div className="min-w-0">
+            <p
+              className={cn(
+                "text-sm font-semibold",
+                summaryTone === "danger"
+                  ? "text-danger"
+                  : summaryTone === "success"
+                    ? "text-success"
+                    : "text-warning",
+              )}
+            >
+              {title}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              {message ??
+                (hasReviewWork
+                  ? "This vendor has items waiting for admin review."
+                  : "Documents, payout account, and onboarding state are clear at list level.")}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-2 text-sm sm:grid-cols-4">
+          <DetailField
+            label="Documents"
+            value={
+              vendor.documentSummary
+                ? `${vendor.documentSummary.verified}/${vendor.documentSummary.total}`
+                : "0/0"
+            }
+          />
+          <DetailField
+            label="Payout"
+            value={vendor.bankAccountSummary.payoutReady ? "Ready" : "Review"}
+          />
+          <DetailField label="Onboarding" value={vendor.onboardingStatus} />
+          <DetailField label="Timeline" value={vendor.reviewTimeline.length} />
         </div>
       </div>
-      <div className="flex shrink-0 flex-wrap gap-2">
-        {targets.map((target) => (
-          <Button
-            aria-controls={vendorDetailSectionIds[target.section]}
-            className="border border-warning/25 bg-surface text-warning hover:bg-warning/10"
-            key={target.section}
-            size="sm"
-            title={target.description}
-            type="button"
-            variant="secondary"
-            onClick={() => scrollToVendorDetailSection(target.section)}
+
+      {targets.length ? (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-warning/20 pt-3">
+          {targets.map((target) => (
+            <Button
+              aria-controls={vendorDetailSectionIds[target.section]}
+              className="border border-warning/25 bg-surface text-warning hover:bg-warning/10"
+              key={target.section}
+              size="sm"
+              title={target.description}
+              type="button"
+              variant="secondary"
+              onClick={() => scrollToVendorDetailSection(target.section)}
+            >
+              {target.icon}
+              {target.label}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function VendorDetailSectionNav({
+  bankAccountCount,
+  canReadOrders,
+  canReadPayouts,
+  canReadReels,
+  documentCount,
+  orderCount,
+  payoutCount,
+  reelCount,
+  serviceCount,
+  timelineCount,
+}: {
+  bankAccountCount: number;
+  canReadOrders: boolean;
+  canReadPayouts: boolean;
+  canReadReels: boolean;
+  documentCount: number;
+  orderCount: number;
+  payoutCount: number;
+  reelCount: number;
+  serviceCount: number;
+  timelineCount: number;
+}) {
+  const items = [
+    { href: `#${vendorDetailSectionIds.overview}`, label: "Overview" },
+    {
+      count: documentCount,
+      href: `#${vendorDetailSectionIds.documents}`,
+      label: "Documents",
+    },
+    {
+      count: bankAccountCount,
+      href: `#${vendorDetailSectionIds.payoutAccount}`,
+      label: "Payout Account",
+    },
+    {
+      count: timelineCount,
+      href: `#${vendorDetailSectionIds.activity}`,
+      label: "Activity",
+    },
+    canReadPayouts
+      ? {
+          count: payoutCount,
+          href: `#${vendorDetailSectionIds.payouts}`,
+          label: "Payouts",
+        }
+      : null,
+    canReadOrders
+      ? {
+          count: orderCount,
+          href: `#${vendorDetailSectionIds.orders}`,
+          label: "Orders",
+        }
+      : null,
+    {
+      count: serviceCount,
+      href: `#${vendorDetailSectionIds.services}`,
+      label: "Services",
+    },
+    canReadReels
+      ? {
+          count: reelCount,
+          href: `#${vendorDetailSectionIds.reels}`,
+          label: "Reels",
+        }
+      : null,
+    { href: `#${vendorDetailSectionIds.profile}`, label: "Profile" },
+  ].filter(Boolean) as {
+    count?: number;
+    href: string;
+    label: string;
+  }[];
+  const [activeHref, setActiveHref] = useState(
+    `#${vendorDetailSectionIds.overview}`,
+  );
+
+  return (
+    <nav
+      aria-label="Vendor detail sections"
+      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
+    >
+      <div className="flex min-w-max items-center gap-5">
+        {items.map((item) => (
+          <a
+            aria-current={activeHref === item.href ? "page" : undefined}
+            className={cn(
+              "inline-flex h-10 items-center gap-1.5 border-b-2 px-0.5 text-sm font-semibold transition",
+              activeHref === item.href
+                ? "border-primary text-primary"
+                : "border-transparent text-muted hover:text-foreground",
+            )}
+            href={item.href}
+            key={item.href}
+            onClick={() => setActiveHref(item.href)}
           >
-            {target.icon}
-            {target.label}
-          </Button>
+            <span>{item.label}</span>
+            {typeof item.count === "number" ? (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 text-xs",
+                  activeHref === item.href
+                    ? "bg-primary/10 text-primary"
+                    : "bg-surface-muted text-muted",
+                )}
+              >
+                {item.count}
+              </span>
+            ) : null}
+          </a>
         ))}
       </div>
-    </div>
+    </nav>
   );
 }
 
@@ -1964,84 +2121,120 @@ function VendorHeaderActions({
   );
   const hasAction = (action: string) => visibleActions.includes(action);
   const approvalBlockMessage = getApprovalBlockMessage(vendor);
+  const rawRecommendedAction = getRecommendedVendorHeaderAction(
+    vendor,
+    visibleActions,
+  );
+  const recommendedAction =
+    rawRecommendedAction === "APPROVE" && approvalBlockMessage
+      ? null
+      : rawRecommendedAction;
+  const secondaryActionCandidates: {
+    icon: ReactNode;
+    isDisabled?: boolean;
+    kind: VendorHeaderActionKind;
+    label: string;
+    title?: string;
+    variant?: "primary" | "secondary" | "danger" | "ghost";
+  }[] = [
+    {
+      icon: <CheckCircle2 className="mr-1.5 size-3.5" />,
+      isDisabled: Boolean(approvalBlockMessage),
+      kind: "APPROVE",
+      label: "Approve",
+      title: approvalBlockMessage ?? undefined,
+    },
+    {
+      icon: <XCircle className="mr-1.5 size-3.5" />,
+      kind: "REJECT",
+      label: "Reject",
+      variant: "danger",
+    },
+    {
+      icon: <PauseCircle className="mr-1.5 size-3.5" />,
+      kind: "SUSPEND",
+      label: "Suspend",
+      variant: "secondary",
+    },
+    {
+      icon: <RotateCcw className="mr-1.5 size-3.5" />,
+      kind: "REACTIVATE",
+      label: "Reactivate",
+      variant: "secondary",
+    },
+  ];
+  const secondaryActions = secondaryActionCandidates.filter(
+    (action) => hasAction(action.kind) && action.kind !== recommendedAction,
+  );
 
   return (
-    <div className="flex flex-wrap justify-end gap-2">
+    <div className="flex flex-wrap justify-end gap-1.5">
+      {recommendedAction ? (
+        <Button
+          className="h-8 min-h-8 whitespace-nowrap px-2.5"
+          disabled={
+            isSubmitting ||
+            (recommendedAction === "APPROVE" && Boolean(approvalBlockMessage))
+          }
+          size="sm"
+          title={
+            recommendedAction === "APPROVE"
+              ? approvalBlockMessage ?? undefined
+              : undefined
+          }
+          variant={
+            recommendedAction === "REJECT" || recommendedAction === "SUSPEND"
+              ? "danger"
+              : "primary"
+          }
+          onClick={() => onSelectAction(recommendedAction)}
+        >
+          {recommendedAction === "ADD_NOTE" ? (
+            <MessageSquarePlus className="mr-1.5 size-3.5" />
+          ) : (
+            <ArrowUpRight className="mr-1.5 size-3.5" />
+          )}
+          {humanizeCode(recommendedAction)}
+        </Button>
+      ) : null}
       {canUpdateProfile && hasAction("EDIT_PROFILE") ? (
         <Button
+          className="h-8 min-h-8 whitespace-nowrap px-2.5"
           disabled={isSubmitting}
           size="sm"
           variant="secondary"
           onClick={onEditProfile}
         >
-          <Pencil className="mr-2 size-4" />
+          <Pencil className="mr-1.5 size-3.5" />
           Edit Profile
         </Button>
       ) : null}
-      {hasAction("APPROVE") ? (
+      {secondaryActions.map((action) => (
         <Button
-          disabled={isSubmitting || Boolean(approvalBlockMessage)}
+          className="h-8 min-h-8 whitespace-nowrap px-2.5"
+          disabled={isSubmitting || action.isDisabled}
+          key={action.kind}
           size="sm"
-          title={approvalBlockMessage ?? undefined}
-          onClick={() => onSelectAction("APPROVE")}
+          title={action.title}
+          variant={action.variant ?? "secondary"}
+          onClick={() => onSelectAction(action.kind)}
         >
-          <CheckCircle2 className="mr-2 size-4" />
-          Approve
+          {action.icon}
+          {action.label}
         </Button>
-      ) : null}
-      {hasAction("REJECT") ? (
+      ))}
+      {recommendedAction !== "ADD_NOTE" ? (
         <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="danger"
-          onClick={() => onSelectAction("REJECT")}
-        >
-          <XCircle className="mr-2 size-4" />
-          Reject
-        </Button>
-      ) : null}
-      {hasAction("REQUEST_DOCUMENTS") ? (
-        <Button
+          className="h-8 min-h-8 whitespace-nowrap px-2.5"
           disabled={isSubmitting}
           size="sm"
           variant="secondary"
-          onClick={() => onSelectAction("REQUEST_DOCUMENTS")}
+          onClick={() => onSelectAction("ADD_NOTE")}
         >
-          <FileWarning className="mr-2 size-4" />
-          Request Documents
+          <MessageSquarePlus className="mr-1.5 size-3.5" />
+          Add Note
         </Button>
       ) : null}
-      {hasAction("SUSPEND") ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="secondary"
-          onClick={() => onSelectAction("SUSPEND")}
-        >
-          <PauseCircle className="mr-2 size-4" />
-          Suspend
-        </Button>
-      ) : null}
-      {hasAction("REACTIVATE") ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="secondary"
-          onClick={() => onSelectAction("REACTIVATE")}
-        >
-          <RotateCcw className="mr-2 size-4" />
-          Reactivate
-        </Button>
-      ) : null}
-      <Button
-        disabled={isSubmitting}
-        size="sm"
-        variant="secondary"
-        onClick={() => onSelectAction("ADD_NOTE")}
-      >
-        <MessageSquarePlus className="mr-2 size-4" />
-        Add Note
-      </Button>
     </div>
   );
 }
@@ -2918,59 +3111,14 @@ export function VendorDetailPage({
     vendor,
     activeHistoryDocument,
   );
-  const serviceSummary = vendorServices?.summary;
   const serviceRows = vendorServices?.services ?? [];
-  const serviceSummaryTone: VendorTone = !serviceSummary?.total
-    ? "neutral"
-    : serviceSummary.missingCatalogs > 0
-      ? "warning"
-      : "success";
-  const latestServiceUpdatedAt = serviceRows.reduce<string | null>(
-    (latest, service) => {
-      if (!latest) {
-        return service.updatedAt;
-      }
-
-      return Date.parse(service.updatedAt) > Date.parse(latest)
-        ? service.updatedAt
-        : latest;
-    },
-    null,
-  );
   const orderRows = canReadOrders ? (vendorOrders?.data ?? []) : [];
-  const orderSummary = vendorOrders?.summary;
   const vendorLogisticsQuery = buildQueryParams({ vendorId });
   const vendorLogisticsPath = vendorLogisticsQuery
     ? `${routePaths.manualLogistics}?${vendorLogisticsQuery}`
     : routePaths.manualLogistics;
-  const orderSummaryTone: VendorTone = canReadOrders
-    ? getOrderSummaryTone(orderSummary)
-    : "neutral";
   const payoutRows = canReadPayouts ? (vendorPayouts?.data ?? []) : [];
-  const payoutSummary = vendorPayouts?.summary;
-  const payoutReviewCount =
-    (payoutSummary?.pending ?? 0) +
-    (payoutSummary?.underReview ?? 0) +
-    (payoutSummary?.approved ?? 0);
-  const payoutSummaryTone: VendorTone = !canReadPayouts
-    ? "neutral"
-    : (payoutSummary?.needsAttention ?? 0) > 0
-      ? "warning"
-      : (payoutSummary?.paid ?? 0) > 0
-        ? "success"
-        : (payoutSummary?.active ?? 0) > 0
-          ? "info"
-          : "neutral";
   const reelRows = vendorReels?.data ?? [];
-  const reelSummary = vendorReels?.summary;
-  const pendingReelCount = reelSummary?.byModerationStatus.PENDING_REVIEW ?? 0;
-  const reelSummaryTone: VendorTone = !canReadReels
-    ? "neutral"
-    : (reelSummary?.needsAttention ?? 0) > 0 || pendingReelCount > 0
-      ? "warning"
-      : (reelSummary?.live ?? 0) > 0
-        ? "success"
-        : "neutral";
   const visibleVendorActions = getVisibleVendorDetailActions(
     vendorActionSource,
     {
@@ -3072,7 +3220,7 @@ export function VendorDetailPage({
   };
 
   return (
-    <PageContainer>
+    <PageContainer className="!px-3 !py-3 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
         actionNode={
           <VendorHeaderActions
@@ -3094,47 +3242,290 @@ export function VendorDetailPage({
         titleMetaNode={<VendorHeaderStatus vendor={vendor} />}
       />
 
-      <VendorReviewJumpPanel
-        message={approvalBlockMessage}
-        targets={reviewJumpTargets}
+      <VendorDetailSectionNav
+        bankAccountCount={vendor.bankAccounts.length}
+        canReadOrders={canReadOrders}
+        canReadPayouts={canReadPayouts}
+        canReadReels={canReadReels}
+        documentCount={vendor.documentSummary?.total ?? vendor.documents.length}
+        orderCount={
+          canReadOrders ? (vendorOrders?.summary?.total ?? orderRows.length) : 0
+        }
+        payoutCount={
+          canReadPayouts
+            ? (vendorPayouts?.summary?.total ?? payoutRows.length)
+            : 0
+        }
+        reelCount={
+          canReadReels ? (vendorReels?.summary?.total ?? reelRows.length) : 0
+        }
+        serviceCount={vendorServices?.summary.total ?? serviceRows.length}
+        timelineCount={vendor.reviewTimeline.length}
       />
 
-      <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-        <DetailMetricCard
-          icon={<FileCheck2 className="size-4" />}
-          label="Documents"
-          meta={`${vendor.documentSummary?.pending ?? 0} pending · ${vendor.documentSummary?.rejected ?? 0} rejected`}
-          tone={getDocumentMetricTone(vendor)}
-          value={
-            vendor.documentSummary
-              ? `${vendor.documentSummary.verified}/${vendor.documentSummary.total}`
-              : "0/0"
+      <section
+        className="scroll-mt-24 space-y-3 focus:outline-none"
+        id={vendorDetailSectionIds.overview}
+        tabIndex={-1}
+      >
+        <VendorReviewJumpPanel
+          message={approvalBlockMessage}
+          targets={reviewJumpTargets}
+          vendor={vendor}
+        />
+      </section>
+
+      <section
+        className="scroll-mt-24 space-y-4 focus:outline-none"
+        id={vendorDetailSectionIds.documents}
+        tabIndex={-1}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <FileCheck2 className="size-4 text-muted" />
+            <h2 className="text-base font-semibold text-foreground">
+              Documents
+            </h2>
+          </div>
+          <Badge
+            tone={
+              vendor.documents.some((document) =>
+                ["PENDING", "REJECTED", "EXPIRED"].includes(document.status),
+              )
+                ? "warning"
+                : "success"
+            }
+          >
+            {vendor.documentSummary
+              ? `${vendor.documentSummary.verified}/${vendor.documentSummary.total} verified`
+              : "No uploads"}
+          </Badge>
+        </div>
+
+        {documentPreviewError ? (
+          <div className="rounded-surface border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
+            {documentPreviewError}
+          </div>
+        ) : null}
+        <DynamicTable
+          actionColumnLabel="Document Actions"
+          actionColumnMinWidth={410}
+          bodyMaxHeight={360}
+          columns={documentColumns}
+          data={vendor.documents}
+          description={
+            vendor.onboardingStatus === "APPROVED"
+              ? "Approved vendor documents are locked from onboarding resubmission."
+              : "Verified documents can still be requested for resubmission before vendor approval."
           }
+          emptyDescription="This vendor has no uploaded documents."
+          emptyTitle="No documents"
+          getRowId={(row) => row.documentId}
+          inlineActionLimit={3}
+          rowActions={(document) => [
+            {
+              icon: <Eye className="size-4" />,
+              isDisabled:
+                documentPreviewMutation.isPending || !document.mediaAssetId,
+              key: "view",
+              label: document.mediaAssetId ? "View" : "No preview",
+              onClick: openVendorDocument,
+              variant: "ghost",
+            },
+            {
+              icon: <FileCheck2 className="size-4" />,
+              isVisible:
+                canApproveVendors &&
+                vendor.onboardingStatus !== "APPROVED" &&
+                document.status !== "VERIFIED",
+              key: "verify",
+              label: "Verify",
+              onClick: () => openAction("VERIFY_DOCUMENT", document),
+              variant: "secondary",
+            },
+            {
+              icon: <FileWarning className="size-4" />,
+              isVisible:
+                canApproveVendors &&
+                vendor.onboardingStatus !== "APPROVED" &&
+                ["PENDING", "VERIFIED"].includes(document.status),
+              key: "reject",
+              label:
+                document.status === "VERIFIED"
+                  ? "Request resubmit again"
+                  : "Request resubmit",
+              onClick: () => openAction("REJECT_DOCUMENT", document),
+              variant: "secondary",
+            },
+            {
+              icon: <History className="size-4" />,
+              key: "history",
+              label: "History",
+              onClick: () => setSelectedHistoryDocument(document),
+              placement: "menu",
+              variant: "ghost",
+            },
+          ]}
+          title="Documents"
         />
-        <DetailMetricCard
-          icon={<Landmark className="size-4" />}
-          label="Payout"
-          meta={
-            vendor.bankAccountSummary.hasPrimary
-              ? `${vendor.bankAccountSummary.verified}/${vendor.bankAccountSummary.total} verified`
-              : "No primary account"
-          }
-          tone={getPayoutMetricTone(vendor)}
-          value={vendor.bankAccountSummary.payoutReady ? "Ready" : "Review"}
+
+        {activeHistoryDocument ? (
+          <section className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-semibold text-foreground">
+                    Document History
+                  </h2>
+                  <Badge
+                    tone={
+                      activeHistoryDocument.status === "VERIFIED"
+                        ? "success"
+                        : activeHistoryDocument.status === "REJECTED"
+                          ? "danger"
+                          : "warning"
+                    }
+                  >
+                    {activeHistoryDocument.status}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted">
+                  {activeHistoryDocument.documentType}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                type="button"
+                variant="ghost"
+                onClick={() => setSelectedHistoryDocument(null)}
+              >
+                Close
+              </Button>
+            </div>
+
+            {activeHistoryDocument.rejectionReason ? (
+              <div className="rounded-surface border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
+                Current admin reason: {activeHistoryDocument.rejectionReason}
+              </div>
+            ) : null}
+
+            <DynamicTable
+              bodyMaxHeight={300}
+              columns={documentHistoryColumns}
+              data={selectedDocumentHistory}
+              emptyDescription="No review or resubmission events have been recorded for this document yet."
+              emptyTitle="No document history"
+              getRowId={(row) => row.reviewEventId}
+              title={`${activeHistoryDocument.documentType} history`}
+            />
+          </section>
+        ) : null}
+      </section>
+
+      <section
+        className="scroll-mt-24 space-y-4 rounded-[1rem] border border-border bg-surface p-4 focus:outline-none"
+        id={vendorDetailSectionIds.payoutAccount}
+        tabIndex={-1}
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Landmark className="size-4 text-muted" />
+              <h2 className="text-base font-semibold text-foreground">
+                Payout Bank Account
+              </h2>
+              <Badge
+                tone={
+                  vendor.bankAccountSummary.payoutReady ? "success" : "warning"
+                }
+              >
+                {vendor.bankAccountSummary.payoutReady
+                  ? "Payout Ready"
+                  : "Review Needed"}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted">
+              {getBankSummaryMessage(vendor)}
+            </p>
+          </div>
+          <div className="grid gap-3 text-sm sm:grid-cols-3">
+            <DetailField
+              label="Total"
+              value={vendor.bankAccountSummary.total}
+            />
+            <DetailField
+              label="Verified"
+              value={vendor.bankAccountSummary.verified}
+            />
+            <DetailField
+              label="Pending"
+              value={vendor.bankAccountSummary.pending}
+            />
+          </div>
+        </div>
+
+        {vendor.bankAccountSummary.warnings.length ? (
+          <div className="rounded-surface border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
+            {vendor.bankAccountSummary.warnings.join(", ")}
+          </div>
+        ) : null}
+
+        <DynamicTable
+          actionColumnLabel="Bank Actions"
+          actionColumnMinWidth={260}
+          bodyMaxHeight={320}
+          columns={bankAccountColumns}
+          data={vendor.bankAccounts}
+          emptyDescription="This vendor has not submitted payout bank details yet."
+          emptyTitle="No bank account"
+          getRowId={(row) => row.bankAccountId}
+          rowActions={(bankAccount) => [
+            {
+              icon: <CheckCircle2 className="size-4" />,
+              isVisible:
+                canApproveVendors &&
+                bankAccount.availableActions.includes("VERIFY"),
+              key: "verify-bank",
+              label: "Verify",
+              onClick: () =>
+                openAction("VERIFY_BANK_ACCOUNT", undefined, bankAccount),
+              variant: "secondary",
+            },
+            {
+              icon: <XCircle className="size-4" />,
+              isVisible:
+                canApproveVendors &&
+                bankAccount.availableActions.includes("REJECT"),
+              key: "reject-bank",
+              label: "Reject",
+              onClick: () =>
+                openAction("REJECT_BANK_ACCOUNT", undefined, bankAccount),
+              variant: "danger",
+            },
+          ]}
+          title="Bank Accounts"
         />
-        <DetailMetricCard
-          icon={<CheckCircle2 className="size-4" />}
-          label="Onboarding"
-          meta={`Vendor: ${vendor.vendorStatus}`}
-          tone={getOnboardingStatusTone(vendor.onboardingStatus)}
-          value={vendor.onboardingStatus}
-        />
-        <DetailMetricCard
-          icon={<History className="size-4" />}
-          label="Timeline"
-          meta="Review events"
-          tone={vendor.reviewTimeline.length ? "info" : "neutral"}
-          value={String(vendor.reviewTimeline.length)}
+      </section>
+
+      <section
+        className="scroll-mt-24 space-y-4 focus:outline-none"
+        id={vendorDetailSectionIds.activity}
+        tabIndex={-1}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <History className="size-4 text-muted" />
+          <h2 className="text-base font-semibold text-foreground">
+            Review Timeline
+          </h2>
+        </div>
+        <DynamicTable
+          bodyMaxHeight={320}
+          columns={timelineColumns}
+          data={vendor.reviewTimeline}
+          emptyDescription="No review events have been recorded."
+          emptyTitle="No review timeline"
+          getRowId={(row) => row.reviewEventId}
+          title="Review Timeline"
         />
       </section>
 
@@ -3143,59 +3534,6 @@ export function VendorDetailPage({
         id={vendorDetailSectionIds.payouts}
         tabIndex={-1}
       >
-        <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          <DetailMetricCard
-            icon={<Landmark className="size-4" />}
-            label="Payouts"
-            meta={
-              canReadPayouts
-                ? `${payoutReviewCount} in review · ${payoutSummary?.held ?? 0} held`
-                : "Payouts permission required"
-            }
-            tone={payoutSummaryTone}
-            value={canReadPayouts ? String(payoutSummary?.total ?? 0) : "Locked"}
-          />
-          <DetailMetricCard
-            icon={<History className="size-4" />}
-            label="Active Value"
-            meta="Pending, review, held, or approved"
-            tone={(payoutSummary?.active ?? 0) > 0 ? "info" : "neutral"}
-            value={
-              canReadPayouts
-                ? formatPaise(
-                    payoutSummary?.activeAmountPaise,
-                    payoutSummary?.currency,
-                  )
-                : "Locked"
-            }
-          />
-          <DetailMetricCard
-            icon={<CheckCircle2 className="size-4" />}
-            label="Paid Value"
-            meta={`${payoutSummary?.paid ?? 0} paid payouts`}
-            tone={(payoutSummary?.paid ?? 0) > 0 ? "success" : "neutral"}
-            value={
-              canReadPayouts
-                ? formatPaise(
-                    payoutSummary?.paidAmountPaise,
-                    payoutSummary?.currency,
-                  )
-                : "Locked"
-            }
-          />
-          <DetailMetricCard
-            icon={<FileWarning className="size-4" />}
-            label="Payout Attention"
-            meta={`${payoutSummary?.failed ?? 0} failed · ${payoutSummary?.itemCount ?? 0} items`}
-            tone={(payoutSummary?.needsAttention ?? 0) > 0 ? "warning" : "neutral"}
-            value={
-              canReadPayouts
-                ? String(payoutSummary?.needsAttention ?? 0)
-                : "Locked"
-            }
-          />
-        </div>
-
         <DynamicTable
           actionColumnLabel="Payout Actions"
           actionColumnMinWidth={360}
@@ -3302,69 +3640,11 @@ export function VendorDetailPage({
         />
       </section>
 
-      <section className="space-y-4">
-        <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          <DetailMetricCard
-            icon={<ShoppingBag className="size-4" />}
-            label="Orders"
-            meta={
-              canReadOrders
-                ? `${orderSummary?.delivered ?? 0} delivered · ${orderSummary?.cancelled ?? 0} cancelled`
-                : "Orders permission required"
-            }
-            tone={orderSummaryTone}
-            value={canReadOrders ? String(orderSummary?.total ?? 0) : "Locked"}
-          />
-          <DetailMetricCard
-            icon={<Package className="size-4" />}
-            label="Active Orders"
-            meta="Current vendor workload"
-            tone={(orderSummary?.active ?? 0) > 0 ? "info" : "neutral"}
-            value={canReadOrders ? String(orderSummary?.active ?? 0) : "Locked"}
-          />
-          <DetailMetricCard
-            icon={<CreditCard className="size-4" />}
-            label="Payment Review"
-            meta="Pending, failed, or COD work"
-            tone={
-              !canReadOrders
-                ? "neutral"
-                : (orderSummary?.paymentReview ?? 0) > 0
-                  ? "warning"
-                  : "success"
-            }
-            value={
-              canReadOrders
-                ? String(orderSummary?.paymentReview ?? 0)
-                : "Locked"
-            }
-          />
-          <DetailMetricCard
-            icon={<FileWarning className="size-4" />}
-            label="Order Value"
-            meta={
-              canReadOrders
-                ? `${orderSummary?.needsAttention ?? 0} need attention`
-                : "Orders permission required"
-            }
-            tone={
-              !canReadOrders
-                ? "neutral"
-                : (orderSummary?.needsAttention ?? 0) > 0
-                  ? "warning"
-                  : "info"
-            }
-            value={
-              canReadOrders
-                ? formatPaise(
-                    orderSummary?.totalValuePaise,
-                    orderSummary?.currency,
-                  )
-                : "Locked"
-            }
-          />
-        </div>
-
+      <section
+        className="scroll-mt-24 space-y-4 focus:outline-none"
+        id={vendorDetailSectionIds.orders}
+        tabIndex={-1}
+      >
         <DynamicTable
           actionColumnLabel="Order Actions"
           actionColumnMinWidth={360}
@@ -3534,48 +3814,11 @@ export function VendorDetailPage({
         />
       </section>
 
-      <section className="space-y-4">
-        <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          <DetailMetricCard
-            icon={<Tags className="size-4" />}
-            label="Services"
-            meta={`${serviceSummary?.active ?? 0} active · ${serviceSummary?.inactive ?? 0} inactive`}
-            tone={serviceSummaryTone}
-            value={String(serviceSummary?.total ?? 0)}
-          />
-          <DetailMetricCard
-            icon={<CheckCircle2 className="size-4" />}
-            label="Catalogs"
-            meta={`${serviceSummary?.missingCatalogs ?? 0} missing catalogs`}
-            tone={
-              serviceSummary?.missingCatalogs
-                ? "warning"
-                : serviceSummary?.configuredCatalogs
-                  ? "success"
-                  : "neutral"
-            }
-            value={String(serviceSummary?.configuredCatalogs ?? 0)}
-          />
-          <DetailMetricCard
-            icon={<Landmark className="size-4" />}
-            label="Category"
-            meta={vendor.category?.categoryCode ?? "No category"}
-            tone={vendor.category ? "info" : "warning"}
-            value={vendor.category?.name ?? "Missing"}
-          />
-          <DetailMetricCard
-            icon={<History className="size-4" />}
-            label="Service Updates"
-            meta="Latest vendor service change"
-            tone={serviceRows.length ? "info" : "neutral"}
-            value={
-              latestServiceUpdatedAt
-                ? new Date(latestServiceUpdatedAt).toLocaleDateString("en-IN")
-                : "None"
-            }
-          />
-        </div>
-
+      <section
+        className="scroll-mt-24 space-y-4 focus:outline-none"
+        id={vendorDetailSectionIds.services}
+        tabIndex={-1}
+      >
         <DynamicTable
           actionColumnLabel="Service Actions"
           actionColumnMinWidth={300}
@@ -3661,47 +3904,6 @@ export function VendorDetailPage({
         id={vendorDetailSectionIds.reels}
         tabIndex={-1}
       >
-        <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          <DetailMetricCard
-            icon={<Film className="size-4" />}
-            label="Reels"
-            meta={
-              canReadReels
-                ? `${pendingReelCount} pending review`
-                : "Reels permission required"
-            }
-            tone={reelSummaryTone}
-            value={canReadReels ? String(reelSummary?.total ?? 0) : "Locked"}
-          />
-          <DetailMetricCard
-            icon={<CheckCircle2 className="size-4" />}
-            label="Live Reels"
-            meta="Customer visible"
-            tone={(reelSummary?.live ?? 0) > 0 ? "success" : "neutral"}
-            value={canReadReels ? String(reelSummary?.live ?? 0) : "Locked"}
-          />
-          <DetailMetricCard
-            icon={<FileWarning className="size-4" />}
-            label="Attention"
-            meta="Blocked or incomplete"
-            tone={
-              (reelSummary?.needsAttention ?? 0) > 0 ? "warning" : "neutral"
-            }
-            value={
-              canReadReels ? String(reelSummary?.needsAttention ?? 0) : "Locked"
-            }
-          />
-          <DetailMetricCard
-            icon={<History className="size-4" />}
-            label="Reel States"
-            meta={`${reelSummary?.byUploadStatus.READY ?? 0} ready uploads`}
-            tone={canReadReels && reelRows.length ? "info" : "neutral"}
-            value={String(
-              Object.keys(reelSummary?.byModerationStatus ?? {}).length,
-            )}
-          />
-        </div>
-
         <DynamicTable
           actionColumnLabel="Reel Actions"
           actionColumnMinWidth={360}
@@ -3839,91 +4041,10 @@ export function VendorDetailPage({
       </section>
 
       <section
-        className="scroll-mt-24 space-y-4 rounded-[1rem] border border-border bg-surface p-4 focus:outline-none"
-        id={vendorDetailSectionIds.payoutAccount}
+        className="scroll-mt-24 grid gap-4 focus:outline-none lg:grid-cols-3"
+        id={vendorDetailSectionIds.profile}
         tabIndex={-1}
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <Landmark className="size-4 text-muted" />
-              <h2 className="text-base font-semibold text-foreground">
-                Payout Bank Account
-              </h2>
-              <Badge
-                tone={
-                  vendor.bankAccountSummary.payoutReady ? "success" : "warning"
-                }
-              >
-                {vendor.bankAccountSummary.payoutReady
-                  ? "Payout Ready"
-                  : "Review Needed"}
-              </Badge>
-            </div>
-            <p className="text-sm text-muted">
-              {getBankSummaryMessage(vendor)}
-            </p>
-          </div>
-          <div className="grid gap-3 text-sm sm:grid-cols-3">
-            <DetailField
-              label="Total"
-              value={vendor.bankAccountSummary.total}
-            />
-            <DetailField
-              label="Verified"
-              value={vendor.bankAccountSummary.verified}
-            />
-            <DetailField
-              label="Pending"
-              value={vendor.bankAccountSummary.pending}
-            />
-          </div>
-        </div>
-
-        {vendor.bankAccountSummary.warnings.length ? (
-          <div className="rounded-surface border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
-            {vendor.bankAccountSummary.warnings.join(", ")}
-          </div>
-        ) : null}
-
-        <DynamicTable
-          actionColumnLabel="Bank Actions"
-          actionColumnMinWidth={260}
-          bodyMaxHeight={320}
-          columns={bankAccountColumns}
-          data={vendor.bankAccounts}
-          emptyDescription="This vendor has not submitted payout bank details yet."
-          emptyTitle="No bank account"
-          getRowId={(row) => row.bankAccountId}
-          rowActions={(bankAccount) => [
-            {
-              icon: <CheckCircle2 className="size-4" />,
-              isVisible:
-                canApproveVendors &&
-                bankAccount.availableActions.includes("VERIFY"),
-              key: "verify-bank",
-              label: "Verify",
-              onClick: () =>
-                openAction("VERIFY_BANK_ACCOUNT", undefined, bankAccount),
-              variant: "secondary",
-            },
-            {
-              icon: <XCircle className="size-4" />,
-              isVisible:
-                canApproveVendors &&
-                bankAccount.availableActions.includes("REJECT"),
-              key: "reject-bank",
-              label: "Reject",
-              onClick: () =>
-                openAction("REJECT_BANK_ACCOUNT", undefined, bankAccount),
-              variant: "danger",
-            },
-          ]}
-          title="Bank Accounts"
-        />
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 rounded-[1rem] border border-border bg-surface p-4 lg:col-span-2">
           <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
@@ -4031,8 +4152,8 @@ export function VendorDetailPage({
               label="Suspension Reason"
               value={vendor.suspensionReason}
             />
-            <DetailField label="Created At" value={vendor.createdAt} />
-            <DetailField label="Updated At" value={vendor.updatedAt} />
+            <DetailField label="Created" value={formatDateSafe(vendor.createdAt)} />
+            <DetailField label="Updated" value={formatDateSafe(vendor.updatedAt)} />
           </div>
         </div>
 
@@ -4052,141 +4173,6 @@ export function VendorDetailPage({
           <DetailField label="Latitude" value={vendor.address.latitude} />
           <DetailField label="Longitude" value={vendor.address.longitude} />
         </div>
-      </section>
-
-      <section
-        className="scroll-mt-24 space-y-4 focus:outline-none"
-        id={vendorDetailSectionIds.documents}
-        tabIndex={-1}
-      >
-        {documentPreviewError ? (
-          <div className="rounded-surface border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
-            {documentPreviewError}
-          </div>
-        ) : null}
-        <DynamicTable
-          actionColumnLabel="Document Actions"
-          actionColumnMinWidth={410}
-          bodyMaxHeight={360}
-          columns={documentColumns}
-          data={vendor.documents}
-          description={
-            vendor.onboardingStatus === "APPROVED"
-              ? "Approved vendor documents are locked from onboarding resubmission."
-              : "Verified documents can still be requested for resubmission before vendor approval."
-          }
-          emptyDescription="This vendor has no uploaded documents."
-          emptyTitle="No documents"
-          getRowId={(row) => row.documentId}
-          inlineActionLimit={3}
-          rowActions={(document) => [
-            {
-              icon: <Eye className="size-4" />,
-              isDisabled:
-                documentPreviewMutation.isPending || !document.mediaAssetId,
-              key: "view",
-              label: document.mediaAssetId ? "View" : "No preview",
-              onClick: openVendorDocument,
-              variant: "ghost",
-            },
-            {
-              icon: <FileCheck2 className="size-4" />,
-              isVisible:
-                canApproveVendors &&
-                vendor.onboardingStatus !== "APPROVED" &&
-                document.status !== "VERIFIED",
-              key: "verify",
-              label: "Verify",
-              onClick: () => openAction("VERIFY_DOCUMENT", document),
-              variant: "secondary",
-            },
-            {
-              icon: <FileWarning className="size-4" />,
-              isVisible:
-                canApproveVendors &&
-                vendor.onboardingStatus !== "APPROVED" &&
-                ["PENDING", "VERIFIED"].includes(document.status),
-              key: "reject",
-              label:
-                document.status === "VERIFIED"
-                  ? "Request resubmit again"
-                  : "Request resubmit",
-              onClick: () => openAction("REJECT_DOCUMENT", document),
-              variant: "secondary",
-            },
-            {
-              icon: <History className="size-4" />,
-              key: "history",
-              label: "History",
-              onClick: () => setSelectedHistoryDocument(document),
-              placement: "menu",
-              variant: "ghost",
-            },
-          ]}
-          title="Documents"
-        />
-
-        {activeHistoryDocument ? (
-          <section className="space-y-4 rounded-[1rem] border border-border bg-surface p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-base font-semibold text-foreground">
-                    Document History
-                  </h2>
-                  <Badge
-                    tone={
-                      activeHistoryDocument.status === "VERIFIED"
-                        ? "success"
-                        : activeHistoryDocument.status === "REJECTED"
-                          ? "danger"
-                          : "warning"
-                    }
-                  >
-                    {activeHistoryDocument.status}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted">
-                  {activeHistoryDocument.documentType}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                type="button"
-                variant="ghost"
-                onClick={() => setSelectedHistoryDocument(null)}
-              >
-                Close
-              </Button>
-            </div>
-
-            {activeHistoryDocument.rejectionReason ? (
-              <div className="rounded-surface border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
-                Current admin reason: {activeHistoryDocument.rejectionReason}
-              </div>
-            ) : null}
-
-            <DynamicTable
-              bodyMaxHeight={300}
-              columns={documentHistoryColumns}
-              data={selectedDocumentHistory}
-              emptyDescription="No review or resubmission events have been recorded for this document yet."
-              emptyTitle="No document history"
-              getRowId={(row) => row.reviewEventId}
-              title={`${activeHistoryDocument.documentType} history`}
-            />
-          </section>
-        ) : null}
-
-        <DynamicTable
-          bodyMaxHeight={360}
-          columns={timelineColumns}
-          data={vendor.reviewTimeline}
-          emptyDescription="No review events have been recorded."
-          emptyTitle="No review timeline"
-          getRowId={(row) => row.reviewEventId}
-          title="Review Timeline"
-        />
       </section>
 
       <VendorActionModal

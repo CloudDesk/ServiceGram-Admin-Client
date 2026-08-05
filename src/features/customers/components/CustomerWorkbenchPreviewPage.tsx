@@ -861,7 +861,7 @@ export function CustomerWorkbenchPreviewPage() {
       search: search.trim() || undefined,
       status: queryStatus,
       city: city.trim() || undefined,
-      hasOrders: queue === 'activeOrders' ? true : undefined,
+      hasActiveOrders: queue === 'activeOrders' ? true : undefined,
       hasWalletCredit:
         featureFlags.customerWallet && queue === 'walletCredit' ? true : undefined,
       dateFrom: dateFrom || undefined,

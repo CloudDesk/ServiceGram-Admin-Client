@@ -1,11 +1,10 @@
 import type { FormEvent, ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowUpRight,
   CalendarClock,
-  CheckCircle2,
   ClipboardList,
   Edit3,
   KeyRound,
@@ -31,7 +30,6 @@ import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
 import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
-import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { rbacService } from '../../rbac/services/rbac.service'
 import type { RoleSummary } from '../../rbac/types/rbac.types'
@@ -46,9 +44,11 @@ type ModalKind = 'EDIT' | 'FORCE_LOGOUT'
 
 const adminUserStatuses: AdminUserStatus[] = ['ACTIVE', 'DISABLED']
 const adminUserDetailSectionIds = {
+  overview: 'admin-user-overview',
   account: 'admin-user-account',
   lifecycle: 'admin-user-lifecycle',
   role: 'admin-user-role',
+  related: 'admin-user-related',
   signals: 'admin-user-signals',
 } as const
 type AdminUserDetailSectionId =
@@ -84,6 +84,20 @@ function authStatusTone(status: string | null | undefined): StatusTone {
   return 'warning'
 }
 
+function getAdminUserWarnings(user: AdminUser) {
+  const items: string[] = []
+
+  if (user.status === 'DISABLED') items.push('ADMIN_DISABLED')
+  if (user.userStatus && user.userStatus !== 'ACTIVE') {
+    items.push(`AUTH_${user.userStatus}`)
+  }
+  if (!user.role) items.push('NO_ROLE_ASSIGNED')
+  if (user.role?.isActive === false) items.push('ROLE_INACTIVE')
+  if (!user.lastLoginAt) items.push('NEVER_LOGGED_IN')
+
+  return items
+}
+
 function buildAdminUsersListPath(user: AdminUser) {
   return buildPathWithQueryParams(routePaths.adminUsers, {
     search: user.email ?? user.fullName,
@@ -110,14 +124,6 @@ function buildAdminUserActorAuditPath(user: AdminUser) {
   return `${routePaths.audit}?${params.toString()}`
 }
 
-function toneClass(tone: 'danger' | 'info' | 'neutral' | 'success' | 'warning') {
-  if (tone === 'success') return 'text-success'
-  if (tone === 'warning') return 'text-warning'
-  if (tone === 'danger') return 'text-danger'
-  if (tone === 'info') return 'text-primary'
-  return 'text-muted'
-}
-
 function DetailField({
   label,
   value,
@@ -134,35 +140,6 @@ function DetailField({
         {value ?? 'Not available'}
       </div>
     </div>
-  )
-}
-
-function SummaryCard({
-  icon,
-  label,
-  meta,
-  tone,
-  value,
-}: {
-  icon: ReactNode
-  label: string
-  meta: string
-  tone: 'danger' | 'info' | 'neutral' | 'success' | 'warning'
-  value: ReactNode
-}) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <div className="flex items-center justify-between gap-3">
-        <p className={cn('text-xs font-semibold uppercase tracking-normal', toneClass(tone))}>
-          {label}
-        </p>
-        <span className={toneClass(tone)}>{icon}</span>
-      </div>
-      <div className={cn('mt-3 text-2xl font-semibold tracking-normal', toneClass(tone))}>
-        {value}
-      </div>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
-    </article>
   )
 }
 
@@ -183,7 +160,7 @@ function SectionShell({
 }) {
   return (
     <section
-      className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
+      className="scroll-mt-24 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
       id={id}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -265,6 +242,131 @@ function HeaderActions({
         </Button>
       ) : null}
     </div>
+  )
+}
+
+function getInitials(value: string) {
+  const parts = value.trim().split(/\s+/).filter(Boolean)
+
+  if (parts.length === 0) return 'U'
+
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('')
+}
+
+function AdminUserHeroCard({
+  canCreateAdminUsers,
+  canForceLogout,
+  canUpdateAdminUsers,
+  isSubmitting,
+  onSelect,
+  user,
+}: {
+  canCreateAdminUsers: boolean
+  canForceLogout: boolean
+  canUpdateAdminUsers: boolean
+  isSubmitting: boolean
+  onSelect: (modal: ModalKind) => void
+  user: AdminUser
+}) {
+  return (
+    <section className="rounded-[1rem] border border-border bg-surface p-3 shadow-surface sm:p-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+          <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base font-semibold text-primary ring-1 ring-primary/15 sm:size-16">
+            {getInitials(user.fullName)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-xl font-semibold text-foreground sm:text-2xl">
+                {user.fullName}
+              </h1>
+              <HeaderStatus user={user} />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <UserRound className="size-3.5 shrink-0" />
+                <span className="truncate">{user.adminId}</span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <KeyRound className="size-3.5 shrink-0" />
+                <span className="truncate">{user.email ?? user.userId}</span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <ShieldCheck className="size-3.5 shrink-0" />
+                <span className="truncate">{user.role?.roleName ?? 'No role'}</span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <CalendarClock className="size-3.5 shrink-0" />
+                <span>Last login {formatDateSafe(user.lastLoginAt)}</span>
+              </span>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-muted">
+              <span>Permission version: {user.permissionVersion}</span>
+              <span>Updated {formatDateSafe(user.updatedAt)}</span>
+            </div>
+          </div>
+        </div>
+        <HeaderActions
+          canCreateAdminUsers={canCreateAdminUsers}
+          canForceLogout={canForceLogout}
+          canUpdateAdminUsers={canUpdateAdminUsers}
+          isSubmitting={isSubmitting}
+          onSelect={onSelect}
+        />
+      </div>
+    </section>
+  )
+}
+
+function AdminUserDetailSectionNav({
+  canReadAudit,
+  user,
+}: {
+  canReadAudit: boolean
+  user: AdminUser
+}) {
+  const warnings = getAdminUserWarnings(user)
+  const items = [
+    { href: `#${adminUserDetailSectionIds.overview}`, label: 'Overview' },
+    { href: `#${adminUserDetailSectionIds.role}`, label: 'Access' },
+    { href: `#${adminUserDetailSectionIds.lifecycle}`, label: 'Security' },
+    canReadAudit
+      ? { href: `#${adminUserDetailSectionIds.related}`, label: 'Activity' }
+      : null,
+    canReadAudit ? { href: `#${adminUserDetailSectionIds.related}`, label: 'Audit' } : null,
+    {
+      count: warnings.length,
+      href: `#${adminUserDetailSectionIds.signals}`,
+      label: 'Guardrails',
+    },
+    { href: `#${adminUserDetailSectionIds.lifecycle}`, label: 'Lifecycle' },
+  ].filter(Boolean) as { count?: number; href: string; label: string }[]
+
+  return (
+    <nav
+      aria-label="Admin user detail sections"
+      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
+    >
+      <div className="flex min-w-max items-center gap-1.5 py-2">
+        {items.map((item) => (
+          <a
+            className="inline-flex min-h-9 items-center gap-2 rounded-[0.65rem] px-3 text-sm font-semibold text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            href={item.href}
+            key={`${item.label}-${item.href}`}
+          >
+            <span>{item.label}</span>
+            {typeof item.count === 'number' ? (
+              <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">
+                {item.count}
+              </span>
+            ) : null}
+          </a>
+        ))}
+      </div>
+    </nav>
   )
 }
 
@@ -461,19 +563,7 @@ function SignalsPanel({
   canUpdateAdminUsers: boolean
   user: AdminUser
 }) {
-  const warnings = useMemo(() => {
-    const items: string[] = []
-
-    if (user.status === 'DISABLED') items.push('ADMIN_DISABLED')
-    if (user.userStatus && user.userStatus !== 'ACTIVE') {
-      items.push(`AUTH_${user.userStatus}`)
-    }
-    if (!user.role) items.push('NO_ROLE_ASSIGNED')
-    if (user.role?.isActive === false) items.push('ROLE_INACTIVE')
-    if (!user.lastLoginAt) items.push('NEVER_LOGGED_IN')
-
-    return items
-  }, [user.lastLoginAt, user.role, user.status, user.userStatus])
+  const warnings = useMemo(() => getAdminUserWarnings(user), [user])
 
   const controls = useMemo(() => {
     const items: string[] = []
@@ -488,10 +578,10 @@ function SignalsPanel({
 
   return (
     <SectionShell
-      description="Derived account warnings and controls available to the current admin."
+      description="Access warnings and controls available to the current admin."
       icon={<TriangleAlert className="size-4" />}
       id={adminUserDetailSectionIds.signals}
-      title="Signals"
+      title="Guardrails"
     >
       <div className="space-y-4">
         <div>
@@ -534,9 +624,10 @@ function RelatedRecordsPanel({
 }) {
   return (
     <SectionShell
-      description="Records and modules connected to this admin user."
+      description="Role, audit trail, and actor activity shortcuts."
       icon={<ArrowUpRight className="size-4" />}
-      title="Related records"
+      id={adminUserDetailSectionIds.related}
+      title="Connected records"
     >
       <div className="divide-y divide-border">
         <RelatedRecordRow
@@ -892,6 +983,26 @@ export function AdminUserDetailPage() {
     [rolesQuery.data?.data, user?.role?.roleId],
   )
 
+  useEffect(() => {
+    if (!user) return
+
+    const sectionId = window.location.hash.replace('#', '')
+
+    if (
+      !Object.values(adminUserDetailSectionIds).includes(
+        sectionId as AdminUserDetailSectionId,
+      )
+    ) {
+      return
+    }
+
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(sectionId)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [user])
+
   const openSection = (sectionId: AdminUserDetailSectionId) => {
     const section = document.getElementById(sectionId)
 
@@ -997,61 +1108,27 @@ export function AdminUserDetailPage() {
     )
   }
 
-  const roleTone = user.role?.isActive === false ? 'warning' : user.role ? 'info' : 'danger'
-  const roleMeta = user.role?.roleCode ?? 'No role assigned'
-
   return (
-    <PageContainer className="!px-3 !py-4 sm:!px-4 lg:!px-6">
+    <PageContainer className="!px-3 !py-3 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
-        actionNode={
-          <HeaderActions
-            canCreateAdminUsers={canCreateAdminUsers}
-            canForceLogout={canForceLogout}
-            canUpdateAdminUsers={canUpdateAdminUsers}
-            isSubmitting={updateMutation.isPending || forceLogoutMutation.isPending}
-            onSelect={(modal) => {
-              setActionError(null)
-              setActiveModal(modal)
-            }}
-          />
-        }
-        description={user.email ?? user.userId}
         listHref={routePaths.adminUsers}
         listLabel="Users"
         recordName={user.fullName}
-        titleMetaNode={<HeaderStatus user={user} />}
       />
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          icon={<CheckCircle2 className="size-4" />}
-          label="Admin status"
-          meta="Admin profile access"
-          tone={userStatusTone(user.status)}
-          value={humanizeCode(user.status)}
-        />
-        <SummaryCard
-          icon={<ShieldCheck className="size-4" />}
-          label="Role"
-          meta={roleMeta}
-          tone={roleTone}
-          value={user.role?.roleName ?? 'Unassigned'}
-        />
-        <SummaryCard
-          icon={<KeyRound className="size-4" />}
-          label="Permission version"
-          meta="Session invalidation marker"
-          tone="warning"
-          value={user.permissionVersion}
-        />
-        <SummaryCard
-          icon={<CalendarClock className="size-4" />}
-          label="Last login"
-          meta="Admin session activity"
-          tone={user.lastLoginAt ? 'success' : 'neutral'}
-          value={formatDateSafe(user.lastLoginAt)}
-        />
-      </section>
+      <AdminUserHeroCard
+        canCreateAdminUsers={canCreateAdminUsers}
+        canForceLogout={canForceLogout}
+        canUpdateAdminUsers={canUpdateAdminUsers}
+        isSubmitting={updateMutation.isPending || forceLogoutMutation.isPending}
+        user={user}
+        onSelect={(modal) => {
+          setActionError(null)
+          setActiveModal(modal)
+        }}
+      />
+
+      <AdminUserDetailSectionNav canReadAudit={canReadAudit} user={user} />
 
       {actionError && !activeModal ? (
         <div className="rounded-[0.875rem] border border-danger/25 bg-danger/10 p-3 text-sm text-danger">
@@ -1064,34 +1141,39 @@ export function AdminUserDetailPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
+      <section
+        className="scroll-mt-24 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]"
+        id={adminUserDetailSectionIds.overview}
+      >
+        <AccountPanel user={user} />
         <LifecyclePanel user={user} />
-        <SignalsPanel
-          canForceLogout={canForceLogout}
-          canReadAudit={canReadAudit}
-          canReadRoles={canReadRoles}
-          canUpdateAdminUsers={canUpdateAdminUsers}
-          user={user}
-        />
       </section>
 
       <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
         <div className="space-y-3">
-          <AccountPanel user={user} />
           <RolePanel canReadRoles={canReadRoles} onNavigate={navigate} user={user} />
         </div>
-        <RelatedRecordsPanel
-          canReadAudit={canReadAudit}
-          canReadRoles={canReadRoles}
-          canUpdateAdminUsers={canUpdateAdminUsers}
-          onEdit={() => {
-            setActionError(null)
-            setActiveModal('EDIT')
-          }}
-          onNavigate={navigate}
-          onOpenSection={openSection}
-          user={user}
-        />
+        <div className="space-y-3">
+          <RelatedRecordsPanel
+            canReadAudit={canReadAudit}
+            canReadRoles={canReadRoles}
+            canUpdateAdminUsers={canUpdateAdminUsers}
+            onEdit={() => {
+              setActionError(null)
+              setActiveModal('EDIT')
+            }}
+            onNavigate={navigate}
+            onOpenSection={openSection}
+            user={user}
+          />
+          <SignalsPanel
+            canForceLogout={canForceLogout}
+            canReadAudit={canReadAudit}
+            canReadRoles={canReadRoles}
+            canUpdateAdminUsers={canUpdateAdminUsers}
+            user={user}
+          />
+        </div>
       </section>
 
       {activeModal === 'EDIT' ? (

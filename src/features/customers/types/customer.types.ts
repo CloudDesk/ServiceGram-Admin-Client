@@ -15,6 +15,7 @@ export interface AdminCustomersQueryParams {
   city?: string
   zoneId?: string
   hasOrders?: boolean
+  hasActiveOrders?: boolean
   hasWalletCredit?: boolean
   dateFrom?: string
   dateTo?: string

@@ -10,6 +10,7 @@ import {
   Settings2,
   SlidersHorizontal,
   UserRound,
+  X,
   XCircle,
 } from 'lucide-react'
 import type {
@@ -57,12 +58,12 @@ import type {
   AdminInfluencersQueryParams,
   InfluencerActionKind,
   InfluencerSocialProfile,
-  InfluencersPagination,
   InfluencersSummary,
   InfluencerStatus,
 } from '../types/influencer.types'
 
 type InfluencerTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+type InfluencerPreviewTab = 'summary' | 'application' | 'activity'
 type InfluencerQueueKey =
   | 'pending'
   | 'approved'
@@ -75,10 +76,19 @@ const INFLUENCER_DEFAULT_COLUMN_WIDTH = 220
 const INFLUENCER_GRID_COLUMN_GAP = 12
 const INFLUENCER_GRID_INLINE_PADDING = 24
 const INFLUENCER_ACTION_COLUMN_ID = 'actions'
-const INFLUENCER_ACTION_COLUMN_DEFAULT_WIDTH = 320
-const INFLUENCER_ACTION_COLUMN_MIN_WIDTH = 240
+const INFLUENCER_ACTION_COLUMN_DEFAULT_WIDTH = 232
+const INFLUENCER_ACTION_COLUMN_MIN_WIDTH = 216
+const INFLUENCER_ACTION_COLUMN_MAX_WIDTH = 252
 const INFLUENCER_COLUMN_WIDTH_STORAGE_KEY =
-  'servicegram.influencer.columnWidths.v1'
+  'servicegram.influencer.columnWidths.v2'
+const INFLUENCER_FILTER_CONTROL_CLASS_NAME =
+  'h-9 w-full rounded-[0.65rem] border border-border bg-surface px-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30'
+
+interface ActiveFilterChip {
+  key: string
+  label: string
+  onClear: () => void
+}
 
 const influencerStatuses: InfluencerStatus[] = [
   'PENDING_REVIEW',
@@ -206,26 +216,11 @@ interface InfluencerGridStyle extends CSSProperties {
   '--influencer-grid-min-width': string
 }
 
-interface InfluencerMetric {
-  label: string
-  meta: string
-  tone: InfluencerTone
-  value: string
-}
-
 function statusTone(status: InfluencerStatus | string): InfluencerTone {
   if (status === 'APPROVED') return 'success'
   if (status === 'PENDING_REVIEW') return 'warning'
   if (status === 'REJECTED' || status === 'SUSPENDED') return 'danger'
   return 'neutral'
-}
-
-function toneClasses(tone: InfluencerTone) {
-  if (tone === 'success') return 'text-success'
-  if (tone === 'warning') return 'text-warning'
-  if (tone === 'danger') return 'text-danger'
-  if (tone === 'info') return 'text-primary'
-  return 'text-muted'
 }
 
 function humanizeCode(value: string | null | undefined) {
@@ -299,51 +294,6 @@ function getInfluencerCustomerLabel(influencer: AdminInfluencer) {
   )
 }
 
-function buildInfluencerMetrics(
-  influencers: AdminInfluencer[],
-  pagination?: InfluencersPagination,
-  summary?: InfluencersSummary,
-): InfluencerMetric[] {
-  const total = pagination?.totalItems ?? summary?.total ?? influencers.length
-  const pending =
-    summary?.PENDING_REVIEW ??
-    influencers.filter((influencer) => influencer.status === 'PENDING_REVIEW')
-      .length
-  const approved =
-    summary?.APPROVED ??
-    influencers.filter((influencer) => influencer.status === 'APPROVED').length
-  const suspended =
-    summary?.SUSPENDED ??
-    influencers.filter((influencer) => influencer.status === 'SUSPENDED').length
-
-  return [
-    {
-      label: 'Pending review',
-      meta: 'Creator applications waiting for action',
-      tone: pending > 0 ? 'warning' : 'neutral',
-      value: String(pending),
-    },
-    {
-      label: 'Approved creators',
-      meta: 'Creators with upload access',
-      tone: approved > 0 ? 'success' : 'neutral',
-      value: String(approved),
-    },
-    {
-      label: 'Suspended',
-      meta: 'Creator access currently paused',
-      tone: suspended > 0 ? 'danger' : 'neutral',
-      value: String(suspended),
-    },
-    {
-      label: 'Matched creators',
-      meta: 'Total matching current filters',
-      tone: 'info',
-      value: String(total),
-    },
-  ]
-}
-
 function buildInfluencerQueueItems(summary?: InfluencersSummary) {
   return [
     {
@@ -396,11 +346,30 @@ function getInfluencerColumnMinWidth(columnId: InfluencerColumnWidthId) {
   )
 }
 
+function clampInfluencerColumnWidth(
+  columnId: InfluencerColumnWidthId,
+  width: number,
+) {
+  const nextWidth = Math.max(
+    getInfluencerColumnMinWidth(columnId),
+    Math.round(width),
+  )
+
+  if (columnId === INFLUENCER_ACTION_COLUMN_ID) {
+    return Math.min(nextWidth, INFLUENCER_ACTION_COLUMN_MAX_WIDTH)
+  }
+
+  return nextWidth
+}
+
 function getInfluencerColumnWidth(
   columnWidths: InfluencerColumnWidths,
   columnId: InfluencerColumnWidthId,
 ) {
-  return columnWidths[columnId] ?? getInfluencerColumnDefaultWidth(columnId)
+  return clampInfluencerColumnWidth(
+    columnId,
+    columnWidths[columnId] ?? getInfluencerColumnDefaultWidth(columnId),
+  )
 }
 
 function getInfluencerGridTemplate(
@@ -451,7 +420,15 @@ function loadInfluencerColumnWidths(): InfluencerColumnWidths {
     const parsedValue = JSON.parse(storedValue) as InfluencerColumnWidths
 
     return Object.fromEntries(
-      Object.entries(parsedValue).filter(([, width]) => typeof width === 'number'),
+      Object.entries(parsedValue)
+        .filter(([, width]) => typeof width === 'number')
+        .map(([columnId, width]) => [
+          columnId,
+          clampInfluencerColumnWidth(
+            columnId as InfluencerColumnWidthId,
+            width as number,
+          ),
+        ]),
     ) as InfluencerColumnWidths
   } catch {
     return {}
@@ -461,21 +438,10 @@ function loadInfluencerColumnWidths(): InfluencerColumnWidths {
 function formatRefreshTime(updatedAt: number) {
   if (!updatedAt) return 'Not refreshed yet'
 
-  return `Updated ${formatDate(new Date(updatedAt).toISOString(), true)}`
-}
-
-function MetricCard({ label, meta, tone, value }: InfluencerMetric) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <p className={cn('text-xs font-semibold uppercase tracking-normal', toneClasses(tone))}>
-        {label}
-      </p>
-      <p className={cn('mt-3 text-2xl font-semibold tracking-normal', toneClasses(tone))}>
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
-    </article>
-  )
+  return `Last refreshed ${new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(updatedAt))}`
 }
 
 function InfluencerRowsSkeleton() {
@@ -495,6 +461,451 @@ function InfluencerRowsSkeleton() {
   )
 }
 
+const influencerActionPriority: InfluencerActionKind[] = [
+  'APPROVE',
+  'REACTIVATE',
+  'REJECT',
+  'SUSPEND',
+]
+
+function isDangerInfluencerAction(kind: InfluencerActionKind) {
+  return kind === 'REJECT' || kind === 'SUSPEND'
+}
+
+function influencerActionLabel(kind: InfluencerActionKind) {
+  return {
+    APPROVE: 'Approve',
+    REACTIVATE: 'Reactivate',
+    REJECT: 'Reject',
+    SUSPEND: 'Suspend',
+  }[kind]
+}
+
+function getPrimaryInfluencerAction({
+  canReviewInfluencers,
+  influencer,
+}: {
+  canReviewInfluencers: boolean
+  influencer: AdminInfluencer
+}) {
+  if (!canReviewInfluencers) return null
+
+  const recommendedAction =
+    influencer.nextRecommendedAction &&
+    influencerActionPriority.includes(
+      influencer.nextRecommendedAction as InfluencerActionKind,
+    )
+      ? (influencer.nextRecommendedAction as InfluencerActionKind)
+      : null
+
+  if (
+    recommendedAction &&
+    influencer.availableActions.includes(recommendedAction)
+  ) {
+    return recommendedAction
+  }
+
+  return (
+    influencerActionPriority.find((kind) =>
+      influencer.availableActions.includes(kind),
+    ) ?? null
+  )
+}
+
+function ActiveFilterChips({
+  chips,
+  onClearAll,
+}: {
+  chips: ActiveFilterChip[]
+  onClearAll: () => void
+}) {
+  if (!chips.length) return null
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {chips.map((chip) => (
+        <span
+          className="inline-flex min-h-7 max-w-full items-center gap-2 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-foreground"
+          key={chip.key}
+        >
+          <span className="truncate">{chip.label}</span>
+          <button
+            aria-label={`Clear ${chip.label}`}
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-surface-muted hover:text-foreground"
+            type="button"
+            onClick={chip.onClear}
+          >
+            <X className="size-3.5" />
+          </button>
+        </span>
+      ))}
+      <button
+        className="min-h-7 rounded-full px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
+        type="button"
+        onClick={onClearAll}
+      >
+        Clear all
+      </button>
+    </div>
+  )
+}
+
+function InfluencerSummaryField({
+  label,
+  value,
+}: {
+  label: string
+  value: ReactNode
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+        {label}
+      </p>
+      <div className="mt-1 min-w-0 text-sm font-medium text-foreground">
+        {value ?? 'Not available'}
+      </div>
+    </div>
+  )
+}
+
+function InfluencerPreviewPanel({
+  canReadCustomers,
+  canReviewInfluencers,
+  commissionPolicy,
+  influencer,
+  isSubmitting,
+  onClose,
+  onOpenAction,
+  onOpenCustomer,
+  onOpenDetails,
+}: {
+  canReadCustomers: boolean
+  canReviewInfluencers: boolean
+  commissionPolicy: string
+  influencer: AdminInfluencer
+  isSubmitting: boolean
+  onClose: () => void
+  onOpenAction: (kind: InfluencerActionKind, influencer: AdminInfluencer) => void
+  onOpenCustomer: (influencer: AdminInfluencer) => void
+  onOpenDetails: (influencer: AdminInfluencer) => void
+}) {
+  const [activeTab, setActiveTab] = useState<InfluencerPreviewTab>('summary')
+  const primaryAction = getPrimaryInfluencerAction({
+    canReviewInfluencers,
+    influencer,
+  })
+  const secondaryActions = canReviewInfluencers
+    ? influencerActionPriority.filter(
+        (kind) =>
+          kind !== primaryAction && influencer.availableActions.includes(kind),
+      )
+    : []
+  const previewTabs: { key: InfluencerPreviewTab; label: string }[] = [
+    { key: 'summary', label: 'Summary' },
+    { key: 'application', label: 'Application' },
+    { key: 'activity', label: 'Activity' },
+  ]
+  const applicationReason =
+    influencer.application?.reviewReason ??
+    influencer.rejectionReason ??
+    influencer.suspensionReason
+  const categorySummary =
+    influencer.preferredCategories
+      ?.map((category) => category.name)
+      .filter(Boolean)
+      .join(', ') ||
+    influencer.application?.preferredCategories
+      ?.map((category) => category.name)
+      .filter(Boolean)
+      .join(', ') ||
+    'Not available'
+
+  return (
+    <>
+      <button
+        aria-label="Close influencer preview"
+        className="fixed inset-0 z-40 bg-black/20 xl:hidden"
+        type="button"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
+        <div className="shrink-0 border-b border-border p-3">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h2 className="min-w-0 truncate text-base font-semibold text-foreground">
+                  {influencer.displayName}
+                </h2>
+                <Badge tone={statusTone(influencer.status)}>
+                  {humanizeCode(influencer.status)}
+                </Badge>
+              </div>
+              <p className="mt-1 truncate text-xs text-muted">
+                {influencer.publicInfluencerId} /{' '}
+                {socialProfilesSummary(
+                  influencer.socialProfiles,
+                  influencer.socialHandle,
+                ) || 'No social handle'}
+              </p>
+            </div>
+            <button
+              aria-label="Close influencer preview panel"
+              className="btn-icon shrink-0"
+              title="Close"
+              type="button"
+              onClick={onClose}
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <Badge tone="neutral">
+              {influencer.summary.reelCount} reels
+            </Badge>
+            <Badge tone="neutral">
+              {influencer.summary.attributedBookingCount} bookings
+            </Badge>
+            {influencer.warnings.length ? (
+              <Badge tone="warning">
+                {influencer.warnings.length} warning
+                {influencer.warnings.length === 1 ? '' : 's'}
+              </Badge>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="shrink-0 border-b border-border bg-surface px-3">
+          <div
+            aria-label="Influencer preview sections"
+            className="flex gap-4 overflow-x-auto"
+            role="tablist"
+          >
+            {previewTabs.map((tab) => {
+              const isActive = activeTab === tab.key
+
+              return (
+                <button
+                  aria-selected={isActive}
+                  className={cn(
+                    'relative min-h-10 shrink-0 text-sm font-semibold transition',
+                    isActive
+                      ? 'text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
+                      : 'text-muted hover:text-foreground',
+                  )}
+                  key={tab.key}
+                  role="tab"
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {activeTab === 'summary' ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 rounded-[0.75rem] border border-border p-3">
+                <InfluencerSummaryField
+                  label="Customer"
+                  value={getInfluencerCustomerLabel(influencer)}
+                />
+                <InfluencerSummaryField
+                  label="City"
+                  value={
+                    influencer.customer.zone?.zoneName ??
+                    influencer.customer.city ??
+                    'Not available'
+                  }
+                />
+                <InfluencerSummaryField
+                  label="Commission"
+                  value={formatPaise(influencer.summary.confirmedCommissionPaise)}
+                />
+                <InfluencerSummaryField label="Policy" value={commissionPolicy} />
+              </div>
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <InfluencerSummaryField
+                  label="Preferred categories"
+                  value={<p className="line-clamp-3">{categorySummary}</p>}
+                />
+              </div>
+              {canReadCustomers ? (
+                <Button
+                  className="w-full"
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => onOpenCustomer(influencer)}
+                >
+                  <UserRound className="mr-2 size-4" />
+                  Open customer
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {activeTab === 'application' ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 rounded-[0.75rem] border border-border p-3">
+                <InfluencerSummaryField
+                  label="Status"
+                  value={humanizeCode(influencer.application?.status)}
+                />
+                <InfluencerSummaryField
+                  label="Submitted"
+                  value={formatDateSafe(influencer.application?.createdAt)}
+                />
+                <InfluencerSummaryField
+                  label="Reviewed"
+                  value={formatDateSafe(influencer.application?.reviewedAt)}
+                />
+                <InfluencerSummaryField
+                  label="Social"
+                  value={
+                    socialProfilesSummary(
+                      influencer.application?.socialProfiles,
+                      influencer.application?.socialHandle,
+                    ) || 'Not available'
+                  }
+                />
+              </div>
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <InfluencerSummaryField
+                  label="Motivation"
+                  value={
+                    <p className="line-clamp-4">
+                      {influencer.application?.motivation ?? 'Not available'}
+                    </p>
+                  }
+                />
+              </div>
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <InfluencerSummaryField
+                  label="Review reason"
+                  value={
+                    <p className="line-clamp-4">
+                      {applicationReason ?? 'Not available'}
+                    </p>
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'activity' ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 rounded-[0.75rem] border border-border p-3">
+                <InfluencerSummaryField
+                  label="Reels"
+                  value={`${influencer.summary.liveReelCount} live / ${influencer.summary.pendingReelCount} pending`}
+                />
+                <InfluencerSummaryField
+                  label="Bookings"
+                  value={influencer.summary.attributedBookingCount}
+                />
+                <InfluencerSummaryField
+                  label="Pending"
+                  value={formatPaise(influencer.summary.pendingCommissionPaise)}
+                />
+                <InfluencerSummaryField
+                  label="Last commission"
+                  value={formatDateSafe(influencer.summary.lastCommissionAt)}
+                />
+              </div>
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                  Warnings
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {influencer.warnings.length ? (
+                    influencer.warnings.map((warning) => (
+                      <Badge key={warning} tone="warning">
+                        {humanizeCode(warning)}
+                      </Badge>
+                    ))
+                  ) : (
+                    <Badge tone="success">No warnings</Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="shrink-0 border-t border-border p-3">
+          <div className="space-y-2">
+            {primaryAction ? (
+              <Button
+                className="w-full"
+                disabled={isSubmitting}
+                size="sm"
+                type="button"
+                variant={
+                  isDangerInfluencerAction(primaryAction) ? 'danger' : 'primary'
+                }
+                onClick={() => onOpenAction(primaryAction, influencer)}
+              >
+                {primaryAction === 'APPROVE' ? (
+                  <CheckCircle2 className="mr-2 size-4" />
+                ) : primaryAction === 'REACTIVATE' ? (
+                  <RotateCcw className="mr-2 size-4" />
+                ) : primaryAction === 'SUSPEND' ? (
+                  <PauseCircle className="mr-2 size-4" />
+                ) : (
+                  <XCircle className="mr-2 size-4" />
+                )}
+                {influencerActionLabel(primaryAction)}
+              </Button>
+            ) : null}
+
+            {secondaryActions.length ? (
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                {secondaryActions.map((kind) => (
+                  <Button
+                    disabled={isSubmitting}
+                    key={kind}
+                    size="sm"
+                    type="button"
+                    variant={isDangerInfluencerAction(kind) ? 'danger' : 'secondary'}
+                    onClick={() => onOpenAction(kind, influencer)}
+                  >
+                    {kind === 'APPROVE' ? (
+                      <CheckCircle2 className="mr-2 size-4" />
+                    ) : kind === 'REACTIVATE' ? (
+                      <RotateCcw className="mr-2 size-4" />
+                    ) : kind === 'SUSPEND' ? (
+                      <PauseCircle className="mr-2 size-4" />
+                    ) : (
+                      <XCircle className="mr-2 size-4" />
+                    )}
+                    {influencerActionLabel(kind)}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+
+            <Button
+              className="w-full"
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => onOpenDetails(influencer)}
+            >
+              <ArrowUpRight className="mr-2 size-4" />
+              Open full detail
+            </Button>
+          </div>
+        </div>
+      </aside>
+    </>
+  )
+}
+
 function InfluencerCell({
   children,
   label,
@@ -504,8 +915,8 @@ function InfluencerCell({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-xs text-muted">{label}</p>
-      <div className="mt-1 min-w-0 text-sm text-foreground">{children}</div>
+      <p className="text-xs text-muted xl:hidden">{label}</p>
+      <div className="mt-1 min-w-0 text-sm text-foreground xl:mt-0">{children}</div>
     </div>
   )
 }
@@ -538,7 +949,10 @@ export function InfluencersPage() {
     queueKeyForInfluencerStatuses(initialStatuses),
   )
   const [columnsOpen, setColumnsOpen] = useState(false)
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [previewInfluencerId, setPreviewInfluencerId] = useState<string | null>(
+    null,
+  )
   const [visibleColumns, setVisibleColumns] =
     useState<InfluencerColumnId[]>(defaultInfluencerColumns)
   const [columnWidths, setColumnWidths] =
@@ -663,6 +1077,10 @@ export function InfluencersPage() {
   const influencers = influencersQuery.data?.data ?? []
   const pagination = influencersQuery.data?.pagination
   const summary = influencersQuery.data?.summary
+  const previewInfluencer =
+    influencers.find(
+      (influencer) => influencer.influencerProfileId === previewInfluencerId,
+    ) ?? null
   const influencerSelection = useListSelection(
     influencers,
     (influencer) => influencer.influencerProfileId,
@@ -670,14 +1088,16 @@ export function InfluencersPage() {
   const isInitialLoading = influencersQuery.isLoading && !influencersQuery.data
   const isRefreshing = influencersQuery.isFetching && Boolean(influencersQuery.data)
   const refreshStatusLabel = isRefreshing
-    ? 'Refreshing now'
+    ? 'Refreshing'
     : formatRefreshTime(influencersQuery.dataUpdatedAt)
   const commissionSetting = commissionSettingQuery.data?.data.find(
     (setting) => setting.settingKey === 'influencer.commission.phase1',
   )
+  const commissionPolicyLabel = commissionSettingQuery.isLoading
+    ? 'Loading'
+    : formatCommissionValue(commissionSetting?.value)
   const stableSummary = queueCountsQuery.data?.summary
   const queueSummary = stableSummary ?? summary
-  const metrics = buildInfluencerMetrics(influencers, pagination, queueSummary)
   const queueItems = buildInfluencerQueueItems(queueSummary)
   const influencerGridStyle = useMemo<InfluencerGridStyle>(
     () => ({
@@ -741,6 +1161,57 @@ export function InfluencersPage() {
     setPage(1)
   }
 
+  const activeFilterChips: ActiveFilterChip[] = []
+  const addActiveFilterChip = (
+    condition: boolean,
+    key: string,
+    label: string,
+    onClear: () => void,
+  ) => {
+    if (condition) activeFilterChips.push({ key, label, onClear })
+  }
+  const queueLabel =
+    queueItems.find((queueItem) => queueItem.key === queue)?.label ?? queue
+
+  addActiveFilterChip(!isDefaultStatusFilter, 'queue', `Queue: ${queueLabel}`, () => {
+    applyQueue('pending')
+  })
+  addActiveFilterChip(Boolean(search.trim()), 'search', `Search: ${search.trim()}`, () => {
+    clearSeededInfluencerParams()
+    setSearch('')
+    resetToFirstPage()
+  })
+  addActiveFilterChip(Boolean(city.trim()), 'city', `City: ${city.trim()}`, () => {
+    clearSeededInfluencerParams()
+    setCity('')
+    resetToFirstPage()
+  })
+  addActiveFilterChip(
+    selectedCategories.length > 0,
+    'category',
+    `Category: ${selectedCategories[0]?.label ?? selectedCategories[0]?.value}${
+      selectedCategories.length > 1 ? ` +${selectedCategories.length - 1}` : ''
+    }`,
+    () => {
+      clearSeededInfluencerParams()
+      setSelectedCategories([])
+      resetToFirstPage()
+    },
+  )
+  addActiveFilterChip(
+    queue === 'all' && selectedStatuses.length > 0,
+    'status',
+    `Status: ${humanizeCode(selectedStatuses[0] ?? '')}${
+      selectedStatuses.length > 1 ? ` +${selectedStatuses.length - 1}` : ''
+    }`,
+    () => {
+      clearSeededInfluencerParams()
+      setSelectedStatuses(['PENDING_REVIEW'])
+      setQueue('pending')
+      resetToFirstPage()
+    },
+  )
+
   const startColumnResize = (
     columnId: InfluencerColumnWidthId,
     event: ReactPointerEvent<HTMLButtonElement>,
@@ -756,10 +1227,7 @@ export function InfluencersPage() {
 
       setColumnWidths((currentWidths) => ({
         ...currentWidths,
-        [columnId]: Math.max(
-          getInfluencerColumnMinWidth(columnId),
-          Math.round(nextWidth),
-        ),
+        [columnId]: clampInfluencerColumnWidth(columnId, nextWidth),
       }))
     }
 
@@ -1004,308 +1472,125 @@ export function InfluencersPage() {
   )
 
   const renderRowActions = (influencer: AdminInfluencer) => {
-    const hasAction = (action: InfluencerActionKind) =>
-      influencer.availableActions.includes(action)
+    const primaryAction = getPrimaryInfluencerAction({
+      canReviewInfluencers,
+      influencer,
+    })
+    const primaryActionText = primaryAction
+      ? influencerActionLabel(primaryAction)
+      : ''
 
     return (
-      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-        {canReviewInfluencers && hasAction('APPROVE') ? (
-          <Button
-            disabled={actionMutation.isPending}
-            size="sm"
+      <div className="flex min-w-0 flex-nowrap items-center justify-end gap-1.5 xl:sticky xl:right-0 xl:z-20 xl:border-l xl:border-border xl:bg-inherit xl:pl-2 xl:shadow-[var(--sg-shadow-sticky-action)]">
+        {canReadCustomers ? (
+          <button
+            aria-label={`Open customer ${getInfluencerCustomerLabel(influencer)}`}
+            className="btn-icon"
+            title="Open customer"
             type="button"
-            variant="secondary"
-            onClick={(event) => openInfluencerAction('APPROVE', influencer, event)}
+            onClick={(event) => {
+              event.stopPropagation()
+              viewCustomer(influencer)
+            }}
           >
-            <CheckCircle2 className="mr-2 size-4" />
-            Approve
-          </Button>
+            <UserRound className="size-4" />
+          </button>
         ) : null}
-        {canReviewInfluencers && hasAction('REJECT') ? (
+        {primaryAction ? (
           <Button
+            className="w-[7.75rem] shrink-0 overflow-hidden px-2.5"
             disabled={actionMutation.isPending}
             size="sm"
+            title={primaryActionText}
             type="button"
-            variant="danger"
-            onClick={(event) => openInfluencerAction('REJECT', influencer, event)}
-          >
-            <XCircle className="mr-2 size-4" />
-            Reject
-          </Button>
-        ) : null}
-        {canReviewInfluencers && hasAction('SUSPEND') ? (
-          <Button
-            disabled={actionMutation.isPending}
-            size="sm"
-            type="button"
-            variant="danger"
+            variant={isDangerInfluencerAction(primaryAction) ? 'danger' : 'primary'}
             onClick={(event) =>
-              openInfluencerAction('SUSPEND', influencer, event)
+              openInfluencerAction(primaryAction, influencer, event)
             }
           >
-            <PauseCircle className="mr-2 size-4" />
-            Suspend
+            {primaryAction === 'APPROVE' ? (
+              <CheckCircle2 className="mr-2 size-4 shrink-0" />
+            ) : primaryAction === 'REACTIVATE' ? (
+              <RotateCcw className="mr-2 size-4 shrink-0" />
+            ) : primaryAction === 'SUSPEND' ? (
+              <PauseCircle className="mr-2 size-4 shrink-0" />
+            ) : (
+              <XCircle className="mr-2 size-4 shrink-0" />
+            )}
+            <span className="min-w-0 truncate">{primaryActionText}</span>
           </Button>
         ) : null}
-        {canReviewInfluencers && hasAction('REACTIVATE') ? (
-          <Button
-            disabled={actionMutation.isPending}
-            size="sm"
-            type="button"
-            variant="secondary"
-            onClick={(event) =>
-              openInfluencerAction('REACTIVATE', influencer, event)
-            }
-          >
-            <RotateCcw className="mr-2 size-4" />
-            Reactivate
-          </Button>
-        ) : null}
-        <Button
-          size="sm"
+        <button
+          aria-label={`Open ${influencer.displayName} details`}
+          className="btn-icon"
+          title="Open detail"
           type="button"
-          variant="ghost"
           onClick={(event) => {
             event.stopPropagation()
             viewDetails(influencer)
           }}
         >
-          <ArrowUpRight className="mr-2 size-4" />
-          Open
-        </Button>
+          <ArrowUpRight className="size-4" />
+        </button>
       </div>
     )
   }
 
   return (
-    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
-      <PageContextHeader
-        description="Review creator applications, monitor approved creators, and track Phase 1 commission activity."
-        layout="workspace"
-        placement="topbar"
-        title="Influencers"
-      />
+    <PageContainer className="flex min-h-full flex-col space-y-3 !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
+      <PageContextHeader layout="workspace" placement="topbar" title="Influencers" />
 
-      <div className="flex flex-col gap-3 xl:min-h-0 xl:flex-1">
-        <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          {metrics.map((metric) => (
-            <MetricCard
-              key={metric.label}
-              label={metric.label}
-              meta={metric.meta}
-              tone={metric.tone}
-              value={metric.value}
-            />
-          ))}
-        </section>
+      {actionMessage ? (
+        <div className="rounded-[0.875rem] border border-success/25 bg-success/10 p-3 text-sm text-success">
+          {actionMessage}
+        </div>
+      ) : null}
 
-        {actionMessage ? (
-          <div className="rounded-[0.875rem] border border-success/25 bg-success/10 p-3 text-sm text-success">
-            {actionMessage}
-          </div>
-        ) : null}
-
-        <section
-          className={cn(
-            'grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[18rem_minmax(0,1fr)] xl:items-stretch xl:overflow-hidden',
-            filtersCollapsed && 'xl:grid-cols-[4.25rem_minmax(0,1fr)]',
-          )}
-        >
-          <aside
-            className={cn(
-              'self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0',
-              filtersCollapsed
-                ? 'flex items-center justify-between gap-3 p-2.5 xl:flex-col xl:justify-start'
-                : 'space-y-3 p-3 xl:overflow-y-auto',
-            )}
-          >
-            {filtersCollapsed ? (
-              <>
-                <button
-                  aria-label="Expand influencer filters"
-                  className="btn-icon"
-                  title="Expand filters"
-                  type="button"
-                  onClick={() => setFiltersCollapsed(false)}
-                >
-                  <ChevronRight className="size-4" />
-                </button>
-                <span
-                  aria-hidden="true"
-                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
-                >
-                  <Filter className="size-4" />
-                </span>
-                {hasActiveFilters ? (
-                  <span
-                    aria-label="Active filters"
-                    className="size-2 rounded-full bg-primary"
-                    title="Active filters"
-                  />
-                ) : null}
-              </>
-            ) : (
-              <>
-                <div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-sm font-semibold text-foreground">
-                        Queue totals
-                      </h2>
-                      <p className="text-xs text-muted">
-                        Counts match base filters.
-                      </p>
-                    </div>
-                    <button
-                      aria-label="Collapse influencer filters"
-                      className="btn-icon"
-                      title="Collapse filters"
-                      type="button"
-                      onClick={() => setFiltersCollapsed(true)}
-                    >
-                      <ChevronLeft className="size-4" />
-                    </button>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {queueItems.map((queueItem) => (
-                      <button
-                        className={cn(
-                          'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border px-3 text-left text-sm transition',
-                          queue === queueItem.key
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border bg-surface-muted/50 text-foreground hover:border-primary/35',
-                        )}
-                        key={queueItem.key}
-                        type="button"
-                        onClick={() => applyQueue(queueItem.key)}
-                      >
-                        <span className="font-medium">{queueItem.label}</span>
-                        <span className="text-xs font-semibold">
-                          {queueItem.count ?? '...'}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t border-border pt-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Filter stack
-                    </h3>
-                    {hasActiveFilters ? (
-                      <button
-                        className="text-xs font-semibold text-primary"
-                        type="button"
-                        onClick={clearInfluencerFilters}
-                      >
-                        Reset
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 space-y-3">
-                    <MultiSelectFilter
-                      label="Creator status"
-                      options={statusOptions}
-                      placeholder="All statuses"
-                      values={selectedStatuses}
-                      onChange={(values) => {
-                        clearSeededInfluencerParams()
-                        setSelectedStatuses(values as InfluencerStatus[])
-                        setQueue('all')
-                        resetToFirstPage()
-                      }}
-                    />
-                    <LookupMultiSelect
-                      fetchOptions={searchCategoryLookupOptions}
-                      label="Preferred category"
-                      placeholder="Search category"
-                      queryKey={['lookup', 'categories', 'influencers']}
-                      selectedOptions={selectedCategories}
-                      onChange={(options) => {
-                        clearSeededInfluencerParams()
-                        setSelectedCategories(options)
-                        resetToFirstPage()
-                      }}
-                    />
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        City
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        placeholder="Chennai"
-                        value={city}
-                        onChange={(event) => {
-                          clearSeededInfluencerParams()
-                          setCity(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <div className="rounded-[0.875rem] border border-border bg-surface-muted/45 p-3">
-                      <div className="flex items-start gap-2">
-                        <Settings2 className="mt-0.5 size-4 shrink-0 text-muted" />
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-                            Commission policy
-                          </p>
-                          <p className="mt-1 text-sm font-semibold text-foreground">
-                            {commissionSettingQuery.isLoading
-                              ? 'Loading'
-                              : formatCommissionValue(commissionSetting?.value)}
-                          </p>
-                          {commissionSetting ? (
-                            <Link
-                              className="mt-2 inline-flex text-xs font-semibold text-primary"
-                              to={`${routePaths.settings}/settings/${encodeURIComponent(
-                                commissionSetting.settingKey,
-                              )}`}
-                            >
-                              Open setting
-                            </Link>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </aside>
-
-          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  Creator operations
+      <section className="flex min-w-0 flex-col xl:min-h-0 xl:flex-1">
+        <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface xl:min-h-0 xl:flex-1">
+          <div className="shrink-0 border-b border-border bg-surface px-3 py-3 sm:px-4">
+            <div className="grid gap-3 xl:grid-cols-[minmax(10rem,auto)_minmax(24rem,1fr)_auto] xl:items-center">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold text-foreground">
+                  Influencers
                 </h2>
-                <p className="text-sm text-muted">
-                  {pagination
-                    ? `${pagination.totalItems} creators matching current filters`
-                    : 'Search, filter, and review creator applications.'}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <ListHeaderSearch
-                  ariaLabel="Search influencers"
-                  className="w-full sm:w-72 lg:w-80"
-                  placeholder="Search name, handle, mobile"
-                  value={search}
-                  onChange={(nextSearch) => {
-                    clearSeededInfluencerParams()
-                    setSearch(nextSearch)
-                    resetToFirstPage()
-                  }}
-                />
                 <span
                   className={cn(
-                    'text-xs font-medium',
+                    'rounded-full bg-surface-muted px-2 py-1 text-xs font-semibold',
                     isRefreshing ? 'text-primary' : 'text-muted',
                   )}
                 >
                   {refreshStatusLabel}
                 </span>
+              </div>
+
+              <ListHeaderSearch
+                ariaLabel="Search influencers"
+                className="w-full min-w-0"
+                placeholder="Search creators, handles, mobile..."
+                value={search}
+                onChange={(nextSearch) => {
+                  clearSeededInfluencerParams()
+                  setSearch(nextSearch)
+                  resetToFirstPage()
+                }}
+              />
+
+              <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 xl:justify-end">
+                <Button
+                  aria-expanded={filtersOpen}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setFiltersOpen((current) => !current)}
+                >
+                  <Filter className="mr-2 size-4" />
+                  Filters
+                  {activeFilterChips.length ? (
+                    <span className="ml-1 size-2 rounded-full bg-primary" />
+                  ) : null}
+                </Button>
+
                 <div className="relative" ref={columnsMenuRef}>
                   <Button
                     aria-expanded={columnsOpen}
@@ -1326,7 +1611,7 @@ export function InfluencersPage() {
 
                   {columnsOpen ? (
                     <div
-                      className="absolute right-0 top-[calc(100%+0.5rem)] z-[60] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
+                      className="absolute right-0 top-[calc(100%+0.5rem)] z-[80] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
                       role="menu"
                     >
                       <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
@@ -1360,6 +1645,7 @@ export function InfluencersPage() {
                     </div>
                   ) : null}
                 </div>
+
                 <Button
                   size="sm"
                   type="button"
@@ -1377,33 +1663,162 @@ export function InfluencersPage() {
               </div>
             </div>
 
-            {influencersQuery.isError ? (
-              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <ErrorState
-                  title="Influencers unavailable"
-                  description="We could not load creator applications."
-                  onRetry={() => void influencersQuery.refetch()}
-                />
+            <div className="mt-3 flex gap-2 overflow-x-auto rounded-[0.875rem] border border-border bg-surface-muted/45 p-1">
+              {queueItems.map((queueItem) => {
+                const isActive = queue === queueItem.key
+
+                return (
+                  <button
+                    className={cn(
+                      'inline-flex min-h-9 min-w-max flex-1 items-center justify-center gap-2 rounded-[0.65rem] px-3 text-sm font-semibold transition',
+                      isActive
+                        ? 'bg-surface text-primary shadow-sm ring-1 ring-primary/25'
+                        : 'text-muted hover:bg-surface/75 hover:text-foreground',
+                    )}
+                    key={queueItem.key}
+                    type="button"
+                    onClick={() => applyQueue(queueItem.key)}
+                  >
+                    <span>{queueItem.label}</span>
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-xs',
+                        isActive
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-surface text-muted',
+                      )}
+                    >
+                      {queueItem.count ?? '...'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <ActiveFilterChips
+              chips={activeFilterChips}
+              onClearAll={clearInfluencerFilters}
+            />
+
+            {filtersOpen ? (
+              <div className="mt-3 rounded-[0.875rem] border border-border bg-surface-muted/35 p-3">
+                <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(14rem,1fr)_minmax(10rem,0.8fr)_minmax(14rem,1fr)_auto] xl:items-end">
+                  <MultiSelectFilter
+                    label="Status"
+                    options={statusOptions}
+                    placeholder="All statuses"
+                    values={selectedStatuses}
+                    onChange={(values) => {
+                      clearSeededInfluencerParams()
+                      setSelectedStatuses(values as InfluencerStatus[])
+                      setQueue('all')
+                      resetToFirstPage()
+                    }}
+                  />
+                  <LookupMultiSelect
+                    fetchOptions={searchCategoryLookupOptions}
+                    label="Preferred category"
+                    placeholder="Search category"
+                    queryKey={['lookup', 'categories', 'influencers']}
+                    selectedOptions={selectedCategories}
+                    onChange={(options) => {
+                      clearSeededInfluencerParams()
+                      setSelectedCategories(options)
+                      resetToFirstPage()
+                    }}
+                  />
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted">City</span>
+                    <Input
+                      className={INFLUENCER_FILTER_CONTROL_CLASS_NAME}
+                      placeholder="Chennai"
+                      value={city}
+                      onChange={(event) => {
+                        clearSeededInfluencerParams()
+                        setCity(event.target.value)
+                        resetToFirstPage()
+                      }}
+                    />
+                  </label>
+                  <div className="min-h-10 rounded-[0.75rem] border border-border bg-surface px-3 py-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Settings2 className="size-4 shrink-0 text-muted" />
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold uppercase tracking-normal text-muted">
+                          Commission policy
+                        </p>
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {commissionPolicyLabel}
+                        </p>
+                      </div>
+                      {commissionSetting ? (
+                        <Link
+                          className="ml-auto shrink-0 text-xs font-semibold text-primary"
+                          to={`${routePaths.settings}/settings/${encodeURIComponent(
+                            commissionSetting.settingKey,
+                          )}`}
+                        >
+                          Open
+                        </Link>
+                      ) : null}
+                    </div>
+                  </div>
+                  <Button
+                    className="h-10 w-full"
+                    disabled={!hasActiveFilters}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={clearInfluencerFilters}
+                  >
+                    Reset
+                  </Button>
+                </div>
               </div>
-            ) : isInitialLoading ? (
-              <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <InfluencerRowsSkeleton />
-              </div>
-            ) : influencers.length === 0 ? (
-              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <EmptyState
-                  title="No creators found"
-                  description="No influencer applications match the current filters."
-                />
-              </div>
-            ) : (
-              <div className="flex flex-col xl:min-h-0 xl:flex-1">
+            ) : null}
+          </div>
+
+          {influencersQuery.isError ? (
+            <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+              <ErrorState
+                description="We could not load creator applications."
+                title="Influencers unavailable"
+                onRetry={() => void influencersQuery.refetch()}
+              />
+            </div>
+          ) : isInitialLoading ? (
+            <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+              <InfluencerRowsSkeleton />
+            </div>
+          ) : influencers.length === 0 ? (
+            <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+              <EmptyState
+                actionLabel={hasActiveFilters ? 'Clear filters' : undefined}
+                description={
+                  hasActiveFilters
+                    ? 'No matches.'
+                    : 'No creator applications are waiting for review.'
+                }
+                title="No creators"
+                onAction={hasActiveFilters ? clearInfluencerFilters : undefined}
+              />
+            </div>
+          ) : (
+            <div
+              className={cn(
+                'min-h-0 xl:flex-1',
+                previewInfluencer
+                  ? 'grid xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-3 xl:p-3'
+                  : 'flex flex-col',
+              )}
+            >
+              <div className="flex min-w-0 flex-col overflow-hidden xl:min-h-0 xl:flex-1">
                 <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
                   <div
                     className="min-w-0 xl:min-w-[var(--influencer-grid-min-width)]"
                     style={influencerGridStyle}
                   >
-                    <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--influencer-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                    <div className="sticky top-0 z-30 hidden gap-3 grid-cols-[var(--influencer-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted shadow-[0_1px_0_var(--adaptive-border)] xl:grid">
                       <div className="flex min-w-0 items-center">
                         <ListSelectionCheckbox
                           checked={influencerSelection.allVisibleSelected}
@@ -1432,7 +1847,7 @@ export function InfluencersPage() {
                             />
                           </div>
                         ))}
-                      <div className="relative flex min-w-0 items-center justify-end pr-3">
+                      <div className="relative sticky right-0 z-40 flex min-w-0 items-center justify-end bg-surface-muted pr-3 text-right shadow-[var(--sg-shadow-sticky-action)]">
                         <span>Actions</span>
                         <button
                           aria-label="Resize actions column"
@@ -1443,7 +1858,10 @@ export function InfluencersPage() {
                             resetColumnWidth(INFLUENCER_ACTION_COLUMN_ID)
                           }
                           onPointerDown={(event) =>
-                            startColumnResize(INFLUENCER_ACTION_COLUMN_ID, event)
+                            startColumnResize(
+                              INFLUENCER_ACTION_COLUMN_ID,
+                              event,
+                            )
                           }
                         />
                       </div>
@@ -1453,65 +1871,75 @@ export function InfluencersPage() {
                       selectedCount={influencerSelection.selectedCount}
                       visibleCount={influencerSelection.visibleCount}
                       onClear={influencerSelection.clearSelection}
-                      onSelectVisible={() => influencerSelection.setVisibleSelected(true)}
+                      onSelectVisible={() =>
+                        influencerSelection.setVisibleSelected(true)
+                      }
                     />
 
                     <div className="divide-y divide-border">
-                      {influencers.map((influencer) => (
-                        <div
-                          aria-label={`Open influencer ${influencer.influencerProfileId}`}
-                          aria-selected={influencerSelection.isSelected(
-                            influencer.influencerProfileId,
-                          )}
-                          className={cn(
-                            'grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--influencer-grid-template)]',
-                            influencerSelection.isSelected(
-                              influencer.influencerProfileId,
-                            ) && 'bg-primary/5 hover:bg-primary/10',
-                          )}
-                          key={influencer.influencerProfileId}
-                          role="button"
-                          style={influencerGridStyle}
-                          tabIndex={0}
-                          onClick={() => viewDetails(influencer)}
-                          onKeyDown={(event) => {
-                            if (event.target !== event.currentTarget) return
+                      {influencers.map((influencer) => {
+                        const isPreviewed =
+                          previewInfluencerId === influencer.influencerProfileId
+                        const isSelected = influencerSelection.isSelected(
+                          influencer.influencerProfileId,
+                        )
 
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault()
-                              viewDetails(influencer)
-                            }
-                          }}
-                        >
-                          <div className="flex min-w-0 items-start xl:items-center">
-                            <ListSelectionCheckbox
-                              checked={influencerSelection.isSelected(
+                        return (
+                          <div
+                            aria-label={`Preview influencer ${influencer.displayName}`}
+                            aria-selected={isPreviewed || isSelected}
+                            className={cn(
+                              'grid w-full cursor-pointer gap-3 px-3 py-2.5 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--influencer-grid-template)]',
+                              isSelected && 'bg-primary/5 hover:bg-primary/10',
+                              isPreviewed &&
+                                'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
+                            )}
+                            key={influencer.influencerProfileId}
+                            role="button"
+                            style={influencerGridStyle}
+                            tabIndex={0}
+                            onClick={() =>
+                              setPreviewInfluencerId(
                                 influencer.influencerProfileId,
-                              )}
-                              label={`Select influencer ${influencer.influencerProfileId}`}
-                              onChange={(selected) =>
-                                influencerSelection.setItemSelected(
+                              )
+                            }
+                            onKeyDown={(event) => {
+                              if (event.target !== event.currentTarget) return
+
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
+                                setPreviewInfluencerId(
                                   influencer.influencerProfileId,
-                                  selected,
                                 )
                               }
-                            />
-                          </div>
-                          <div className="grid gap-3 sm:grid-cols-2 xl:contents">
-                            {renderInfluencerCells(influencer)}
-                          </div>
-                          <div className="flex min-w-0 items-center justify-start xl:justify-end">
+                            }}
+                          >
+                            <div className="flex min-w-0 items-start xl:items-center">
+                              <ListSelectionCheckbox
+                                checked={isSelected}
+                                label={`Select influencer ${influencer.influencerProfileId}`}
+                                onChange={(selected) =>
+                                  influencerSelection.setItemSelected(
+                                    influencer.influencerProfileId,
+                                    selected,
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 xl:contents">
+                              {renderInfluencerCells(influencer)}
+                            </div>
                             {renderRowActions(influencer)}
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
 
                 {pagination ? (
-                  <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border px-3 py-3 text-sm text-muted">
-                    <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-surface-muted px-3 py-2.5 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-3">
                       <span>
                         Showing {(pagination.page - 1) * pagination.limit + 1}-
                         {Math.min(
@@ -1523,7 +1951,8 @@ export function InfluencersPage() {
                       <label className="flex items-center gap-2">
                         <span>Rows</span>
                         <select
-                          className="h-9 rounded-[0.65rem] border border-border bg-surface px-2 text-foreground outline-none"
+                          aria-label="Rows per page"
+                          className="h-9 rounded-[0.75rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
                           value={limit}
                           onChange={(event) => {
                             setLimit(Number(event.target.value))
@@ -1538,7 +1967,7 @@ export function InfluencersPage() {
                         </select>
                       </label>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3 sm:justify-end">
                       <button
                         aria-label="Previous page"
                         className="btn-icon"
@@ -1548,8 +1977,8 @@ export function InfluencersPage() {
                       >
                         <ChevronLeft className="size-4" />
                       </button>
-                      <span className="font-medium text-foreground">
-                        Page {pagination.page} of {pagination.totalPages}
+                      <span className="text-sm font-medium text-foreground">
+                        Page {pagination.page} of {Math.max(1, pagination.totalPages)}
                       </span>
                       <button
                         aria-label="Next page"
@@ -1564,10 +1993,24 @@ export function InfluencersPage() {
                   </div>
                 ) : null}
               </div>
-            )}
-          </main>
-        </section>
-      </div>
+
+              {previewInfluencer ? (
+                <InfluencerPreviewPanel
+                  canReadCustomers={canReadCustomers}
+                  canReviewInfluencers={canReviewInfluencers}
+                  commissionPolicy={commissionPolicyLabel}
+                  influencer={previewInfluencer}
+                  isSubmitting={actionMutation.isPending}
+                  onClose={() => setPreviewInfluencerId(null)}
+                  onOpenAction={openInfluencerAction}
+                  onOpenCustomer={viewCustomer}
+                  onOpenDetails={viewDetails}
+                />
+              ) : null}
+            </div>
+          )}
+        </main>
+      </section>
 
       <InfluencerActionModal
         action={selectedAction}
