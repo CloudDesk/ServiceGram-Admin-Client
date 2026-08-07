@@ -37,6 +37,11 @@ import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import {
+  QuickPreviewActions,
+  QuickPreviewTabs,
+  type QuickPreviewAction,
+} from '../../../components/ui/QuickPreview'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
@@ -481,6 +486,14 @@ function influencerActionLabel(kind: InfluencerActionKind) {
   }[kind]
 }
 
+function influencerPreviewActionIcon(kind: InfluencerActionKind) {
+  if (kind === 'APPROVE') return <CheckCircle2 className="size-4" />
+  if (kind === 'REACTIVATE') return <RotateCcw className="size-4" />
+  if (kind === 'SUSPEND') return <PauseCircle className="size-4" />
+
+  return <XCircle className="size-4" />
+}
+
 function getPrimaryInfluencerAction({
   canReviewInfluencers,
   influencer,
@@ -620,6 +633,32 @@ function InfluencerPreviewPanel({
       .filter(Boolean)
       .join(', ') ||
     'Not available'
+  const primaryPreviewAction: QuickPreviewAction | null = primaryAction
+    ? {
+        disabled: isSubmitting,
+        icon: influencerPreviewActionIcon(primaryAction),
+        key: primaryAction,
+        label: influencerActionLabel(primaryAction),
+        onClick: () => onOpenAction(primaryAction, influencer),
+        variant: isDangerInfluencerAction(primaryAction) ? 'danger' : 'primary',
+      }
+    : null
+  const detailAction: QuickPreviewAction = {
+    icon: <ArrowUpRight className="size-4" />,
+    key: 'details',
+    label: primaryPreviewAction ? 'Detail' : 'Open detail',
+    onClick: () => onOpenDetails(influencer),
+  }
+  const secondaryPreviewActions: QuickPreviewAction[] = secondaryActions.map(
+    (kind) => ({
+      disabled: isSubmitting,
+      icon: influencerPreviewActionIcon(kind),
+      key: kind,
+      label: influencerActionLabel(kind),
+      onClick: () => onOpenAction(kind, influencer),
+      variant: isDangerInfluencerAction(kind) ? 'danger' : 'secondary',
+    }),
+  )
 
   return (
     <>
@@ -629,7 +668,7 @@ function InfluencerPreviewPanel({
         type="button"
         onClick={onClose}
       />
-      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:inset-x-auto xl:bottom-6 xl:right-6 xl:top-[calc(var(--spacing-topbar)+0.75rem)] xl:z-40 xl:w-96">
         <div className="shrink-0 border-b border-border p-3">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
@@ -676,35 +715,12 @@ function InfluencerPreviewPanel({
           </div>
         </div>
 
-        <div className="shrink-0 border-b border-border bg-surface px-3">
-          <div
-            aria-label="Influencer preview sections"
-            className="flex gap-4 overflow-x-auto"
-            role="tablist"
-          >
-            {previewTabs.map((tab) => {
-              const isActive = activeTab === tab.key
-
-              return (
-                <button
-                  aria-selected={isActive}
-                  className={cn(
-                    'relative min-h-10 shrink-0 text-sm font-semibold transition',
-                    isActive
-                      ? 'text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
-                      : 'text-muted hover:text-foreground',
-                  )}
-                  key={tab.key}
-                  role="tab"
-                  type="button"
-                  onClick={() => setActiveTab(tab.key)}
-                >
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        <QuickPreviewTabs
+          activeTab={activeTab}
+          ariaLabel="Influencer preview sections"
+          tabs={previewTabs}
+          onChange={setActiveTab}
+        />
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {activeTab === 'summary' ? (
@@ -837,70 +853,11 @@ function InfluencerPreviewPanel({
           ) : null}
         </div>
 
-        <div className="shrink-0 border-t border-border p-3">
-          <div className="space-y-2">
-            {primaryAction ? (
-              <Button
-                className="w-full"
-                disabled={isSubmitting}
-                size="sm"
-                type="button"
-                variant={
-                  isDangerInfluencerAction(primaryAction) ? 'danger' : 'primary'
-                }
-                onClick={() => onOpenAction(primaryAction, influencer)}
-              >
-                {primaryAction === 'APPROVE' ? (
-                  <CheckCircle2 className="mr-2 size-4" />
-                ) : primaryAction === 'REACTIVATE' ? (
-                  <RotateCcw className="mr-2 size-4" />
-                ) : primaryAction === 'SUSPEND' ? (
-                  <PauseCircle className="mr-2 size-4" />
-                ) : (
-                  <XCircle className="mr-2 size-4" />
-                )}
-                {influencerActionLabel(primaryAction)}
-              </Button>
-            ) : null}
-
-            {secondaryActions.length ? (
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                {secondaryActions.map((kind) => (
-                  <Button
-                    disabled={isSubmitting}
-                    key={kind}
-                    size="sm"
-                    type="button"
-                    variant={isDangerInfluencerAction(kind) ? 'danger' : 'secondary'}
-                    onClick={() => onOpenAction(kind, influencer)}
-                  >
-                    {kind === 'APPROVE' ? (
-                      <CheckCircle2 className="mr-2 size-4" />
-                    ) : kind === 'REACTIVATE' ? (
-                      <RotateCcw className="mr-2 size-4" />
-                    ) : kind === 'SUSPEND' ? (
-                      <PauseCircle className="mr-2 size-4" />
-                    ) : (
-                      <XCircle className="mr-2 size-4" />
-                    )}
-                    {influencerActionLabel(kind)}
-                  </Button>
-                ))}
-              </div>
-            ) : null}
-
-            <Button
-              className="w-full"
-              size="sm"
-              type="button"
-              variant="secondary"
-              onClick={() => onOpenDetails(influencer)}
-            >
-              <ArrowUpRight className="mr-2 size-4" />
-              Open full detail
-            </Button>
-          </div>
-        </div>
+        <QuickPreviewActions
+          detailAction={detailAction}
+          primaryAction={primaryPreviewAction}
+          secondaryActions={secondaryPreviewActions}
+        />
       </aside>
     </>
   )
@@ -1481,7 +1438,7 @@ export function InfluencersPage() {
       : ''
 
     return (
-      <div className="flex min-w-0 flex-nowrap items-center justify-end gap-1.5 xl:sticky xl:right-0 xl:z-20 xl:border-l xl:border-border xl:bg-inherit xl:pl-2 xl:shadow-[var(--sg-shadow-sticky-action)]">
+      <div className="workbench-sticky-action-cell flex min-w-0 flex-nowrap items-center justify-end gap-1.5 pl-2">
         {canReadCustomers ? (
           <button
             aria-label={`Open customer ${getInfluencerCustomerLabel(influencer)}`}
@@ -1847,7 +1804,7 @@ export function InfluencersPage() {
                             />
                           </div>
                         ))}
-                      <div className="relative sticky right-0 z-40 flex min-w-0 items-center justify-end bg-surface-muted pr-3 text-right shadow-[var(--sg-shadow-sticky-action)]">
+                      <div className="workbench-sticky-action-head relative flex min-w-0 pr-3">
                         <span>Actions</span>
                         <button
                           aria-label="Resize actions column"
@@ -1889,7 +1846,7 @@ export function InfluencersPage() {
                             aria-label={`Preview influencer ${influencer.displayName}`}
                             aria-selected={isPreviewed || isSelected}
                             className={cn(
-                              'grid w-full cursor-pointer gap-3 px-3 py-2.5 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--influencer-grid-template)]',
+                              'workbench-grid-row grid w-full cursor-pointer gap-3 px-3 py-2.5 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--influencer-grid-template)]',
                               isSelected && 'bg-primary/5 hover:bg-primary/10',
                               isPreviewed &&
                                 'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',

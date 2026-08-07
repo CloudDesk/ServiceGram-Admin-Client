@@ -23,6 +23,20 @@ export function AdminLayout() {
   }, [location.pathname, pageChrome.layout]);
 
   useLayoutEffect(() => {
+    const root = document.getElementById("root");
+
+    document.documentElement.classList.add("admin-shell-scroll-lock");
+    document.body.classList.add("admin-shell-scroll-lock");
+    root?.classList.add("admin-shell-scroll-lock");
+
+    return () => {
+      document.documentElement.classList.remove("admin-shell-scroll-lock");
+      document.body.classList.remove("admin-shell-scroll-lock");
+      root?.classList.remove("admin-shell-scroll-lock");
+    };
+  }, []);
+
+  useLayoutEffect(() => {
     const isWorkspace = pageChrome.layout === "workspace";
     const root = document.getElementById("root");
 

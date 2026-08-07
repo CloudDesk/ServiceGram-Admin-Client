@@ -17,7 +17,12 @@ import { AuditLogsPage } from '../features/audit/components/AuditLogsPage'
 import { ContentDetailPage } from '../features/content/components/ContentDetailPage'
 import { ContentPage } from '../features/content/components/ContentPage'
 import { CreateContentPage } from '../features/content/components/CreateContentPage'
+import { CustomerAppHomePage } from '../features/content/components/CustomerAppHomePage'
+import { CustomerAppHomeSlideDetailPage } from '../features/content/components/CustomerAppHomeSlideDetailPage'
 import { DashboardPage } from '../features/dashboard/pages/DashboardPage'
+import { CreateMarketingCampaignPage } from '../features/marketing-campaigns/components/CreateMarketingCampaignPage'
+import { MarketingCampaignDetailPage } from '../features/marketing-campaigns/components/MarketingCampaignDetailPage'
+import { MarketingCampaignsPage } from '../features/marketing-campaigns/components/MarketingCampaignsPage'
 import { InfluencerDetailPage } from '../features/influencers/components/InfluencerDetailPage'
 import { InfluencersPage } from '../features/influencers/components/InfluencersPage'
 import { CustomerWorkbenchPreviewPage } from '../features/customers/components/CustomerWorkbenchPreviewPage'
@@ -45,6 +50,7 @@ import { SettingsPage } from '../features/settings/components/SettingsPage'
 import { VendorOnboardingPage } from '../features/vendors/components/VendorOnboardingPage'
 import { VendorsPage } from '../features/vendors/components/VendorsPage'
 import { VendorDetailPage } from '../features/vendors/components/VendorDetailPage'
+import { VendorDocumentReviewDetailPage } from '../features/vendor-documents/components/VendorDocumentReviewDetailPage'
 import { VendorDocumentsPage } from '../features/vendor-documents/components/VendorDocumentsPage'
 import { AdminLayout } from '../layouts/AdminLayout'
 import { ModuleLayout } from '../layouts/ModuleLayout'
@@ -140,6 +146,10 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: routePaths.vendorDocuments,
                     element: <VendorDocumentsPage />,
+                  },
+                  {
+                    path: routePaths.vendorDocumentReview,
+                    element: <VendorDocumentReviewDetailPage />,
                   },
                   {
                     path: `${routePaths.vendors}/:vendorId`,
@@ -276,12 +286,37 @@ export const appRoutes: RouteObject[] = [
                     element: <ContentPage />,
                   },
                   {
+                    path: routePaths.customerAppHome,
+                    element: <CustomerAppHomePage />,
+                  },
+                  {
+                    path: routePaths.customerAppHomeCarouselSlide,
+                    element: <CustomerAppHomeSlideDetailPage />,
+                  },
+                  {
                     path: `${routePaths.content}/new`,
                     element: <CreateContentPage />,
                   },
                   {
                     path: `${routePaths.content}/:contentId`,
                     element: <ContentDetailPage />,
+                  },
+                ],
+              },
+              {
+                element: <PermissionGuard permission={routePermissions.marketingCampaigns} />,
+                children: [
+                  {
+                    path: routePaths.marketingCampaigns,
+                    element: <MarketingCampaignsPage />,
+                  },
+                  {
+                    path: routePaths.marketingCampaignCreate,
+                    element: <CreateMarketingCampaignPage />,
+                  },
+                  {
+                    path: routePaths.marketingCampaignDetail,
+                    element: <MarketingCampaignDetailPage />,
                   },
                 ],
               },

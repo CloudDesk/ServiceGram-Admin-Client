@@ -10,7 +10,6 @@ import {
   RefreshCcw,
   SlidersHorizontal,
   Store,
-  Trash2,
   X,
   XCircle,
 } from 'lucide-react'
@@ -38,6 +37,11 @@ import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import {
+  QuickPreviewActions,
+  QuickPreviewTabs,
+  type QuickPreviewAction,
+} from '../../../components/ui/QuickPreview'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import {
   isOpenableMediaUrl,
@@ -496,6 +500,14 @@ function reelActionLabel(kind: ReelActionKind) {
   }[kind]
 }
 
+function reelPreviewActionIcon(kind: ReelActionKind) {
+  if (kind === 'APPROVE') return <CheckCircle2 className="size-4" />
+  if (isDangerReelAction(kind)) return <XCircle className="size-4" />
+  if (kind === 'PAUSE') return <PauseCircle className="size-4" />
+
+  return <PencilLine className="size-4" />
+}
+
 function canRunReelListAction({
   canDeleteReels,
   canModerateReels,
@@ -656,6 +668,32 @@ function ReelPreviewPanel({
       kind !== primaryAction &&
       canOpenReelAction({ canDeleteReels, canModerateReels, kind, reel }),
   )
+  const primaryPreviewAction: QuickPreviewAction | null = primaryAction
+    ? {
+        disabled: isSubmitting,
+        icon: reelPreviewActionIcon(primaryAction),
+        key: primaryAction,
+        label: reelActionLabel(primaryAction),
+        onClick: () => onOpenAction(primaryAction, reel),
+        variant: isDangerReelAction(primaryAction) ? 'danger' : 'primary',
+      }
+    : null
+  const detailAction: QuickPreviewAction = {
+    icon: <ArrowUpRight className="size-4" />,
+    key: 'details',
+    label: primaryPreviewAction ? 'Detail' : 'Open detail',
+    onClick: () => onOpenDetails(reel),
+  }
+  const secondaryPreviewActions: QuickPreviewAction[] = secondaryActions.map(
+    (kind) => ({
+      disabled: isSubmitting,
+      icon: reelPreviewActionIcon(kind),
+      key: kind,
+      label: reelActionLabel(kind),
+      onClick: () => onOpenAction(kind, reel),
+      variant: isDangerReelAction(kind) ? 'danger' : 'secondary',
+    }),
+  )
 
   return (
     <>
@@ -665,7 +703,7 @@ function ReelPreviewPanel({
         type="button"
         onClick={onClose}
       />
-      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:inset-x-auto xl:bottom-6 xl:right-6 xl:top-[calc(var(--spacing-topbar)+0.75rem)] xl:z-40 xl:w-96">
         <div className="shrink-0 border-b border-border p-3">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
@@ -714,35 +752,12 @@ function ReelPreviewPanel({
           </div>
         </div>
 
-        <div className="shrink-0 border-b border-border bg-surface px-3">
-          <div
-            aria-label="Reel preview sections"
-            className="flex gap-4 overflow-x-auto"
-            role="tablist"
-          >
-            {previewTabs.map((tab) => {
-              const isActive = activeTab === tab.key
-
-              return (
-                <button
-                  aria-selected={isActive}
-                  className={cn(
-                    'relative min-h-10 shrink-0 text-sm font-semibold transition',
-                    isActive
-                      ? 'text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
-                      : 'text-muted hover:text-foreground',
-                  )}
-                  key={tab.key}
-                  role="tab"
-                  type="button"
-                  onClick={() => setActiveTab(tab.key)}
-                >
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        <QuickPreviewTabs
+          activeTab={activeTab}
+          ariaLabel="Reel preview sections"
+          tabs={previewTabs}
+          onChange={setActiveTab}
+        />
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {activeTab === 'summary' ? (
@@ -900,66 +915,11 @@ function ReelPreviewPanel({
           ) : null}
         </div>
 
-        <div className="shrink-0 border-t border-border p-3">
-          <div className="space-y-2">
-            {primaryAction ? (
-              <Button
-                className="w-full"
-                disabled={isSubmitting}
-                size="sm"
-                type="button"
-                variant={isDangerReelAction(primaryAction) ? 'danger' : 'primary'}
-                onClick={() => onOpenAction(primaryAction, reel)}
-              >
-                {primaryAction === 'APPROVE' ? (
-                  <CheckCircle2 className="mr-2 size-4" />
-                ) : isDangerReelAction(primaryAction) ? (
-                  <XCircle className="mr-2 size-4" />
-                ) : (
-                  <PencilLine className="mr-2 size-4" />
-                )}
-                {reelActionLabel(primaryAction)}
-              </Button>
-            ) : null}
-
-            {secondaryActions.length ? (
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                {secondaryActions.map((kind) => (
-                  <Button
-                    disabled={isSubmitting}
-                    key={kind}
-                    size="sm"
-                    type="button"
-                    variant={isDangerReelAction(kind) ? 'danger' : 'secondary'}
-                    onClick={() => onOpenAction(kind, reel)}
-                  >
-                    {kind === 'APPROVE' ? (
-                      <CheckCircle2 className="mr-2 size-4" />
-                    ) : isDangerReelAction(kind) ? (
-                      <Trash2 className="mr-2 size-4" />
-                    ) : kind === 'PAUSE' ? (
-                      <PauseCircle className="mr-2 size-4" />
-                    ) : (
-                      <PencilLine className="mr-2 size-4" />
-                    )}
-                    {reelActionLabel(kind)}
-                  </Button>
-                ))}
-              </div>
-            ) : null}
-
-            <Button
-              className="w-full"
-              size="sm"
-              type="button"
-              variant="secondary"
-              onClick={() => onOpenDetails(reel)}
-            >
-              <ArrowUpRight className="mr-2 size-4" />
-              Open full detail
-            </Button>
-          </div>
-        </div>
+        <QuickPreviewActions
+          detailAction={detailAction}
+          primaryAction={primaryPreviewAction}
+          secondaryActions={secondaryPreviewActions}
+        />
       </aside>
     </>
   )
@@ -1632,7 +1592,7 @@ export function ReelsPage() {
     const primaryActionText = primaryAction ? reelActionLabel(primaryAction) : ''
 
     return (
-      <div className="flex min-w-0 flex-nowrap items-center justify-end gap-1.5 xl:sticky xl:right-0 xl:z-20 xl:border-l xl:border-border xl:bg-inherit xl:pl-2 xl:shadow-[var(--sg-shadow-sticky-action)]">
+      <div className="workbench-sticky-action-cell flex min-w-0 flex-nowrap items-center justify-end gap-1.5 pl-2">
         <button
           aria-label={`Open media for ${reel.publicReelId}`}
           className="btn-icon disabled:cursor-not-allowed disabled:opacity-60"
@@ -2013,7 +1973,7 @@ export function ReelsPage() {
                             />
                           </div>
                         ))}
-                      <div className="relative sticky right-0 z-40 flex min-w-0 items-center justify-end bg-surface-muted pr-3 text-right shadow-[var(--sg-shadow-sticky-action)]">
+                      <div className="workbench-sticky-action-head relative flex min-w-0 pr-3">
                         <span>Actions</span>
                         <button
                           aria-label="Resize actions column"
@@ -2049,7 +2009,7 @@ export function ReelsPage() {
                             aria-label={`Preview reel ${reel.publicReelId}`}
                             aria-selected={isPreviewed || isSelected}
                             className={cn(
-                              'grid w-full cursor-pointer gap-3 px-3 py-2.5 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--reel-grid-template)]',
+                              'workbench-grid-row grid w-full cursor-pointer gap-3 px-3 py-2.5 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--reel-grid-template)]',
                               isSelected && 'bg-primary/5 hover:bg-primary/10',
                               isPreviewed &&
                                 'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',

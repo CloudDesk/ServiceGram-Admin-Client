@@ -2,13 +2,17 @@ import {
   ArrowUpRight,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
+  Eye,
   Filter,
   ReceiptText,
   RefreshCcw,
   RotateCcw,
+  ShieldAlert,
   SlidersHorizontal,
   Store,
   UserRound,
+  X,
 } from 'lucide-react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -29,6 +33,13 @@ import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import {
+  QuickPreviewActions,
+  QuickPreviewFact,
+  QuickPreviewFactGrid,
+  QuickPreviewTabs,
+  type QuickPreviewAction,
+} from '../../../components/ui/QuickPreview'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
@@ -65,8 +76,8 @@ const PAYMENT_DEFAULT_COLUMN_WIDTH = 220
 const PAYMENT_GRID_COLUMN_GAP = 12
 const PAYMENT_GRID_INLINE_PADDING = 24
 const PAYMENT_ACTION_COLUMN_ID = 'actions'
-const PAYMENT_ACTION_COLUMN_DEFAULT_WIDTH = 188
-const PAYMENT_ACTION_COLUMN_MIN_WIDTH = 160
+const PAYMENT_ACTION_COLUMN_DEFAULT_WIDTH = 116
+const PAYMENT_ACTION_COLUMN_MIN_WIDTH = 104
 const PAYMENT_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.payment.columnWidths.v1'
 
 const paymentStatuses: AdminPaymentStatus[] = [
@@ -154,6 +165,7 @@ type PaymentColumnWidthId =
   | PaymentColumnId
   | typeof PAYMENT_ACTION_COLUMN_ID
 type PaymentColumnWidths = Partial<Record<PaymentColumnWidthId, number>>
+type PaymentPreviewTab = 'summary' | 'refunds' | 'links'
 type PaymentQueueKey = 'all' | 'needsReview' | 'successful' | 'failed' | 'cancelled'
 
 function readSearchValues(searchParams: URLSearchParams, key: string) {
@@ -501,6 +513,387 @@ function PaymentCell({
   )
 }
 
+function paymentSignalTone(payment: AdminPaymentSummary): PaymentTone {
+  if (
+    payment.status === 'FAILED' ||
+    payment.status === 'CANCELLED' ||
+    payment.warnings.length > 0
+  ) {
+    return 'danger'
+  }
+
+  if (
+    payment.nextRecommendedAction ||
+    payment.status === 'CREATED' ||
+    payment.status === 'PENDING' ||
+    payment.refundSummary.requestedCount > 0
+  ) {
+    return 'warning'
+  }
+
+  if (payment.status === 'SUCCESS') return 'success'
+
+  return 'neutral'
+}
+
+function paymentSignalLabel(payment: AdminPaymentSummary) {
+  if (payment.nextRecommendedAction) {
+    return humanizeCode(payment.nextRecommendedAction)
+  }
+
+  if (payment.warnings[0]) {
+    return humanizeCode(payment.warnings[0])
+  }
+
+  if (payment.refundSummary.requestedCount > 0) {
+    return 'Refund review pending'
+  }
+
+  if (payment.status === 'FAILED') {
+    return payment.failureCode ? humanizeCode(payment.failureCode) : 'Payment failed'
+  }
+
+  if (payment.status === 'CANCELLED') return 'Payment cancelled'
+  if (payment.status === 'SUCCESS') return 'Payment clear'
+
+  return 'Awaiting confirmation'
+}
+
+function paymentSignalMeta(payment: AdminPaymentSummary) {
+  if (payment.nextRecommendedAction) return 'Next action'
+
+  if (payment.warnings.length > 0) {
+    return `${payment.warnings.length} warning${payment.warnings.length === 1 ? '' : 's'}`
+  }
+
+  if (payment.refundSummary.requestedCount > 0) {
+    return `${payment.refundSummary.requestedCount} request${
+      payment.refundSummary.requestedCount === 1 ? '' : 's'
+    }`
+  }
+
+  return humanizeCode(payment.status)
+}
+
+function previewSignalClasses(tone: PaymentTone) {
+  if (tone === 'success') return 'border-success/20 bg-success/10 text-success'
+  if (tone === 'warning') return 'border-warning/25 bg-warning/10 text-warning'
+  if (tone === 'danger') return 'border-danger/20 bg-danger/10 text-danger'
+  if (tone === 'info') return 'border-info/20 bg-info/10 text-primary'
+
+  return 'border-border bg-surface-muted/55 text-muted'
+}
+
+function PaymentPreviewSignal({
+  label,
+  meta,
+  tone,
+}: {
+  label: string
+  meta: string
+  tone: PaymentTone
+}) {
+  return (
+    <div
+      className={cn(
+        'flex min-h-9 items-center justify-between gap-2 rounded-[0.65rem] border px-2.5 py-2',
+        previewSignalClasses(tone),
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <ShieldAlert className="size-4 shrink-0 text-current" />
+        <span className="min-w-0 truncate text-sm font-semibold text-foreground">{label}</span>
+      </div>
+      <span className="shrink-0 rounded-full bg-surface/65 px-2 py-0.5 text-xs font-semibold text-current">
+        {meta}
+      </span>
+    </div>
+  )
+}
+
+function PaymentPreviewField({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-border py-2.5 last:border-b-0">
+      <span className="text-xs font-semibold uppercase tracking-normal text-muted">{label}</span>
+      <span className="min-w-0 break-words text-right text-sm font-medium text-foreground">
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function PaymentPreviewPanel({
+  canReadCustomers,
+  canReadOrders,
+  canReadRefunds,
+  canReadVendors,
+  canReconcile,
+  isSubmitting,
+  onClose,
+  onOpenCustomer,
+  onOpenDetails,
+  onOpenOrder,
+  onOpenReconcile,
+  onOpenRefunds,
+  onOpenVendor,
+  payment,
+}: {
+  canReadCustomers: boolean
+  canReadOrders: boolean
+  canReadRefunds: boolean
+  canReadVendors: boolean
+  canReconcile: boolean
+  isSubmitting: boolean
+  onClose: () => void
+  onOpenCustomer: (payment: AdminPaymentSummary) => void
+  onOpenDetails: (payment: AdminPaymentSummary) => void
+  onOpenOrder: (payment: AdminPaymentSummary) => void
+  onOpenReconcile: (payment: AdminPaymentSummary) => void
+  onOpenRefunds: (payment: AdminPaymentSummary) => void
+  onOpenVendor: (payment: AdminPaymentSummary) => void
+  payment: AdminPaymentSummary
+}) {
+  const [activeTab, setActiveTab] = useState<PaymentPreviewTab>('summary')
+  const signalTone = paymentSignalTone(payment)
+  const previewTabs: { key: PaymentPreviewTab; label: string }[] = [
+    { key: 'summary', label: 'Summary' },
+    { key: 'refunds', label: 'Refunds' },
+    { key: 'links', label: 'Links' },
+  ]
+  const primaryAction: QuickPreviewAction | null =
+    canReconcile && payment.availableActions.includes('RECONCILE')
+      ? {
+          disabled: isSubmitting,
+          icon: <RefreshCcw className="size-4" />,
+          key: 'reconcile',
+          label: 'Reconcile',
+          onClick: () => onOpenReconcile(payment),
+          variant: 'primary',
+        }
+      : null
+  const detailAction: QuickPreviewAction = {
+    icon: <Eye className="size-4" />,
+    key: 'details',
+    label: primaryAction ? 'Detail' : 'Open detail',
+    onClick: () => onOpenDetails(payment),
+  }
+  const secondaryActions: QuickPreviewAction[] = []
+
+  if (canReadRefunds && payment.refundSummary.refundCount > 0) {
+    secondaryActions.push({
+      icon: <RotateCcw className="size-4" />,
+      key: 'refunds',
+      label: 'Refunds',
+      onClick: () => onOpenRefunds(payment),
+      variant: 'secondary',
+    })
+  }
+
+  if (canReadOrders) {
+    secondaryActions.push({
+      icon: <ReceiptText className="size-4" />,
+      key: 'order',
+      label: 'Order',
+      onClick: () => onOpenOrder(payment),
+      variant: 'secondary',
+    })
+  }
+
+  if (canReadCustomers) {
+    secondaryActions.push({
+      icon: <UserRound className="size-4" />,
+      key: 'customer',
+      label: 'Customer',
+      onClick: () => onOpenCustomer(payment),
+      variant: 'secondary',
+    })
+  }
+
+  if (canReadVendors) {
+    secondaryActions.push({
+      icon: <Store className="size-4" />,
+      key: 'vendor',
+      label: 'Vendor',
+      onClick: () => onOpenVendor(payment),
+      variant: 'secondary',
+    })
+  }
+
+  return (
+    <>
+      <button
+        aria-label="Close payment preview"
+        className="fixed inset-0 z-40 bg-black/20 xl:hidden"
+        type="button"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:static xl:z-auto xl:h-full xl:w-[22rem] xl:self-stretch">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+              Payment preview
+            </p>
+            <div className="mt-2 flex min-w-0 items-start gap-2.5">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <CreditCard className="size-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-semibold text-foreground">
+                  {payment.publicPaymentId}
+                </h3>
+                <p className="mt-0.5 truncate text-xs text-muted">
+                  {payment.order.publicOrderId} / {payment.customer.fullName}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  <Badge tone={getPaymentStatusTone(payment.status)}>
+                    {humanizeCode(payment.status)}
+                  </Badge>
+                  <Badge tone="info">{humanizeCode(payment.method)}</Badge>
+                  {payment.warnings.length > 0 ? (
+                    <Badge tone="warning">
+                      {payment.warnings.length} warning
+                      {payment.warnings.length === 1 ? '' : 's'}
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+          <button
+            aria-label="Close preview"
+            className="btn-icon shrink-0"
+            title="Close preview"
+            type="button"
+            onClick={onClose}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <QuickPreviewTabs
+          activeTab={activeTab}
+          ariaLabel="Payment preview sections"
+          tabs={previewTabs}
+          onChange={setActiveTab}
+        />
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {activeTab === 'summary' ? (
+            <div className="space-y-2.5">
+              <PaymentPreviewSignal
+                label={paymentSignalLabel(payment)}
+                meta={paymentSignalMeta(payment)}
+                tone={signalTone}
+              />
+
+              <QuickPreviewFactGrid>
+                <QuickPreviewFact
+                  label="Amount"
+                  tone={getPaymentStatusTone(payment.status)}
+                  value={formatPaise(payment.amountPaise)}
+                />
+                <QuickPreviewFact
+                  label="Refundable"
+                  tone={
+                    payment.refundSummary.remainingRefundableAmountPaise > 0 ? 'info' : 'neutral'
+                  }
+                  value={formatPaise(payment.refundSummary.remainingRefundableAmountPaise)}
+                />
+                <QuickPreviewFact
+                  label="Requests"
+                  tone={payment.refundSummary.requestedCount > 0 ? 'warning' : 'neutral'}
+                  value={payment.refundSummary.requestedCount}
+                />
+                <QuickPreviewFact
+                  label="Verified"
+                  tone={payment.verifiedAt ? 'success' : 'warning'}
+                  value={payment.verifiedAt ? 'Yes' : 'Pending'}
+                />
+              </QuickPreviewFactGrid>
+
+              {payment.failureMessage ? (
+                <div className="rounded-[0.75rem] border border-danger/20 bg-danger/10 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-normal text-danger">
+                    Failure
+                  </p>
+                  <p className="mt-1 line-clamp-3 text-sm text-foreground">
+                    {payment.failureMessage}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {activeTab === 'refunds' ? (
+            <div className="rounded-[0.75rem] border border-border p-3">
+              <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                <RotateCcw className="size-4 text-muted" />
+                Refund state
+              </div>
+              <PaymentPreviewField label="Total" value={payment.refundSummary.refundCount} />
+              <PaymentPreviewField label="Requested" value={payment.refundSummary.requestedCount} />
+              <PaymentPreviewField label="Approved" value={payment.refundSummary.approvedCount} />
+              <PaymentPreviewField
+                label="Processing"
+                value={payment.refundSummary.processingCount}
+              />
+              <PaymentPreviewField
+                label="Successful"
+                value={payment.refundSummary.successfulCount}
+              />
+              <PaymentPreviewField
+                label="Committed"
+                value={formatPaise(payment.refundSummary.committedAmountPaise)}
+              />
+            </div>
+          ) : null}
+
+          {activeTab === 'links' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <ReceiptText className="size-4 text-muted" />
+                  Context
+                </div>
+                <PaymentPreviewField label="Order" value={payment.order.publicOrderId} />
+                <PaymentPreviewField label="Customer" value={payment.customer.fullName} />
+                <PaymentPreviewField label="Vendor" value={payment.vendor.shopName} />
+                <PaymentPreviewField
+                  label="Category"
+                  value={payment.category?.name ?? 'No category'}
+                />
+              </div>
+
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <CreditCard className="size-4 text-muted" />
+                  Provider
+                </div>
+                <PaymentPreviewField label="Gateway" value={humanizeCode(payment.gateway)} />
+                <PaymentPreviewField
+                  label="Payment ref"
+                  value={payment.razorpayPaymentId ?? 'Not available'}
+                />
+                <PaymentPreviewField
+                  label="Order ref"
+                  value={payment.razorpayOrderId ?? 'Not available'}
+                />
+                <PaymentPreviewField label="Updated" value={formatDateSafe(payment.updatedAt)} />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <QuickPreviewActions
+          detailAction={detailAction}
+          primaryAction={primaryAction}
+          secondaryActions={secondaryActions}
+        />
+      </aside>
+    </>
+  )
+}
+
 export function PaymentsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -537,6 +930,7 @@ export function PaymentsPage() {
   )
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionTarget, setActionTarget] = useState<PaymentActionTarget | null>(null)
+  const [previewPaymentId, setPreviewPaymentId] = useState<string | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [filtersCollapsed, setFiltersCollapsed] = useState(false)
   const [visibleColumns, setVisibleColumns] =
@@ -729,6 +1123,8 @@ export function PaymentsPage() {
   const pagination = paymentsQuery.data?.pagination
   const summary = paymentsQuery.data?.summary
   const queueSummary = queueSummaryResultQuery.data?.summary
+  const previewPayment =
+    payments.find((payment) => payment.paymentId === previewPaymentId) ?? null
   const paymentSelection = useListSelection(payments, (payment) => payment.paymentId)
   const isInitialLoading = paymentsQuery.isLoading && !paymentsQuery.data
   const isRefreshing = paymentsQuery.isFetching && Boolean(paymentsQuery.data)
@@ -942,7 +1338,11 @@ export function PaymentsPage() {
       {showColumn('payment') ? (
         <PaymentCell label="Payment">
           <p className="truncate font-semibold">{payment.publicPaymentId}</p>
-          <p className="mt-1 truncate text-xs text-muted">{payment.paymentId}</p>
+          <p className="mt-1 truncate text-xs text-muted">
+            {payment.razorpayPaymentId ??
+              payment.razorpayOrderId ??
+              humanizeCode(payment.gateway)}
+          </p>
         </PaymentCell>
       ) : null}
       {showColumn('order') ? (
@@ -1089,31 +1489,31 @@ export function PaymentsPage() {
   )
 
   const renderRowActions = (payment: AdminPaymentSummary) => (
-    <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+    <div className="flex flex-nowrap items-center justify-end gap-1.5">
       {canReconcile && payment.availableActions.includes('RECONCILE') ? (
-        <Button
-          size="sm"
-          type="button"
-          variant="secondary"
+        <button
+          aria-label={`Reconcile payment ${payment.publicPaymentId}`}
+          className="btn-icon size-8 min-h-8 shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
           disabled={actionMutation.isPending}
+          title="Reconcile payment"
+          type="button"
           onClick={(event) => openReconcile(payment, event)}
         >
-          <RefreshCcw className="mr-2 size-4" />
-          Reconcile
-        </Button>
+          <RefreshCcw className="size-3.5" />
+        </button>
       ) : null}
-      <Button
-        size="sm"
+      <button
+        aria-label={`Open payment detail ${payment.publicPaymentId}`}
+        className="btn-icon size-8 min-h-8 shrink-0"
+        title="Open payment detail"
         type="button"
-        variant="ghost"
         onClick={(event) => {
           event.stopPropagation()
           viewDetails(payment)
         }}
       >
-        <ArrowUpRight className="mr-2 size-4" />
-        Open
-      </Button>
+        <Eye className="size-3.5" />
+      </button>
     </div>
   )
 
@@ -1141,8 +1541,14 @@ export function PaymentsPage() {
 
         <section
           className={cn(
-            'grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[18rem_minmax(0,1fr)] xl:items-stretch xl:overflow-hidden',
-            filtersCollapsed && 'xl:grid-cols-[4.25rem_minmax(0,1fr)]',
+            'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
+            previewPayment
+              ? filtersCollapsed
+                ? 'xl:grid-cols-[4.25rem_minmax(0,1fr)_22rem]'
+                : 'xl:grid-cols-[18rem_minmax(0,1fr)_22rem]'
+              : filtersCollapsed
+                ? 'xl:grid-cols-[4.25rem_minmax(0,1fr)]'
+                : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
           )}
         >
           <aside
@@ -1553,7 +1959,7 @@ export function PaymentsPage() {
                             />
                           </div>
                         ))}
-                      <div className="relative flex min-w-0 items-center justify-end pr-3">
+                      <div className="workbench-sticky-action-head relative flex min-w-0 pr-3">
                         <span>Actions</span>
                         <button
                           aria-label="Resize actions column"
@@ -1580,10 +1986,15 @@ export function PaymentsPage() {
                     <div className="divide-y divide-border">
                       {payments.map((payment) => (
                         <div
-                          aria-label={`Open payment ${payment.paymentId}`}
-                          aria-selected={paymentSelection.isSelected(payment.paymentId)}
+                          aria-label={`Preview payment ${payment.publicPaymentId}`}
+                          aria-selected={
+                            previewPaymentId === payment.paymentId ||
+                            paymentSelection.isSelected(payment.paymentId)
+                          }
                           className={cn(
-                            'grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--payment-grid-template)]',
+                            'workbench-grid-row grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--payment-grid-template)]',
+                            previewPaymentId === payment.paymentId &&
+                              'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
                             paymentSelection.isSelected(payment.paymentId) &&
                               'bg-primary/5 hover:bg-primary/10',
                           )}
@@ -1591,13 +2002,13 @@ export function PaymentsPage() {
                           role="button"
                           style={paymentGridStyle}
                           tabIndex={0}
-                          onClick={() => viewDetails(payment)}
+                          onClick={() => setPreviewPaymentId(payment.paymentId)}
                           onKeyDown={(event) => {
                             if (event.target !== event.currentTarget) return
 
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault()
-                              viewDetails(payment)
+                              setPreviewPaymentId(payment.paymentId)
                             }
                           }}
                         >
@@ -1616,7 +2027,7 @@ export function PaymentsPage() {
                           <div className="grid gap-3 sm:grid-cols-2 xl:contents">
                             {renderPaymentCells(payment)}
                           </div>
-                          <div className="flex min-w-0 items-center justify-start xl:justify-end">
+                          <div className="workbench-sticky-action-cell flex min-w-0 items-center justify-start pl-2 xl:justify-end">
                             {renderRowActions(payment)}
                           </div>
                         </div>
@@ -1682,6 +2093,24 @@ export function PaymentsPage() {
               </div>
             )}
           </main>
+          {previewPayment ? (
+            <PaymentPreviewPanel
+              canReadCustomers={canReadCustomers}
+              canReadOrders={canReadOrders}
+              canReadRefunds={canReadRefunds}
+              canReadVendors={canReadVendors}
+              canReconcile={canReconcile}
+              isSubmitting={actionMutation.isPending}
+              payment={previewPayment}
+              onClose={() => setPreviewPaymentId(null)}
+              onOpenCustomer={viewCustomer}
+              onOpenDetails={viewDetails}
+              onOpenOrder={viewOrder}
+              onOpenReconcile={openReconcile}
+              onOpenRefunds={viewRefunds}
+              onOpenVendor={viewVendor}
+            />
+          ) : null}
         </section>
       </div>
 

@@ -119,3 +119,213 @@ export interface ContentApiErrorDetails extends ApiErrorDetails {
     message: string
   }[]
 }
+
+export type CustomerHomeCarouselSlideStatus =
+  | 'DRAFT'
+  | 'SCHEDULED'
+  | 'PUBLISHED'
+  | 'PAUSED'
+  | 'ARCHIVED'
+
+export type CustomerHomeCtaActionType =
+  | 'NONE'
+  | 'SERVICE_CATEGORY'
+  | 'VENDOR'
+  | 'ORDERS'
+  | 'PROFILE'
+  | 'SUPPORT'
+  | 'EXTERNAL_LINK'
+
+export interface CustomerHomeSection {
+  sectionCode: 'HERO_CAROUSEL'
+  title: string
+  isEnabled: boolean
+  displayOrder: number
+  autoplayIntervalMs: number
+  config: Record<string, unknown>
+  lifecycle: {
+    updatedByAdminId: string | null
+    createdAt: string
+    updatedAt: string
+  }
+}
+
+export interface CustomerHomeCarouselSlide {
+  slideId: string
+  slideKey: string
+  status: CustomerHomeCarouselSlideStatus
+  displayOrder: number
+  label: string
+  headline: string
+  description: string
+  cta: {
+    label: string
+    actionType: CustomerHomeCtaActionType
+    actionPayload: Record<string, unknown>
+  }
+  category: {
+    categoryId: string
+    categoryCode: string
+    name: string
+    description: string | null
+    iconAssetId: string | null
+    isActive: boolean
+    displayOrder: number
+  } | null
+  image: {
+    mediaAssetId: string | null
+    url: string | null
+    width: number | null
+    height: number | null
+    recommended: {
+      aspectRatio: string
+      minWidth: number
+      minHeight: number
+    }
+  }
+  visual: Record<string, unknown>
+  targeting: Record<string, unknown>
+  schedule: {
+    startsAt: string | null
+    endsAt: string | null
+  }
+  lifecycle: {
+    version: number
+    createdByAdminId: string | null
+    updatedByAdminId: string | null
+    publishedByAdminId: string | null
+    pausedByAdminId: string | null
+    archivedByAdminId: string | null
+    publishedAt: string | null
+    pausedAt: string | null
+    archivedAt: string | null
+    createdAt: string
+    updatedAt: string
+  }
+  warnings: string[]
+  blockingReasons: string[]
+  availableActions: string[]
+  nextRecommendedAction: string | null
+}
+
+export interface CustomerHomeCarouselSummary {
+  total: number
+  draft: number
+  scheduled: number
+  published: number
+  paused: number
+  archived: number
+}
+
+export interface CustomerAppHomePayload {
+  section: CustomerHomeSection
+  carousel: {
+    slides: CustomerHomeCarouselSlide[]
+    summary: CustomerHomeCarouselSummary
+  }
+}
+
+export interface CustomerAppHomeResponse
+  extends ContentApiResponse<CustomerAppHomePayload> {
+  data: CustomerAppHomePayload
+}
+
+export interface CustomerHomeCarouselSlidesQueryParams {
+  page?: number
+  limit?: number
+  status?: CustomerHomeCarouselSlideStatus[]
+  categoryId?: string
+  search?: string
+  dateFrom?: string
+  dateTo?: string
+}
+
+export interface CustomerHomeCarouselSlidesResponse
+  extends ContentApiResponse<CustomerHomeCarouselSlide[]> {
+  data: CustomerHomeCarouselSlide[]
+  pagination: ContentPagination
+  summary: CustomerHomeCarouselSummary
+}
+
+export type CustomerHomeCarouselSlideResponse =
+  ContentApiResponse<CustomerHomeCarouselSlide>
+
+export interface UpdateCustomerHomeSectionPayload {
+  isEnabled?: boolean
+  autoplayIntervalMs?: number
+  displayOrder?: number
+  reason: string
+}
+
+export interface CreateCustomerHomeCarouselSlidePayload {
+  slideKey?: string
+  label: string
+  headline: string
+  description: string
+  ctaLabel: string
+  ctaActionType?: CustomerHomeCtaActionType
+  ctaActionPayload?: Record<string, unknown>
+  categoryId?: string | null
+  displayOrder?: number
+  visual?: Record<string, unknown>
+  targeting?: Record<string, unknown>
+  startsAt?: string | null
+  endsAt?: string | null
+  reason: string
+}
+
+export interface UpdateCustomerHomeCarouselSlidePayload
+  extends Partial<Omit<CreateCustomerHomeCarouselSlidePayload, 'reason'>> {
+  reason: string
+}
+
+export interface CustomerHomeCarouselSlideActionPayload {
+  reason: string
+}
+
+export interface CustomerHomeCarouselImageUploadIntentPayload {
+  fileName: string
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
+  sizeBytes: number
+  metadata?: Record<string, unknown>
+}
+
+export interface CustomerHomeCarouselImageUploadIntent {
+  mediaAssetId: string
+  ownerType: string
+  ownerId: string
+  purpose: 'CUSTOMER_HOME_CAROUSEL_IMAGE'
+  storageProvider: string
+  bucketName: string
+  objectKey: string
+  fileName: string
+  mimeType: string
+  sizeBytes: number
+  status: string
+  accessLevel: 'PUBLIC_READ'
+  uploadUrl: string | null
+  expiresAt: string | null
+  headers: Record<string, string>
+  providerStatus: string
+  warnings: string[]
+  createdAt: string
+  acceptedMimeTypes: string[]
+  maxSizeBytes: number
+  recommendedDimensions: {
+    aspectRatio: string
+    minWidth: number
+    minHeight: number
+  }
+}
+
+export type CustomerHomeCarouselImageUploadIntentResponse =
+  ContentApiResponse<CustomerHomeCarouselImageUploadIntent>
+
+export interface ConfirmCustomerHomeCarouselImageUploadPayload {
+  mediaAssetId: string
+  checksum?: string
+  uploadedAt?: string
+  width: number
+  height: number
+  reason: string
+}

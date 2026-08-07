@@ -4,10 +4,16 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Eye,
+  FileText,
+  Filter,
   FilePlus2,
+  Globe2,
   RefreshCcw,
   Send,
+  ShieldAlert,
   SlidersHorizontal,
+  Smartphone,
   X,
 } from 'lucide-react'
 import type {
@@ -33,6 +39,13 @@ import {
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
+import {
+  QuickPreviewActions,
+  QuickPreviewFact,
+  QuickPreviewFactGrid,
+  QuickPreviewTabs,
+  type QuickPreviewAction,
+} from '../../../components/ui/QuickPreview'
 import { TableSkeleton } from '../../../components/ui/Table'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
@@ -55,7 +68,8 @@ const CONTENT_DEFAULT_COLUMN_WIDTH = 220
 const CONTENT_GRID_COLUMN_GAP = 12
 const CONTENT_GRID_INLINE_PADDING = 24
 const CONTENT_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.content.columnWidths.v1'
-const CONTENT_ACTION_COLUMN_WIDTH = 310
+const CONTENT_ACTION_COLUMN_WIDTH = 270
+const CONTENT_MAX_COLUMN_WIDTH = 560
 
 const statuses: ContentPageStatus[] = ['DRAFT', 'PUBLISHED', 'ARCHIVED']
 const pageTypes: ContentPageType[] = [
@@ -83,7 +97,7 @@ type ContentColumnId = (typeof contentDataColumns)[number]['id']
 type ContentColumnWidths = Partial<Record<ContentColumnId, number>>
 type ContentQueueKey = 'all' | 'custom' | 'draft' | 'published' | 'hidden' | 'archived'
 type ContentActionKind = 'PUBLISH' | 'ARCHIVE'
-type ContentTone = 'danger' | 'info' | 'neutral' | 'success' | 'warning'
+type ContentPreviewTab = 'preview' | 'publishing' | 'signals'
 
 const defaultContentColumns: ContentColumnId[] = [
   'page',
@@ -98,13 +112,6 @@ const EMPTY_CONTENT_PAGES: ContentPageRecord[] = []
 interface ContentGridStyle extends CSSProperties {
   '--content-grid-template': string
   '--content-grid-min-width': string
-}
-
-interface ContentMetric {
-  label: string
-  meta: string
-  tone: ContentTone
-  value: string
 }
 
 function humanizeCode(value: string | null | undefined) {
@@ -126,14 +133,6 @@ function statusTone(status: ContentPageStatus): StatusTone {
   if (status === 'PUBLISHED') return 'success'
   if (status === 'ARCHIVED') return 'neutral'
   return 'warning'
-}
-
-function metricToneClass(tone: ContentTone) {
-  if (tone === 'success') return 'text-success'
-  if (tone === 'warning') return 'text-warning'
-  if (tone === 'danger') return 'text-danger'
-  if (tone === 'info') return 'text-primary'
-  return 'text-muted'
 }
 
 function buildLookupOptions<TValue extends string>(values: readonly TValue[]): LookupOption[] {
@@ -213,21 +212,36 @@ function getContentColumnWidth(
   columnWidths: ContentColumnWidths,
   columnId: ContentColumnId,
 ) {
-  return columnWidths[columnId] ?? getContentColumnDefaultWidth(columnId)
+  const storedWidth = columnWidths[columnId]
+  const fallbackWidth = getContentColumnDefaultWidth(columnId)
+  const width =
+    typeof storedWidth === 'number' && Number.isFinite(storedWidth)
+      ? storedWidth
+      : fallbackWidth
+
+  return Math.max(
+    getContentColumnMinWidth(columnId),
+    Math.min(CONTENT_MAX_COLUMN_WIDTH, width),
+  )
 }
 
 function getContentGridTemplate(
   visibleColumns: ContentColumnId[],
   columnWidths: ContentColumnWidths,
 ) {
+  const selectedWidths = contentDataColumns
+    .filter((column) => visibleColumns.includes(column.id))
+    .map((column) => {
+      const width = getContentColumnWidth(columnWidths, column.id)
+
+      return column.id === 'page' ? `minmax(${width}px, 1fr)` : `${width}px`
+    })
+
   return [
     `${LIST_SELECTION_COLUMN_WIDTH}px`,
-    ...visibleColumns.map(
-      (columnId) => `${getContentColumnWidth(columnWidths, columnId)}px`,
-    ),
+    ...selectedWidths,
     `${CONTENT_ACTION_COLUMN_WIDTH}px`,
-  ]
-    .join(` ${CONTENT_GRID_COLUMN_GAP}px `)
+  ].join(' ')
 }
 
 function getContentGridMinWidth(
@@ -257,66 +271,25 @@ function loadColumnWidths(): ContentColumnWidths {
     if (!rawValue) return {}
 
     const parsed = JSON.parse(rawValue) as ContentColumnWidths
+    const columnIds = new Set<string>(contentDataColumns.map((column) => column.id))
+
     return Object.fromEntries(
-      Object.entries(parsed).filter((entry): entry is [ContentColumnId, number] => {
-        const [columnId, value] = entry
-        return (
-          contentDataColumns.some((column) => column.id === columnId) &&
-          typeof value === 'number' &&
-          Number.isFinite(value)
-        )
-      }),
+      Object.entries(parsed)
+        .filter((entry): entry is [ContentColumnId, number] => {
+          const [columnId, value] = entry
+          return columnIds.has(columnId) && typeof value === 'number' && Number.isFinite(value)
+        })
+        .map(([columnId, value]) => [
+          columnId,
+          Math.max(
+            getContentColumnMinWidth(columnId),
+            Math.min(CONTENT_MAX_COLUMN_WIDTH, value),
+          ),
+        ]),
     )
   } catch {
     return {}
   }
-}
-
-function buildContentMetrics(
-  pages: ContentPageRecord[],
-  totalItems: number,
-  queueCounts?: ContentQueueCounts,
-): ContentMetric[] {
-  const drafts =
-    queueCounts?.draft ?? pages.filter((page) => page.status === 'DRAFT').length
-  const published =
-    queueCounts?.published ??
-    pages.filter((page) => page.status === 'PUBLISHED').length
-  const hidden =
-    queueCounts?.hidden ??
-    pages.filter((page) => !page.isVisibleToCustomers).length
-  const matched = queueCounts?.all ?? totalItems
-
-  return [
-    {
-      label: 'Drafts',
-      meta: queueCounts ? 'Drafts under base filters' : 'Visible draft pages',
-      tone: drafts > 0 ? 'warning' : 'neutral',
-      value: String(drafts),
-    },
-    {
-      label: 'Published',
-      meta: queueCounts
-        ? 'Published under base filters'
-        : 'Visible published pages',
-      tone: 'success',
-      value: String(published),
-    },
-    {
-      label: 'Hidden',
-      meta: queueCounts ? 'Hidden under base filters' : 'Visible hidden pages',
-      tone: hidden > 0 ? 'danger' : 'neutral',
-      value: String(hidden),
-    },
-    {
-      label: 'Matched pages',
-      meta: queueCounts
-        ? 'Total matching base filters'
-        : 'Total matching current filters',
-      tone: 'info',
-      value: String(matched),
-    },
-  ]
 }
 
 interface ContentQueueCounts {
@@ -351,20 +324,6 @@ function buildQueueItems(counts?: ContentQueueCounts) {
       count: counts?.archived,
     },
   ]
-}
-
-function SummaryCard({ metric }: { metric: ContentMetric }) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <p className={cn('text-xs font-semibold uppercase tracking-normal', metricToneClass(metric.tone))}>
-        {metric.label}
-      </p>
-      <p className={cn('mt-3 text-2xl font-semibold tracking-normal', metricToneClass(metric.tone))}>
-        {metric.value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{metric.meta}</p>
-    </article>
-  )
 }
 
 function canRunContentListAction({
@@ -436,7 +395,7 @@ function ContentActionModal({
 
         <form onSubmit={submit}>
           <label className="mt-5 block space-y-2">
-            <span className="text-sm font-semibold text-foreground">Reason *</span>
+            <span className="text-sm font-semibold text-foreground">Change note *</span>
             <textarea
               className="form-input min-h-28 resize-y"
               placeholder={
@@ -489,7 +448,7 @@ function ContentCell({
 }) {
   if (columnId === 'page') {
     return (
-      <div className="min-w-0 space-y-1">
+      <div className="min-w-0 overflow-hidden space-y-1">
         <p className="truncate font-semibold text-foreground">{page.title}</p>
         <p className="truncate text-xs text-muted">{page.slug}</p>
         <p className="line-clamp-1 text-xs text-muted">
@@ -501,9 +460,9 @@ function ContentCell({
 
   if (columnId === 'status') {
     return (
-      <div className="space-y-1">
+      <div className="min-w-0 overflow-hidden space-y-1">
         <Badge tone={statusTone(page.status)}>{humanizeCode(page.status)}</Badge>
-        <p className="text-xs text-muted">
+        <p className="truncate text-xs text-muted">
           {page.nextRecommendedAction
             ? humanizeCode(page.nextRecommendedAction)
             : 'No next action'}
@@ -513,18 +472,26 @@ function ContentCell({
   }
 
   if (columnId === 'type') {
-    return <Badge tone="info">{humanizeCode(page.pageType)}</Badge>
+    return (
+      <div className="min-w-0 overflow-hidden">
+        <Badge tone="info">{humanizeCode(page.pageType)}</Badge>
+      </div>
+    )
   }
 
   if (columnId === 'format') {
-    return <Badge tone="neutral">{humanizeCode(page.contentFormat)}</Badge>
+    return (
+      <div className="min-w-0 overflow-hidden">
+        <Badge tone="neutral">{humanizeCode(page.contentFormat)}</Badge>
+      </div>
+    )
   }
 
   if (columnId === 'version') {
     return (
-      <div className="space-y-1">
+      <div className="min-w-0 overflow-hidden space-y-1">
         <p className="text-sm font-medium text-foreground">v{page.version}</p>
-        <p className="text-xs text-muted">
+        <p className="truncate text-xs text-muted">
           Published {page.publishedVersion ? `v${page.publishedVersion}` : 'not yet'}
         </p>
       </div>
@@ -533,11 +500,11 @@ function ContentCell({
 
   if (columnId === 'visibility') {
     return (
-      <div className="space-y-1">
+      <div className="min-w-0 overflow-hidden space-y-1">
         <Badge tone={page.isVisibleToCustomers ? 'success' : 'danger'}>
           {page.isVisibleToCustomers ? 'Visible' : 'Hidden'}
         </Badge>
-        <p className="text-xs text-muted">Customer-facing surfaces</p>
+        <p className="truncate text-xs text-muted">Customer-facing surfaces</p>
       </div>
     )
   }
@@ -546,7 +513,7 @@ function ContentCell({
     const signals = [...page.warnings, ...page.blockingReasons]
 
     return signals.length > 0 ? (
-      <div className="flex flex-wrap gap-1">
+      <div className="flex min-w-0 flex-wrap gap-1 overflow-hidden">
         {signals.slice(0, 2).map((signal) => (
           <Badge key={signal} tone={page.blockingReasons.includes(signal) ? 'danger' : 'warning'}>
             {signal}
@@ -560,14 +527,367 @@ function ContentCell({
   }
 
   return (
-    <div className="space-y-1">
-      <p className="text-sm font-medium text-foreground">
+    <div className="min-w-0 overflow-hidden space-y-1">
+      <p className="truncate text-sm font-medium text-foreground">
         {formatDateSafe(page.lifecycle.updatedAt)}
       </p>
-      <p className="text-xs text-muted">
+      <p className="truncate text-xs text-muted">
         Published {formatDateSafe(page.lifecycle.publishedAt)}
       </p>
     </div>
+  )
+}
+
+function ContentPreviewField({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <div className="flex min-w-0 items-start justify-between gap-3 border-b border-border py-2 last:border-b-0">
+      <span className="shrink-0 text-xs font-semibold uppercase tracking-normal text-muted">
+        {label}
+      </span>
+      <span className="min-w-0 break-words text-right text-sm font-medium text-foreground">
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function contentPreviewPriority(page: ContentPageRecord) {
+  if (page.blockingReasons.length > 0) {
+    return {
+      iconTone: 'text-danger',
+      panelClass: 'border-danger/20 bg-danger/10',
+      title: humanizeCode(page.blockingReasons[0]),
+      meta: `${page.blockingReasons.length} blocker${page.blockingReasons.length === 1 ? '' : 's'}`,
+    }
+  }
+
+  if (page.nextRecommendedAction) {
+    return {
+      iconTone: 'text-warning',
+      panelClass: 'border-warning/25 bg-warning/10',
+      title: humanizeCode(page.nextRecommendedAction),
+      meta: 'Next action',
+    }
+  }
+
+  if (page.warnings.length > 0) {
+    return {
+      iconTone: 'text-warning',
+      panelClass: 'border-warning/25 bg-warning/10',
+      title: humanizeCode(page.warnings[0]),
+      meta: `${page.warnings.length} warning${page.warnings.length === 1 ? '' : 's'}`,
+    }
+  }
+
+  return {
+    iconTone: 'text-success',
+    panelClass: 'border-success/20 bg-success/10',
+    title: 'Ready',
+    meta: 'Clear',
+  }
+}
+
+function contentPrimaryPreviewAction(
+  page: ContentPageRecord,
+  canPublishContent: boolean,
+  canUpdateContent: boolean,
+  isSubmitting: boolean,
+  onOpenAction: (kind: ContentActionKind, pageRecord: ContentPageRecord) => void,
+): QuickPreviewAction | null {
+  const recommendedAction = page.nextRecommendedAction
+
+  if (recommendedAction !== 'PUBLISH' && recommendedAction !== 'ARCHIVE') {
+    return null
+  }
+
+  const canRun = canRunContentListAction({
+    action: recommendedAction,
+    canPublishContent,
+    canUpdateContent,
+    page,
+  })
+
+  if (!canRun) return null
+
+  return {
+    disabled: isSubmitting,
+    icon:
+      recommendedAction === 'PUBLISH' ? (
+        <Send className="size-4" />
+      ) : (
+        <Archive className="size-4" />
+      ),
+    key: recommendedAction,
+    label: humanizeCode(recommendedAction),
+    onClick: () => onOpenAction(recommendedAction, page),
+    variant: recommendedAction === 'ARCHIVE' ? 'danger' : 'primary',
+  }
+}
+
+function ContentPreviewPanel({
+  canPublishContent,
+  canReadAudit,
+  canUpdateContent,
+  isSubmitting,
+  page,
+  onClose,
+  onOpenAction,
+  onOpenAudit,
+  onOpenDetails,
+}: {
+  canPublishContent: boolean
+  canReadAudit: boolean
+  canUpdateContent: boolean
+  isSubmitting: boolean
+  page: ContentPageRecord
+  onClose: () => void
+  onOpenAction: (kind: ContentActionKind, pageRecord: ContentPageRecord) => void
+  onOpenAudit: (pageRecord: ContentPageRecord) => void
+  onOpenDetails: (pageRecord: ContentPageRecord) => void
+}) {
+  const [activeTab, setActiveTab] = useState<ContentPreviewTab>('preview')
+  const priority = contentPreviewPriority(page)
+  const previewTabs: { key: ContentPreviewTab; label: string }[] = [
+    { key: 'preview', label: 'Preview' },
+    { key: 'publishing', label: 'Publishing' },
+    { key: 'signals', label: 'Signals' },
+  ]
+  const primaryAction = contentPrimaryPreviewAction(
+    page,
+    canPublishContent,
+    canUpdateContent,
+    isSubmitting,
+    onOpenAction,
+  )
+  const detailAction: QuickPreviewAction = {
+    icon: <Eye className="size-4" />,
+    key: 'detail',
+    label: primaryAction ? 'Detail' : 'Open detail',
+    onClick: () => onOpenDetails(page),
+  }
+  const secondaryActions: QuickPreviewAction[] = []
+  const canPublish = canRunContentListAction({
+    action: 'PUBLISH',
+    canPublishContent,
+    canUpdateContent,
+    page,
+  })
+  const canArchive = canRunContentListAction({
+    action: 'ARCHIVE',
+    canPublishContent,
+    canUpdateContent,
+    page,
+  })
+
+  if (canPublish && primaryAction?.key !== 'PUBLISH') {
+    secondaryActions.push({
+      disabled: isSubmitting,
+      icon: <Send className="size-4" />,
+      key: 'publish',
+      label: 'Publish',
+      onClick: () => onOpenAction('PUBLISH', page),
+      variant: 'primary',
+    })
+  }
+
+  if (canArchive && primaryAction?.key !== 'ARCHIVE') {
+    secondaryActions.push({
+      disabled: isSubmitting,
+      icon: <Archive className="size-4" />,
+      key: 'archive',
+      label: 'Archive',
+      onClick: () => onOpenAction('ARCHIVE', page),
+      variant: 'danger',
+    })
+  }
+
+  if (canReadAudit) {
+    secondaryActions.push({
+      icon: <ClipboardList className="size-4" />,
+      key: 'audit',
+      label: 'Audit',
+      onClick: () => onOpenAudit(page),
+      variant: 'secondary',
+    })
+  }
+
+  return (
+    <>
+      <button
+        aria-label="Close content preview"
+        className="fixed inset-0 z-40 bg-black/20 xl:hidden"
+        type="button"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:inset-x-auto xl:bottom-6 xl:right-6 xl:top-[calc(var(--spacing-topbar)+0.75rem)] xl:z-40 xl:w-[22rem]">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+              Content preview
+            </p>
+            <div className="mt-2 flex min-w-0 items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-[0.75rem] bg-primary/10 text-primary">
+                <FileText className="size-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="line-clamp-2 text-base font-semibold text-foreground">
+                  {page.title}
+                </h3>
+                <p className="mt-1 break-all text-xs text-muted">{page.slug}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Badge tone={statusTone(page.status)}>{humanizeCode(page.status)}</Badge>
+                  <Badge tone={page.isVisibleToCustomers ? 'success' : 'danger'}>
+                    {page.isVisibleToCustomers ? 'Visible' : 'Hidden'}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          </div>
+          <button
+            aria-label="Close preview"
+            className="btn-icon shrink-0"
+            title="Close preview"
+            type="button"
+            onClick={onClose}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <QuickPreviewTabs
+          activeTab={activeTab}
+          ariaLabel="Content preview sections"
+          tabs={previewTabs}
+          onChange={setActiveTab}
+        />
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {activeTab === 'preview' ? (
+            <div className="space-y-3">
+              <div className={cn('rounded-[0.75rem] border p-3', priority.panelClass)}>
+                <div className="flex items-start gap-2">
+                  <ShieldAlert className={cn('mt-0.5 size-4 shrink-0', priority.iconTone)} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">
+                      {priority.title}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-muted">
+                      {priority.meta}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[0.75rem] border border-border bg-surface-muted/35 p-3">
+                <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                  Customer copy
+                </p>
+                <h4 className="mt-2 line-clamp-2 text-sm font-semibold text-foreground">
+                  {page.title}
+                </h4>
+                <p className="mt-2 line-clamp-5 text-sm leading-6 text-muted">
+                  {page.excerpt ?? page.bodyPreview}
+                </p>
+              </div>
+
+              <QuickPreviewFactGrid>
+                <QuickPreviewFact label="Type" value={humanizeCode(page.pageType)} />
+                <QuickPreviewFact
+                  label="Version"
+                  tone={page.version !== page.publishedVersion ? 'warning' : 'info'}
+                  value={`v${page.version}`}
+                />
+                <QuickPreviewFact label="Format" value={humanizeCode(page.contentFormat)} />
+                <QuickPreviewFact
+                  label="Visibility"
+                  tone={page.isVisibleToCustomers ? 'success' : 'danger'}
+                  value={page.isVisibleToCustomers ? 'Visible' : 'Hidden'}
+                />
+              </QuickPreviewFactGrid>
+            </div>
+          ) : null}
+
+          {activeTab === 'publishing' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Globe2 className="size-4 text-muted" />
+                  Publishing
+                </div>
+                <ContentPreviewField label="Updated" value={formatDateSafe(page.lifecycle.updatedAt)} />
+                <ContentPreviewField label="Published" value={formatDateSafe(page.lifecycle.publishedAt)} />
+                <ContentPreviewField
+                  label="Published version"
+                  value={page.publishedVersion ? `v${page.publishedVersion}` : 'Not published'}
+                />
+                <ContentPreviewField label="Slug" value={page.slug} />
+              </div>
+
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <FileText className="size-4 text-muted" />
+                  Search appearance
+                </div>
+                <ContentPreviewField
+                  label="Title"
+                  value={page.seo.title ?? page.title}
+                />
+                <ContentPreviewField
+                  label="Description"
+                  value={page.seo.description ?? page.excerpt ?? 'Not set'}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'signals' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <p className="text-sm font-semibold text-foreground">Warnings</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {page.warnings.length ? (
+                    page.warnings.map((warning) => (
+                      <Badge key={warning} tone="warning">
+                        {humanizeCode(warning)}
+                      </Badge>
+                    ))
+                  ) : (
+                    <Badge tone="success">No warnings</Badge>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <p className="text-sm font-semibold text-foreground">Blockers</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {page.blockingReasons.length ? (
+                    page.blockingReasons.map((blocker) => (
+                      <Badge key={blocker} tone="danger">
+                        {humanizeCode(blocker)}
+                      </Badge>
+                    ))
+                  ) : (
+                    <Badge tone="success">No blockers</Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <QuickPreviewActions
+          detailAction={detailAction}
+          primaryAction={primaryAction}
+          secondaryActions={secondaryActions}
+        />
+      </aside>
+    </>
   )
 }
 
@@ -586,8 +906,8 @@ export function ContentPage() {
   const [formatsFilter, setFormatsFilter] = useState<ContentFormat[]>(() =>
     readSearchEnumList(searchParams, 'contentFormat', formats),
   )
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false)
-  const [isFilterRailCollapsed, setIsFilterRailCollapsed] = useState(false)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
   const [page, setPage] = useState(1)
   const [pageTypesFilter, setPageTypesFilter] = useState<ContentPageType[]>(() =>
@@ -605,6 +925,7 @@ export function ContentPage() {
   const [visibleColumns, setVisibleColumns] = useState<ContentColumnId[]>(
     defaultContentColumns,
   )
+  const [previewPageId, setPreviewPageId] = useState<string | null>(null)
   const [columnWidths, setColumnWidths] =
     useState<ContentColumnWidths>(() => loadColumnWidths())
   const [selectedAction, setSelectedAction] = useState<{
@@ -724,10 +1045,15 @@ export function ContentPage() {
   const isLoading = contentQuery.isLoading
   const isRefreshing = contentQuery.isFetching
   const queueItems = buildQueueItems(queueCountsQuery.data)
-  const metrics = buildContentMetrics(
-    pages,
-    pagination?.totalItems ?? pages.length,
-    queueCountsQuery.data,
+  const previewPage = pages.find((pageRecord) => pageRecord.pageId === previewPageId) ?? null
+  const hasActiveFilters = Boolean(
+    search.trim() ||
+      statusesFilter.length ||
+      pageTypesFilter.length ||
+      formatsFilter.length ||
+      visibility !== 'all' ||
+      dateFrom ||
+      dateTo,
   )
   const gridStyle = useMemo<ContentGridStyle>(
     () => ({
@@ -838,7 +1164,7 @@ export function ContentPage() {
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const nextWidth = Math.max(
         minWidth,
-        Math.min(560, startWidth + moveEvent.clientX - startX),
+        Math.min(CONTENT_MAX_COLUMN_WIDTH, startWidth + moveEvent.clientX - startX),
       )
       setColumnWidths((current) => ({ ...current, [columnId]: nextWidth }))
     }
@@ -918,6 +1244,10 @@ export function ContentPage() {
     navigate(`${routePaths.content}/${pageRecord.pageId}`)
   }
 
+  const openContentAudit = (pageRecord: ContentPageRecord) => {
+    navigate(buildContentAuditPath(pageRecord))
+  }
+
   const renderRowActions = (pageRecord: ContentPageRecord) => {
     const canPublish = canRunContentListAction({
       action: 'PUBLISH',
@@ -933,8 +1263,9 @@ export function ContentPage() {
     })
 
     return (
-      <div className="flex min-w-0 flex-wrap justify-start gap-1.5 xl:justify-end">
+      <div className="flex min-w-0 flex-nowrap items-center justify-start gap-1.5 xl:justify-end">
         <Button
+          className="h-8 min-h-8 whitespace-nowrap px-2.5"
           size="sm"
           title="Open content detail"
           type="button"
@@ -944,48 +1275,47 @@ export function ContentPage() {
             openContentDetail(pageRecord)
           }}
         >
-          <ArrowUpRight className="mr-2 size-4" />
+          <ArrowUpRight className="mr-1.5 size-3.5" />
           Open
         </Button>
         {canPublish ? (
           <Button
+            className="h-8 min-h-8 whitespace-nowrap px-2.5"
             disabled={actionMutation.isPending}
             size="sm"
             title="Publish content page"
             type="button"
             onClick={(event) => openContentAction('PUBLISH', pageRecord, event)}
           >
-            <Send className="mr-2 size-4" />
+            <Send className="mr-1.5 size-3.5" />
             Publish
           </Button>
         ) : null}
         {canArchive ? (
-          <Button
+          <button
+            aria-label={`Archive ${pageRecord.title}`}
+            className="btn-icon size-8 min-h-8 shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={actionMutation.isPending}
-            size="sm"
             title="Archive content page"
             type="button"
-            variant="secondary"
             onClick={(event) => openContentAction('ARCHIVE', pageRecord, event)}
           >
-            <Archive className="mr-2 size-4" />
-            Archive
-          </Button>
+            <Archive className="size-3.5" />
+          </button>
         ) : null}
         {canReadAudit ? (
-          <Button
-            size="sm"
+          <button
+            aria-label={`Open audit logs for ${pageRecord.title}`}
+            className="btn-icon size-8 min-h-8 shrink-0"
             title="Open audit logs"
             type="button"
-            variant="ghost"
             onClick={(event) => {
               event.stopPropagation()
-              navigate(buildContentAuditPath(pageRecord))
+              openContentAudit(pageRecord)
             }}
           >
-            <ClipboardList className="mr-2 size-4" />
-            Audit
-          </Button>
+            <ClipboardList className="size-3.5" />
+          </button>
         ) : null}
       </div>
     )
@@ -994,195 +1324,69 @@ export function ContentPage() {
   return (
     <PageContainer className="flex min-h-full flex-col gap-3 !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
-        description="Manage app content pages, policies, FAQs, and support copy."
+        description="Manage customer-facing pages and customer app home content."
         layout="workspace"
         placement="topbar"
         title="Content"
       />
 
-      <section className="grid shrink-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((metric) => (
-          <SummaryCard key={metric.label} metric={metric} />
-        ))}
-      </section>
-
       {actionMessage ? (
-        <div className="rounded-[0.875rem] border border-success/25 bg-success/10 p-3 text-sm text-success">
+        <div className="shrink-0 rounded-[0.875rem] border border-success/25 bg-success/10 p-3 text-sm text-success">
           {actionMessage}
         </div>
       ) : null}
 
-      <section
-        className={cn(
-          'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
-          isFilterRailCollapsed
-            ? 'lg:grid-cols-[3rem_minmax(0,1fr)]'
-            : 'lg:grid-cols-[18rem_minmax(0,1fr)]',
-        )}
+      <main
+        className="flex min-w-0 flex-col overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface xl:min-h-0 xl:flex-1"
+        id="content-pages"
       >
-        <aside className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
-          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
-            {!isFilterRailCollapsed ? (
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-foreground">Queue totals</h2>
-                <p className="mt-0.5 text-xs text-muted">Counts match base filters.</p>
-              </div>
-            ) : null}
-            <button
-              aria-label={isFilterRailCollapsed ? 'Expand filters' : 'Collapse filters'}
-              className="inline-flex size-8 items-center justify-center rounded-full text-muted transition hover:bg-surface-muted hover:text-foreground"
-              type="button"
-              onClick={() => setIsFilterRailCollapsed((current) => !current)}
-            >
-              <ChevronLeft
-                className={cn('size-4 transition', isFilterRailCollapsed && 'rotate-180')}
-              />
-            </button>
-          </div>
-
-          {isFilterRailCollapsed ? null : (
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
-              <div className="space-y-2">
-                {queueItems.map((item) => (
-                  <button
-                    className={cn(
-                      'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border border-border bg-surface px-3 text-left text-sm transition hover:border-primary/35 hover:bg-surface-muted/60',
-                      queueKey === item.key &&
-                        'border-primary bg-primary/5 text-primary',
-                    )}
-                    key={item.key}
-                    type="button"
-                    onClick={() => applyQueue(item.key)}
-                    >
-                      <span className="font-medium">{item.label}</span>
-                    <span className="text-xs font-semibold">
-                      {item.count ?? '...'}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="border-t border-border pt-4">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-foreground">Filter stack</h3>
-                  <button
-                    className="text-xs font-semibold text-primary hover:text-primary-hover"
-                    type="button"
-                    onClick={clearFilters}
-                  >
-                    Clear
-                  </button>
-                </div>
-                <div className="mt-3 space-y-3">
-                  <MultiSelectFilter
-                    label="Status"
-                    options={buildLookupOptions(statuses)}
-                    placeholder="All statuses"
-                    values={statusesFilter}
-                    onChange={(values) => {
-                      clearSeededContentParams()
-                      setStatusesFilter(values as ContentPageStatus[])
-                      setQueueKey(values.length > 0 ? 'custom' : 'all')
-                      resetToFirstPage()
-                    }}
-                  />
-                  <MultiSelectFilter
-                    label="Type"
-                    options={buildLookupOptions(pageTypes)}
-                    placeholder="All types"
-                    values={pageTypesFilter}
-                    onChange={(values) => {
-                      clearSeededContentParams()
-                      setPageTypesFilter(values as ContentPageType[])
-                      resetToFirstPage()
-                    }}
-                  />
-                  <MultiSelectFilter
-                    label="Format"
-                    options={buildLookupOptions(formats)}
-                    placeholder="All formats"
-                    values={formatsFilter}
-                    onChange={(values) => {
-                      clearSeededContentParams()
-                      setFormatsFilter(values as ContentFormat[])
-                      resetToFirstPage()
-                    }}
-                  />
-                  <label className="block space-y-1">
-                    <span className="text-xs font-semibold text-muted">Visibility</span>
-                    <select
-                      className="h-10 w-full rounded-[0.75rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
-                      value={visibility}
-                      onChange={(event) => {
-                        clearSeededContentParams()
-                        setVisibility(event.target.value as 'all' | 'hidden' | 'visible')
-                        setQueueKey(event.target.value === 'all' ? 'all' : 'custom')
-                        resetToFirstPage()
-                      }}
-                    >
-                      <option value="all">All</option>
-                      <option value="visible">Visible</option>
-                      <option value="hidden">Hidden</option>
-                    </select>
-                  </label>
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                    <label className="block space-y-1">
-                      <span className="text-xs font-semibold text-muted">Date from</span>
-                      <Input
-                        type="date"
-                        value={dateFrom}
-                        onChange={(event) => {
-                          clearSeededContentParams()
-                          setDateFrom(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <label className="block space-y-1">
-                      <span className="text-xs font-semibold text-muted">Date to</span>
-                      <Input
-                        type="date"
-                        value={dateTo}
-                        onChange={(event) => {
-                          clearSeededContentParams()
-                          setDateTo(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </aside>
-
-        <section
-          className="flex min-w-0 scroll-mt-4 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0"
-          id="content-pages"
-        >
-          <div className="flex flex-col gap-3 border-b border-border px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <h2 className="text-base font-semibold text-foreground">Content pages</h2>
-              <p className="mt-1 text-sm text-muted">
+        <div className="shrink-0 border-b border-border bg-surface px-3 py-3 sm:px-4">
+          <div className="grid gap-3 xl:grid-cols-[minmax(11rem,auto)_minmax(22rem,1fr)_auto] xl:items-center">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-foreground">Content pages</h2>
+              <span
+                className={cn(
+                  'rounded-full border border-border bg-surface-muted/65 px-2 py-0.5 text-xs font-medium',
+                  isRefreshing ? 'text-primary' : 'text-muted',
+                )}
+              >
                 {pagination
-                  ? `${pagination.totalItems} pages matching current filters`
-                  : `${pages.length} pages in the current window`}
-              </p>
+                  ? `${pagination.totalItems} pages`
+                  : `${pages.length} loaded`}
+              </span>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <ListHeaderSearch
-                className="w-full min-w-[16rem] sm:w-72"
-                placeholder="Search title, slug, excerpt"
-                value={search}
-                onChange={(value) => {
-                  clearSeededContentParams()
-                  setSearch(value)
-                  resetToFirstPage()
-                }}
-              />
+
+            <ListHeaderSearch
+              className="w-full min-w-0"
+              placeholder="Search content..."
+              value={search}
+              onChange={(value) => {
+                clearSeededContentParams()
+                setSearch(value)
+                resetToFirstPage()
+              }}
+            />
+
+            <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+              <Button
+                aria-expanded={filtersOpen}
+                className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => setFiltersOpen((current) => !current)}
+              >
+                <Filter className="mr-2 size-4" />
+                Filters
+                {hasActiveFilters ? (
+                  <span className="ml-1 size-2 rounded-full bg-primary" />
+                ) : null}
+              </Button>
               <div className="relative" ref={columnMenuRef}>
                 <Button
+                  aria-expanded={isColumnMenuOpen}
+                  aria-haspopup="menu"
+                  className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
                   size="sm"
                   type="button"
                   variant="secondary"
@@ -1190,33 +1394,46 @@ export function ContentPage() {
                 >
                   <SlidersHorizontal className="mr-2 size-4" />
                   Columns
-                  <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                  <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
                     {visibleColumns.length}
                   </span>
                 </Button>
                 {isColumnMenuOpen ? (
-                  <div className="absolute right-0 top-[calc(100%+0.35rem)] z-[70] w-64 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface">
-                    {contentDataColumns.map((column) => (
-                      <button
-                        className="flex min-h-9 w-full items-center justify-between rounded-[0.65rem] px-2 text-sm text-foreground transition hover:bg-surface-muted"
-                        key={column.id}
-                        type="button"
-                        onClick={() => toggleColumn(column.id)}
-                      >
-                        <span>{column.label}</span>
-                        <span
+                  <div
+                    className="absolute right-0 top-[calc(100%+0.5rem)] z-[80] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
+                    role="menu"
+                  >
+                    <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
+                      Visible columns
+                    </p>
+                    {contentDataColumns.map((column) => {
+                      const isChecked = visibleColumns.includes(column.id)
+                      const isRequiredLastColumn = isChecked && visibleColumns.length === 1
+
+                      return (
+                        <label
                           className={cn(
-                            'inline-flex size-4 items-center justify-center rounded border border-border',
-                            visibleColumns.includes(column.id) &&
-                              'border-primary bg-primary',
+                            'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
+                            isRequiredLastColumn && 'cursor-not-allowed opacity-60',
                           )}
-                        />
-                      </button>
-                    ))}
+                          key={column.id}
+                        >
+                          <input
+                            checked={isChecked}
+                            className="size-4 accent-[color:var(--adaptive-primary)]"
+                            disabled={isRequiredLastColumn}
+                            type="checkbox"
+                            onChange={() => toggleColumn(column.id)}
+                          />
+                          <span>{column.label}</span>
+                        </label>
+                      )
+                    })}
                   </div>
                 ) : null}
               </div>
               <Button
+                className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
                 isLoading={isRefreshing}
                 size="sm"
                 type="button"
@@ -1226,6 +1443,17 @@ export function ContentPage() {
                 <RefreshCcw className="mr-2 size-4" />
                 Refresh
               </Button>
+              <Link to={routePaths.customerAppHome}>
+                <Button
+                  className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  <Smartphone className="mr-2 size-4" />
+                  App home
+                </Button>
+              </Link>
               {canCreateContent ? (
                 <Link to={`${routePaths.content}/new`}>
                   <Button size="sm" type="button">
@@ -1237,27 +1465,168 @@ export function ContentPage() {
             </div>
           </div>
 
-          {contentQuery.isError ? (
-            <div className="p-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-              <ErrorState
-                description="We could not load content pages."
-                title="Content unavailable"
-                onRetry={() => void contentQuery.refetch()}
-              />
+          <div className="mt-3 flex gap-1 overflow-x-auto rounded-[0.875rem] border border-border bg-surface-muted/40 p-1">
+            {queueItems.map((queue) => {
+              const isActive = queueKey === queue.key
+
+              return (
+                <button
+                  aria-pressed={isActive}
+                  className={cn(
+                    'inline-flex h-8 shrink-0 items-center gap-2 rounded-[0.65rem] border px-2.5 text-sm font-medium transition',
+                    isActive
+                      ? 'border-primary/30 bg-surface text-primary shadow-[var(--sg-shadow-surface)]'
+                      : 'border-transparent text-muted hover:bg-surface hover:text-foreground',
+                  )}
+                  key={queue.key}
+                  type="button"
+                  onClick={() => applyQueue(queue.key)}
+                >
+                  <span>{queue.label}</span>
+                  <span
+                    className={cn(
+                      'rounded-full px-2 py-0.5 text-xs font-semibold',
+                      isActive
+                        ? 'bg-primary/10 text-primary'
+                        : 'bg-surface text-muted',
+                    )}
+                  >
+                    {queue.count ?? '...'}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          {filtersOpen || hasActiveFilters ? (
+            <div className="mt-2 rounded-[0.75rem] border border-border bg-surface-muted/45 p-2.5">
+              <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-[minmax(9rem,0.8fr)_minmax(11rem,1fr)_minmax(10rem,0.8fr)_minmax(9rem,0.8fr)_minmax(9rem,0.8fr)_auto] lg:items-end">
+                <MultiSelectFilter
+                  label="Status"
+                  options={buildLookupOptions(statuses)}
+                  placeholder="All statuses"
+                  values={statusesFilter}
+                  onChange={(values) => {
+                    clearSeededContentParams()
+                    setStatusesFilter(values as ContentPageStatus[])
+                    setQueueKey(values.length > 0 ? 'custom' : 'all')
+                    resetToFirstPage()
+                  }}
+                />
+                <MultiSelectFilter
+                  label="Type"
+                  options={buildLookupOptions(pageTypes)}
+                  placeholder="All types"
+                  values={pageTypesFilter}
+                  onChange={(values) => {
+                    clearSeededContentParams()
+                    setPageTypesFilter(values as ContentPageType[])
+                    resetToFirstPage()
+                  }}
+                />
+                <MultiSelectFilter
+                  label="Format"
+                  options={buildLookupOptions(formats)}
+                  placeholder="All formats"
+                  values={formatsFilter}
+                  onChange={(values) => {
+                    clearSeededContentParams()
+                    setFormatsFilter(values as ContentFormat[])
+                    resetToFirstPage()
+                  }}
+                />
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">Visible</span>
+                  <select
+                    className="h-10 w-full rounded-[0.75rem] border border-border bg-surface px-3 text-sm text-foreground outline-none"
+                    value={visibility}
+                    onChange={(event) => {
+                      clearSeededContentParams()
+                      setVisibility(event.target.value as 'all' | 'hidden' | 'visible')
+                      setQueueKey(event.target.value === 'all' ? 'all' : 'custom')
+                      resetToFirstPage()
+                    }}
+                  >
+                    <option value="all">All</option>
+                    <option value="visible">Visible</option>
+                    <option value="hidden">Hidden</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">Updated from</span>
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(event) => {
+                      clearSeededContentParams()
+                      setDateFrom(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-muted">Updated to</span>
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(event) => {
+                      clearSeededContentParams()
+                      setDateTo(event.target.value)
+                      resetToFirstPage()
+                    }}
+                  />
+                </label>
+                <Button
+                  className="w-full lg:w-auto"
+                  disabled={!hasActiveFilters}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={clearFilters}
+                >
+                  Reset
+                </Button>
+              </div>
             </div>
-          ) : isLoading ? (
-            <div className="p-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-              <TableSkeleton columnCount={visibleColumns.length + 2} hasFooter rowCount={8} />
-            </div>
-          ) : pages.length === 0 ? (
-            <div className="p-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-              <EmptyState description="No content pages matched this filter." title="No content pages" />
-            </div>
-          ) : (
-            <div className="flex flex-col xl:min-h-0 xl:flex-1">
+          ) : null}
+        </div>
+
+        {contentQuery.isError ? (
+          <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+            <ErrorState
+              description="Retry the content list."
+              title="Content unavailable"
+              onRetry={() => void contentQuery.refetch()}
+            />
+          </div>
+        ) : isLoading ? (
+          <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+            <TableSkeleton columnCount={visibleColumns.length + 2} hasFooter rowCount={8} />
+          </div>
+        ) : pages.length === 0 ? (
+          <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+            <EmptyState
+              actionLabel={hasActiveFilters ? 'Clear filters' : undefined}
+              description={hasActiveFilters ? 'No matches.' : 'Library is empty.'}
+              title="No content pages"
+              onAction={hasActiveFilters ? clearFilters : undefined}
+            />
+          </div>
+        ) : (
+          <div
+            className={cn(
+              'grid xl:min-h-0 xl:flex-1',
+              previewPage &&
+                'xl:grid-cols-[minmax(0,1fr)_22rem] xl:gap-3 xl:p-3',
+            )}
+          >
+            <div className="flex min-w-0 flex-col xl:min-h-0">
               <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
-                <div className="min-w-[var(--content-grid-min-width)]" style={gridStyle}>
-                  <div className="sticky top-0 z-10 grid grid-cols-[var(--content-grid-template)] gap-x-3 border-b border-border bg-surface-muted px-3 py-3 text-xs font-semibold uppercase tracking-normal text-muted">
+                <div
+                  className="min-w-0 xl:min-w-[var(--content-grid-min-width)]"
+                  style={gridStyle}
+                >
+                  <div className="sticky top-0 z-30 hidden gap-x-3 grid-cols-[var(--content-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted shadow-[0_1px_0_var(--adaptive-border)] xl:grid">
                     <div className="flex min-w-0 items-center">
                       <ListSelectionCheckbox
                         checked={contentSelection.allVisibleSelected}
@@ -1271,21 +1640,24 @@ export function ContentPage() {
 
                       return (
                         <div
-                          className="group relative flex min-w-0 items-center gap-2"
+                          className="group relative flex min-w-0 items-center pr-3"
                           key={columnId}
                         >
                           <span className="truncate">{column?.label}</span>
                           <button
                             aria-label={`Resize ${column?.label ?? columnId} column`}
-                            className="absolute -right-2 top-1/2 h-6 w-2 -translate-y-1/2 cursor-col-resize rounded-full border-r border-border opacity-60 transition hover:border-primary hover:opacity-100"
+                            className="group absolute inset-y-0 right-0 flex w-3 cursor-col-resize items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            title="Drag to resize"
                             type="button"
                             onPointerDown={(event) => startColumnResize(columnId, event)}
-                          />
+                          >
+                            <span className="h-4 w-px rounded-full bg-border transition group-hover:bg-primary group-focus-visible:bg-primary" />
+                          </button>
                         </div>
                       )
                     })}
-                    <div className="flex min-w-0 items-center justify-end">
-                      <span>Actions</span>
+                    <div className="workbench-sticky-action-head flex min-w-0 pr-3">
+                      <span className="truncate">Actions</span>
                     </div>
                   </div>
                   <ListSelectionToolbar
@@ -1296,56 +1668,63 @@ export function ContentPage() {
                     onSelectVisible={() => contentSelection.setVisibleSelected(true)}
                   />
 
-                  <div className="divide-y divide-border">
-                    {pages.map((contentPage) => (
-                      <div
-                        aria-selected={contentSelection.isSelected(contentPage.pageId)}
-                        className={cn(
-                          'grid min-h-[5.5rem] cursor-pointer grid-cols-[var(--content-grid-template)] gap-x-3 px-3 py-3 text-left transition hover:bg-surface-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                          contentSelection.isSelected(contentPage.pageId) &&
-                            'bg-primary/5 hover:bg-primary/10',
-                        )}
-                        key={contentPage.pageId}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => openContentDetail(contentPage)}
-                        onKeyDown={(keyboardEvent) => {
-                          if (keyboardEvent.target !== keyboardEvent.currentTarget) return
+                  <div>
+                    {pages.map((contentPage) => {
+                      const isPreviewed = previewPageId === contentPage.pageId
+                      const isSelected = contentSelection.isSelected(contentPage.pageId)
 
-                          if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
-                            keyboardEvent.preventDefault()
-                            openContentDetail(contentPage)
-                          }
-                        }}
-                      >
-                        <div className="flex min-w-0 items-start self-center">
-                          <ListSelectionCheckbox
-                            checked={contentSelection.isSelected(contentPage.pageId)}
-                            label={`Select ${contentPage.title}`}
-                            onChange={(selected) =>
-                              contentSelection.setItemSelected(
-                                contentPage.pageId,
-                                selected,
-                              )
+                      return (
+                        <article
+                          aria-label={`Preview ${contentPage.title}`}
+                          aria-selected={isPreviewed || isSelected}
+                          className={cn(
+                            'workbench-grid-row grid min-w-0 cursor-pointer gap-2 border-b border-border bg-surface px-3 py-2 transition last:border-b-0 hover:bg-surface-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--content-grid-template)] xl:items-center xl:gap-x-3',
+                            isPreviewed &&
+                              'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
+                            isSelected && 'bg-primary/5 hover:bg-primary/10',
+                          )}
+                          key={contentPage.pageId}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setPreviewPageId(contentPage.pageId)}
+                          onKeyDown={(keyboardEvent) => {
+                            if (keyboardEvent.target !== keyboardEvent.currentTarget) return
+
+                            if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
+                              keyboardEvent.preventDefault()
+                              setPreviewPageId(contentPage.pageId)
                             }
-                          />
-                        </div>
-                        {visibleColumns.map((columnId) => (
-                          <div
-                            className="min-w-0 self-center text-sm"
-                            key={`${contentPage.pageId}-${columnId}`}
-                          >
-                            <ContentCell columnId={columnId} page={contentPage} />
+                          }}
+                        >
+                          <div className="flex min-w-0 items-start xl:items-center">
+                            <ListSelectionCheckbox
+                              checked={isSelected}
+                              label={`Select ${contentPage.title}`}
+                              onChange={(selected) =>
+                                contentSelection.setItemSelected(
+                                  contentPage.pageId,
+                                  selected,
+                                )
+                              }
+                            />
                           </div>
-                        ))}
-                        <div className="min-w-0 self-center text-sm">
-                          <span className="mb-1 block text-xs font-semibold uppercase tracking-normal text-muted xl:hidden">
-                            Actions
-                          </span>
-                          {renderRowActions(contentPage)}
-                        </div>
-                      </div>
-                    ))}
+                          {visibleColumns.map((columnId) => (
+                            <div
+                              className="min-w-0 text-sm"
+                              key={`${contentPage.pageId}-${columnId}`}
+                            >
+                              <ContentCell columnId={columnId} page={contentPage} />
+                            </div>
+                          ))}
+                          <div className="workbench-sticky-action-cell flex min-w-0 py-1 pl-2 text-sm">
+                            <span className="mb-1 block text-xs font-semibold uppercase tracking-normal text-muted xl:hidden">
+                              Actions
+                            </span>
+                            {renderRowActions(contentPage)}
+                          </div>
+                        </article>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
@@ -1403,9 +1782,23 @@ export function ContentPage() {
                 </div>
               ) : null}
             </div>
-          )}
-        </section>
-      </section>
+
+            {previewPage ? (
+              <ContentPreviewPanel
+                canPublishContent={canPublishContent}
+                canReadAudit={canReadAudit}
+                canUpdateContent={canUpdateContent}
+                isSubmitting={actionMutation.isPending}
+                page={previewPage}
+                onClose={() => setPreviewPageId(null)}
+                onOpenAction={openContentAction}
+                onOpenAudit={openContentAudit}
+                onOpenDetails={openContentDetail}
+              />
+            ) : null}
+          </div>
+        )}
+      </main>
 
       {selectedAction ? (
         <ContentActionModal

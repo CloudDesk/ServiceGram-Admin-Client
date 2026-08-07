@@ -4,12 +4,15 @@ import {
   ChevronLeft,
   ChevronRight,
   CreditCard,
+  Eye,
   Filter,
   ReceiptText,
   RefreshCcw,
+  ShieldAlert,
   SlidersHorizontal,
   Store,
   UserRound,
+  X,
   XCircle,
 } from 'lucide-react'
 import type {
@@ -35,6 +38,13 @@ import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import {
+  QuickPreviewActions,
+  QuickPreviewFact,
+  QuickPreviewFactGrid,
+  QuickPreviewTabs,
+  type QuickPreviewAction,
+} from '../../../components/ui/QuickPreview'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
@@ -69,8 +79,8 @@ const REFUND_DEFAULT_COLUMN_WIDTH = 220
 const REFUND_GRID_COLUMN_GAP = 12
 const REFUND_GRID_INLINE_PADDING = 24
 const REFUND_ACTION_COLUMN_ID = 'actions'
-const REFUND_ACTION_COLUMN_DEFAULT_WIDTH = 210
-const REFUND_ACTION_COLUMN_MIN_WIDTH = 180
+const REFUND_ACTION_COLUMN_DEFAULT_WIDTH = 128
+const REFUND_ACTION_COLUMN_MIN_WIDTH = 112
 const REFUND_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.refund.columnWidths.v1'
 
 const refundStatuses: AdminRefundStatus[] = [
@@ -143,6 +153,7 @@ type RefundTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
 type RefundColumnId = (typeof refundDataColumns)[number]['id']
 type RefundColumnWidthId = RefundColumnId | typeof REFUND_ACTION_COLUMN_ID
 type RefundColumnWidths = Partial<Record<RefundColumnWidthId, number>>
+type RefundPreviewTab = 'summary' | 'review' | 'links'
 type RefundQueueKey =
   | 'all'
   | 'requested'
@@ -255,6 +266,16 @@ function getRefundStatusTone(status: AdminRefundStatus): RefundTone {
   if (status === 'REQUESTED' || status === 'APPROVED' || status === 'PROCESSING') {
     return 'warning'
   }
+
+  return 'neutral'
+}
+
+function getPaymentStatusTone(
+  status: AdminRefundSummary['payment']['status'],
+): RefundTone {
+  if (status === 'SUCCESS') return 'success'
+  if (status === 'FAILED' || status === 'CANCELLED') return 'danger'
+  if (status === 'CREATED' || status === 'PENDING') return 'warning'
 
   return 'neutral'
 }
@@ -486,6 +507,408 @@ function RefundCell({
   )
 }
 
+function refundSignalTone(refund: AdminRefundSummary): RefundTone {
+  if (refund.status === 'FAILED' || refund.status === 'REJECTED' || refund.warnings.length > 0) {
+    return 'danger'
+  }
+
+  if (refund.nextRecommendedAction || refund.status === 'REQUESTED') {
+    return 'warning'
+  }
+
+  if (refund.status === 'APPROVED' || refund.status === 'PROCESSING') {
+    return 'info'
+  }
+
+  if (refund.status === 'SUCCESS') return 'success'
+
+  return 'neutral'
+}
+
+function refundSignalLabel(refund: AdminRefundSummary) {
+  if (refund.nextRecommendedAction) {
+    return humanizeCode(refund.nextRecommendedAction)
+  }
+
+  if (refund.warnings[0]) {
+    return humanizeCode(refund.warnings[0])
+  }
+
+  if (refund.status === 'REQUESTED') return 'Needs approval'
+  if (refund.status === 'APPROVED') return 'Approved for processing'
+  if (refund.status === 'PROCESSING') return 'Processing refund'
+  if (refund.status === 'SUCCESS') return 'Refund complete'
+  if (refund.status === 'REJECTED') return 'Refund rejected'
+  if (refund.status === 'FAILED') return 'Refund failed'
+
+  return humanizeCode(refund.status)
+}
+
+function refundSignalMeta(refund: AdminRefundSummary) {
+  if (refund.nextRecommendedAction) return 'Next action'
+
+  if (refund.warnings.length > 0) {
+    return `${refund.warnings.length} warning${refund.warnings.length === 1 ? '' : 's'}`
+  }
+
+  return humanizeCode(refund.status)
+}
+
+function previewSignalClasses(tone: RefundTone) {
+  if (tone === 'success') return 'border-success/20 bg-success/10 text-success'
+  if (tone === 'warning') return 'border-warning/25 bg-warning/10 text-warning'
+  if (tone === 'danger') return 'border-danger/20 bg-danger/10 text-danger'
+  if (tone === 'info') return 'border-info/20 bg-info/10 text-primary'
+
+  return 'border-border bg-surface-muted/55 text-muted'
+}
+
+function RefundPreviewSignal({
+  label,
+  meta,
+  tone,
+}: {
+  label: string
+  meta: string
+  tone: RefundTone
+}) {
+  return (
+    <div
+      className={cn(
+        'flex min-h-9 items-center justify-between gap-2 rounded-[0.65rem] border px-2.5 py-2',
+        previewSignalClasses(tone),
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <ShieldAlert className="size-4 shrink-0 text-current" />
+        <span className="min-w-0 truncate text-sm font-semibold text-foreground">{label}</span>
+      </div>
+      <span className="shrink-0 rounded-full bg-surface/65 px-2 py-0.5 text-xs font-semibold text-current">
+        {meta}
+      </span>
+    </div>
+  )
+}
+
+function RefundPreviewField({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-border py-2.5 last:border-b-0">
+      <span className="text-xs font-semibold uppercase tracking-normal text-muted">{label}</span>
+      <span className="min-w-0 break-words text-right text-sm font-medium text-foreground">
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function RefundPreviewPanel({
+  canReadCustomers,
+  canReadOrders,
+  canReadPayments,
+  canReadVendors,
+  canReviewRefunds,
+  isSubmitting,
+  onClose,
+  onOpenAction,
+  onOpenCustomer,
+  onOpenDetails,
+  onOpenOrder,
+  onOpenPayment,
+  onOpenVendor,
+  refund,
+}: {
+  canReadCustomers: boolean
+  canReadOrders: boolean
+  canReadPayments: boolean
+  canReadVendors: boolean
+  canReviewRefunds: boolean
+  isSubmitting: boolean
+  onClose: () => void
+  onOpenAction: (action: PaymentActionSelection) => void
+  onOpenCustomer: (refund: AdminRefundSummary) => void
+  onOpenDetails: (refund: AdminRefundSummary) => void
+  onOpenOrder: (refund: AdminRefundSummary) => void
+  onOpenPayment: (refund: AdminRefundSummary) => void
+  onOpenVendor: (refund: AdminRefundSummary) => void
+  refund: AdminRefundSummary
+}) {
+  const [activeTab, setActiveTab] = useState<RefundPreviewTab>('summary')
+  const signalTone = refundSignalTone(refund)
+  const previewTabs: { key: RefundPreviewTab; label: string }[] = [
+    { key: 'summary', label: 'Summary' },
+    { key: 'review', label: 'Review' },
+    { key: 'links', label: 'Links' },
+  ]
+  const canApprove = canReviewRefunds && refund.availableActions.includes('APPROVE')
+  const canReject = canReviewRefunds && refund.availableActions.includes('REJECT')
+  const primaryAction: QuickPreviewAction | null = canApprove
+    ? {
+        disabled: isSubmitting,
+        icon: <CheckCircle2 className="size-4" />,
+        key: 'approve',
+        label: 'Approve',
+        onClick: () => onOpenAction({ kind: 'APPROVE_REFUND', refund }),
+        variant: 'primary',
+      }
+    : null
+  const detailAction: QuickPreviewAction = {
+    icon: <Eye className="size-4" />,
+    key: 'details',
+    label: primaryAction ? 'Detail' : 'Open detail',
+    onClick: () => onOpenDetails(refund),
+  }
+  const secondaryActions: QuickPreviewAction[] = []
+
+  if (canReject) {
+    secondaryActions.push({
+      disabled: isSubmitting,
+      icon: <XCircle className="size-4" />,
+      key: 'reject',
+      label: 'Reject',
+      onClick: () => onOpenAction({ kind: 'REJECT_REFUND', refund }),
+      variant: 'danger',
+    })
+  }
+
+  if (canReadPayments) {
+    secondaryActions.push({
+      icon: <CreditCard className="size-4" />,
+      key: 'payment',
+      label: 'Payment',
+      onClick: () => onOpenPayment(refund),
+      variant: 'secondary',
+    })
+  }
+
+  if (canReadOrders) {
+    secondaryActions.push({
+      icon: <ReceiptText className="size-4" />,
+      key: 'order',
+      label: 'Order',
+      onClick: () => onOpenOrder(refund),
+      variant: 'secondary',
+    })
+  }
+
+  if (canReadCustomers) {
+    secondaryActions.push({
+      icon: <UserRound className="size-4" />,
+      key: 'customer',
+      label: 'Customer',
+      onClick: () => onOpenCustomer(refund),
+      variant: 'secondary',
+    })
+  }
+
+  if (canReadVendors) {
+    secondaryActions.push({
+      icon: <Store className="size-4" />,
+      key: 'vendor',
+      label: 'Vendor',
+      onClick: () => onOpenVendor(refund),
+      variant: 'secondary',
+    })
+  }
+
+  return (
+    <>
+      <button
+        aria-label="Close refund preview"
+        className="fixed inset-0 z-40 bg-black/20 xl:hidden"
+        type="button"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:static xl:z-auto xl:h-full xl:w-[22rem] xl:self-stretch">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+              Refund preview
+            </p>
+            <div className="mt-2 flex min-w-0 items-start gap-2.5">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <RefreshCcw className="size-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-semibold text-foreground">
+                  {formatPaise(refund.amountPaise)}
+                </h3>
+                <p className="mt-0.5 truncate text-xs text-muted">
+                  {refund.publicPaymentId} / {refund.customer.fullName}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  <Badge tone={getRefundStatusTone(refund.status)}>
+                    {humanizeCode(refund.status)}
+                  </Badge>
+                  <Badge tone={getPaymentStatusTone(refund.payment.status)}>
+                    {humanizeCode(refund.payment.status)}
+                  </Badge>
+                  {refund.warnings.length > 0 ? (
+                    <Badge tone="warning">
+                      {refund.warnings.length} warning
+                      {refund.warnings.length === 1 ? '' : 's'}
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+          <button
+            aria-label="Close preview"
+            className="btn-icon shrink-0"
+            title="Close preview"
+            type="button"
+            onClick={onClose}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <QuickPreviewTabs
+          activeTab={activeTab}
+          ariaLabel="Refund preview sections"
+          tabs={previewTabs}
+          onChange={setActiveTab}
+        />
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {activeTab === 'summary' ? (
+            <div className="space-y-2.5">
+              <RefundPreviewSignal
+                label={refundSignalLabel(refund)}
+                meta={refundSignalMeta(refund)}
+                tone={signalTone}
+              />
+
+              <QuickPreviewFactGrid>
+                <QuickPreviewFact
+                  label="Refund"
+                  tone={getRefundStatusTone(refund.status)}
+                  value={formatPaise(refund.amountPaise)}
+                />
+                <QuickPreviewFact
+                  label="Payment"
+                  tone={getPaymentStatusTone(refund.payment.status)}
+                  value={formatPaise(refund.payment.amountPaise)}
+                />
+                <QuickPreviewFact
+                  label="Remaining"
+                  tone={
+                    refund.refundSummary.remainingRefundableAmountPaise > 0 ? 'info' : 'neutral'
+                  }
+                  value={formatPaise(refund.refundSummary.remainingRefundableAmountPaise)}
+                />
+                <QuickPreviewFact
+                  label="Requested"
+                  tone={refund.status === 'REQUESTED' ? 'warning' : 'neutral'}
+                  value={formatDateSafe(refund.createdAt)}
+                />
+              </QuickPreviewFactGrid>
+
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <p className="text-xs font-semibold uppercase tracking-normal text-muted">Reason</p>
+                <p className="mt-1 line-clamp-3 text-sm text-foreground">
+                  {refund.reason || 'No reason supplied'}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'review' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <ShieldAlert className="size-4 text-muted" />
+                  Review state
+                </div>
+                <RefundPreviewField
+                  label="Next"
+                  value={humanizeCode(refund.nextRecommendedAction)}
+                />
+                <RefundPreviewField label="Reviewed" value={formatDateSafe(refund.reviewedAt)} />
+                <RefundPreviewField label="Processed" value={formatDateSafe(refund.processedAt)} />
+                <RefundPreviewField
+                  label="Initiated by"
+                  value={refund.initiatedByAdminId ?? 'Not available'}
+                />
+                <RefundPreviewField
+                  label="Approved by"
+                  value={refund.approvedByAdminId ?? 'Not available'}
+                />
+                <RefundPreviewField
+                  label="Reviewed by"
+                  value={refund.reviewedByAdminId ?? 'Not available'}
+                />
+              </div>
+
+              {refund.rejectionReason ? (
+                <div className="rounded-[0.75rem] border border-danger/20 bg-danger/10 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-normal text-danger">
+                    Rejection
+                  </p>
+                  <p className="mt-1 line-clamp-3 text-sm text-foreground">
+                    {refund.rejectionReason}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap gap-2">
+                {refund.warnings.length ? (
+                  refund.warnings.map((warning) => (
+                    <Badge key={warning} tone="warning">
+                      {humanizeCode(warning)}
+                    </Badge>
+                  ))
+                ) : (
+                  <Badge tone="success">No warnings</Badge>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'links' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <ReceiptText className="size-4 text-muted" />
+                  Context
+                </div>
+                <RefundPreviewField label="Payment" value={refund.publicPaymentId} />
+                <RefundPreviewField label="Order" value={refund.order.publicOrderId} />
+                <RefundPreviewField label="Customer" value={refund.customer.fullName} />
+                <RefundPreviewField label="Vendor" value={refund.vendor.shopName} />
+                <RefundPreviewField
+                  label="Category"
+                  value={refund.category?.name ?? 'No category'}
+                />
+              </div>
+
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <CreditCard className="size-4 text-muted" />
+                  Provider
+                </div>
+                <RefundPreviewField label="Method" value={humanizeCode(refund.payment.method)} />
+                <RefundPreviewField label="Gateway" value={humanizeCode(refund.payment.gateway)} />
+                <RefundPreviewField
+                  label="Refund ref"
+                  value={refund.razorpayRefundId ?? 'Not available'}
+                />
+                <RefundPreviewField label="Refund id" value={refund.refundId} />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <QuickPreviewActions
+          detailAction={detailAction}
+          primaryAction={primaryAction}
+          secondaryActions={secondaryActions}
+        />
+      </aside>
+    </>
+  )
+}
+
 export function RefundsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -538,6 +961,7 @@ export function RefundsPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [selectedAction, setSelectedAction] =
     useState<PaymentActionSelection | null>(null)
+  const [previewRefundId, setPreviewRefundId] = useState<string | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [filtersCollapsed, setFiltersCollapsed] = useState(false)
   const [visibleColumns, setVisibleColumns] =
@@ -711,6 +1135,8 @@ export function RefundsPage() {
   const pagination = refundsQuery.data?.pagination
   const summary = refundsQuery.data?.summary
   const queueSummary = queueSummaryResultQuery.data?.summary
+  const previewRefund =
+    refunds.find((refund) => refund.refundId === previewRefundId) ?? null
   const refundSelection = useListSelection(refunds, (refund) => refund.refundId)
   const isInitialLoading = refundsQuery.isLoading && !refundsQuery.data
   const isRefreshing = refundsQuery.isFetching && Boolean(refundsQuery.data)
@@ -938,7 +1364,9 @@ export function RefundsPage() {
     <>
       {showColumn('refund') ? (
         <RefundCell label="Refund">
-          <p className="truncate font-semibold">{refund.refundId}</p>
+          <p className="truncate font-semibold">
+            {refund.razorpayRefundId ?? 'Refund request'}
+          </p>
           <p className="mt-1 truncate text-xs text-muted">
             Created {formatDateSafe(refund.createdAt)}
           </p>
@@ -1083,47 +1511,43 @@ export function RefundsPage() {
   )
 
   const renderRowActions = (refund: AdminRefundSummary) => (
-    <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+    <div className="flex flex-nowrap items-center justify-end gap-1.5">
       {canReviewRefunds && refund.availableActions.includes('APPROVE') ? (
-        <Button
-          size="sm"
-          type="button"
-          variant="secondary"
+        <button
+          aria-label={`Approve refund ${refund.refundId}`}
+          className="btn-icon size-8 min-h-8 shrink-0 text-success hover:text-success disabled:cursor-not-allowed disabled:opacity-60"
           disabled={mutation.isPending}
-          onClick={(event) =>
-            openRefundAction({ kind: 'APPROVE_REFUND', refund }, event)
-          }
+          title="Approve refund"
+          type="button"
+          onClick={(event) => openRefundAction({ kind: 'APPROVE_REFUND', refund }, event)}
         >
-          <CheckCircle2 className="mr-2 size-4" />
-          Approve
-        </Button>
+          <CheckCircle2 className="size-3.5" />
+        </button>
       ) : null}
       {canReviewRefunds && refund.availableActions.includes('REJECT') ? (
-        <Button
-          size="sm"
-          type="button"
-          variant="danger"
+        <button
+          aria-label={`Reject refund ${refund.refundId}`}
+          className="btn-icon size-8 min-h-8 shrink-0 text-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
           disabled={mutation.isPending}
-          onClick={(event) =>
-            openRefundAction({ kind: 'REJECT_REFUND', refund }, event)
-          }
+          title="Reject refund"
+          type="button"
+          onClick={(event) => openRefundAction({ kind: 'REJECT_REFUND', refund }, event)}
         >
-          <XCircle className="mr-2 size-4" />
-          Reject
-        </Button>
+          <XCircle className="size-3.5" />
+        </button>
       ) : null}
-      <Button
-        size="sm"
+      <button
+        aria-label={`Open refund detail ${refund.refundId}`}
+        className="btn-icon size-8 min-h-8 shrink-0"
+        title="Open refund detail"
         type="button"
-        variant="ghost"
         onClick={(event) => {
           event.stopPropagation()
           viewDetails(refund)
         }}
       >
-        <ArrowUpRight className="mr-2 size-4" />
-        Open
-      </Button>
+        <Eye className="size-3.5" />
+      </button>
     </div>
   )
 
@@ -1157,8 +1581,14 @@ export function RefundsPage() {
 
         <section
           className={cn(
-            'grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[18rem_minmax(0,1fr)] xl:items-stretch xl:overflow-hidden',
-            filtersCollapsed && 'xl:grid-cols-[4.25rem_minmax(0,1fr)]',
+            'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
+            previewRefund
+              ? filtersCollapsed
+                ? 'xl:grid-cols-[4.25rem_minmax(0,1fr)_22rem]'
+                : 'xl:grid-cols-[18rem_minmax(0,1fr)_22rem]'
+              : filtersCollapsed
+                ? 'xl:grid-cols-[4.25rem_minmax(0,1fr)]'
+                : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
           )}
         >
           <aside
@@ -1561,7 +1991,7 @@ export function RefundsPage() {
                             />
                           </div>
                         ))}
-                      <div className="relative flex min-w-0 items-center justify-end pr-3">
+                      <div className="workbench-sticky-action-head relative flex min-w-0 pr-3">
                         <span>Actions</span>
                         <button
                           aria-label="Resize actions column"
@@ -1588,10 +2018,15 @@ export function RefundsPage() {
                     <div className="divide-y divide-border">
                       {refunds.map((refund) => (
                         <div
-                          aria-label={`Open refund ${refund.refundId}`}
-                          aria-selected={refundSelection.isSelected(refund.refundId)}
+                          aria-label={`Preview refund ${refund.refundId}`}
+                          aria-selected={
+                            previewRefundId === refund.refundId ||
+                            refundSelection.isSelected(refund.refundId)
+                          }
                           className={cn(
-                            'grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--refund-grid-template)]',
+                            'workbench-grid-row grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--refund-grid-template)]',
+                            previewRefundId === refund.refundId &&
+                              'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
                             refundSelection.isSelected(refund.refundId) &&
                               'bg-primary/5 hover:bg-primary/10',
                           )}
@@ -1599,13 +2034,13 @@ export function RefundsPage() {
                           role="button"
                           style={refundGridStyle}
                           tabIndex={0}
-                          onClick={() => viewDetails(refund)}
+                          onClick={() => setPreviewRefundId(refund.refundId)}
                           onKeyDown={(event) => {
                             if (event.target !== event.currentTarget) return
 
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault()
-                              viewDetails(refund)
+                              setPreviewRefundId(refund.refundId)
                             }
                           }}
                         >
@@ -1624,7 +2059,7 @@ export function RefundsPage() {
                           <div className="grid gap-3 sm:grid-cols-2 xl:contents">
                             {renderRefundCells(refund)}
                           </div>
-                          <div className="flex min-w-0 items-center justify-start xl:justify-end">
+                          <div className="workbench-sticky-action-cell flex min-w-0 items-center justify-start pl-2 xl:justify-end">
                             {renderRowActions(refund)}
                           </div>
                         </div>
@@ -1690,6 +2125,24 @@ export function RefundsPage() {
               </div>
             )}
           </main>
+          {previewRefund ? (
+            <RefundPreviewPanel
+              canReadCustomers={canReadCustomers}
+              canReadOrders={canReadOrders}
+              canReadPayments={canReadPayments}
+              canReadVendors={canReadVendors}
+              canReviewRefunds={canReviewRefunds}
+              isSubmitting={mutation.isPending}
+              refund={previewRefund}
+              onClose={() => setPreviewRefundId(null)}
+              onOpenAction={openRefundAction}
+              onOpenCustomer={viewCustomer}
+              onOpenDetails={viewDetails}
+              onOpenOrder={viewOrder}
+              onOpenPayment={viewPayment}
+              onOpenVendor={viewVendor}
+            />
+          ) : null}
         </section>
       </div>
 

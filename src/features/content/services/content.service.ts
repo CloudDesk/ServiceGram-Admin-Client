@@ -1,5 +1,15 @@
 import { buildApiUrl } from '../../../config/api'
 import {
+  CUSTOMER_APP_HOME_HERO_CAROUSEL_PATH,
+  CUSTOMER_APP_HOME_PATH,
+  CUSTOMER_HOME_CAROUSEL_SLIDE_ARCHIVE_PATH,
+  CUSTOMER_HOME_CAROUSEL_SLIDE_DETAIL_PATH,
+  CUSTOMER_HOME_CAROUSEL_SLIDE_IMAGE_CONFIRM_PATH,
+  CUSTOMER_HOME_CAROUSEL_SLIDE_IMAGE_REMOVE_PATH,
+  CUSTOMER_HOME_CAROUSEL_SLIDE_IMAGE_UPLOAD_INTENT_PATH,
+  CUSTOMER_HOME_CAROUSEL_SLIDE_PAUSE_PATH,
+  CUSTOMER_HOME_CAROUSEL_SLIDE_PUBLISH_PATH,
+  CUSTOMER_HOME_CAROUSEL_SLIDES_PATH,
   CONTENT_PAGE_DETAIL_PATH,
   CONTENT_PAGES_PATH,
   CONTENT_PAGE_ARCHIVE_PATH,
@@ -9,12 +19,24 @@ import {
 import { apiClient } from '../../../services/apiClient'
 import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
+  ContentApiResponse,
   ContentApiErrorDetails,
   ContentPageActionPayload,
   ContentPageResponse,
   ContentPagesQueryParams,
   ContentPagesResponse,
+  ConfirmCustomerHomeCarouselImageUploadPayload,
   CreateContentPagePayload,
+  CreateCustomerHomeCarouselSlidePayload,
+  CustomerAppHomeResponse,
+  CustomerHomeCarouselImageUploadIntentPayload,
+  CustomerHomeCarouselImageUploadIntentResponse,
+  CustomerHomeCarouselSlideActionPayload,
+  CustomerHomeCarouselSlideResponse,
+  CustomerHomeCarouselSlidesQueryParams,
+  CustomerHomeCarouselSlidesResponse,
+  UpdateCustomerHomeCarouselSlidePayload,
+  UpdateCustomerHomeSectionPayload,
   UpdateContentPagePayload,
 } from '../types/content.types'
 
@@ -44,7 +66,10 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
   return payload as T
 }
 
-function jsonRequest<TPayload>(method: 'POST' | 'PUT', payload: TPayload) {
+function jsonRequest<TPayload>(
+  method: 'DELETE' | 'POST' | 'PUT',
+  payload: TPayload,
+) {
   return {
     method,
     headers: { 'Content-Type': 'application/json' },
@@ -112,6 +137,131 @@ async function archivePage(
   return parseJsonResponse<ContentPageResponse>(response)
 }
 
+async function getCustomerAppHome(): Promise<CustomerAppHomeResponse> {
+  const response = await apiClient.request(buildApiUrl(CUSTOMER_APP_HOME_PATH))
+  return parseJsonResponse<CustomerAppHomeResponse>(response)
+}
+
+async function updateCustomerAppHomeSection(
+  payload: UpdateCustomerHomeSectionPayload,
+): Promise<ContentApiResponse<unknown>> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_APP_HOME_HERO_CAROUSEL_PATH),
+    jsonRequest('PUT', payload),
+  )
+  return parseJsonResponse<ContentApiResponse<unknown>>(response)
+}
+
+async function getCarouselSlides(
+  query: CustomerHomeCarouselSlidesQueryParams = {},
+): Promise<CustomerHomeCarouselSlidesResponse> {
+  const queryString = buildQueryParams(query)
+  const response = await apiClient.request(
+    buildApiUrl(
+      queryString
+        ? `${CUSTOMER_HOME_CAROUSEL_SLIDES_PATH}?${queryString}`
+        : CUSTOMER_HOME_CAROUSEL_SLIDES_PATH,
+    ),
+  )
+  return parseJsonResponse<CustomerHomeCarouselSlidesResponse>(response)
+}
+
+async function getCarouselSlide(
+  slideId: string,
+): Promise<CustomerHomeCarouselSlideResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_HOME_CAROUSEL_SLIDE_DETAIL_PATH(slideId)),
+  )
+  return parseJsonResponse<CustomerHomeCarouselSlideResponse>(response)
+}
+
+async function createCarouselSlide(
+  payload: CreateCustomerHomeCarouselSlidePayload,
+): Promise<CustomerHomeCarouselSlideResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_HOME_CAROUSEL_SLIDES_PATH),
+    jsonRequest('POST', payload),
+  )
+  return parseJsonResponse<CustomerHomeCarouselSlideResponse>(response)
+}
+
+async function updateCarouselSlide(
+  slideId: string,
+  payload: UpdateCustomerHomeCarouselSlidePayload,
+): Promise<CustomerHomeCarouselSlideResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_HOME_CAROUSEL_SLIDE_DETAIL_PATH(slideId)),
+    jsonRequest('PUT', payload),
+  )
+  return parseJsonResponse<CustomerHomeCarouselSlideResponse>(response)
+}
+
+async function createCarouselImageUploadIntent(
+  slideId: string,
+  payload: CustomerHomeCarouselImageUploadIntentPayload,
+): Promise<CustomerHomeCarouselImageUploadIntentResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_HOME_CAROUSEL_SLIDE_IMAGE_UPLOAD_INTENT_PATH(slideId)),
+    jsonRequest('POST', payload),
+  )
+  return parseJsonResponse<CustomerHomeCarouselImageUploadIntentResponse>(response)
+}
+
+async function confirmCarouselImageUpload(
+  slideId: string,
+  payload: ConfirmCustomerHomeCarouselImageUploadPayload,
+): Promise<CustomerHomeCarouselSlideResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_HOME_CAROUSEL_SLIDE_IMAGE_CONFIRM_PATH(slideId)),
+    jsonRequest('POST', payload),
+  )
+  return parseJsonResponse<CustomerHomeCarouselSlideResponse>(response)
+}
+
+async function removeCarouselImage(
+  slideId: string,
+  payload: CustomerHomeCarouselSlideActionPayload,
+): Promise<CustomerHomeCarouselSlideResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_HOME_CAROUSEL_SLIDE_IMAGE_REMOVE_PATH(slideId)),
+    jsonRequest('DELETE', payload),
+  )
+  return parseJsonResponse<CustomerHomeCarouselSlideResponse>(response)
+}
+
+async function publishCarouselSlide(
+  slideId: string,
+  payload: CustomerHomeCarouselSlideActionPayload,
+): Promise<CustomerHomeCarouselSlideResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_HOME_CAROUSEL_SLIDE_PUBLISH_PATH(slideId)),
+    jsonRequest('POST', payload),
+  )
+  return parseJsonResponse<CustomerHomeCarouselSlideResponse>(response)
+}
+
+async function pauseCarouselSlide(
+  slideId: string,
+  payload: CustomerHomeCarouselSlideActionPayload,
+): Promise<CustomerHomeCarouselSlideResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_HOME_CAROUSEL_SLIDE_PAUSE_PATH(slideId)),
+    jsonRequest('POST', payload),
+  )
+  return parseJsonResponse<CustomerHomeCarouselSlideResponse>(response)
+}
+
+async function archiveCarouselSlide(
+  slideId: string,
+  payload: CustomerHomeCarouselSlideActionPayload,
+): Promise<CustomerHomeCarouselSlideResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(CUSTOMER_HOME_CAROUSEL_SLIDE_ARCHIVE_PATH(slideId)),
+    jsonRequest('POST', payload),
+  )
+  return parseJsonResponse<CustomerHomeCarouselSlideResponse>(response)
+}
+
 export const contentService = {
   getPages,
   getPage,
@@ -119,4 +269,16 @@ export const contentService = {
   updatePage,
   publishPage,
   archivePage,
+  getCustomerAppHome,
+  updateCustomerAppHomeSection,
+  getCarouselSlides,
+  getCarouselSlide,
+  createCarouselSlide,
+  updateCarouselSlide,
+  createCarouselImageUploadIntent,
+  confirmCarouselImageUpload,
+  removeCarouselImage,
+  publishCarouselSlide,
+  pauseCarouselSlide,
+  archiveCarouselSlide,
 }

@@ -1,11 +1,9 @@
 import {
   ArrowUpRight,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Eye,
   Filter,
-  FileWarning,
   MessageSquarePlus,
   RefreshCcw,
   X,
@@ -23,15 +21,8 @@ import { LookupSelect } from '../../../components/ui/LookupSelect'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
-import {
-  inferMediaViewerKind,
-  isOpenableMediaUrl,
-  useMediaViewer,
-  type MediaViewerItem,
-} from '../../../components/media'
 import { routePaths } from '../../../config/routes'
 import { useToast } from '../../../hooks/useToast'
-import { useAuthStore } from '../../../store/authStore'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { searchCategoryLookupOptions } from '../../lookups/adminLookups'
@@ -42,8 +33,6 @@ import {
 } from '../../vendors/components/VendorActionModal'
 import { vendorService } from '../../vendors/services/vendor.service'
 import type {
-  VendorDocument,
-  VendorDocumentDownload,
   VendorDocumentListItem,
   VendorDocumentListQueryParams,
   VendorDocumentListVendor,
@@ -98,7 +87,7 @@ const vendorStatuses: VendorStatus[] = [
 
 type DocumentActionKind = Extract<
   VendorActionKind,
-  'ADD_NOTE' | 'VERIFY_DOCUMENT' | 'REJECT_DOCUMENT'
+  'ADD_NOTE'
 >
 type DocumentReviewQueueKey =
   | 'all'
@@ -106,7 +95,6 @@ type DocumentReviewQueueKey =
   | 'rejected'
   | 'mediaIssue'
   | 'verified'
-type DocumentReviewTab = 'documents' | 'vendorInfo' | 'timeline'
 
 const DOCUMENT_FILTER_CONTROL_CLASS_NAME =
   'h-9 w-full rounded-[0.65rem] border border-border bg-surface px-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30'
@@ -148,7 +136,6 @@ interface VendorDocumentGroup {
 interface DocumentActionTarget {
   group: VendorDocumentGroup
   kind: DocumentActionKind
-  row?: VendorDocumentListItem
 }
 
 interface ReviewState {
@@ -171,50 +158,9 @@ function positiveIntegerParam(value: string | null, fallback: number) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
-function formatFileSize(value: number | null | undefined) {
-  if (!value) return 'Size not available'
-
-  if (value < 1024) return `${value} B`
-
-  const units = ['KB', 'MB', 'GB']
-  let size = value / 1024
-  let unitIndex = 0
-
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024
-    unitIndex += 1
-  }
-
-  return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIndex]}`
-}
-
-function documentTone(status: VendorDocumentStatus): StatusTone {
-  if (status === 'VERIFIED') return 'success'
-  if (status === 'REJECTED' || status === 'EXPIRED') return 'danger'
-
-  return 'warning'
-}
-
-function onboardingTone(status: VendorOnboardingStatus): StatusTone {
-  if (status === 'APPROVED') return 'success'
-  if (status === 'REJECTED') return 'danger'
-  if (status === 'DOCUMENTS_PENDING' || status === 'UNDER_REVIEW') {
-    return 'warning'
-  }
-
-  return 'info'
-}
-
 function vendorStatusTone(status: VendorStatus): StatusTone {
   if (status === 'ACTIVE') return 'success'
   if (status === 'SUSPENDED' || status === 'INACTIVE') return 'danger'
-  return 'warning'
-}
-
-function mediaTone(status: VendorDocumentMediaStatus | undefined): StatusTone {
-  if (status === 'AVAILABLE') return 'success'
-  if (status === 'FAILED' || status === 'DELETED') return 'danger'
-
   return 'warning'
 }
 
@@ -372,58 +318,6 @@ function getGroupReviewState(group: VendorDocumentGroup): ReviewState {
   }
 
   return { label: 'Review', tone: 'neutral' }
-}
-
-function toActionDocument(
-  row: VendorDocumentListItem,
-  download?: VendorDocumentDownload,
-): VendorDocument {
-  return {
-    documentId: row.documentId,
-    documentType: row.documentType,
-    mediaAssetId: row.mediaAssetId,
-    status: row.status,
-    download,
-    rejectionReason: row.rejectionReason,
-    verifiedByAdminId: row.verifiedByAdminId,
-    verifiedAt: row.verifiedAt,
-    expiresAt: row.expiresAt,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  }
-}
-
-function buildMediaItem(
-  row: VendorDocumentListItem,
-  download: VendorDocumentDownload,
-): MediaViewerItem | null {
-  const downloadUrl = download.downloadUrl
-
-  if (!isOpenableMediaUrl(downloadUrl)) return null
-
-  const fileName = row.media?.fileName ?? row.documentType
-  const mimeType = row.media?.mimeType ?? null
-
-  return {
-    description: `${humanizeCode(row.status)} document for ${row.vendor.shopName}.`,
-    downloadUrl,
-    expiresAt: download.expiresAt,
-    fileName,
-    id: row.documentId,
-    kind: inferMediaViewerKind({
-      fileName,
-      mimeType,
-      src: downloadUrl,
-    }),
-    mimeType,
-    ownerLabel: row.vendor.shopName,
-    providerStatus: download.providerStatus,
-    sizeBytes: row.media?.sizeBytes ?? null,
-    sourceLabel: 'Vendor document',
-    src: downloadUrl,
-    title: humanizeCode(row.documentType),
-    warnings: [...row.warnings, ...download.warnings],
-  }
 }
 
 function buildQuery(searchParams: URLSearchParams): VendorDocumentListQueryParams {
@@ -649,7 +543,7 @@ function VendorDocumentGroupRow({
       aria-label={`Review documents for ${group.vendor.shopName}`}
       aria-selected={isSelected}
       className={cn(
-        'grid min-w-0 cursor-pointer gap-2 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[minmax(16rem,1fr)_15rem_11rem_10rem_11.5rem] xl:items-center',
+        'workbench-grid-row grid min-w-0 cursor-pointer gap-2 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[minmax(16rem,1fr)_15rem_11rem_10rem_11.5rem] xl:items-center',
         isSelected && 'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
       )}
       role="button"
@@ -705,7 +599,7 @@ function VendorDocumentGroupRow({
         </p>
       </div>
 
-      <div className="flex flex-nowrap items-center justify-start gap-1.5 xl:justify-end">
+      <div className="workbench-sticky-action-cell flex flex-nowrap items-center justify-start gap-1.5 pl-2 xl:justify-end">
         <Button
           className="h-8 min-h-8 min-w-[4.5rem] whitespace-nowrap px-2.5"
           size="sm"
@@ -748,393 +642,15 @@ function VendorDocumentGroupRow({
   )
 }
 
-function VendorDocumentDetailWorkbench({
-  canApproveVendors,
-  group,
-  isSubmitting,
-  onClose,
-  onOpenAction,
-  onOpenVendor,
-  onPreviewDocument,
-  previewPending,
-}: {
-  canApproveVendors: boolean
-  group: VendorDocumentGroup
-  isSubmitting: boolean
-  onClose: () => void
-  onOpenAction: (
-    group: VendorDocumentGroup,
-    kind: DocumentActionKind,
-    row?: VendorDocumentListItem,
-  ) => void
-  onOpenVendor: (group: VendorDocumentGroup) => void
-  onPreviewDocument: (row: VendorDocumentListItem) => void
-  previewPending: boolean
-}) {
-  const reviewState = getGroupReviewState(group)
-  const [activeTab, setActiveTab] = useState<DocumentReviewTab>('documents')
-  const tabs: { key: DocumentReviewTab; label: string }[] = [
-    { key: 'documents', label: 'Documents' },
-    { key: 'vendorInfo', label: 'Vendor info' },
-    { key: 'timeline', label: 'Timeline' },
-  ]
-
-  return (
-    <>
-      <button
-        aria-label="Close document review"
-        className="fixed inset-0 z-40 bg-black/20 xl:hidden"
-        type="button"
-        onClick={onClose}
-      />
-      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
-        <div className="shrink-0 border-b border-border p-3">
-          <div className="flex min-w-0 items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <h2 className="min-w-0 truncate text-base font-semibold text-foreground">
-                  {group.vendor.shopName}
-                </h2>
-                <Badge tone={reviewState.tone}>{reviewState.label}</Badge>
-              </div>
-              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-                <span>{group.vendor.publicVendorId}</span>
-                <span>{group.vendor.ownerName ?? group.vendor.mobileNumber}</span>
-              </div>
-            </div>
-            <button
-              aria-label="Close review panel"
-              className="btn-icon shrink-0"
-              title="Close"
-              type="button"
-              onClick={onClose}
-            >
-              <X className="size-4" />
-            </button>
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            <Badge tone={onboardingTone(group.vendor.onboardingStatus)}>
-              {humanizeCode(group.vendor.onboardingStatus)}
-            </Badge>
-            <Badge tone={vendorStatusTone(group.vendor.vendorStatus)}>
-              {humanizeCode(group.vendor.vendorStatus)}
-            </Badge>
-            <Badge tone="neutral">{group.vendor.category?.name ?? 'Unassigned'}</Badge>
-          </div>
-        </div>
-
-        <div className="shrink-0 border-b border-border bg-surface px-3">
-          <div
-            aria-label="Document review sections"
-            className="flex gap-4 overflow-x-auto"
-            role="tablist"
-          >
-            {tabs.map((tab) => {
-              const isActive = activeTab === tab.key
-
-              return (
-                <button
-                  aria-selected={isActive}
-                  className={cn(
-                    'relative min-h-10 shrink-0 text-sm font-semibold transition',
-                    isActive
-                      ? 'text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
-                      : 'text-muted hover:text-foreground',
-                  )}
-                  key={tab.key}
-                  role="tab"
-                  type="button"
-                  onClick={() => setActiveTab(tab.key)}
-                >
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          {activeTab === 'documents' ? (
-            <>
-              <div className="rounded-[0.75rem] border border-border bg-surface-muted/45 p-3">
-                <DocumentSummaryChips group={group} />
-                <p className="mt-2 text-xs leading-5 text-muted">
-                  Review each submitted document before moving to vendor approval.
-                </p>
-              </div>
-
-              <div className="mt-3 space-y-2">
-                {group.documents.map((document) => {
-                  const canView =
-                    document.mediaAssetId &&
-                    document.availableActions.includes('VIEW_DOCUMENT')
-                  const canVerify =
-                    canApproveVendors &&
-                    document.availableActions.includes('VERIFY_DOCUMENT')
-                  const canReject =
-                    canApproveVendors &&
-                    document.availableActions.includes('REJECT_DOCUMENT')
-
-                  return (
-                    <article
-                      className="rounded-[0.8rem] border border-border bg-surface p-3"
-                      key={document.documentId}
-                    >
-                      <div className="flex min-w-0 items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            <p className="min-w-0 truncate text-sm font-semibold text-foreground">
-                              {humanizeCode(document.documentType)}
-                            </p>
-                            <Badge tone={documentTone(document.status)}>
-                              {humanizeCode(document.status)}
-                            </Badge>
-                          </div>
-                          <p className="mt-1 truncate text-xs text-muted">
-                            {document.media?.fileName ?? 'Media not linked'}
-                          </p>
-                        </div>
-                        <Badge tone={mediaTone(document.media?.status)}>
-                          {humanizeCode(document.media?.status)}
-                        </Badge>
-                      </div>
-
-                      <div className="mt-3 grid gap-2 text-xs text-muted sm:grid-cols-2">
-                        <p className="truncate">
-                          {document.media?.mimeType ?? 'No mime'} /{' '}
-                          {formatFileSize(document.media?.sizeBytes)}
-                        </p>
-                        <p className="truncate sm:text-right">
-                          Updated {formatDate(document.updatedAt, true)}
-                        </p>
-                      </div>
-
-                      {document.rejectionReason ? (
-                        <div className="mt-2 rounded-[0.65rem] border border-danger/20 bg-danger/10 px-2.5 py-2 text-xs text-danger">
-                          {document.rejectionReason}
-                        </div>
-                      ) : null}
-
-                      {document.warnings.length ? (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {document.warnings.map((warning) => (
-                            <Badge key={warning} tone="warning">
-                              {humanizeCode(warning)}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <Button
-                          disabled={previewPending || !canView}
-                          size="sm"
-                          title={canView ? 'View document' : 'Preview unavailable'}
-                          type="button"
-                          variant="secondary"
-                          onClick={() => onPreviewDocument(document)}
-                        >
-                          <Eye className="mr-1.5 size-3.5" />
-                          View
-                        </Button>
-                        {canVerify ? (
-                          <Button
-                            disabled={isSubmitting}
-                            size="sm"
-                            type="button"
-                            onClick={() =>
-                              onOpenAction(group, 'VERIFY_DOCUMENT', document)
-                            }
-                          >
-                            <CheckCircle2 className="mr-1.5 size-3.5" />
-                            Verify
-                          </Button>
-                        ) : null}
-                        {canReject ? (
-                          <Button
-                            disabled={isSubmitting}
-                            size="sm"
-                            type="button"
-                            variant="secondary"
-                            onClick={() =>
-                              onOpenAction(group, 'REJECT_DOCUMENT', document)
-                            }
-                          >
-                            <FileWarning className="mr-1.5 size-3.5" />
-                            Resubmit
-                          </Button>
-                        ) : null}
-                      </div>
-                    </article>
-                  )
-                })}
-              </div>
-            </>
-          ) : null}
-
-          {activeTab === 'vendorInfo' ? (
-            <div className="space-y-2">
-              <div className="rounded-[0.75rem] border border-border p-3">
-                <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-                  Contact
-                </p>
-                <div className="mt-2 space-y-2 text-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted">Owner</span>
-                    <span className="min-w-0 text-right font-medium text-foreground">
-                      {group.vendor.ownerName ?? 'Not available'}
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted">Mobile</span>
-                    <span className="min-w-0 text-right font-medium text-foreground">
-                      {group.vendor.mobileNumber}
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted">Email</span>
-                    <span className="min-w-0 break-all text-right font-medium text-foreground">
-                      {group.vendor.businessEmail ?? 'No email'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-[0.75rem] border border-border p-3">
-                <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-                  Business
-                </p>
-                <div className="mt-2 space-y-2 text-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted">Category</span>
-                    <span className="min-w-0 text-right font-medium text-foreground">
-                      {group.vendor.category?.name ?? 'Unassigned'}
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted">City</span>
-                    <span className="min-w-0 text-right font-medium text-foreground">
-                      {group.vendor.city || 'No city'}
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted">Zone</span>
-                    <span className="min-w-0 text-right font-medium text-foreground">
-                      {group.vendor.zone?.zoneName ?? 'No zone'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-[0.75rem] border border-border p-3">
-                <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-                  Status
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Badge tone={onboardingTone(group.vendor.onboardingStatus)}>
-                    {humanizeCode(group.vendor.onboardingStatus)}
-                  </Badge>
-                  <Badge tone={vendorStatusTone(group.vendor.vendorStatus)}>
-                    {humanizeCode(group.vendor.vendorStatus)}
-                  </Badge>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {activeTab === 'timeline' ? (
-            <div className="space-y-2">
-              {group.documents.map((document) => {
-                const iconClassName =
-                  document.status === 'VERIFIED'
-                    ? 'text-success'
-                    : document.status === 'REJECTED' || document.status === 'EXPIRED'
-                      ? 'text-danger'
-                      : 'text-warning'
-
-                return (
-                  <div
-                    className="flex gap-3 rounded-[0.75rem] border border-border p-3"
-                    key={document.documentId}
-                  >
-                    <div
-                      className={cn(
-                        'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-muted',
-                        iconClassName,
-                      )}
-                    >
-                      {document.status === 'VERIFIED' ? (
-                        <CheckCircle2 className="size-4" />
-                      ) : (
-                        <FileWarning className="size-4" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
-                          {humanizeCode(document.documentType)}
-                        </p>
-                        <Badge tone={documentTone(document.status)}>
-                          {humanizeCode(document.status)}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-muted">
-                        Updated {formatDate(document.updatedAt, true)}
-                      </p>
-                      {document.verifiedAt ? (
-                        <p className="mt-1 text-xs text-muted">
-                          Verified {formatDate(document.verifiedAt, true)}
-                        </p>
-                      ) : null}
-                      {document.rejectionReason ? (
-                        <p className="mt-1 text-xs leading-5 text-danger">
-                          {document.rejectionReason}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="shrink-0 border-t border-border p-3">
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-            <Button
-              size="sm"
-              type="button"
-              variant="secondary"
-              onClick={() => onOpenAction(group, 'ADD_NOTE')}
-            >
-              <MessageSquarePlus className="mr-2 size-4" />
-              Add note
-            </Button>
-            <Button size="sm" type="button" onClick={() => onOpenVendor(group)}>
-              <ArrowUpRight className="mr-2 size-4" />
-              Open vendor
-            </Button>
-          </div>
-        </div>
-      </aside>
-    </>
-  )
-}
-
 export function VendorDocumentsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [previewError, setPreviewError] = useState<string | null>(null)
-  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null)
   const [actionTarget, setActionTarget] = useState<DocumentActionTarget | null>(
     null,
   )
   const [showFilters, setFiltersOpen] = useState(false)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { openMediaViewer } = useMediaViewer()
   const { pushToast } = useToast()
-  const canApproveVendors = useAuthStore((state) => state.can('vendors:approve'))
   const query = useMemo(() => buildQuery(searchParams), [searchParams])
   const categoryLabel = searchParams.get('categoryLabel') ?? ''
   const queueParam = searchParams.get('documentQueue')
@@ -1190,44 +706,11 @@ export function VendorDocumentsPage() {
     () => filterDocumentGroupsByQueue(documentGroups, activeQueue),
     [activeQueue, documentGroups],
   )
-  const selectedGroup =
-    visibleDocumentGroups.find(
-      (group) => group.vendor.vendorId === selectedVendorId,
-    ) ?? null
   const pagination = documentQuery.data?.pagination
   const isRefreshing = documentQuery.isFetching && !documentQuery.isLoading
   const refreshStatusLabel = isRefreshing
     ? 'Refreshing'
     : formatRefreshTime(documentQuery.dataUpdatedAt)
-
-  const previewMutation = useMutation({
-    mutationFn: async (row: VendorDocumentListItem) => {
-      const response = await vendorService.getVendorDocumentDownloadTarget(
-        row.vendor.vendorId,
-        row.documentId,
-      )
-
-      return { download: response.data.download, row }
-    },
-    onMutate: () => setPreviewError(null),
-    onSuccess: ({ download, row }) => {
-      const mediaItem = buildMediaItem(row, download)
-
-      if (!mediaItem) {
-        setPreviewError('Preview is unavailable for this document.')
-        return
-      }
-
-      openMediaViewer({ items: [mediaItem] })
-    },
-    onError: (error) => {
-      setPreviewError(
-        error instanceof Error
-          ? error.message
-          : 'We could not load this document preview.',
-      )
-    },
-  })
 
   const actionMutation = useMutation({
     mutationFn: async ({
@@ -1237,52 +720,23 @@ export function VendorDocumentsPage() {
       target: DocumentActionTarget
       values: VendorActionFormValues
     }) => {
-      if (target.kind === 'ADD_NOTE') {
-        if (!values.note) throw new Error('Internal note is required.')
+      if (!values.note) throw new Error('Internal note is required.')
 
-        return vendorService.addVendorNote(target.group.vendor.vendorId, {
-          note: values.note,
-        })
-      }
-
-      if (!target.row) {
-        throw new Error('Document action needs a selected document.')
-      }
-
-      if (target.kind === 'VERIFY_DOCUMENT') {
-        return vendorService.verifyVendorDocument(
-          target.group.vendor.vendorId,
-          target.row.documentId,
-          { reason: values.reason },
-        )
-      }
-
-      if (!values.reason) throw new Error('Resubmission reason is required.')
-
-      return vendorService.rejectVendorDocument(
-        target.group.vendor.vendorId,
-        target.row.documentId,
-        { reason: values.reason },
-      )
+      return vendorService.addVendorNote(target.group.vendor.vendorId, {
+        note: values.note,
+      })
     },
     onSuccess: (_response, variables) => {
-      const toastTitle =
-        variables.target.kind === 'ADD_NOTE'
-          ? 'Note added'
-          : variables.target.kind === 'VERIFY_DOCUMENT'
-            ? 'Document verified'
-            : 'Resubmission requested'
-
       pushToast({
         tone: 'success',
-        title: toastTitle,
+        title: 'Note added',
         description: variables.target.group.vendor.shopName,
       })
       setActionTarget(null)
       void queryClient.invalidateQueries({ queryKey: ['vendor-documents'] })
       void queryClient.invalidateQueries({ queryKey: ['vendors'] })
       void queryClient.invalidateQueries({
-        queryKey: ['vendor-detail', variables.target.group.vendor.vendorId],
+        queryKey: ['vendor-overview', variables.target.group.vendor.vendorId],
       })
     },
   })
@@ -1381,13 +835,16 @@ export function VendorDocumentsPage() {
   const openDocumentAction = (
     group: VendorDocumentGroup,
     kind: DocumentActionKind,
-    row?: VendorDocumentListItem,
   ) => {
-    setActionTarget({ group, kind, row })
+    setActionTarget({ group, kind })
   }
 
   const openVendorDetail = (group: VendorDocumentGroup) => {
     navigate(`${routePaths.vendors}/${group.vendor.vendorId}`)
+  }
+
+  const openDocumentReviewDetail = (group: VendorDocumentGroup) => {
+    navigate(`${routePaths.vendorDocuments}/${group.vendor.vendorId}`)
   }
 
   const actionError =
@@ -1632,26 +1089,16 @@ export function VendorDocumentsPage() {
           ) : null}
         </div>
 
-        {previewError ? (
-          <div className="mx-3 mt-3 rounded-surface border border-danger/20 bg-danger/10 p-3 text-sm text-danger sm:mx-4">
-            {previewError}
-          </div>
-        ) : null}
-
-        <div
-          className={cn(
-            'grid min-h-0 flex-1',
-            selectedGroup &&
-              'xl:grid-cols-[minmax(0,1fr)_28rem] xl:gap-3 xl:overflow-hidden xl:p-3',
-          )}
-        >
+        <div className="grid min-h-0 flex-1">
           <section className="flex min-h-0 flex-col overflow-hidden bg-surface">
             <div className="hidden gap-2 border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid xl:grid-cols-[minmax(16rem,1fr)_15rem_11rem_10rem_11.5rem]">
               <span>Vendor</span>
               <span>Documents</span>
               <span>State</span>
               <span>Updated</span>
-              <span className="text-right">Actions</span>
+              <div className="workbench-sticky-action-head flex min-w-0 pr-3">
+                <span className="truncate">Actions</span>
+              </div>
             </div>
 
             {documentQuery.isError ? (
@@ -1682,15 +1129,13 @@ export function VendorDocumentsPage() {
                 {visibleDocumentGroups.map((group) => (
                   <VendorDocumentGroupRow
                     group={group}
-                    isSelected={selectedVendorId === group.vendor.vendorId}
+                    isSelected={false}
                     key={group.vendor.vendorId}
                     onAddNote={(nextGroup) =>
                       openDocumentAction(nextGroup, 'ADD_NOTE')
                     }
                     onOpenVendor={openVendorDetail}
-                    onReview={(nextGroup) =>
-                      setSelectedVendorId(nextGroup.vendor.vendorId)
-                    }
+                    onReview={openDocumentReviewDetail}
                   />
                 ))}
               </div>
@@ -1710,18 +1155,6 @@ export function VendorDocumentsPage() {
             ) : null}
           </section>
 
-          {selectedGroup ? (
-            <VendorDocumentDetailWorkbench
-              canApproveVendors={canApproveVendors}
-              group={selectedGroup}
-              isSubmitting={actionMutation.isPending}
-              previewPending={previewMutation.isPending}
-              onClose={() => setSelectedVendorId(null)}
-              onOpenAction={openDocumentAction}
-              onOpenVendor={openVendorDetail}
-              onPreviewDocument={(document) => previewMutation.mutate(document)}
-            />
-          ) : null}
         </div>
       </main>
 
@@ -1729,9 +1162,6 @@ export function VendorDocumentsPage() {
         <VendorActionModal
           action={{
             kind: actionTarget.kind,
-            document: actionTarget.row
-              ? toActionDocument(actionTarget.row)
-              : undefined,
           }}
           error={actionError}
           isSubmitting={actionMutation.isPending}

@@ -229,6 +229,10 @@ export interface VendorDocument {
   documentId: string
   documentType: string
   mediaAssetId: string | null
+  fileName: string | null
+  mimeType: string | null
+  sizeBytes: number | null
+  mediaStatus: VendorDocumentMediaStatus | null
   status: string
   download?: VendorDocumentDownload
   rejectionReason: string | null
@@ -542,6 +546,10 @@ export interface VendorDocumentDownloadTarget {
   documentId: string
   documentType: string
   mediaAssetId: string | null
+  fileName: string | null
+  mimeType: string | null
+  sizeBytes: number | null
+  mediaStatus: VendorDocumentMediaStatus | null
   download: VendorDocumentDownload
 }
 

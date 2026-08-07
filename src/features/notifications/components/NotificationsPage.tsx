@@ -4,14 +4,26 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Eye,
   ListFilter,
+  Mail,
+  MessageSquareText,
   Pencil,
   RefreshCcw,
+  RotateCcw,
+  Send,
   SlidersHorizontal,
+  Smartphone,
+  TriangleAlert,
   UserRound,
   X,
 } from 'lucide-react'
-import type { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent } from 'react'
+import type {
+  CSSProperties,
+  FormEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -31,6 +43,13 @@ import {
 } from '../../../components/ui/ListSelection'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import {
+  QuickPreviewActions,
+  QuickPreviewFact,
+  QuickPreviewFactGrid,
+  QuickPreviewTabs,
+  type QuickPreviewAction,
+} from '../../../components/ui/QuickPreview'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
 import { usePermission } from '../../../hooks/usePermission'
@@ -66,56 +85,56 @@ const notificationDataColumns = [
   {
     id: 'event',
     label: 'Event',
-    defaultWidth: 240,
-    minWidth: 220,
+    defaultWidth: 220,
+    minWidth: 190,
   },
   {
     id: 'recipient',
     label: 'Recipient',
-    defaultWidth: 250,
-    minWidth: 220,
+    defaultWidth: 220,
+    minWidth: 190,
   },
   {
     id: 'status',
     label: 'Status',
-    defaultWidth: 160,
-    minWidth: 150,
+    defaultWidth: 150,
+    minWidth: 130,
   },
   {
     id: 'channel',
     label: 'Channel',
-    defaultWidth: 140,
-    minWidth: 140,
+    defaultWidth: 120,
+    minWidth: 112,
   },
   {
     id: 'message',
     label: 'Message',
-    defaultWidth: 280,
-    minWidth: 260,
+    defaultWidth: 260,
+    minWidth: 220,
   },
   {
     id: 'retry',
     label: 'Retry',
-    defaultWidth: 220,
-    minWidth: 200,
+    defaultWidth: 200,
+    minWidth: 180,
   },
   {
     id: 'provider',
     label: 'Provider',
-    defaultWidth: 240,
-    minWidth: 220,
+    defaultWidth: 220,
+    minWidth: 190,
   },
   {
     id: 'readAt',
     label: 'Read',
-    defaultWidth: 210,
-    minWidth: 190,
+    defaultWidth: 190,
+    minWidth: 160,
   },
   {
     id: 'createdAt',
     label: 'Created',
-    defaultWidth: 230,
-    minWidth: 210,
+    defaultWidth: 190,
+    minWidth: 160,
   },
 ] as const
 
@@ -124,7 +143,7 @@ const defaultNotificationColumns: NotificationColumnId[] = [
   'recipient',
   'status',
   'channel',
-  'retry',
+  'message',
   'createdAt',
 ]
 const EMPTY_NOTIFICATION_EVENTS: NotificationEvent[] = []
@@ -140,6 +159,7 @@ type NotificationQueueKey =
   | 'queued'
   | 'sent'
   | 'skipped'
+type NotificationPreviewTab = 'summary' | 'message' | 'links'
 type NotificationTone = 'danger' | 'info' | 'neutral' | 'success' | 'warning'
 
 interface NotificationGridStyle extends CSSProperties {
@@ -238,6 +258,51 @@ function statusTone(status: NotificationEventStatus): StatusTone {
   if (status === 'FAILED') return 'danger'
   if (status === 'QUEUED') return 'warning'
   return 'neutral'
+}
+
+function channelIcon(channel: NotificationChannel) {
+  if (channel === 'EMAIL') return <Mail className="size-4" />
+  if (channel === 'SMS') return <MessageSquareText className="size-4" />
+  return <Smartphone className="size-4" />
+}
+
+function notificationSignalTone(event: NotificationEvent): NotificationTone {
+  if (event.status === 'FAILED') return 'danger'
+  if (event.deliveryRetry?.exhausted) return 'danger'
+  if (event.warnings.length > 0) return 'warning'
+  if (event.status === 'QUEUED') return 'warning'
+  if (event.status === 'SENT') return 'success'
+  return 'neutral'
+}
+
+function notificationSignalLabel(event: NotificationEvent) {
+  if (event.status === 'FAILED') return 'Delivery failed'
+  if (event.deliveryRetry?.exhausted) return 'Retries exhausted'
+  if (event.warnings.length > 0) return 'Review warnings'
+  if (event.status === 'QUEUED') return 'Waiting in queue'
+  if (event.status === 'SENT') return 'Sent'
+  if (event.status === 'SKIPPED') return 'Skipped'
+  return 'Delivery state'
+}
+
+function notificationSignalMeta(event: NotificationEvent) {
+  if (event.failureReason) return humanizeCode(event.failureReason)
+  if (event.deliveryRetry?.nextRetryAt) {
+    return `Next retry ${formatDateSafe(event.deliveryRetry.nextRetryAt)}`
+  }
+  if (event.sentAt) return `Sent ${formatDateSafe(event.sentAt)}`
+  if (event.status === 'QUEUED') return 'Queued with the provider pipeline.'
+  if (event.status === 'SKIPPED') return 'Skipped by targeting or provider rules.'
+  return 'No warning signals are attached.'
+}
+
+function retrySummaryLabel(event: NotificationEvent) {
+  const retry = event.deliveryRetry
+
+  if (!retry) return 'None'
+  if (retry.exhausted) return 'Exhausted'
+  if (retry.nextRetryAt) return `${retry.attemptNumber}/${retry.maxAttempts}`
+  return humanizeCode(retry.lastProviderStatus)
 }
 
 function metricToneClass(tone: NotificationTone) {
@@ -412,6 +477,41 @@ function buildRecipientDirectoryPath(event: NotificationEvent) {
   }
 
   return queryString ? `${routePaths.adminUsers}?${queryString}` : routePaths.adminUsers
+}
+
+function buildTemplateEditorPath(event: NotificationEvent) {
+  const params = new URLSearchParams({
+    templateChannel: event.channel,
+    templateCode: event.templateCode,
+    templateEditor: '1',
+  })
+
+  return `${routePaths.notifications}?${params.toString()}#notification-templates`
+}
+
+function buildNotificationAuditPath(event: NotificationEvent) {
+  const params = new URLSearchParams({
+    moduleCode: 'notifications',
+    entityType: 'notification_event',
+    entityId: event.eventId,
+  })
+
+  return `${routePaths.audit}?${params.toString()}`
+}
+
+function buildNotificationComposerPath(event: NotificationEvent) {
+  const params = new URLSearchParams({
+    channel: event.channel,
+    recipientType: event.recipientType,
+    targetType: 'USER',
+    templateCode: event.templateCode,
+  })
+
+  if (event.recipientUserId) {
+    params.set('recipientUserId', event.recipientUserId)
+  }
+
+  return `${routePaths.notifications}/new?${params.toString()}`
 }
 
 function canOpenRecipientDirectory(
@@ -672,6 +772,347 @@ function SummaryCard({ metric }: { metric: NotificationMetric }) {
   )
 }
 
+function NotificationPreviewSignal({
+  label,
+  meta,
+  tone,
+}: {
+  label: string
+  meta: string
+  tone: NotificationTone
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-[0.75rem] border px-3 py-2.5',
+        tone === 'danger' && 'border-danger/20 bg-danger/10',
+        tone === 'warning' && 'border-warning/25 bg-warning/10',
+        tone === 'success' && 'border-success/20 bg-success/10',
+        tone === 'info' && 'border-info/20 bg-info/10',
+        tone === 'neutral' && 'border-border bg-surface-muted/45',
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <TriangleAlert className={cn('size-4 shrink-0', metricToneClass(tone))} />
+        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+          {label}
+        </p>
+      </div>
+      <p className="mt-1 line-clamp-2 pl-6 text-xs leading-5 text-muted">
+        {meta}
+      </p>
+    </div>
+  )
+}
+
+function NotificationPreviewField({
+  label,
+  value,
+}: {
+  label: string
+  value: ReactNode
+}) {
+  return (
+    <div className="flex min-w-0 items-start justify-between gap-3 border-b border-border py-2.5 last:border-b-0 last:pb-0">
+      <p className="shrink-0 text-xs font-semibold uppercase tracking-normal text-muted">
+        {label}
+      </p>
+      <div className="min-w-0 break-words text-right text-sm font-medium text-foreground">
+        {value ?? 'Not available'}
+      </div>
+    </div>
+  )
+}
+
+function NotificationPreviewPanel({
+  canOpenRecipient,
+  canReadAudit,
+  canSendNotifications,
+  canUpdateTemplates,
+  event,
+  onClose,
+  onCompose,
+  onEditTemplate,
+  onFilterRecipient,
+  onFilterTemplate,
+  onOpenAudit,
+  onOpenDetails,
+  onOpenRecipient,
+}: {
+  canOpenRecipient: boolean
+  canReadAudit: boolean
+  canSendNotifications: boolean
+  canUpdateTemplates: boolean
+  event: NotificationEvent
+  onClose: () => void
+  onCompose: (event: NotificationEvent) => void
+  onEditTemplate: (event: NotificationEvent) => void
+  onFilterRecipient: (recipientUserId: string) => void
+  onFilterTemplate: (templateCode: string) => void
+  onOpenAudit: (event: NotificationEvent) => void
+  onOpenDetails: (event: NotificationEvent) => void
+  onOpenRecipient: (event: NotificationEvent) => void
+}) {
+  const [activeTab, setActiveTab] = useState<NotificationPreviewTab>('summary')
+  const previewTabs: { key: NotificationPreviewTab; label: string }[] = [
+    { key: 'summary', label: 'Summary' },
+    { key: 'message', label: 'Message' },
+    { key: 'links', label: 'Links' },
+  ]
+  const primaryAction: QuickPreviewAction | null = canSendNotifications
+    ? {
+        icon: <Send className="size-4" />,
+        key: 'compose',
+        label: 'Compose',
+        onClick: () => onCompose(event),
+        variant: 'primary',
+      }
+    : null
+  const detailAction: QuickPreviewAction = {
+    icon: <Eye className="size-4" />,
+    key: 'details',
+    label: primaryAction ? 'Detail' : 'Open detail',
+    onClick: () => onOpenDetails(event),
+  }
+  const secondaryActions: QuickPreviewAction[] = [
+    {
+      icon: <ListFilter className="size-4" />,
+      key: 'template-filter',
+      label: 'Template events',
+      onClick: () => onFilterTemplate(event.templateCode),
+      variant: 'secondary',
+    },
+  ]
+
+  if (event.recipientUserId) {
+    secondaryActions.push({
+      icon: <UserRound className="size-4" />,
+      key: 'recipient-filter',
+      label: 'Recipient history',
+      onClick: () => onFilterRecipient(event.recipientUserId ?? ''),
+      variant: 'secondary',
+    })
+  }
+
+  if (canOpenRecipient) {
+    secondaryActions.push({
+      icon: <ArrowUpRight className="size-4" />,
+      key: 'recipient-open',
+      label: 'Find recipient',
+      onClick: () => onOpenRecipient(event),
+      variant: 'secondary',
+    })
+  }
+
+  if (canUpdateTemplates) {
+    secondaryActions.push({
+      icon: <Pencil className="size-4" />,
+      key: 'template-edit',
+      label: 'Edit template',
+      onClick: () => onEditTemplate(event),
+      variant: 'secondary',
+    })
+  }
+
+  if (canReadAudit) {
+    secondaryActions.push({
+      icon: <ClipboardList className="size-4" />,
+      key: 'audit',
+      label: 'Audit',
+      onClick: () => onOpenAudit(event),
+      variant: 'secondary',
+    })
+  }
+
+  return (
+    <>
+      <button
+        aria-label="Close notification preview"
+        className="fixed inset-0 z-40 bg-black/20 2xl:hidden"
+        type="button"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface sm:left-auto sm:w-[22rem] 2xl:static 2xl:z-auto 2xl:h-full 2xl:w-[22rem] 2xl:self-stretch">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+              Notification preview
+            </p>
+            <div className="mt-2 flex min-w-0 items-start gap-2.5">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                {channelIcon(event.channel)}
+              </div>
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-semibold text-foreground">
+                  {event.title ?? humanizeCode(event.templateCode)}
+                </h3>
+                <p className="mt-0.5 truncate text-xs text-muted">
+                  {event.templateCode} / {recipientLabel(event)}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  <Badge tone={statusTone(event.status)}>
+                    {humanizeCode(event.status)}
+                  </Badge>
+                  <Badge tone="info">{event.channel}</Badge>
+                  <Badge tone="neutral">{humanizeCode(event.recipientType)}</Badge>
+                  {event.warnings.length > 0 ? (
+                    <Badge tone="warning">
+                      {event.warnings.length} warning
+                      {event.warnings.length === 1 ? '' : 's'}
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+          <button
+            aria-label="Close preview"
+            className="btn-icon shrink-0"
+            title="Close preview"
+            type="button"
+            onClick={onClose}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <QuickPreviewTabs
+          activeTab={activeTab}
+          ariaLabel="Notification preview sections"
+          tabs={previewTabs}
+          onChange={setActiveTab}
+        />
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {activeTab === 'summary' ? (
+            <div className="space-y-2.5">
+              <NotificationPreviewSignal
+                label={notificationSignalLabel(event)}
+                meta={notificationSignalMeta(event)}
+                tone={notificationSignalTone(event)}
+              />
+
+              <QuickPreviewFactGrid>
+                <QuickPreviewFact
+                  label="Status"
+                  tone={notificationSignalTone(event)}
+                  value={humanizeCode(event.status)}
+                />
+                <QuickPreviewFact label="Channel" tone="info" value={event.channel} />
+                <QuickPreviewFact
+                  label="Retry"
+                  tone={event.deliveryRetry ? 'warning' : 'neutral'}
+                  value={retrySummaryLabel(event)}
+                />
+                <QuickPreviewFact
+                  label="Recipient"
+                  value={humanizeCode(event.recipientType)}
+                />
+              </QuickPreviewFactGrid>
+
+              {event.failureReason || event.warnings.length > 0 ? (
+                <div className="rounded-[0.75rem] border border-warning/25 bg-warning/10 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-normal text-warning">
+                    Delivery notes
+                  </p>
+                  {event.failureReason ? (
+                    <p className="mt-1 line-clamp-3 text-sm text-foreground">
+                      {humanizeCode(event.failureReason)}
+                    </p>
+                  ) : null}
+                  {event.warnings.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {event.warnings.map((warning) => (
+                        <Badge key={warning} tone="warning">
+                          {humanizeCode(warning)}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {activeTab === 'message' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  {channelIcon(event.channel)}
+                  Rendered message
+                </div>
+                <NotificationPreviewField
+                  label="Template"
+                  value={event.templateCode}
+                />
+                <NotificationPreviewField
+                  label="Title"
+                  value={event.title ?? 'No title'}
+                />
+                <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-[0.75rem] border border-border bg-surface-muted/35 p-3 text-sm leading-6 text-foreground">
+                  {event.body}
+                </pre>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'links' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <UserRound className="size-4 text-muted" />
+                  Recipient
+                </div>
+                <NotificationPreviewField
+                  label="Contact"
+                  value={recipientLabel(event)}
+                />
+                <NotificationPreviewField
+                  label="Status"
+                  value={humanizeCode(event.recipient?.status)}
+                />
+                <NotificationPreviewField
+                  label="User"
+                  value={event.recipientUserId ?? 'No linked user'}
+                />
+              </div>
+
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <RotateCcw className="size-4 text-muted" />
+                  Delivery
+                </div>
+                <NotificationPreviewField
+                  label="Provider"
+                  value={event.providerMessageId ?? 'Not available'}
+                />
+                <NotificationPreviewField
+                  label="Created"
+                  value={formatDateSafe(event.createdAt)}
+                />
+                <NotificationPreviewField
+                  label="Sent"
+                  value={formatDateSafe(event.sentAt)}
+                />
+                <NotificationPreviewField
+                  label="Read"
+                  value={formatDateSafe(event.readAt)}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <QuickPreviewActions
+          detailAction={detailAction}
+          primaryAction={primaryAction}
+          secondaryActions={secondaryActions}
+        />
+      </aside>
+    </>
+  )
+}
+
 function EventCell({
   columnId,
   event,
@@ -693,7 +1134,9 @@ function EventCell({
     return (
       <div className="min-w-0 space-y-1">
         <p className="truncate font-semibold text-foreground">{event.templateCode}</p>
-        <p className="truncate text-xs text-muted">{event.eventId}</p>
+        <p className="line-clamp-1 text-xs text-muted">
+          {event.title ?? event.body}
+        </p>
         <div className="flex items-center gap-1 pt-1">
           <button
             aria-label={`Open notification event ${event.eventId}`}
@@ -776,7 +1219,9 @@ function EventCell({
           <p className="line-clamp-2 text-xs text-danger">{humanizeCode(event.failureReason)}</p>
         ) : (
           <p className="truncate whitespace-nowrap text-xs text-muted">
-            {event.warnings.length} warning signals
+            {event.warnings.length > 0
+              ? `${event.warnings.length} warning signals`
+              : 'No warning signals'}
           </p>
         )}
       </div>
@@ -912,6 +1357,7 @@ export function NotificationsPage() {
   )
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
   const [page, setPage] = useState(1)
+  const [previewEventId, setPreviewEventId] = useState<string | null>(null)
   const [queueKey, setQueueKey] = useState<NotificationQueueKey>(() =>
     queueKeyForStatuses(seededEventStatuses),
   )
@@ -1063,6 +1509,8 @@ export function NotificationsPage() {
 
   const templates = templatesQuery.data?.data ?? EMPTY_NOTIFICATION_TEMPLATES
   const events = eventsQuery.data?.data ?? EMPTY_NOTIFICATION_EVENTS
+  const previewEvent =
+    events.find((event) => event.eventId === previewEventId) ?? null
   const seededTemplateEditorCode =
     searchParams.get('templateEditor') === '1'
       ? readSearchList(searchParams, 'templateCode')[0]
@@ -1259,6 +1707,33 @@ export function NotificationsPage() {
     setPage(1)
   }
 
+  const openTemplateEditor = (event: NotificationEvent) => {
+    const matchingTemplate =
+      templates.find(
+        (template) =>
+          template.templateCode === event.templateCode &&
+          template.channel === event.channel,
+      ) ??
+      templates.find((template) => template.templateCode === event.templateCode)
+
+    if (matchingTemplate) {
+      setTemplatesPanelOpen(false)
+      setTemplateActionError(null)
+      setSelectedTemplate(matchingTemplate)
+      return
+    }
+
+    navigate(buildTemplateEditorPath(event))
+  }
+
+  const openNotificationAudit = (event: NotificationEvent) => {
+    navigate(buildNotificationAuditPath(event))
+  }
+
+  const composeFromEvent = (event: NotificationEvent) => {
+    navigate(buildNotificationComposerPath(event))
+  }
+
   return (
     <PageContainer className="flex min-h-full flex-col gap-3 !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
@@ -1281,9 +1756,13 @@ export function NotificationsPage() {
       <section
         className={cn(
           'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
-          isFilterRailCollapsed
-            ? 'lg:grid-cols-[3rem_minmax(0,1fr)]'
-            : 'lg:grid-cols-[18rem_minmax(0,1fr)]',
+          previewEvent
+            ? isFilterRailCollapsed
+              ? 'lg:grid-cols-[3rem_minmax(0,1fr)] 2xl:grid-cols-[3rem_minmax(0,1fr)_22rem]'
+              : 'lg:grid-cols-[18rem_minmax(0,1fr)] 2xl:grid-cols-[18rem_minmax(0,1fr)_22rem]'
+            : isFilterRailCollapsed
+              ? 'lg:grid-cols-[3rem_minmax(0,1fr)]'
+              : 'lg:grid-cols-[18rem_minmax(0,1fr)]',
         )}
       >
         <aside className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
@@ -1598,22 +2077,25 @@ export function NotificationsPage() {
                   <div className="divide-y divide-border">
                     {events.map((event) => (
                       <div
+                        aria-label={`Preview notification event ${event.templateCode}`}
                         aria-selected={eventSelection.isSelected(event.eventId)}
                         className={cn(
                           'grid min-h-[5.5rem] cursor-pointer grid-cols-[var(--notification-grid-template)] gap-x-3 px-3 py-3 text-left transition hover:bg-surface-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                          previewEventId === event.eventId &&
+                            'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
                           eventSelection.isSelected(event.eventId) &&
                             'bg-primary/5 hover:bg-primary/10',
                         )}
                         key={event.eventId}
                         role="button"
                         tabIndex={0}
-                        onClick={() => openEventDetail(event)}
+                        onClick={() => setPreviewEventId(event.eventId)}
                         onKeyDown={(keyboardEvent) => {
                           if (keyboardEvent.target !== keyboardEvent.currentTarget) return
 
                           if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
                             keyboardEvent.preventDefault()
-                            openEventDetail(event)
+                            setPreviewEventId(event.eventId)
                           }
                         }}
                       >
@@ -1707,6 +2189,27 @@ export function NotificationsPage() {
             </div>
           )}
         </section>
+        {previewEvent ? (
+          <NotificationPreviewPanel
+            canOpenRecipient={canOpenRecipientDirectory(previewEvent, {
+              canReadAdminUsers,
+              canReadCustomers,
+              canReadVendors,
+            })}
+            canReadAudit={canReadAudit}
+            canSendNotifications={canSendNotifications}
+            canUpdateTemplates={canUpdateTemplates}
+            event={previewEvent}
+            onClose={() => setPreviewEventId(null)}
+            onCompose={composeFromEvent}
+            onEditTemplate={openTemplateEditor}
+            onFilterRecipient={focusRecipientEvents}
+            onFilterTemplate={focusTemplateEvents}
+            onOpenAudit={openNotificationAudit}
+            onOpenDetails={openEventDetail}
+            onOpenRecipient={openRecipientDirectory}
+          />
+        ) : null}
       </section>
 
       {templatesPanelOpen ? (

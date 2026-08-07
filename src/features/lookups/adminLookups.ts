@@ -28,6 +28,23 @@ export async function searchCategoryLookupOptions(
   }))
 }
 
+export async function searchCategoryCodeLookupOptions(
+  search: string,
+): Promise<LookupOption[]> {
+  const response = await settingsService.getCategories({
+    isActive: true,
+    limit: LOOKUP_PAGE_SIZE,
+    page: 1,
+    search: search || undefined,
+  })
+
+  return response.data.map((category) => ({
+    label: category.name,
+    meta: compactMeta([category.categoryCode, category.description]),
+    value: category.categoryCode,
+  }))
+}
+
 export async function searchVendorLookupOptions(
   search: string,
   filters: { categoryId?: string; categoryIds?: string[] } = {},

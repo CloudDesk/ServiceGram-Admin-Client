@@ -18,6 +18,10 @@ function hasExtension(value: string, extensions: string[]) {
   return extensions.some((extension) => value.endsWith(extension))
 }
 
+function hasAnyExtension(values: string[], extensions: string[]) {
+  return values.some((value) => hasExtension(value, extensions))
+}
+
 export function isOpenableMediaUrl(value: string | null | undefined): value is string {
   if (!value) return false
 
@@ -39,15 +43,17 @@ export function inferMediaViewerKind({
   src?: string | null
 }): MediaViewerKind {
   const normalizedMimeType = mimeType?.toLowerCase() ?? ''
-  const extensionSource =
-    normalizedExtensionSource(fileName) || normalizedExtensionSource(src)
+  const extensionSources = [
+    normalizedExtensionSource(fileName),
+    normalizedExtensionSource(src),
+  ].filter(Boolean)
 
   if (normalizedMimeType.startsWith('image/')) return 'image'
   if (normalizedMimeType.startsWith('video/')) return 'video'
   if (normalizedMimeType === 'application/pdf') return 'pdf'
-  if (hasExtension(extensionSource, imageExtensions)) return 'image'
-  if (hasExtension(extensionSource, videoExtensions)) return 'video'
-  if (extensionSource.endsWith('.pdf')) return 'pdf'
+  if (hasAnyExtension(extensionSources, imageExtensions)) return 'image'
+  if (hasAnyExtension(extensionSources, videoExtensions)) return 'video'
+  if (extensionSources.some((value) => value.endsWith('.pdf'))) return 'pdf'
 
   return 'document'
 }

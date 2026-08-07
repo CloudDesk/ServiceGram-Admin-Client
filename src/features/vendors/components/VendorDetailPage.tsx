@@ -1392,12 +1392,6 @@ function getVendorLogoToneClasses(vendor: VendorDetail) {
   return "border-success/25 text-success";
 }
 
-type VendorDocumentWithMediaMetadata = VendorDocument & {
-  fileName?: string | null;
-  mimeType?: string | null;
-  sizeBytes?: number | null;
-};
-
 function buildVendorBrandLogoMediaItem(
   vendor: VendorDetail,
 ): MediaViewerItem | null {
@@ -1435,12 +1429,11 @@ function buildVendorDocumentMediaItem(
 
   if (!isOpenableMediaUrl(downloadUrl)) return null;
 
-  const documentWithMetadata = document as VendorDocumentWithMediaMetadata;
-  const fileName = documentWithMetadata.fileName ?? document.documentType;
-  const mimeType = documentWithMetadata.mimeType ?? null;
+  const fileName = document.fileName ?? document.documentType;
+  const mimeType = document.mimeType ?? null;
 
   return {
-    description: `${document.status} vendor document for ${vendor.shopName}.`,
+    description: `${humanizeCode(document.status)} vendor document for ${vendor.shopName}.`,
     downloadUrl,
     expiresAt: document.download?.expiresAt,
     fileName,
@@ -1453,10 +1446,10 @@ function buildVendorDocumentMediaItem(
     mimeType,
     ownerLabel: vendor.shopName,
     providerStatus: document.download?.providerStatus,
-    sizeBytes: documentWithMetadata.sizeBytes ?? null,
+    sizeBytes: document.sizeBytes ?? null,
     sourceLabel: "Vendor document",
     src: downloadUrl,
-    title: document.documentType,
+    title: humanizeCode(document.documentType),
     warnings: document.download?.warnings ?? [],
   };
 }
@@ -2431,8 +2424,8 @@ export function VendorDetailPage({
         throw new Error("Vendor details are unavailable.");
       }
 
-      if (document.download?.downloadUrl) {
-        return { document };
+      if (!document.mediaAssetId) {
+        throw new Error("Document media is not linked.");
       }
 
       const response = await vendorService.getVendorDocumentDownloadTarget(
@@ -2444,6 +2437,10 @@ export function VendorDetailPage({
         document: {
           ...document,
           download: response.data.download,
+          fileName: response.data.fileName ?? document.fileName,
+          mediaStatus: response.data.mediaStatus ?? document.mediaStatus,
+          mimeType: response.data.mimeType ?? document.mimeType,
+          sizeBytes: response.data.sizeBytes ?? document.sizeBytes,
         },
       };
     },
@@ -2460,7 +2457,7 @@ export function VendorDetailPage({
         return;
       }
 
-      setDocumentPreviewError("Preview is unavailable for this document.");
+      setDocumentPreviewError("Signed document preview is unavailable for this file.");
     },
     onError: (error) => {
       setDocumentPreviewError(
@@ -3208,8 +3205,8 @@ export function VendorDetailPage({
       openMediaViewer({ items: [vendorBrandLogoMediaItem] });
     }
   };
-  const openVendorDocument = (document: VendorDocument) => {
-    documentPreviewMutation.mutate(document);
+  const openVendorDocument = (vendorDocument: VendorDocument) => {
+    documentPreviewMutation.mutate(vendorDocument);
   };
   const openVendorReelMedia = (reel: AdminReel) => {
     const mediaItems = buildVendorReelMediaItems(reel);
@@ -3307,6 +3304,7 @@ export function VendorDetailPage({
             {documentPreviewError}
           </div>
         ) : null}
+
         <DynamicTable
           actionColumnLabel="Document Actions"
           actionColumnMinWidth={410}
@@ -3328,7 +3326,7 @@ export function VendorDetailPage({
               isDisabled:
                 documentPreviewMutation.isPending || !document.mediaAssetId,
               key: "view",
-              label: document.mediaAssetId ? "View" : "No preview",
+              label: document.mediaAssetId ? "Preview" : "No preview",
               onClick: openVendorDocument,
               variant: "ghost",
             },

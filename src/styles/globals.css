@@ -170,9 +170,24 @@
      App Shell
      ========================= */
 
+  html.admin-shell-scroll-lock,
+  body.admin-shell-scroll-lock,
+  #root.admin-shell-scroll-lock {
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  #root.admin-shell-scroll-lock {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+  }
+
   .app-shell-grid {
     background: var(--adaptive-canvas);
-    @apply grid min-h-screen grid-cols-1;
+    @apply grid h-screen min-h-screen grid-cols-1 overflow-hidden;
   }
 
   @media (min-width: 1024px) {
@@ -183,10 +198,11 @@
   }
 
   .app-main-shell {
-    @apply flex min-h-screen min-w-0 flex-col;
+    @apply flex h-screen min-h-0 min-w-0 flex-col overflow-hidden;
   }
 
   .page-scroll-region {
+    flex: 1 1 auto;
     height: calc(100vh - var(--spacing-topbar));
     min-height: 0;
     overflow-y: auto;
@@ -849,6 +865,11 @@
     padding: 0 0.875rem;
   }
 
+  textarea.form-input {
+    padding: 0.75rem 0.875rem;
+    line-height: 1.5;
+  }
+
   .form-textarea {
     min-height: 6rem;
     padding: 0.75rem 0.875rem;
@@ -954,6 +975,72 @@
   .premium-table-body tr:hover .premium-table-sticky-action,
   .premium-table tbody tr:hover .premium-table-sticky-action {
     background: color-mix(in srgb, var(--adaptive-surface) 98%, var(--adaptive-text-main));
+  }
+
+  .workbench-grid-row {
+    --workbench-sticky-action-bg: var(--adaptive-surface);
+  }
+
+  .workbench-grid-row:hover {
+    --workbench-sticky-action-bg: color-mix(in srgb, var(--adaptive-surface-muted) 52%, var(--adaptive-surface));
+  }
+
+  .workbench-grid-row[aria-selected='true'] {
+    --workbench-sticky-action-bg: color-mix(in srgb, var(--adaptive-primary) 6%, var(--adaptive-surface));
+  }
+
+  .workbench-grid-row[aria-selected='true']:hover {
+    --workbench-sticky-action-bg: color-mix(in srgb, var(--adaptive-primary) 10%, var(--adaptive-surface));
+  }
+
+  .workbench-sticky-action-head {
+    min-width: 0;
+    width: 100%;
+    align-items: center;
+    justify-content: flex-end;
+    background-clip: padding-box;
+    background: var(--sg-color-table-head);
+    text-align: right;
+  }
+
+  .workbench-sticky-action-cell {
+    min-width: 0;
+    width: 100%;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.375rem;
+    background-clip: padding-box;
+    background: var(--workbench-sticky-action-bg, var(--adaptive-surface));
+    text-align: right;
+  }
+
+  @media (min-width: 1280px) {
+    .workbench-sticky-action-head.workbench-sticky-action-head {
+      position: sticky;
+      right: 0;
+      z-index: 40;
+      border-left: 1px solid var(--adaptive-border);
+      box-shadow: var(--sg-shadow-sticky-action);
+    }
+
+    .workbench-sticky-action-cell.workbench-sticky-action-cell {
+      position: sticky;
+      right: 0;
+      z-index: 5;
+      border-left: 1px solid var(--adaptive-border);
+      box-shadow: var(--sg-shadow-sticky-action);
+    }
+
+    .workbench-sticky-action-head::before,
+    .workbench-sticky-action-cell::before {
+      position: absolute;
+      inset-block: 0;
+      left: -1.25rem;
+      width: 1.25rem;
+      background: inherit;
+      content: "";
+      pointer-events: none;
+    }
   }
 
   .premium-table-cell-secondary {
@@ -1166,6 +1253,32 @@
 
   .shadow-premium-lg {
     box-shadow: var(--adaptive-shadow-lg);
+  }
+
+  @media (min-width: 1280px) {
+    .workbench-sticky-action-head,
+    .workbench-sticky-action-cell {
+      position: sticky;
+      right: 0;
+      display: flex;
+      align-self: stretch;
+      min-height: 100%;
+      width: 100%;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .workbench-sticky-action-head {
+      z-index: 45;
+      border-left: 1px solid var(--adaptive-border);
+      box-shadow: var(--sg-shadow-sticky-action);
+    }
+
+    .workbench-sticky-action-cell {
+      z-index: 5;
+      border-left: 1px solid var(--adaptive-border);
+      box-shadow: var(--sg-shadow-sticky-action);
+    }
   }
 }
 

@@ -4,12 +4,17 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  Eye,
   Filter,
+  HandCoins,
   PauseCircle,
   Plus,
   RefreshCcw,
+  ReceiptText,
+  ShieldAlert,
   SlidersHorizontal,
   Store,
+  X,
   XCircle,
 } from 'lucide-react'
 import type {
@@ -35,6 +40,13 @@ import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import {
+  QuickPreviewActions,
+  QuickPreviewFact,
+  QuickPreviewFactGrid,
+  QuickPreviewTabs,
+  type QuickPreviewAction,
+} from '../../../components/ui/QuickPreview'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
@@ -49,6 +61,7 @@ import { payoutService } from '../services/payout.service'
 import {
   PayoutActionModal,
   type PayoutActionFormValues,
+  type PayoutActionKind,
   type PayoutActionSelection,
 } from './PayoutActionModal'
 import type {
@@ -65,8 +78,8 @@ const PAYOUT_DEFAULT_COLUMN_WIDTH = 220
 const PAYOUT_GRID_COLUMN_GAP = 12
 const PAYOUT_GRID_INLINE_PADDING = 24
 const PAYOUT_ACTION_COLUMN_ID = 'actions'
-const PAYOUT_ACTION_COLUMN_DEFAULT_WIDTH = 260
-const PAYOUT_ACTION_COLUMN_MIN_WIDTH = 210
+const PAYOUT_ACTION_COLUMN_DEFAULT_WIDTH = 112
+const PAYOUT_ACTION_COLUMN_MIN_WIDTH = 96
 const PAYOUT_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.payout.columnWidths.v1'
 
 const payoutStatuses: AdminPayoutStatus[] = [
@@ -148,6 +161,15 @@ type PayoutQueueKey =
   | 'approved'
   | 'paid'
   | 'exceptions'
+type PayoutPreviewTab = 'summary' | 'vendor' | 'settlement'
+
+const payoutActionKinds: PayoutActionKind[] = [
+  'APPROVE',
+  'MARK_PAID',
+  'RELEASE_HOLD',
+  'HOLD',
+  'MARK_FAILED',
+]
 
 function readSearchValues(searchParams: URLSearchParams, key: string) {
   return Array.from(
@@ -256,6 +278,90 @@ function getPayoutStatusTone(status: AdminPayoutStatus): PayoutTone {
   if (status === 'APPROVED') return 'info'
   if (status === 'PENDING' || status === 'UNDER_REVIEW') return 'warning'
   return 'neutral'
+}
+
+function isPayoutActionKind(
+  action: string | null | undefined,
+): action is PayoutActionKind {
+  return Boolean(
+    action && payoutActionKinds.includes(action as PayoutActionKind),
+  )
+}
+
+function getPrimaryPayoutActionKind(payout: AdminPayoutSummary) {
+  if (
+    isPayoutActionKind(payout.nextRecommendedAction) &&
+    payout.availableActions.includes(payout.nextRecommendedAction)
+  ) {
+    return payout.nextRecommendedAction
+  }
+
+  return (
+    payoutActionKinds.find((action) => payout.availableActions.includes(action)) ??
+    null
+  )
+}
+
+function payoutActionIcon(action: PayoutActionKind) {
+  if (action === 'APPROVE') return <CheckCircle2 className="size-4" />
+  if (action === 'MARK_PAID') return <CircleDollarSign className="size-4" />
+  if (action === 'RELEASE_HOLD') return <RefreshCcw className="size-4" />
+  if (action === 'HOLD') return <PauseCircle className="size-4" />
+  if (action === 'MARK_FAILED') return <XCircle className="size-4" />
+  return <Plus className="size-4" />
+}
+
+function payoutActionVariant(action: PayoutActionKind) {
+  return action === 'MARK_FAILED' ? 'danger' : 'secondary'
+}
+
+function payoutRowActionClass(action: PayoutActionKind) {
+  if (action === 'APPROVE' || action === 'MARK_PAID') {
+    return 'text-success hover:text-success'
+  }
+
+  if (action === 'MARK_FAILED' || action === 'HOLD') {
+    return 'text-danger hover:text-danger'
+  }
+
+  return ''
+}
+
+function payoutSignalTone(payout: AdminPayoutSummary): PayoutTone {
+  if (payout.status === 'FAILED' || payout.status === 'CANCELLED') return 'danger'
+  if (payout.status === 'HELD') return 'danger'
+  if (payout.warnings.length > 0) return 'warning'
+  if (payout.status === 'PAID') return 'success'
+  if (payout.status === 'APPROVED') return 'info'
+  if (payout.status === 'PENDING' || payout.status === 'UNDER_REVIEW') {
+    return 'warning'
+  }
+
+  return 'neutral'
+}
+
+function payoutSignalLabel(payout: AdminPayoutSummary) {
+  if (payout.status === 'FAILED') return 'Settlement failed'
+  if (payout.status === 'CANCELLED') return 'Payout cancelled'
+  if (payout.status === 'HELD') return 'Hold active'
+  if (payout.warnings.length > 0) return 'Review warnings'
+  if (payout.status === 'APPROVED') return 'Ready to pay'
+  if (payout.status === 'PAID') return 'Paid'
+  if (payout.status === 'PENDING' || payout.status === 'UNDER_REVIEW') {
+    return 'Needs approval'
+  }
+
+  return 'Payout state'
+}
+
+function payoutSignalMeta(payout: AdminPayoutSummary) {
+  if (payout.failureReason) return humanizeCode(payout.failureReason)
+  if (payout.holdReason) return humanizeCode(payout.holdReason)
+  if (payout.nextRecommendedAction) {
+    return `Next: ${humanizeCode(payout.nextRecommendedAction)}`
+  }
+  if (payout.paidAt) return `Paid ${formatDateSafe(payout.paidAt)}`
+  return 'No immediate backend action is recommended.'
 }
 
 function buildPayoutMetrics(
@@ -484,6 +590,325 @@ function PayoutCell({
   )
 }
 
+function PayoutPreviewSignal({
+  label,
+  meta,
+  tone,
+}: {
+  label: string
+  meta: string
+  tone: PayoutTone
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-[0.75rem] border px-3 py-2.5',
+        tone === 'danger' && 'border-danger/20 bg-danger/10',
+        tone === 'warning' && 'border-warning/25 bg-warning/10',
+        tone === 'success' && 'border-success/20 bg-success/10',
+        tone === 'info' && 'border-info/20 bg-info/10',
+        tone === 'neutral' && 'border-border bg-surface-muted/45',
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <ShieldAlert className={cn('size-4 shrink-0', toneClasses(tone))} />
+        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+          {label}
+        </p>
+      </div>
+      <p className="mt-1 line-clamp-2 pl-6 text-xs leading-5 text-muted">
+        {meta}
+      </p>
+    </div>
+  )
+}
+
+function PayoutPreviewField({
+  label,
+  value,
+}: {
+  label: string
+  value: React.ReactNode
+}) {
+  return (
+    <div className="flex min-w-0 items-start justify-between gap-3 border-b border-border py-2.5 last:border-b-0 last:pb-0">
+      <p className="shrink-0 text-xs font-semibold uppercase tracking-normal text-muted">
+        {label}
+      </p>
+      <div className="min-w-0 break-words text-right text-sm font-medium text-foreground">
+        {value ?? 'Not available'}
+      </div>
+    </div>
+  )
+}
+
+function PayoutPreviewPanel({
+  canApprovePayouts,
+  canReadVendors,
+  isSubmitting,
+  onClose,
+  onOpenAction,
+  onOpenDetails,
+  onOpenVendor,
+  payout,
+}: {
+  canApprovePayouts: boolean
+  canReadVendors: boolean
+  isSubmitting: boolean
+  onClose: () => void
+  onOpenAction: (kind: PayoutActionKind, payout: AdminPayoutSummary) => void
+  onOpenDetails: (payout: AdminPayoutSummary) => void
+  onOpenVendor: (payout: AdminPayoutSummary) => void
+  payout: AdminPayoutSummary
+}) {
+  const [activeTab, setActiveTab] = useState<PayoutPreviewTab>('summary')
+  const primaryActionKind = canApprovePayouts
+    ? getPrimaryPayoutActionKind(payout)
+    : null
+  const previewTabs: { key: PayoutPreviewTab; label: string }[] = [
+    { key: 'summary', label: 'Summary' },
+    { key: 'vendor', label: 'Vendor' },
+    { key: 'settlement', label: 'Settlement' },
+  ]
+  const primaryAction: QuickPreviewAction | null = primaryActionKind
+    ? {
+        disabled: isSubmitting,
+        icon: payoutActionIcon(primaryActionKind),
+        key: primaryActionKind,
+        label: humanizeCode(primaryActionKind),
+        onClick: () => onOpenAction(primaryActionKind, payout),
+        variant: primaryActionKind === 'MARK_FAILED' ? 'danger' : 'primary',
+      }
+    : null
+  const detailAction: QuickPreviewAction = {
+    icon: <Eye className="size-4" />,
+    key: 'details',
+    label: primaryAction ? 'Detail' : 'Open detail',
+    onClick: () => onOpenDetails(payout),
+  }
+  const secondaryActions: QuickPreviewAction[] = []
+
+  if (canApprovePayouts) {
+    payoutActionKinds
+      .filter(
+        (action) =>
+          action !== primaryActionKind && payout.availableActions.includes(action),
+      )
+      .forEach((action) => {
+        secondaryActions.push({
+          disabled: isSubmitting,
+          icon: payoutActionIcon(action),
+          key: action,
+          label: humanizeCode(action),
+          onClick: () => onOpenAction(action, payout),
+          variant: payoutActionVariant(action),
+        })
+      })
+  }
+
+  if (canReadVendors) {
+    secondaryActions.push({
+      icon: <Store className="size-4" />,
+      key: 'vendor',
+      label: 'Vendor',
+      onClick: () => onOpenVendor(payout),
+      variant: 'secondary',
+    })
+  }
+
+  return (
+    <>
+      <button
+        aria-label="Close payout preview"
+        className="fixed inset-0 z-40 bg-black/20 2xl:hidden"
+        type="button"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface sm:left-auto sm:w-[22rem] 2xl:static 2xl:z-auto 2xl:h-full 2xl:w-[22rem] 2xl:self-stretch">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+              Payout preview
+            </p>
+            <div className="mt-2 flex min-w-0 items-start gap-2.5">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <HandCoins className="size-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-semibold text-foreground">
+                  {payout.publicPayoutId}
+                </h3>
+                <p className="mt-0.5 truncate text-xs text-muted">
+                  {payout.vendor.shopName} / {formatPaise(payout.totalAmountPaise)}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  <Badge tone={getPayoutStatusTone(payout.status)}>
+                    {humanizeCode(payout.status)}
+                  </Badge>
+                  <Badge tone="info">{humanizeCode(payout.payoutMethod)}</Badge>
+                  {payout.warnings.length > 0 ? (
+                    <Badge tone="warning">
+                      {payout.warnings.length} warning
+                      {payout.warnings.length === 1 ? '' : 's'}
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+          <button
+            aria-label="Close preview"
+            className="btn-icon shrink-0"
+            title="Close preview"
+            type="button"
+            onClick={onClose}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <QuickPreviewTabs
+          activeTab={activeTab}
+          ariaLabel="Payout preview sections"
+          tabs={previewTabs}
+          onChange={setActiveTab}
+        />
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {activeTab === 'summary' ? (
+            <div className="space-y-2.5">
+              <PayoutPreviewSignal
+                label={payoutSignalLabel(payout)}
+                meta={payoutSignalMeta(payout)}
+                tone={payoutSignalTone(payout)}
+              />
+
+              <QuickPreviewFactGrid>
+                <QuickPreviewFact
+                  label="Amount"
+                  tone={getPayoutStatusTone(payout.status)}
+                  value={formatPaise(payout.totalAmountPaise)}
+                />
+                <QuickPreviewFact
+                  label="Net"
+                  tone="info"
+                  value={formatPaise(payout.itemSummary.netPayablePaise)}
+                />
+                <QuickPreviewFact
+                  label="Items"
+                  value={`${payout.itemSummary.itemCount}`}
+                />
+                <QuickPreviewFact
+                  label="Method"
+                  value={humanizeCode(payout.payoutMethod)}
+                />
+              </QuickPreviewFactGrid>
+
+              {payout.warnings.length > 0 ? (
+                <div className="rounded-[0.75rem] border border-warning/25 bg-warning/10 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-normal text-warning">
+                    Warning signals
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {payout.warnings.map((warning) => (
+                      <Badge key={warning} tone="warning">
+                        {humanizeCode(warning)}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {activeTab === 'vendor' ? (
+            <div className="rounded-[0.75rem] border border-border p-3">
+              <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Store className="size-4 text-muted" />
+                Vendor context
+              </div>
+              <PayoutPreviewField label="Shop" value={payout.vendor.shopName} />
+              <PayoutPreviewField
+                label="Vendor"
+                value={payout.vendor.publicVendorId}
+              />
+              <PayoutPreviewField
+                label="Status"
+                value={humanizeCode(payout.vendor.vendorStatus)}
+              />
+              <PayoutPreviewField label="City" value={payout.vendor.city} />
+              <PayoutPreviewField
+                label="Zone"
+                value={
+                  payout.vendor.zone
+                    ? `${payout.vendor.zone.city} / ${payout.vendor.zone.zoneName}`
+                    : 'No zone'
+                }
+              />
+            </div>
+          ) : null}
+
+          {activeTab === 'settlement' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <ReceiptText className="size-4 text-muted" />
+                  Settlement state
+                </div>
+                <PayoutPreviewField
+                  label="Next"
+                  value={humanizeCode(payout.nextRecommendedAction)}
+                />
+                <PayoutPreviewField
+                  label="UTR"
+                  value={payout.utrReference ?? 'Not available'}
+                />
+                <PayoutPreviewField
+                  label="Approved"
+                  value={formatDateSafe(payout.approvedAt)}
+                />
+                <PayoutPreviewField
+                  label="Paid"
+                  value={formatDateSafe(payout.paidAt)}
+                />
+              </div>
+
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <CircleDollarSign className="size-4 text-muted" />
+                  Amount split
+                </div>
+                <PayoutPreviewField
+                  label="Gross"
+                  value={formatPaise(payout.itemSummary.grossAmountPaise)}
+                />
+                <PayoutPreviewField
+                  label="Commission"
+                  value={formatPaise(payout.itemSummary.commissionAmountPaise)}
+                />
+                <PayoutPreviewField
+                  label="Logistics"
+                  value={formatPaise(payout.itemSummary.logisticsDeductionPaise)}
+                />
+                <PayoutPreviewField
+                  label="Adjustment"
+                  value={formatPaise(payout.itemSummary.adjustmentAmountPaise)}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <QuickPreviewActions
+          detailAction={detailAction}
+          primaryAction={primaryAction}
+          secondaryActions={secondaryActions}
+        />
+      </aside>
+    </>
+  )
+}
+
 export function PayoutsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -515,6 +940,7 @@ export function PayoutsPage() {
   const [queue, setQueue] = useState<PayoutQueueKey>(() =>
     queueKeyForPayoutStatuses(seededStatuses),
   )
+  const [previewPayoutId, setPreviewPayoutId] = useState<string | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [filtersCollapsed, setFiltersCollapsed] = useState(false)
   const [visibleColumns, setVisibleColumns] =
@@ -670,6 +1096,8 @@ export function PayoutsPage() {
   const pagination = payoutsQuery.data?.pagination
   const summary = payoutsQuery.data?.summary
   const queueSummary = queueSummaryResultQuery.data?.summary
+  const previewPayout =
+    payouts.find((payout) => payout.payoutId === previewPayoutId) ?? null
   const payoutSelection = useListSelection(payouts, (payout) => payout.payoutId)
   const isInitialLoading = payoutsQuery.isLoading && !payoutsQuery.data
   const isRefreshing = payoutsQuery.isFetching && Boolean(payoutsQuery.data)
@@ -914,7 +1342,9 @@ export function PayoutsPage() {
       {showColumn('payout') ? (
         <PayoutCell label="Payout">
           <p className="truncate font-semibold">{payout.publicPayoutId}</p>
-          <p className="mt-1 truncate text-xs text-muted">{payout.payoutId}</p>
+          <p className="mt-1 truncate text-xs text-muted">
+            Created {formatDateSafe(payout.createdAt)}
+          </p>
         </PayoutCell>
       ) : null}
       {showColumn('status') ? (
@@ -1004,90 +1434,45 @@ export function PayoutsPage() {
     </>
   )
 
-  const renderRowActions = (payout: AdminPayoutSummary) => (
-    <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-      {canApprovePayouts && payout.availableActions.includes('APPROVE') ? (
-        <Button
-          size="sm"
+  const renderRowActions = (payout: AdminPayoutSummary) => {
+    const primaryActionKind = canApprovePayouts
+      ? getPrimaryPayoutActionKind(payout)
+      : null
+
+    return (
+      <div className="flex min-w-0 items-center justify-end gap-1.5">
+        {primaryActionKind ? (
+          <button
+            aria-label={`${humanizeCode(primaryActionKind)} ${payout.publicPayoutId}`}
+            className={cn(
+              'btn-icon size-8 min-h-8 shrink-0 disabled:cursor-not-allowed disabled:opacity-60',
+              payoutRowActionClass(primaryActionKind),
+            )}
+            disabled={mutation.isPending}
+            title={humanizeCode(primaryActionKind)}
+            type="button"
+            onClick={(event) =>
+              openPayoutAction({ kind: primaryActionKind, payout }, event)
+            }
+          >
+            {payoutActionIcon(primaryActionKind)}
+          </button>
+        ) : null}
+        <button
+          aria-label={`Open payout ${payout.publicPayoutId}`}
+          className="btn-icon size-8 min-h-8 shrink-0"
+          title="Open detail"
           type="button"
-          variant="secondary"
-          disabled={mutation.isPending}
-          onClick={(event) =>
-            openPayoutAction({ kind: 'APPROVE', payout }, event)
-          }
+          onClick={(event) => {
+            event.stopPropagation()
+            viewDetails(payout)
+          }}
         >
-          <CheckCircle2 className="mr-2 size-4" />
-          Approve
-        </Button>
-      ) : null}
-      {canApprovePayouts && payout.availableActions.includes('HOLD') ? (
-        <Button
-          size="sm"
-          type="button"
-          variant="secondary"
-          disabled={mutation.isPending}
-          onClick={(event) => openPayoutAction({ kind: 'HOLD', payout }, event)}
-        >
-          <PauseCircle className="mr-2 size-4" />
-          Hold
-        </Button>
-      ) : null}
-      {canApprovePayouts && payout.availableActions.includes('RELEASE_HOLD') ? (
-        <Button
-          size="sm"
-          type="button"
-          variant="secondary"
-          disabled={mutation.isPending}
-          onClick={(event) =>
-            openPayoutAction({ kind: 'RELEASE_HOLD', payout }, event)
-          }
-        >
-          <RefreshCcw className="mr-2 size-4" />
-          Release
-        </Button>
-      ) : null}
-      {canApprovePayouts && payout.availableActions.includes('MARK_PAID') ? (
-        <Button
-          size="sm"
-          type="button"
-          variant="secondary"
-          disabled={mutation.isPending}
-          onClick={(event) =>
-            openPayoutAction({ kind: 'MARK_PAID', payout }, event)
-          }
-        >
-          <CircleDollarSign className="mr-2 size-4" />
-          Paid
-        </Button>
-      ) : null}
-      {canApprovePayouts && payout.availableActions.includes('MARK_FAILED') ? (
-        <Button
-          size="sm"
-          type="button"
-          variant="danger"
-          disabled={mutation.isPending}
-          onClick={(event) =>
-            openPayoutAction({ kind: 'MARK_FAILED', payout }, event)
-          }
-        >
-          <XCircle className="mr-2 size-4" />
-          Failed
-        </Button>
-      ) : null}
-      <Button
-        size="sm"
-        type="button"
-        variant="ghost"
-        onClick={(event) => {
-          event.stopPropagation()
-          viewDetails(payout)
-        }}
-      >
-        <ArrowUpRight className="mr-2 size-4" />
-        Open
-      </Button>
-    </div>
-  )
+          <ArrowUpRight className="size-4" />
+        </button>
+      </div>
+    )
+  }
 
   return (
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
@@ -1119,8 +1504,14 @@ export function PayoutsPage() {
 
         <section
           className={cn(
-            'grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[18rem_minmax(0,1fr)] xl:items-stretch xl:overflow-hidden',
-            filtersCollapsed && 'xl:grid-cols-[4.25rem_minmax(0,1fr)]',
+            'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
+            previewPayout
+              ? filtersCollapsed
+                ? 'xl:grid-cols-[4.25rem_minmax(0,1fr)] 2xl:grid-cols-[4.25rem_minmax(0,1fr)_22rem]'
+                : 'xl:grid-cols-[18rem_minmax(0,1fr)] 2xl:grid-cols-[18rem_minmax(0,1fr)_22rem]'
+              : filtersCollapsed
+                ? 'xl:grid-cols-[4.25rem_minmax(0,1fr)]'
+                : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
           )}
         >
           <aside
@@ -1500,7 +1891,7 @@ export function PayoutsPage() {
                             />
                           </div>
                         ))}
-                      <div className="relative flex min-w-0 items-center justify-end pr-3">
+                      <div className="workbench-sticky-action-head relative flex min-w-0 pr-3">
                         <span>Actions</span>
                         <button
                           aria-label="Resize actions column"
@@ -1527,10 +1918,15 @@ export function PayoutsPage() {
                     <div className="divide-y divide-border">
                       {payouts.map((payout) => (
                         <div
-                          aria-label={`Open payout ${payout.payoutId}`}
-                          aria-selected={payoutSelection.isSelected(payout.payoutId)}
+                          aria-label={`Preview payout ${payout.publicPayoutId}`}
+                          aria-selected={
+                            previewPayoutId === payout.payoutId ||
+                            payoutSelection.isSelected(payout.payoutId)
+                          }
                           className={cn(
-                            'grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--payout-grid-template)]',
+                            'workbench-grid-row grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--payout-grid-template)]',
+                            previewPayoutId === payout.payoutId &&
+                              'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
                             payoutSelection.isSelected(payout.payoutId) &&
                               'bg-primary/5 hover:bg-primary/10',
                           )}
@@ -1538,13 +1934,13 @@ export function PayoutsPage() {
                           role="button"
                           style={payoutGridStyle}
                           tabIndex={0}
-                          onClick={() => viewDetails(payout)}
+                          onClick={() => setPreviewPayoutId(payout.payoutId)}
                           onKeyDown={(event) => {
                             if (event.target !== event.currentTarget) return
 
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault()
-                              viewDetails(payout)
+                              setPreviewPayoutId(payout.payoutId)
                             }
                           }}
                         >
@@ -1563,7 +1959,7 @@ export function PayoutsPage() {
                           <div className="grid gap-3 sm:grid-cols-2 xl:contents">
                             {renderPayoutCells(payout)}
                           </div>
-                          <div className="flex min-w-0 items-center justify-start xl:justify-end">
+                          <div className="workbench-sticky-action-cell flex min-w-0 items-center justify-start pl-2 xl:justify-end">
                             {renderRowActions(payout)}
                           </div>
                         </div>
@@ -1629,6 +2025,20 @@ export function PayoutsPage() {
               </div>
             )}
           </main>
+          {previewPayout ? (
+            <PayoutPreviewPanel
+              canApprovePayouts={canApprovePayouts}
+              canReadVendors={canReadVendors}
+              isSubmitting={mutation.isPending}
+              payout={previewPayout}
+              onClose={() => setPreviewPayoutId(null)}
+              onOpenAction={(kind, payout) =>
+                openPayoutAction({ kind, payout })
+              }
+              onOpenDetails={viewDetails}
+              onOpenVendor={viewVendor}
+            />
+          ) : null}
         </section>
       </div>
 

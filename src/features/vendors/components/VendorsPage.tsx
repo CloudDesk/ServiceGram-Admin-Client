@@ -42,6 +42,13 @@ import {
 import { LookupSelect } from '../../../components/ui/LookupSelect'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import {
+  QuickPreviewActions,
+  QuickPreviewFact,
+  QuickPreviewFactGrid,
+  QuickPreviewTabs,
+  type QuickPreviewAction,
+} from '../../../components/ui/QuickPreview'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import {
   inferMediaViewerKind,
@@ -109,6 +116,7 @@ interface VendorRowOverflowAction {
   label: string
   tone?: 'danger' | 'success' | 'warning'
 }
+type VendorPreviewTab = 'summary' | 'review' | 'payout'
 
 const DEFAULT_PAGE_SIZE = 10
 const VENDOR_DEFAULT_COLUMN_WIDTH = 220
@@ -259,7 +267,7 @@ function getPayoutAccountLabel(row: VendorTableRow) {
   if (!summary.hasPrimary) return 'Not submitted'
   if (summary.payoutReady) return 'Payout Ready'
 
-  return summary.primaryStatus ?? 'Review Needed'
+  return summary.primaryStatus ? humanizeCode(summary.primaryStatus) : 'Review Needed'
 }
 
 function getPayoutAccountMeta(row: VendorTableRow) {
@@ -678,6 +686,30 @@ function VendorPreviewField({
   )
 }
 
+function vendorPreviewActionIcon(action: VendorListActionKind) {
+  if (action === 'ADD_NOTE') return <MessageSquarePlus className="size-4" />
+  if (action === 'APPROVE') return <CheckCircle2 className="size-4" />
+  if (action === 'REQUEST_DOCUMENTS') return <FileWarning className="size-4" />
+  if (action === 'REJECT') return <XCircle className="size-4" />
+  if (action === 'SUSPEND') return <PauseCircle className="size-4" />
+  if (action === 'REACTIVATE') return <RotateCcw className="size-4" />
+
+  return <ArrowUpRight className="size-4" />
+}
+
+function vendorPreviewActionLabel(action: VendorListActionKind) {
+  if (action === 'REQUEST_DOCUMENTS') return 'Request docs'
+  return humanizeCode(action)
+}
+
+function vendorPreviewActionVariant(
+  action: VendorListActionKind,
+): QuickPreviewAction['variant'] {
+  if (action === 'REJECT' || action === 'SUSPEND') return 'danger'
+  if (action === 'APPROVE') return 'primary'
+  return 'secondary'
+}
+
 function VendorPreviewPanel({
   isSubmitting,
   onClose,
@@ -707,6 +739,112 @@ function VendorPreviewPanel({
   const showSuspendAction = hasAction('SUSPEND') && recommendedAction !== 'SUSPEND'
   const showReactivateAction =
     hasAction('REACTIVATE') && recommendedAction !== 'REACTIVATE'
+  const [activeTab, setActiveTab] = useState<VendorPreviewTab>('summary')
+  const previewTabs: { key: VendorPreviewTab; label: string }[] = [
+    { key: 'summary', label: 'Summary' },
+    { key: 'review', label: 'Review' },
+    { key: 'payout', label: 'Payout' },
+  ]
+  const priorityLabel = recommendedAction
+    ? vendorPreviewActionLabel(recommendedAction)
+    : vendorNeedsAttention(vendor)
+      ? 'Review vendor'
+      : 'No active blocker'
+  const priorityDescription = recommendedAction
+    ? 'Backend workflow recommends this as the next operational step.'
+    : vendorNeedsAttention(vendor)
+      ? 'Check onboarding, payout, and warning signals before action.'
+      : 'No visible list-level blocker for this vendor.'
+  const primaryAction: QuickPreviewAction | null = recommendedAction
+    ? {
+        disabled:
+          isSubmitting ||
+          (recommendedAction === 'APPROVE' && Boolean(approvalBlockMessage)),
+        icon: vendorPreviewActionIcon(recommendedAction),
+        key: recommendedAction,
+        label: vendorPreviewActionLabel(recommendedAction),
+        onClick: () => onOpenAction(vendor, recommendedAction),
+        title:
+          recommendedAction === 'APPROVE'
+            ? approvalBlockMessage ?? undefined
+            : undefined,
+        variant: vendorPreviewActionVariant(recommendedAction),
+      }
+    : null
+  const detailAction: QuickPreviewAction = {
+    icon: <Eye className="size-4" />,
+    key: 'details',
+    label: primaryAction ? 'Detail' : 'Open detail',
+    onClick: () => onOpenDetails(vendor),
+  }
+  const secondaryActions: QuickPreviewAction[] = []
+
+  if (showAddNoteAction) {
+    secondaryActions.push({
+      disabled: isSubmitting,
+      icon: vendorPreviewActionIcon('ADD_NOTE'),
+      key: 'add-note',
+      label: 'Add note',
+      onClick: () => onOpenAction(vendor, 'ADD_NOTE'),
+      variant: 'secondary',
+    })
+  }
+
+  if (showApproveAction) {
+    secondaryActions.push({
+      disabled: isSubmitting || Boolean(approvalBlockMessage),
+      icon: vendorPreviewActionIcon('APPROVE'),
+      key: 'approve',
+      label: 'Approve',
+      onClick: () => onOpenAction(vendor, 'APPROVE'),
+      title: approvalBlockMessage ?? undefined,
+      variant: 'primary',
+    })
+  }
+
+  if (showRequestDocumentsAction) {
+    secondaryActions.push({
+      disabled: isSubmitting,
+      icon: vendorPreviewActionIcon('REQUEST_DOCUMENTS'),
+      key: 'request-docs',
+      label: 'Request docs',
+      onClick: () => onOpenAction(vendor, 'REQUEST_DOCUMENTS'),
+      variant: 'secondary',
+    })
+  }
+
+  if (showRejectAction) {
+    secondaryActions.push({
+      disabled: isSubmitting,
+      icon: vendorPreviewActionIcon('REJECT'),
+      key: 'reject',
+      label: 'Reject',
+      onClick: () => onOpenAction(vendor, 'REJECT'),
+      variant: 'danger',
+    })
+  }
+
+  if (showSuspendAction) {
+    secondaryActions.push({
+      disabled: isSubmitting,
+      icon: vendorPreviewActionIcon('SUSPEND'),
+      key: 'suspend',
+      label: 'Suspend',
+      onClick: () => onOpenAction(vendor, 'SUSPEND'),
+      variant: 'secondary',
+    })
+  }
+
+  if (showReactivateAction) {
+    secondaryActions.push({
+      disabled: isSubmitting,
+      icon: vendorPreviewActionIcon('REACTIVATE'),
+      key: 'reactivate',
+      label: 'Reactivate',
+      onClick: () => onOpenAction(vendor, 'REACTIVATE'),
+      variant: 'secondary',
+    })
+  }
 
   return (
     <>
@@ -716,7 +854,7 @@ function VendorPreviewPanel({
         type="button"
         onClick={onClose}
       />
-      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:inset-x-auto xl:bottom-6 xl:right-6 xl:top-[calc(var(--spacing-topbar)+0.75rem)] xl:z-40 xl:w-[22rem]">
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-normal text-muted">
@@ -753,222 +891,132 @@ function VendorPreviewPanel({
           </button>
         </div>
 
+        <QuickPreviewTabs
+          activeTab={activeTab}
+          ariaLabel="Vendor preview sections"
+          tabs={previewTabs}
+          onChange={setActiveTab}
+        />
+
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <div className="rounded-[0.75rem] border border-border bg-surface-muted/45 p-3">
-            <div className="flex items-start gap-2">
-              <FileCheck2
-                className={cn(
-                  'mt-0.5 size-4 shrink-0',
-                  recommendedAction || vendorNeedsAttention(vendor)
-                    ? 'text-warning'
-                    : 'text-success',
-                )}
-              />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground">
-                  {recommendedAction
-                    ? humanizeCode(recommendedAction)
-                    : vendorNeedsAttention(vendor)
-                      ? 'Review vendor'
-                      : 'No active blocker'}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-muted">
-                  {recommendedAction
-                    ? 'Recommended by the backend workflow state.'
-                    : vendorNeedsAttention(vendor)
-                      ? 'Review onboarding, payout, or warning signals before action.'
-                      : 'This vendor has no visible list-level blocker.'}
-                </p>
+          {activeTab === 'summary' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border bg-surface-muted/45 p-3">
+                <div className="flex items-start gap-2">
+                  <FileCheck2
+                    className={cn(
+                      'mt-0.5 size-4 shrink-0',
+                      recommendedAction || vendorNeedsAttention(vendor)
+                        ? 'text-warning'
+                        : 'text-success',
+                    )}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">
+                      {priorityLabel}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-muted">
+                      {priorityDescription}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <QuickPreviewFactGrid>
+                <QuickPreviewFact
+                  label="Owner"
+                  value={vendor.ownerName ?? 'No owner'}
+                />
+                <QuickPreviewFact label="Mobile" value={vendor.mobileNumber} />
+                <QuickPreviewFact
+                  label="Documents"
+                  value={getDocumentSummaryLabel(vendor)}
+                />
+                <QuickPreviewFact
+                  label="Payout"
+                  value={getPayoutAccountLabel(vendor)}
+                />
+              </QuickPreviewFactGrid>
+            </div>
+          ) : null}
+
+          {activeTab === 'review' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Phone className="size-4 text-muted" />
+                  Contact
+                </div>
+                <VendorPreviewField label="Owner" value={vendor.ownerName} />
+                <VendorPreviewField label="Mobile" value={vendor.mobileNumber} />
+                <VendorPreviewField
+                  label="Email"
+                  value={vendor.businessEmail ?? 'No email'}
+                />
+                <VendorPreviewField
+                  label="Alternate"
+                  value={vendor.alternativeMobileNumber}
+                />
+              </div>
+
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <FileCheck2 className="size-4 text-muted" />
+                  Review
+                </div>
+                <VendorPreviewField
+                  label="Category"
+                  value={vendor.category?.name ?? 'Unassigned'}
+                />
+                <VendorPreviewField
+                  label="Documents"
+                  value={getDocumentSummaryLabel(vendor)}
+                />
+                <VendorPreviewField
+                  label="Rejected"
+                  value={vendor.documentSummary?.rejected ?? 0}
+                />
+                <VendorPreviewField
+                  label="Warnings"
+                  value={
+                    warnings.length ? warnings.map(humanizeCode).join(', ') : 'None'
+                  }
+                />
               </div>
             </div>
-            {recommendedAction ? (
-              <Button
-                className="mt-3 w-full"
-                disabled={
-                  isSubmitting ||
-                  (recommendedAction === 'APPROVE' && Boolean(approvalBlockMessage))
-                }
-                size="sm"
-                title={
-                  recommendedAction === 'APPROVE'
-                    ? approvalBlockMessage ?? undefined
-                    : undefined
-                }
-                type="button"
-                variant={
-                  recommendedAction === 'REJECT' || recommendedAction === 'SUSPEND'
-                    ? 'danger'
-                    : recommendedAction === 'REQUEST_DOCUMENTS' ||
-                        recommendedAction === 'ADD_NOTE' ||
-                        recommendedAction === 'REACTIVATE'
-                      ? 'secondary'
-                      : 'primary'
-                }
-                onClick={() => onOpenAction(vendor, recommendedAction)}
-              >
-                {recommendedAction === 'ADD_NOTE' ? (
-                  <MessageSquarePlus className="mr-2 size-4" />
-                ) : recommendedAction === 'REQUEST_DOCUMENTS' ? (
-                  <FileWarning className="mr-2 size-4" />
-                ) : (
-                  <ArrowUpRight className="mr-2 size-4" />
-                )}
-                {humanizeCode(recommendedAction)}
-              </Button>
-            ) : null}
-          </div>
+          ) : null}
 
-          <div className="mt-3 rounded-[0.75rem] border border-border p-3">
-            <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
-              <Phone className="size-4 text-muted" />
-              Contact
+          {activeTab === 'payout' ? (
+            <div className="rounded-[0.75rem] border border-border p-3">
+              <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Landmark className="size-4 text-muted" />
+                Payout & Location
+              </div>
+              <VendorPreviewField
+                label="Payout"
+                value={getPayoutAccountLabel(vendor)}
+              />
+              <VendorPreviewField
+                label="Bank"
+                value={getPayoutAccountMeta(vendor)}
+              />
+              <VendorPreviewField
+                label="City"
+                value={vendor.address.city || 'No city'}
+              />
+              <VendorPreviewField
+                label="Zone"
+                value={vendor.address.zone?.zoneName ?? 'No zone'}
+              />
             </div>
-            <VendorPreviewField label="Owner" value={vendor.ownerName} />
-            <VendorPreviewField label="Mobile" value={vendor.mobileNumber} />
-            <VendorPreviewField
-              label="Email"
-              value={vendor.businessEmail ?? 'No email'}
-            />
-            <VendorPreviewField
-              label="Alternate"
-              value={vendor.alternativeMobileNumber}
-            />
-          </div>
-
-          <div className="mt-3 rounded-[0.75rem] border border-border p-3">
-            <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
-              <FileCheck2 className="size-4 text-muted" />
-              Review
-            </div>
-            <VendorPreviewField
-              label="Category"
-              value={vendor.category?.name ?? 'Unassigned'}
-            />
-            <VendorPreviewField
-              label="Documents"
-              value={getDocumentSummaryLabel(vendor)}
-            />
-            <VendorPreviewField
-              label="Rejected"
-              value={vendor.documentSummary?.rejected ?? 0}
-            />
-            <VendorPreviewField
-              label="Warnings"
-              value={warnings.length ? warnings.map(humanizeCode).join(', ') : 'None'}
-            />
-          </div>
-
-          <div className="mt-3 rounded-[0.75rem] border border-border p-3">
-            <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
-              <Landmark className="size-4 text-muted" />
-              Payout & Location
-            </div>
-            <VendorPreviewField
-              label="Payout"
-              value={getPayoutAccountLabel(vendor)}
-            />
-            <VendorPreviewField
-              label="Bank"
-              value={getPayoutAccountMeta(vendor)}
-            />
-            <VendorPreviewField
-              label="City"
-              value={vendor.address.city || 'No city'}
-            />
-            <VendorPreviewField
-              label="Zone"
-              value={vendor.address.zone?.zoneName ?? 'No zone'}
-            />
-          </div>
+          ) : null}
         </div>
 
-        <div className="shrink-0 border-t border-border p-3">
-          <div className="grid gap-2">
-            <Button
-              size="sm"
-              type="button"
-              variant="primary"
-              onClick={() => onOpenDetails(vendor)}
-            >
-              <Eye className="mr-2 size-4" />
-              Open full detail
-            </Button>
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-              {showAddNoteAction ? (
-                <Button
-                  disabled={isSubmitting}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => onOpenAction(vendor, 'ADD_NOTE')}
-                >
-                  <MessageSquarePlus className="mr-2 size-4" />
-                  Add note
-                </Button>
-              ) : null}
-              {showApproveAction ? (
-                <Button
-                  disabled={isSubmitting || Boolean(approvalBlockMessage)}
-                  size="sm"
-                  title={approvalBlockMessage ?? undefined}
-                  type="button"
-                  onClick={() => onOpenAction(vendor, 'APPROVE')}
-                >
-                  <CheckCircle2 className="mr-2 size-4" />
-                  Approve
-                </Button>
-              ) : null}
-              {showRequestDocumentsAction ? (
-                <Button
-                  disabled={isSubmitting}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => onOpenAction(vendor, 'REQUEST_DOCUMENTS')}
-                >
-                  <FileWarning className="mr-2 size-4" />
-                  Request docs
-                </Button>
-              ) : null}
-              {showRejectAction ? (
-                <Button
-                  disabled={isSubmitting}
-                  size="sm"
-                  type="button"
-                  variant="danger"
-                  onClick={() => onOpenAction(vendor, 'REJECT')}
-                >
-                  <XCircle className="mr-2 size-4" />
-                  Reject
-                </Button>
-              ) : null}
-              {showSuspendAction ? (
-                <Button
-                  disabled={isSubmitting}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => onOpenAction(vendor, 'SUSPEND')}
-                >
-                  <PauseCircle className="mr-2 size-4" />
-                  Suspend
-                </Button>
-              ) : null}
-              {showReactivateAction ? (
-                <Button
-                  disabled={isSubmitting}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => onOpenAction(vendor, 'REACTIVATE')}
-                >
-                  <RotateCcw className="mr-2 size-4" />
-                  Reactivate
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </div>
+        <QuickPreviewActions
+          detailAction={detailAction}
+          primaryAction={primaryAction}
+          secondaryActions={secondaryActions}
+        />
       </aside>
     </>
   )
@@ -1380,9 +1428,9 @@ function VendorRow({
   return (
     <article
       aria-label={`Preview ${vendor.shopName}`}
-      aria-selected={isPreviewed}
+      aria-selected={isPreviewed || isSelected}
       className={cn(
-        'grid min-w-0 cursor-pointer gap-2 border-b border-border bg-surface px-3 py-2 transition last:border-b-0 hover:bg-surface-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--vendor-grid-template)] xl:items-center',
+        'workbench-grid-row grid min-w-0 cursor-pointer gap-2 border-b border-border bg-surface px-3 py-2 transition last:border-b-0 hover:bg-surface-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--vendor-grid-template)] xl:items-center',
         isPreviewed && 'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
         isSelected && 'bg-primary/5 hover:bg-primary/10',
       )}
@@ -1522,7 +1570,7 @@ function VendorRow({
         </div>
       ) : null}
 
-      <div className="flex flex-nowrap items-center gap-1.5 xl:sticky xl:right-0 xl:z-20 xl:justify-end xl:bg-inherit xl:pl-2 xl:shadow-[var(--sg-shadow-sticky-action)]">
+      <div className="workbench-sticky-action-cell flex flex-nowrap items-center gap-1.5 pl-2 xl:justify-end">
         <Button
           className="h-8 min-h-8 min-w-[4.5rem] whitespace-nowrap px-2.5"
           disabled={primaryActionDisabled}
@@ -2482,7 +2530,7 @@ export function VendorsPage() {
                           </button>
                         </div>
                       ))}
-                    <div className="relative sticky right-0 z-40 flex min-w-0 items-center justify-end bg-surface-muted pr-3 text-right shadow-[var(--sg-shadow-sticky-action)]">
+                    <div className="workbench-sticky-action-head relative flex min-w-0 pr-3">
                       <span className="truncate">Actions</span>
                       <button
                         aria-label="Resize actions column"

@@ -14,6 +14,7 @@ export const permissions: Record<string, PermissionKey> = {
   influencers: 'influencers:read',
   notifications: 'notifications:read',
   content: 'content:read',
+  marketingCampaigns: 'marketing_campaigns:read',
   reports: 'reports:read',
   settings: 'settings:read',
   adminUsers: 'admin_users:read',

@@ -1061,7 +1061,7 @@ function ReportRowsTable({
           <article
             aria-selected={isSelected(id)}
             className={cn(
-              'grid min-w-0 gap-3 border-b border-border bg-surface px-3 py-2.5 last:border-b-0 xl:grid-cols-[var(--report-grid-template)] xl:items-center',
+              'workbench-grid-row grid min-w-0 gap-3 border-b border-border bg-surface px-3 py-2.5 last:border-b-0 xl:grid-cols-[var(--report-grid-template)] xl:items-center',
               isSelected(id) && 'bg-primary/5',
             )}
             key={id}
@@ -1083,12 +1083,12 @@ function ReportRowsTable({
                 </div>
               </div>
             ))}
-            <div className="min-w-0 text-sm">
+            <div className="workbench-sticky-action-cell min-w-0 pl-2 text-sm xl:flex xl:items-center xl:justify-end">
               <span className="mb-1 block text-xs font-semibold uppercase tracking-normal text-muted xl:hidden">
                 Related
               </span>
               {rowActions.length ? (
-                <div className="flex min-w-0 flex-wrap gap-1.5">
+                <div className="flex min-w-0 flex-wrap gap-1.5 xl:justify-end">
                   {rowActions.map((action) => (
                     <Button
                       key={action.key}
@@ -2139,7 +2139,7 @@ export function ReportsPage({
                           </button>
                         </div>
                       ))}
-                      <div className="flex min-w-0 items-center justify-end">
+                      <div className="workbench-sticky-action-head flex min-w-0 pr-3">
                         <span>Related</span>
                       </div>
                     </div>

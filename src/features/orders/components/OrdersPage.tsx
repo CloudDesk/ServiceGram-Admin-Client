@@ -38,6 +38,11 @@ import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import {
+  QuickPreviewActions,
+  QuickPreviewTabs,
+  type QuickPreviewAction,
+} from '../../../components/ui/QuickPreview'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
@@ -523,6 +528,23 @@ function orderNeedsAttention(order: AdminOrderSummary) {
   )
 }
 
+function orderPreviewActionIcon(action: OrderActionSelection['kind']) {
+  if (action === 'ADD_NOTE') return <MessageSquarePlus className="size-4" />
+  if (action === 'INITIATE_REFUND') return <RotateCcw className="size-4" />
+  if (action === 'CANCEL') return <Ban className="size-4" />
+  if (action === 'CREATE_PROOF_UPLOAD_INTENT') {
+    return <FileUp className="size-4" />
+  }
+  if (
+    action === 'GENERATE_DELIVERY_OTP' ||
+    action === 'CONFIRM_DELIVERY_OTP'
+  ) {
+    return <ShieldCheck className="size-4" />
+  }
+
+  return <ArrowUpRight className="size-4" />
+}
+
 function getDefaultOrderColumnWidths() {
   const widths: OrderColumnWidths = {
     [ORDER_ACTION_COLUMN_ID]: ORDER_ACTION_COLUMN_DEFAULT_WIDTH,
@@ -887,6 +909,35 @@ function OrderPreviewPanel({
       tone: 'danger',
     })
   }
+  const primaryPreviewAction: QuickPreviewAction | null = primaryAction
+    ? {
+        disabled: isSubmitting,
+        icon: orderPreviewActionIcon(primaryAction.kind),
+        key:
+          primaryAction.kind === 'UPDATE_STATUS'
+            ? `mark-${primaryAction.targetStatus}`
+            : primaryAction.kind,
+        label: primaryActionLabel(order),
+        onClick: () => onOpenAction(order, primaryAction),
+        variant: primaryAction.kind === 'CANCEL' ? 'danger' : 'primary',
+      }
+    : null
+  const detailAction: QuickPreviewAction = {
+    icon: <ArrowUpRight className="size-4" />,
+    key: 'details',
+    label: primaryPreviewAction ? 'Detail' : 'Open detail',
+    onClick: () => onOpenDetails(order),
+  }
+  const secondaryPreviewActions: QuickPreviewAction[] = secondaryActions.map(
+    (action) => ({
+      disabled: isSubmitting,
+      icon: orderPreviewActionIcon(action.kind),
+      key: action.kind,
+      label: action.label,
+      onClick: () => onOpenAction(order, { kind: action.kind }),
+      variant: action.tone,
+    }),
+  )
 
   return (
     <>
@@ -896,7 +947,7 @@ function OrderPreviewPanel({
         type="button"
         onClick={onClose}
       />
-      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:inset-x-auto xl:bottom-6 xl:right-6 xl:top-[calc(var(--spacing-topbar)+0.75rem)] xl:z-40 xl:w-96">
         <div className="shrink-0 border-b border-border p-3">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
@@ -936,35 +987,12 @@ function OrderPreviewPanel({
           </div>
         </div>
 
-        <div className="shrink-0 border-b border-border bg-surface px-3">
-          <div
-            aria-label="Order preview sections"
-            className="flex gap-4 overflow-x-auto"
-            role="tablist"
-          >
-            {previewTabs.map((tab) => {
-              const isActive = activeTab === tab.key
-
-              return (
-                <button
-                  aria-selected={isActive}
-                  className={cn(
-                    'relative min-h-10 shrink-0 text-sm font-semibold transition',
-                    isActive
-                      ? 'text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
-                      : 'text-muted hover:text-foreground',
-                  )}
-                  key={tab.key}
-                  role="tab"
-                  type="button"
-                  onClick={() => setActiveTab(tab.key)}
-                >
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        <QuickPreviewTabs
+          activeTab={activeTab}
+          ariaLabel="Order preview sections"
+          tabs={previewTabs}
+          onChange={setActiveTab}
+        />
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {activeTab === 'summary' ? (
@@ -1100,62 +1128,11 @@ function OrderPreviewPanel({
           ) : null}
         </div>
 
-        <div className="shrink-0 border-t border-border p-3">
-          <div className="space-y-2">
-            {primaryAction ? (
-              <Button
-                className="w-full"
-                disabled={isSubmitting}
-                size="sm"
-                type="button"
-                variant={primaryAction.kind === 'CANCEL' ? 'danger' : 'primary'}
-                onClick={() => onOpenAction(order, primaryAction)}
-              >
-                <ArrowUpRight className="mr-2 size-4" />
-                {primaryActionLabel(order)}
-              </Button>
-            ) : null}
-
-            {secondaryActions.length ? (
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                {secondaryActions.map((action) => (
-                  <Button
-                    disabled={isSubmitting}
-                    key={action.kind}
-                    size="sm"
-                    type="button"
-                    variant={action.tone}
-                    onClick={() => onOpenAction(order, { kind: action.kind })}
-                  >
-                    {action.kind === 'ADD_NOTE' ? (
-                      <MessageSquarePlus className="mr-2 size-4" />
-                    ) : action.kind === 'INITIATE_REFUND' ? (
-                      <RotateCcw className="mr-2 size-4" />
-                    ) : action.kind === 'CANCEL' ? (
-                      <Ban className="mr-2 size-4" />
-                    ) : action.kind === 'CREATE_PROOF_UPLOAD_INTENT' ? (
-                      <FileUp className="mr-2 size-4" />
-                    ) : (
-                      <ShieldCheck className="mr-2 size-4" />
-                    )}
-                    {action.label}
-                  </Button>
-                ))}
-              </div>
-            ) : null}
-
-            <Button
-              className="w-full"
-              size="sm"
-              type="button"
-              variant="secondary"
-              onClick={() => onOpenDetails(order)}
-            >
-              <ArrowUpRight className="mr-2 size-4" />
-              Open full detail
-            </Button>
-          </div>
-        </div>
+        <QuickPreviewActions
+          detailAction={detailAction}
+          primaryAction={primaryPreviewAction}
+          secondaryActions={secondaryPreviewActions}
+        />
       </aside>
     </>
   )
@@ -1211,9 +1188,9 @@ function OrderRow({
   return (
     <article
       aria-label={`Review ${order.publicOrderId}`}
-      aria-selected={isSelected}
+      aria-selected={isSelected || isPreviewed}
       className={cn(
-        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2 transition last:border-b-0 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--order-grid-template)] xl:items-center',
+        'workbench-grid-row grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2 transition last:border-b-0 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--order-grid-template)] xl:items-center',
         isSelected && 'bg-surface-muted/70',
         isPreviewed && 'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
       )}
@@ -1398,7 +1375,7 @@ function OrderRow({
         </div>
       ) : null}
 
-      <div className="flex min-w-0 flex-nowrap items-center gap-1.5 xl:sticky xl:right-0 xl:z-20 xl:justify-end xl:border-l xl:border-border xl:bg-inherit xl:pl-2 xl:shadow-[var(--sg-shadow-sticky-action)]">
+      <div className="workbench-sticky-action-cell flex min-w-0 flex-nowrap items-center gap-1.5 pl-2 xl:justify-end">
         {primaryAction ? (
           <Button
             className="min-w-0 flex-1 overflow-hidden px-2.5"
@@ -2540,7 +2517,7 @@ export function OrdersPage() {
                           </button>
                         </div>
                       ))}
-                    <div className="relative sticky right-0 z-40 flex min-w-0 items-center justify-end bg-surface-muted pr-3 text-right shadow-[var(--sg-shadow-sticky-action)]">
+                    <div className="workbench-sticky-action-head relative flex min-w-0 pr-3">
                       <span className="truncate">Actions</span>
                       <button
                         aria-label="Resize actions column"

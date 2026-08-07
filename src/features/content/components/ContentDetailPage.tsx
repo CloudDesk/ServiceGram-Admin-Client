@@ -398,9 +398,9 @@ function EditContentModal({
       <div className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-[var(--shadow-overlay)] sm:max-h-[calc(100vh-3rem)]">
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Edit content</h2>
+            <h2 className="text-lg font-semibold text-foreground">Edit customer content</h2>
             <p className="mt-1 text-sm text-muted">
-              Saving changes creates a new content version and records an audit reason.
+              Update the page customers see. Each save creates a new version.
             </p>
           </div>
           <button
@@ -416,114 +416,169 @@ function EditContentModal({
 
         <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <label className="block space-y-2 md:col-span-2">
-                <span className="text-sm font-semibold text-foreground">Title</span>
-                <input
-                  className="form-input"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                />
-              </label>
-              <label className="block space-y-2 md:col-span-2">
-                <span className="text-sm font-semibold text-foreground">Slug</span>
-                <input
-                  className="form-input"
-                  value={slug}
-                  onChange={(event) => setSlug(event.target.value)}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Type</span>
-                <select
-                  className="form-input"
-                  value={pageType}
-                  onChange={(event) => setPageType(event.target.value as ContentPageType)}
-                >
-                  {pageTypes.map((item) => (
-                    <option key={item} value={item}>
-                      {humanizeCode(item)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Format</span>
-                <select
-                  className="form-input"
-                  value={contentFormat}
-                  onChange={(event) => setContentFormat(event.target.value as ContentFormat)}
-                >
-                  {contentFormats.map((item) => (
-                    <option key={item} value={item}>
-                      {humanizeCode(item)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex min-h-11 items-center gap-2 rounded-[0.75rem] border border-border bg-surface-muted/45 px-3 text-sm font-medium text-foreground md:col-span-2">
-                <input
-                  checked={isVisibleToCustomers}
-                  type="checkbox"
-                  onChange={(event) => setIsVisibleToCustomers(event.target.checked)}
-                />
-                Visible to customers
-              </label>
-              <label className="block space-y-2 md:col-span-2 xl:col-span-4">
-                <span className="text-sm font-semibold text-foreground">Excerpt</span>
-                <input
-                  className="form-input"
-                  value={excerpt}
-                  onChange={(event) => setExcerpt(event.target.value)}
-                />
-              </label>
-              <label className="block space-y-2 md:col-span-2">
-                <span className="text-sm font-semibold text-foreground">SEO title</span>
-                <input
-                  className="form-input"
-                  value={seoTitle}
-                  onChange={(event) => setSeoTitle(event.target.value)}
-                />
-              </label>
-              <label className="block space-y-2 md:col-span-2">
-                <span className="text-sm font-semibold text-foreground">
-                  SEO description
-                </span>
-                <textarea
-                  className="form-input min-h-20 resize-y"
-                  value={seoDescription}
-                  onChange={(event) => setSeoDescription(event.target.value)}
-                />
-              </label>
-              <label className="block space-y-2 md:col-span-2">
-                <span className="text-sm font-semibold text-foreground">Body</span>
-                <textarea
-                  className="form-input min-h-72 resize-y font-mono text-xs leading-5"
-                  value={body}
-                  onChange={(event) => setBody(event.target.value)}
-                />
-              </label>
-              <label className="block space-y-2 md:col-span-2">
-                <span className="text-sm font-semibold text-foreground">
-                  Metadata JSON
-                </span>
-                <textarea
-                  className="form-input min-h-72 resize-y font-mono text-xs leading-5"
-                  value={metadataJson}
-                  onChange={(event) => setMetadataJson(event.target.value)}
-                />
-              </label>
-              <label className="block space-y-2 md:col-span-2 xl:col-span-4">
-                <span className="text-sm font-semibold text-foreground">
-                  Reason <span className="text-danger">*</span>
-                </span>
-                <textarea
-                  className="form-input min-h-20 resize-y"
-                  placeholder="Updated after content review."
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                />
-              </label>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+              <div className="space-y-4">
+                <section className="rounded-[0.875rem] border border-border bg-surface-muted/35 p-4">
+                  <div className="mb-4 flex items-center gap-2">
+                    <FileText className="size-4 text-primary" />
+                    <h3 className="text-sm font-semibold text-foreground">Page details</h3>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="block space-y-2 md:col-span-2">
+                      <span className="text-sm font-semibold text-foreground">Page title</span>
+                      <input
+                        className="form-input"
+                        value={title}
+                        onChange={(event) => setTitle(event.target.value)}
+                      />
+                    </label>
+                    <label className="block space-y-2 md:col-span-2">
+                      <span className="text-sm font-semibold text-foreground">Page link</span>
+                      <input
+                        className="form-input"
+                        value={slug}
+                        onChange={(event) => setSlug(event.target.value)}
+                      />
+                    </label>
+                    <label className="block space-y-2">
+                      <span className="text-sm font-semibold text-foreground">Content area</span>
+                      <select
+                        className="form-input"
+                        value={pageType}
+                        onChange={(event) => setPageType(event.target.value as ContentPageType)}
+                      >
+                        {pageTypes.map((item) => (
+                          <option key={item} value={item}>
+                            {humanizeCode(item)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block space-y-2">
+                      <span className="text-sm font-semibold text-foreground">Content style</span>
+                      <select
+                        className="form-input"
+                        value={contentFormat}
+                        onChange={(event) => setContentFormat(event.target.value as ContentFormat)}
+                      >
+                        {contentFormats.map((item) => (
+                          <option key={item} value={item}>
+                            {humanizeCode(item)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </section>
+
+                <section className="rounded-[0.875rem] border border-border bg-surface-muted/35 p-4">
+                  <div className="mb-4 flex items-center gap-2">
+                    <Eye className="size-4 text-primary" />
+                    <h3 className="text-sm font-semibold text-foreground">Customer copy</h3>
+                  </div>
+                  <div className="space-y-4">
+                    <label className="block space-y-2">
+                      <span className="text-sm font-semibold text-foreground">Short summary</span>
+                      <input
+                        className="form-input"
+                        value={excerpt}
+                        onChange={(event) => setExcerpt(event.target.value)}
+                      />
+                    </label>
+                    <label className="block space-y-2">
+                      <span className="text-sm font-semibold text-foreground">Page content</span>
+                      <textarea
+                        className="form-input min-h-80 resize-y text-sm leading-6"
+                        value={body}
+                        onChange={(event) => setBody(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                </section>
+
+                <section className="rounded-[0.875rem] border border-border bg-surface-muted/35 p-4">
+                  <div className="mb-4 flex items-center gap-2">
+                    <Globe2 className="size-4 text-primary" />
+                    <h3 className="text-sm font-semibold text-foreground">Search appearance</h3>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="block space-y-2">
+                      <span className="text-sm font-semibold text-foreground">Search title</span>
+                      <input
+                        className="form-input"
+                        value={seoTitle}
+                        onChange={(event) => setSeoTitle(event.target.value)}
+                      />
+                    </label>
+                    <label className="block space-y-2">
+                      <span className="text-sm font-semibold text-foreground">Search summary</span>
+                      <textarea
+                        className="form-input min-h-24 resize-y"
+                        value={seoDescription}
+                        onChange={(event) => setSeoDescription(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                </section>
+
+                <details className="rounded-[0.875rem] border border-border bg-surface p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-foreground">
+                    Advanced metadata
+                  </summary>
+                  <label className="mt-4 block space-y-2">
+                    <span className="text-sm font-semibold text-foreground">Metadata JSON</span>
+                    <textarea
+                      className="form-input min-h-64 resize-y font-mono text-xs leading-5"
+                      value={metadataJson}
+                      onChange={(event) => setMetadataJson(event.target.value)}
+                    />
+                  </label>
+                </details>
+              </div>
+
+              <aside className="space-y-4">
+                <label className="flex min-h-12 items-center gap-3 rounded-[0.875rem] border border-border bg-surface-muted/45 px-3 text-sm font-medium text-foreground">
+                  <input
+                    checked={isVisibleToCustomers}
+                    className="size-4 accent-[color:var(--adaptive-primary)]"
+                    type="checkbox"
+                    onChange={(event) => setIsVisibleToCustomers(event.target.checked)}
+                  />
+                  Show to customers
+                </label>
+
+                <div className="rounded-[0.875rem] border border-border bg-surface-muted/35 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                    Current state
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge tone={statusTone(contentPage.status)}>
+                      {humanizeCode(contentPage.status)}
+                    </Badge>
+                    <Badge tone={contentPage.isVisibleToCustomers ? 'success' : 'danger'}>
+                      {contentPage.isVisibleToCustomers ? 'Visible' : 'Hidden'}
+                    </Badge>
+                  </div>
+                  <p className="mt-3 text-sm font-semibold text-foreground">
+                    v{contentPage.version}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    Published {contentPage.publishedVersion ? `v${contentPage.publishedVersion}` : 'not yet'}
+                  </p>
+                </div>
+
+                <label className="block space-y-2 rounded-[0.875rem] border border-border bg-surface p-4">
+                  <span className="text-sm font-semibold text-foreground">
+                    Change note <span className="text-danger">*</span>
+                  </span>
+                  <textarea
+                    className="form-input min-h-28 resize-y"
+                    placeholder="Updated after content review."
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                  />
+                </label>
+              </aside>
             </div>
 
             {formError || error ? (
@@ -610,7 +665,7 @@ function ActionModal({
 
         <form onSubmit={submit}>
           <label className="mt-5 block space-y-2">
-            <span className="text-sm font-semibold text-foreground">Reason *</span>
+            <span className="text-sm font-semibold text-foreground">Change note *</span>
             <textarea
               className="form-input min-h-28 resize-y"
               placeholder={
@@ -702,10 +757,20 @@ function JsonPanel({
   value: unknown
 }) {
   return (
-    <SectionShell id={id} icon={<FileJson className="size-4" />} title={title}>
-      <pre className="max-h-[28rem] overflow-auto rounded-[0.75rem] border border-border bg-surface-muted/35 p-3 text-xs leading-5 text-foreground">
-        {JSON.stringify(value ?? {}, null, 2)}
-      </pre>
+    <SectionShell
+      description="For technical configuration fields that do not need everyday review."
+      id={id}
+      icon={<FileJson className="size-4" />}
+      title={title}
+    >
+      <details>
+        <summary className="cursor-pointer text-sm font-semibold text-foreground">
+          Show metadata fields
+        </summary>
+        <pre className="mt-3 max-h-[28rem] overflow-auto rounded-[0.75rem] border border-border bg-surface-muted/35 p-3 text-xs leading-5 text-foreground">
+          {JSON.stringify(value ?? {}, null, 2)}
+        </pre>
+      </details>
     </SectionShell>
   )
 }
@@ -770,9 +835,9 @@ function RelatedRecordsPanel({
 }) {
   return (
     <SectionShell
-      description="Records, audit trail, and child sections for this content page."
+      description="Jump to the main areas and history for this page."
       icon={<ArrowUpRight className="size-4" />}
-      title="Related records"
+      title="Page shortcuts"
     >
       <div className="divide-y divide-border">
         <RelatedRecordRow
@@ -788,8 +853,8 @@ function RelatedRecordsPanel({
           actionLabel="Edit"
           canOpen={canEditContent}
           icon={<Edit3 className="size-4" />}
-          label="Editable record"
-          meta="Updates create a new version and audit event"
+          label="Editable page"
+          meta="Updates create a new version"
           value={`v${contentPage.version}`}
           onOpen={onEdit}
         />
@@ -812,10 +877,10 @@ function RelatedRecordsPanel({
           onOpen={() => onOpenSection(contentSectionIds.seo)}
         />
         <RelatedRecordRow
-          actionLabel="Metadata"
+          actionLabel="Advanced"
           canOpen
           icon={<FileJson className="size-4" />}
-          label="Metadata"
+          label="Advanced settings"
           meta={metadataLabel(contentPage.metadata)}
           value={contentPage.pageId}
           onOpen={() => onOpenSection(contentSectionIds.metadata)}
@@ -934,7 +999,7 @@ function SignalsPanel({
 
   return (
     <SectionShell
-      description="Backend workflow signals and actions permitted for this admin."
+      description="Warnings, blockers, and actions available for this page."
       id={contentSectionIds.signals}
       icon={<TriangleAlert className="size-4" />}
       title="Signals"
@@ -1170,26 +1235,47 @@ export function ContentDetailPage() {
       </section>
 
       <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
-        <LifecyclePanel contentPage={contentPage} />
-        <SignalsPanel
-          canPublishContent={canPublishContent}
-          canUpdateContent={canUpdateContent}
-          contentPage={contentPage}
-        />
-      </section>
-
-      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
         <div className="space-y-3">
           <SectionShell
-            description="Core identity, lifecycle state, and publish visibility."
+            description="A quick read of what customers see on this page."
+            id={contentSectionIds.body}
+            icon={<Eye className="size-4" />}
+            title="Customer preview"
+          >
+            <div className="rounded-[0.75rem] border border-border bg-surface-muted/35 p-4">
+              <div className="mb-3 flex flex-wrap gap-2">
+                <Badge tone={statusTone(contentPage.status)}>
+                  {humanizeCode(contentPage.status)}
+                </Badge>
+                <Badge tone={contentPage.isVisibleToCustomers ? 'success' : 'danger'}>
+                  {contentPage.isVisibleToCustomers ? 'Visible' : 'Hidden'}
+                </Badge>
+                <Badge tone="info">{humanizeCode(contentPage.pageType)}</Badge>
+              </div>
+              <h2 className="text-xl font-semibold text-foreground">
+                {contentPage.title}
+              </h2>
+              {contentPage.excerpt ? (
+                <p className="mt-3 text-sm leading-6 text-muted">
+                  {contentPage.excerpt}
+                </p>
+              ) : null}
+              <div className="mt-4 max-h-[34rem] overflow-auto whitespace-pre-wrap rounded-[0.75rem] border border-border bg-surface p-4 text-sm leading-6 text-foreground">
+                {contentPage.body ?? contentPage.bodyPreview}
+              </div>
+            </div>
+          </SectionShell>
+
+          <SectionShell
+            description="Simple page identity and publishing fields."
             id={contentSectionIds.information}
             icon={<FileText className="size-4" />}
-            title="Content information"
+            title="Page details"
           >
             <div className="grid gap-3 md:grid-cols-2">
-              <DetailField label="Slug" value={contentPage.slug} />
-              <DetailField label="Type" value={humanizeCode(contentPage.pageType)} />
-              <DetailField label="Format" value={humanizeCode(contentPage.contentFormat)} />
+              <DetailField label="Page link" value={contentPage.slug} />
+              <DetailField label="Content area" value={humanizeCode(contentPage.pageType)} />
+              <DetailField label="Content style" value={humanizeCode(contentPage.contentFormat)} />
               <DetailField
                 label="Published version"
                 value={
@@ -1198,44 +1284,28 @@ export function ContentDetailPage() {
                     : 'Not published'
                 }
               />
-              <DetailField label="Excerpt" value={contentPage.excerpt ?? 'Not available'} />
-              <DetailField label="Metadata" value={metadataLabel(contentPage.metadata)} />
+              <DetailField label="Short summary" value={contentPage.excerpt ?? 'Not available'} />
+              <DetailField label="Advanced fields" value={metadataLabel(contentPage.metadata)} />
             </div>
           </SectionShell>
 
           <SectionShell
-            description="Stored body is shown as plain text for safe admin review."
-            id={contentSectionIds.body}
-            icon={<FileText className="size-4" />}
-            title="Body"
-          >
-            <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-[0.75rem] border border-border bg-surface-muted/35 p-3 text-sm leading-6 text-foreground">
-              {contentPage.body ?? contentPage.bodyPreview}
-            </pre>
-          </SectionShell>
-
-          <SectionShell
+            description="How this page appears in search and shared previews."
             id={contentSectionIds.seo}
             icon={<Globe2 className="size-4" />}
-            title="SEO"
+            title="Search appearance"
           >
             <div className="grid gap-3 md:grid-cols-2">
               <DetailField
-                label="SEO title"
+                label="Search title"
                 value={contentPage.seo.title ?? 'Not available'}
               />
               <DetailField
-                label="SEO description"
+                label="Search summary"
                 value={contentPage.seo.description ?? 'Not available'}
               />
             </div>
           </SectionShell>
-
-          <JsonPanel
-            id={contentSectionIds.metadata}
-            title="Metadata"
-            value={contentPage.metadata}
-          />
         </div>
 
         <RelatedRecordsPanel
@@ -1247,6 +1317,21 @@ export function ContentDetailPage() {
           onOpenSection={openSection}
         />
       </section>
+
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
+        <LifecyclePanel contentPage={contentPage} />
+        <SignalsPanel
+          canPublishContent={canPublishContent}
+          canUpdateContent={canUpdateContent}
+          contentPage={contentPage}
+        />
+      </section>
+
+      <JsonPanel
+        id={contentSectionIds.metadata}
+        title="Advanced settings"
+        value={contentPage.metadata}
+      />
 
       {selectedModal === 'EDIT' ? (
         <EditContentModal

@@ -20,6 +20,7 @@ import {
   Edit3,
   Filter,
   FileJson,
+  Image as ImageIcon,
   MapPinned,
   Plus,
   Power,
@@ -42,6 +43,11 @@ import {
   ListSelectionToolbar,
 } from '../../../components/ui/ListSelection'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import {
+  QuickPreviewActions,
+  QuickPreviewTabs,
+  type QuickPreviewAction,
+} from '../../../components/ui/QuickPreview'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { useListSelection } from '../../../hooks/useListSelection'
@@ -67,6 +73,8 @@ import type {
   PricingPolicyPreview,
   PricingPolicyPreviewPayload,
   PricingPolicyPreviewResponse,
+  CategoryImageUploadResponse,
+  CreateCategoryResponse,
   ServiceCategoriesListResponse,
   ServiceCategory,
   ServiceZone,
@@ -90,13 +98,15 @@ type SettingsListResponse =
 type SettingsMutationResponse =
   | UpdateSettingResponse
   | UpdateCategoryResponse
+  | CreateCategoryResponse
+  | CategoryImageUploadResponse
   | UpdateZoneResponse
 type PolicyRuleAction = 'CREATE' | 'EDIT' | 'ACTIVATE' | 'ARCHIVE'
 type PolicyRuleActionSelection =
   | { action: 'CREATE'; record?: undefined }
   | { action: 'EDIT' | 'ACTIVATE' | 'ARCHIVE'; record: PolicyRule }
 type CatalogueAction = 'EDIT' | 'ACTIVATE' | 'DEACTIVATE'
-type SettingsPreviewTab = 'summary' | 'details' | 'activity'
+type SettingsPreviewTab = 'summary' | 'details'
 type SettingsPreviewSelection =
   | { type: SettingsRecordType; record: Row }
   | { type: 'policies'; record: PolicyRule }
@@ -277,21 +287,35 @@ const settingsColumnsByType: Record<SettingsRecordType, SettingsColumn[]> = {
       minWidth: 250,
       render: (row) => {
         const category = row as ServiceCategory
+        const iconUrl = category.iconUrl ?? category.icon?.url ?? null
 
         return (
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <p className="truncate font-semibold text-foreground">{category.name}</p>
-              <Badge tone={category.isActive ? 'success' : 'danger'}>
-                {category.isActive ? 'Active' : 'Inactive'}
-              </Badge>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[0.75rem] border border-border bg-surface-muted">
+              {iconUrl ? (
+                <img
+                  alt=""
+                  className="h-full w-full object-contain p-1"
+                  src={iconUrl}
+                />
+              ) : (
+                <ImageIcon className="size-5 text-muted" />
+              )}
             </div>
-            <p className="truncate text-xs text-muted">{category.categoryCode}</p>
-            {category.description ? (
-              <p className="mt-1 line-clamp-1 text-xs text-muted">
-                {category.description}
-              </p>
-            ) : null}
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <p className="truncate font-semibold text-foreground">{category.name}</p>
+                <Badge tone={category.isActive ? 'success' : 'danger'}>
+                  {category.isActive ? 'Active' : 'Inactive'}
+                </Badge>
+              </div>
+              <p className="truncate text-xs text-muted">{category.categoryCode}</p>
+              {category.description ? (
+                <p className="mt-1 line-clamp-1 text-xs text-muted">
+                  {category.description}
+                </p>
+              ) : null}
+            </div>
           </div>
         )
       },
@@ -978,7 +1002,6 @@ function SettingsRecordPreviewPanel({
   const previewTabs: { key: SettingsPreviewTab; label: string }[] = [
     { key: 'summary', label: 'Summary' },
     { key: 'details', label: isPolicy ? 'Scope' : 'Details' },
-    { key: 'activity', label: 'Actions' },
   ]
 
   if (isPolicy) {
@@ -992,6 +1015,46 @@ function SettingsRecordPreviewPanel({
         rule,
         secondaryAction === 'ARCHIVE' ? 'ARCHIVE' : 'ACTIVATE',
       )
+    const policyStateAction: QuickPreviewAction = {
+      disabled: isSubmitting,
+      icon:
+        secondaryAction === 'ARCHIVE' ? (
+          <Archive className="size-4" />
+        ) : (
+          <Power className="size-4" />
+        ),
+      key: secondaryAction,
+      label: policyActionLabel(secondaryAction),
+      onClick: () => onOpenPolicyAction({ action: secondaryAction, record: rule }),
+      variant: secondaryAction === 'ARCHIVE' ? 'danger' : 'secondary',
+    }
+    const policyPrimaryAction: QuickPreviewAction | null = canEdit
+      ? {
+          disabled: isSubmitting,
+          icon: <Edit3 className="size-4" />,
+          key: 'edit-policy',
+          label: 'Edit policy',
+          onClick: () => onOpenPolicyAction({ action: 'EDIT', record: rule }),
+          variant: 'primary',
+        }
+      : canRunSecondary && secondaryAction === 'ACTIVATE'
+        ? policyStateAction
+        : null
+    const policySecondaryActions: QuickPreviewAction[] = []
+
+    if (canRunSecondary && policyPrimaryAction?.key !== secondaryAction) {
+      policySecondaryActions.push(policyStateAction)
+    }
+
+    if (canReadAudit) {
+      policySecondaryActions.push({
+        icon: <ClipboardList className="size-4" />,
+        key: 'audit',
+        label: 'Open audit',
+        onClick: () => onOpenPolicyAudit(rule),
+        variant: 'secondary',
+      })
+    }
 
     return (
       <>
@@ -1001,7 +1064,7 @@ function SettingsRecordPreviewPanel({
           type="button"
           onClick={onClose}
         />
-        <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
+        <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:inset-x-auto xl:bottom-6 xl:right-6 xl:top-[calc(var(--spacing-topbar)+0.75rem)] xl:z-40 xl:w-96">
           <div className="shrink-0 border-b border-border p-3">
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0">
@@ -1029,27 +1092,12 @@ function SettingsRecordPreviewPanel({
             </div>
           </div>
 
-          <div className="shrink-0 border-b border-border bg-surface px-3">
-            <div className="flex gap-4 overflow-x-auto" role="tablist">
-              {previewTabs.map((tab) => (
-                <button
-                  aria-selected={activeTab === tab.key}
-                  className={cn(
-                    'relative min-h-10 shrink-0 text-sm font-semibold transition',
-                    activeTab === tab.key
-                      ? 'text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
-                      : 'text-muted hover:text-foreground',
-                  )}
-                  key={tab.key}
-                  role="tab"
-                  type="button"
-                  onClick={() => setActiveTab(tab.key)}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <QuickPreviewTabs
+            activeTab={activeTab}
+            ariaLabel="Settings preview sections"
+            tabs={previewTabs}
+            onChange={setActiveTab}
+          />
 
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             {activeTab === 'summary' ? (
@@ -1089,54 +1137,11 @@ function SettingsRecordPreviewPanel({
                 </div>
               </div>
             ) : null}
-            {activeTab === 'activity' ? (
-              <div className="space-y-2">
-                {canEdit ? (
-                  <Button
-                    className="w-full"
-                    disabled={isSubmitting}
-                    size="sm"
-                    type="button"
-                    onClick={() => onOpenPolicyAction({ action: 'EDIT', record: rule })}
-                  >
-                    <Edit3 className="mr-2 size-4" />
-                    Edit policy
-                  </Button>
-                ) : null}
-                {canRunSecondary ? (
-                  <Button
-                    className="w-full"
-                    disabled={isSubmitting}
-                    size="sm"
-                    type="button"
-                    variant={secondaryAction === 'ARCHIVE' ? 'danger' : 'secondary'}
-                    onClick={() =>
-                      onOpenPolicyAction({ action: secondaryAction, record: rule })
-                    }
-                  >
-                    {secondaryAction === 'ARCHIVE' ? (
-                      <Archive className="mr-2 size-4" />
-                    ) : (
-                      <Power className="mr-2 size-4" />
-                    )}
-                    {policyActionLabel(secondaryAction)}
-                  </Button>
-                ) : null}
-                {canReadAudit ? (
-                  <Button
-                    className="w-full"
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                    onClick={() => onOpenPolicyAudit(rule)}
-                  >
-                    <ClipboardList className="mr-2 size-4" />
-                    Open audit
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
           </div>
+          <QuickPreviewActions
+            primaryAction={policyPrimaryAction}
+            secondaryActions={policySecondaryActions}
+          />
         </aside>
       </>
     )
@@ -1166,6 +1171,44 @@ function SettingsRecordPreviewPanel({
     type === 'settings'
       ? []
       : ((row as ServiceCategory | ServiceZone).warnings ?? [])
+  const previewPrimaryAction: QuickPreviewAction | null = primaryAction
+    ? {
+        disabled: isSubmitting,
+        icon: <Edit3 className="size-4" />,
+        key: primaryAction.action,
+        label: settingsActionLabel(primaryAction.action),
+        onClick: () => onOpenAction(primaryAction),
+        variant: 'primary',
+      }
+    : null
+  const detailAction: QuickPreviewAction = {
+    icon: <ArrowUpRight className="size-4" />,
+    key: 'details',
+    label: previewPrimaryAction ? 'Detail' : 'Open detail',
+    onClick: () => onOpenDetail(row),
+  }
+  const previewSecondaryActions: QuickPreviewAction[] = []
+
+  if (secondaryAction && secondaryAction.action !== primaryAction?.action) {
+    previewSecondaryActions.push({
+      disabled: isSubmitting,
+      icon: <Power className="size-4" />,
+      key: secondaryAction.action,
+      label: settingsActionLabel(secondaryAction.action),
+      onClick: () => onOpenAction(secondaryAction),
+      variant: secondaryAction.action === 'DEACTIVATE' ? 'danger' : 'secondary',
+    })
+  }
+
+  if (canReadAudit) {
+    previewSecondaryActions.push({
+      icon: <ClipboardList className="size-4" />,
+      key: 'audit',
+      label: 'Open audit',
+      onClick: () => onOpenAudit(row),
+      variant: 'secondary',
+    })
+  }
 
   return (
     <>
@@ -1175,7 +1218,7 @@ function SettingsRecordPreviewPanel({
         type="button"
         onClick={onClose}
       />
-      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:inset-x-auto xl:bottom-6 xl:right-6 xl:top-[calc(var(--spacing-topbar)+0.75rem)] xl:z-40 xl:w-96">
         <div className="shrink-0 border-b border-border p-3">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
@@ -1201,31 +1244,33 @@ function SettingsRecordPreviewPanel({
           </div>
         </div>
 
-        <div className="shrink-0 border-b border-border bg-surface px-3">
-          <div className="flex gap-4 overflow-x-auto" role="tablist">
-            {previewTabs.map((tab) => (
-              <button
-                aria-selected={activeTab === tab.key}
-                className={cn(
-                  'relative min-h-10 shrink-0 text-sm font-semibold transition',
-                  activeTab === tab.key
-                    ? 'text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
-                    : 'text-muted hover:text-foreground',
-                )}
-                key={tab.key}
-                role="tab"
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <QuickPreviewTabs
+          activeTab={activeTab}
+          ariaLabel="Settings preview sections"
+          tabs={previewTabs}
+          onChange={setActiveTab}
+        />
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {activeTab === 'summary' ? (
             <div className="space-y-3">
+              {type === 'categories' ? (
+                <div className="flex h-32 items-center justify-center overflow-hidden rounded-[0.75rem] border border-border bg-surface-muted">
+                  {(row as ServiceCategory).iconUrl || (row as ServiceCategory).icon?.url ? (
+                    <img
+                      alt=""
+                      className="h-full w-full object-contain p-3"
+                      src={
+                        (row as ServiceCategory).iconUrl ??
+                        (row as ServiceCategory).icon?.url ??
+                        ''
+                      }
+                    />
+                  ) : (
+                    <ImageIcon className="size-8 text-muted" />
+                  )}
+                </div>
+              ) : null}
               <div className="grid grid-cols-2 gap-3 rounded-[0.75rem] border border-border p-3">
                 <SettingsSummaryField
                   label={type === 'zones' ? 'City' : 'Category'}
@@ -1301,60 +1346,12 @@ function SettingsRecordPreviewPanel({
               ) : null}
             </div>
           ) : null}
-          {activeTab === 'activity' ? (
-            <div className="space-y-2">
-              {primaryAction ? (
-                <Button
-                  className="w-full"
-                  disabled={isSubmitting}
-                  size="sm"
-                  type="button"
-                  onClick={() => onOpenAction(primaryAction)}
-                >
-                  <Edit3 className="mr-2 size-4" />
-                  {settingsActionLabel(primaryAction.action)}
-                </Button>
-              ) : null}
-              {secondaryAction && secondaryAction.action !== primaryAction?.action ? (
-                <Button
-                  className="w-full"
-                  disabled={isSubmitting}
-                  size="sm"
-                  type="button"
-                  variant={
-                    secondaryAction.action === 'DEACTIVATE' ? 'danger' : 'secondary'
-                  }
-                  onClick={() => onOpenAction(secondaryAction)}
-                >
-                  <Power className="mr-2 size-4" />
-                  {settingsActionLabel(secondaryAction.action)}
-                </Button>
-              ) : null}
-              <Button
-                className="w-full"
-                size="sm"
-                type="button"
-                variant="secondary"
-                onClick={() => onOpenDetail(row)}
-              >
-                <ArrowUpRight className="mr-2 size-4" />
-                Open full detail
-              </Button>
-              {canReadAudit ? (
-                <Button
-                  className="w-full"
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => onOpenAudit(row)}
-                >
-                  <ClipboardList className="mr-2 size-4" />
-                  Open audit
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
         </div>
+        <QuickPreviewActions
+          detailAction={detailAction}
+          primaryAction={previewPrimaryAction}
+          secondaryActions={previewSecondaryActions}
+        />
       </aside>
     </>
   )
@@ -1500,9 +1497,9 @@ function SettingsRow({
 
   return (
     <div
-      aria-selected={isSelected}
+      aria-selected={isSelected || isPreviewed}
       className={cn(
-        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--settings-grid-template)] xl:items-center',
+        'workbench-grid-row grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--settings-grid-template)] xl:items-center',
         isSelected && 'bg-primary/5 hover:bg-primary/10',
         isPreviewed &&
           'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
@@ -1527,7 +1524,7 @@ function SettingsRow({
           {column.render(row, type)}
         </div>
       ))}
-      <div className="flex min-w-0 flex-nowrap items-center justify-start gap-1.5 xl:sticky xl:right-0 xl:z-20 xl:justify-end xl:border-l xl:border-border xl:bg-inherit xl:pl-2 xl:shadow-[var(--sg-shadow-sticky-action)]">
+      <div className="workbench-sticky-action-cell flex min-w-0 flex-nowrap items-center justify-start gap-1.5 pl-2 xl:justify-end">
         {primaryAction ? (
           <Button
             className="w-[7.75rem] shrink-0 overflow-hidden px-2.5"
@@ -2366,8 +2363,8 @@ function PolicyRulesWorkspace({
               <div>Scope</div>
               <div>Priority</div>
               <div>Effective</div>
-              <div className="sticky right-0 z-40 bg-surface-muted pr-3 text-right shadow-[var(--sg-shadow-sticky-action)]">
-                Actions
+              <div className="workbench-sticky-action-head flex min-w-0 pr-3">
+                <span className="truncate">Actions</span>
               </div>
             </div>
             <div>
@@ -2432,7 +2429,7 @@ function PolicyRuleRow({
       aria-label={`Preview policy rule ${rule.displayName}`}
       aria-selected={isPreviewed}
       className={cn(
-        'grid cursor-pointer grid-cols-[minmax(17rem,1.4fr)_8rem_minmax(12rem,0.9fr)_8rem_minmax(13rem,0.9fr)_15rem] gap-3 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+        'workbench-grid-row grid cursor-pointer grid-cols-[minmax(17rem,1.4fr)_8rem_minmax(12rem,0.9fr)_8rem_minmax(13rem,0.9fr)_15rem] gap-3 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
         isPreviewed &&
           'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
       )}
@@ -2515,7 +2512,7 @@ function PolicyRuleRow({
           {rule.effectiveTo ? formatDate(rule.effectiveTo, true) : 'No end date'}
         </p>
       </div>
-      <div className="sticky right-0 z-20 flex min-w-0 flex-nowrap items-center justify-end gap-1.5 border-l border-border bg-inherit pl-2 pr-3 shadow-[var(--sg-shadow-sticky-action)]">
+      <div className="workbench-sticky-action-cell flex min-w-0 flex-nowrap items-center justify-end gap-1.5 pl-2 pr-3">
         <Button
           className="w-[7.75rem] shrink-0 overflow-hidden px-2.5"
           disabled={!canEdit}
@@ -2806,7 +2803,7 @@ export function SettingsPage() {
   })
 
   const mutation = useMutation<SettingsMutationResponse | unknown, Error, SettingsActionFormValues>({
-    mutationFn: (values: SettingsActionFormValues) => {
+    mutationFn: async (values: SettingsActionFormValues) => {
       if (!selectedAction) throw new Error('No action selected.')
 
       if (selectedAction.type === 'settings') {
@@ -2834,10 +2831,68 @@ export function SettingsPage() {
       }
 
       if (selectedAction.type === 'categories') {
-        return settingsService.updateCategory(
+        const {
+          categoryCode,
+          categoryImageFile,
+          name,
+          description,
+          bookingTemplate,
+          displayOrder,
+          isActive,
+          reason,
+        } = values
+
+        if (!reason) {
+          throw new Error('Reason is required.')
+        }
+
+        if (selectedAction.action === 'CREATE') {
+          if (!name) {
+            throw new Error('Category name is required.')
+          }
+
+          const created = await settingsService.createCategory({
+            categoryCode,
+            name,
+            description,
+            bookingTemplate,
+            displayOrder,
+            isActive,
+            reason,
+          })
+
+          if (categoryImageFile) {
+            return settingsService.uploadCategoryImage(
+              created.data.categoryId,
+              categoryImageFile,
+              reason,
+            )
+          }
+
+          return created
+        }
+
+        const updated = await settingsService.updateCategory(
           selectedAction.record.categoryId,
-          values,
+          {
+            name,
+            description,
+            bookingTemplate,
+            displayOrder,
+            isActive,
+            reason,
+          },
         )
+
+        if (categoryImageFile) {
+          return settingsService.uploadCategoryImage(
+            selectedAction.record.categoryId,
+            categoryImageFile,
+            reason,
+          )
+        }
+
+        return updated
       }
 
       if (selectedAction.type === 'serviceTypes') {
@@ -2858,7 +2913,7 @@ export function SettingsPage() {
         })
       }
 
-      if (action?.type === 'categories') {
+      if (action?.type === 'categories' && action.action !== 'CREATE') {
         void queryClient.invalidateQueries({
           queryKey: ['settings-detail', 'categories', action.record.categoryId],
         })
@@ -3144,6 +3199,26 @@ export function SettingsPage() {
                     <span className="ml-1 size-2 rounded-full bg-primary" />
                   ) : null}
                 </Button>
+
+                {type === 'categories' ? (
+                  <Button
+                    disabled={!canUpdateSettings}
+                    size="sm"
+                    title={
+                      canUpdateSettings
+                        ? 'Create category'
+                        : 'Requires settings:update'
+                    }
+                    type="button"
+                    variant="secondary"
+                    onClick={() =>
+                      setSelectedAction({ type: 'categories', action: 'CREATE' })
+                    }
+                  >
+                    <Plus className="mr-2 size-4" />
+                    Category
+                  </Button>
+                ) : null}
 
                 {type === 'zones' ? (
                   <Button
@@ -3593,7 +3668,7 @@ export function SettingsPage() {
                             </button>
                           </div>
                         ))}
-                      <div className="relative sticky right-0 z-40 flex min-w-0 items-center justify-end bg-surface-muted pr-3 text-right shadow-[var(--sg-shadow-sticky-action)]">
+                      <div className="workbench-sticky-action-head relative flex min-w-0 pr-3">
                         <span className="truncate">Actions</span>
                         <button
                           aria-label="Resize actions column"

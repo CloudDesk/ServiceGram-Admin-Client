@@ -13,6 +13,7 @@ export const routePermissions = {
   influencers: 'influencers:read',
   notifications: 'notifications:read',
   content: 'content:read',
+  marketingCampaigns: 'marketing_campaigns:read',
   reports: 'reports:read',
   settings: 'settings:read',
   audit: 'audit:read',

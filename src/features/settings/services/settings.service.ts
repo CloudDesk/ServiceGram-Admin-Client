@@ -1,6 +1,9 @@
 import { buildApiUrl } from '../../../config/api'
 import {
   SETTINGS_CATEGORIES_PATH,
+  SETTINGS_CATEGORY_IMAGE_CONFIRM_UPLOAD_PATH,
+  SETTINGS_CATEGORY_IMAGE_PATH,
+  SETTINGS_CATEGORY_IMAGE_UPLOAD_INTENT_PATH,
   SETTINGS_CATEGORY_SERVICE_TYPES_PATH,
   SETTINGS_CATEGORY_DETAIL_PATH,
   SETTINGS_CATEGORY_UPDATE_PATH,
@@ -17,6 +20,12 @@ import {
 import { apiClient } from '../../../services/apiClient'
 import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
+  CategoryImageUploadIntentPayload,
+  CategoryImageUploadIntentResponse,
+  CategoryImageUploadResponse,
+  ConfirmCategoryImageUploadPayload,
+  CreateCategoryPayload,
+  CreateCategoryResponse,
   CreateZonePayload,
   CreateZoneResponse,
   CreateServiceTypePayload,
@@ -74,7 +83,7 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
   return payload as T
 }
 
-function jsonRequest<TPayload>(method: 'POST' | 'PUT', payload: TPayload) {
+function jsonRequest<TPayload>(method: 'DELETE' | 'POST' | 'PUT', payload: TPayload) {
   return {
     method,
     headers: { 'Content-Type': 'application/json' },
@@ -134,6 +143,86 @@ async function updateCategory(
   const response = await apiClient.request(
     buildApiUrl(SETTINGS_CATEGORY_UPDATE_PATH(categoryId)),
     jsonRequest('PUT', payload),
+  )
+  return parseJsonResponse<UpdateCategoryResponse>(response)
+}
+
+async function createCategory(
+  payload: CreateCategoryPayload,
+): Promise<CreateCategoryResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(SETTINGS_CATEGORIES_PATH),
+    jsonRequest('POST', payload),
+  )
+  return parseJsonResponse<CreateCategoryResponse>(response)
+}
+
+async function createCategoryImageUploadIntent(
+  categoryId: string,
+  payload: CategoryImageUploadIntentPayload,
+): Promise<CategoryImageUploadIntentResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(SETTINGS_CATEGORY_IMAGE_UPLOAD_INTENT_PATH(categoryId)),
+    jsonRequest('POST', payload),
+  )
+  return parseJsonResponse<CategoryImageUploadIntentResponse>(response)
+}
+
+async function confirmCategoryImageUpload(
+  categoryId: string,
+  payload: ConfirmCategoryImageUploadPayload,
+): Promise<CategoryImageUploadResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(SETTINGS_CATEGORY_IMAGE_CONFIRM_UPLOAD_PATH(categoryId)),
+    jsonRequest('POST', payload),
+  )
+  return parseJsonResponse<CategoryImageUploadResponse>(response)
+}
+
+async function uploadCategoryImage(
+  categoryId: string,
+  file: File,
+  reason: string,
+): Promise<CategoryImageUploadResponse> {
+  const mimeType = file.type || 'image/png'
+  const intentResponse = await createCategoryImageUploadIntent(categoryId, {
+    fileName: file.name,
+    mimeType,
+    sizeBytes: file.size,
+  })
+  const intent = intentResponse.data
+
+  if (!intent.uploadUrl) {
+    throw new Error('Category image upload URL is unavailable.')
+  }
+
+  const headers = new Headers(intent.headers)
+  if (!headers.has('Content-Type')) headers.set('Content-Type', mimeType)
+
+  const uploadResponse = await fetch(intent.uploadUrl, {
+    method: 'PUT',
+    headers,
+    body: file,
+  })
+
+  if (!uploadResponse.ok) {
+    throw new Error('Category image upload failed. Please try again.')
+  }
+
+  return confirmCategoryImageUpload(categoryId, {
+    mediaAssetId: intent.mediaAssetId,
+    reason,
+    uploadedAt: new Date().toISOString(),
+  })
+}
+
+async function removeCategoryImage(
+  categoryId: string,
+  payload: { reason: string },
+): Promise<UpdateCategoryResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(SETTINGS_CATEGORY_IMAGE_PATH(categoryId)),
+    jsonRequest('DELETE', payload),
   )
   return parseJsonResponse<UpdateCategoryResponse>(response)
 }
@@ -249,7 +338,12 @@ export const settingsService = {
   updateSetting,
   getCategories,
   getCategory,
+  createCategory,
   updateCategory,
+  createCategoryImageUploadIntent,
+  confirmCategoryImageUpload,
+  uploadCategoryImage,
+  removeCategoryImage,
   getServiceTypes,
   createServiceType,
   updateServiceType,

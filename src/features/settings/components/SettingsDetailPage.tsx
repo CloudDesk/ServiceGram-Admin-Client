@@ -49,6 +49,7 @@ import {
 import type { StatusTone } from '../../../types/status.types'
 import type {
   CategoryBookingTemplate,
+  CategoryImageUploadResponse,
   PlatformSetting,
   ServiceCategory,
   ServiceType,
@@ -65,6 +66,7 @@ type RecordType = PlatformSetting | ServiceCategory | ServiceZone
 type SettingsMutationResponse =
   | UpdateSettingResponse
   | UpdateCategoryResponse
+  | CategoryImageUploadResponse
   | UpdateZoneResponse
   | ServiceTypeResponse
 type CatalogueAction = 'EDIT' | 'ACTIVATE' | 'DEACTIVATE'
@@ -1576,7 +1578,7 @@ export function SettingsDetailPage() {
   })
 
   const mutation = useMutation<SettingsMutationResponse, Error, SettingsActionFormValues>({
-    mutationFn: (values: SettingsActionFormValues) => {
+    mutationFn: async (values: SettingsActionFormValues) => {
       if (!selectedAction) throw new Error('No action selected.')
 
       if (selectedAction.type === 'settings') {
@@ -1587,7 +1589,40 @@ export function SettingsDetailPage() {
       }
 
       if (selectedAction.type === 'categories') {
-        return settingsService.updateCategory(selectedAction.record.categoryId, values)
+        if (selectedAction.action === 'CREATE') {
+          throw new Error('Category creation is available from the settings list.')
+        }
+
+        const {
+          categoryImageFile,
+          name,
+          description,
+          bookingTemplate,
+          displayOrder,
+          isActive,
+          reason,
+        } = values
+        const updated = await settingsService.updateCategory(
+          selectedAction.record.categoryId,
+          {
+            name,
+            description,
+            bookingTemplate,
+            displayOrder,
+            isActive,
+            reason,
+          },
+        )
+
+        if (categoryImageFile && reason) {
+          return settingsService.uploadCategoryImage(
+            selectedAction.record.categoryId,
+            categoryImageFile,
+            reason,
+          )
+        }
+
+        return updated
       }
 
       if (selectedAction.type === 'serviceTypes') {

@@ -72,6 +72,68 @@ export interface UpdateCategoryPayload {
   reason?: string;
 }
 
+export interface CreateCategoryPayload {
+  categoryCode?: string;
+  name: string;
+  description?: string | null;
+  iconAssetId?: string | null;
+  bookingTemplate?: CategoryBookingTemplate;
+  isActive?: boolean;
+  displayOrder?: number;
+  reason: string;
+}
+
+export interface CategoryImageUploadIntentPayload {
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ConfirmCategoryImageUploadPayload {
+  mediaAssetId: string;
+  checksum?: string;
+  uploadedAt?: string;
+  width?: number;
+  height?: number;
+  reason: string;
+}
+
+export interface CategoryImageUploadIntent {
+  mediaAssetId: string;
+  uploadUrl: string | null;
+  headers: Record<string, string>;
+  providerStatus: string;
+  warnings: string[];
+  acceptedMimeTypes: string[];
+  maxSizeBytes: number;
+  recommendedDimensions: {
+    aspectRatio: string;
+    minWidth: number;
+    minHeight: number;
+  };
+}
+
+export interface ServiceCategoryIcon {
+  mediaAssetId: string;
+  url: string | null;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number | null;
+  status: string;
+  accessLevel: string;
+  providerStatus: string;
+  warnings: string[];
+  updatedAt: string;
+}
+
+export interface CategoryImageUploadResult {
+  category: ServiceCategory;
+  image: ServiceCategoryIcon | null;
+  providerStatus: string;
+  warnings: string[];
+}
+
 export type SettingsServiceTypesQueryParams = SettingsCategoriesQueryParams;
 
 export interface ServiceTypeUsage {
@@ -174,6 +236,8 @@ export interface ServiceCategory {
   name: string;
   description: string | null;
   iconAssetId: string | null;
+  iconUrl: string | null;
+  icon: ServiceCategoryIcon | null;
   bookingTemplate: CategoryBookingTemplate;
   isActive: boolean;
   displayOrder: number;
@@ -332,6 +396,11 @@ export type PricingPolicyPreviewResponse =
   SettingsApiResponse<PricingPolicyPreview>;
 export type UpdateSettingResponse = SettingsApiResponse<PlatformSetting>;
 export type UpdateCategoryResponse = SettingsApiResponse<ServiceCategory>;
+export type CreateCategoryResponse = SettingsApiResponse<ServiceCategory>;
+export type CategoryImageUploadIntentResponse =
+  SettingsApiResponse<CategoryImageUploadIntent>;
+export type CategoryImageUploadResponse =
+  SettingsApiResponse<CategoryImageUploadResult>;
 export type CreateZoneResponse = SettingsApiResponse<ServiceZone>;
 export type UpdateZoneResponse = SettingsApiResponse<ServiceZone>;
 

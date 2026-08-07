@@ -34,6 +34,13 @@ import {
 } from '../../../components/ui/ListSelection'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import {
+  QuickPreviewActions,
+  QuickPreviewFact,
+  QuickPreviewFactGrid,
+  QuickPreviewTabs,
+  type QuickPreviewAction,
+} from '../../../components/ui/QuickPreview'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
@@ -118,6 +125,7 @@ const CUSTOMER_FILTER_CONTROL_CLASS_NAME =
 type CustomerColumnId = (typeof customerDataColumns)[number]['id']
 type CustomerColumnWidthId = CustomerColumnId | typeof CUSTOMER_ACTION_COLUMN_ID
 type CustomerColumnWidths = Partial<Record<CustomerColumnWidthId, number>>
+type CustomerPreviewTab = 'summary' | 'activity' | 'signals'
 const defaultCustomerColumns = customerDataColumns
   .filter(
     (column) =>
@@ -577,6 +585,84 @@ function CustomerPreviewPanel({
   const canAddNote = hasAction('ADD_NOTE')
   const canCredit =
     featureFlags.customerWallet && canCreditWallet && hasAction('WALLET_CREDIT')
+  const [activeTab, setActiveTab] = useState<CustomerPreviewTab>('summary')
+  const previewTabs: { key: CustomerPreviewTab; label: string }[] = [
+    { key: 'summary', label: 'Summary' },
+    { key: 'activity', label: 'Activity' },
+    { key: 'signals', label: 'Signals' },
+  ]
+  const priorityLabel = recommendedAction
+    ? humanizeCode(recommendedAction)
+    : warnings[0]
+      ? signalLabel(warnings[0])
+      : 'No active warning'
+  const hasPrioritySignal = Boolean(recommendedAction || warnings.length)
+  const signalMetaLabel = warnings.length
+    ? `${warnings.length} signal${warnings.length === 1 ? '' : 's'}`
+    : recommendedAction
+      ? 'Action'
+      : 'Clear'
+  const primaryAction: QuickPreviewAction | null = recommendedAction
+    ? {
+        disabled: isSubmitting,
+        icon: <ArrowUpRight className="size-4" />,
+        key: recommendedAction,
+        label: humanizeCode(recommendedAction),
+        onClick: () => onOpenAction(customer, recommendedAction),
+        variant: recommendedAction === 'BLOCK' ? 'danger' : 'primary',
+      }
+    : null
+  const detailAction: QuickPreviewAction = {
+    icon: <Eye className="size-4" />,
+    key: 'details',
+    label: primaryAction ? 'Detail' : 'Open detail',
+    onClick: () => onOpenDetails(customer),
+  }
+  const secondaryActions: QuickPreviewAction[] = []
+
+  if (canAddNote && recommendedAction !== 'ADD_NOTE') {
+    secondaryActions.push({
+      disabled: isSubmitting,
+      icon: <MessageSquarePlus className="size-4" />,
+      key: 'add-note',
+      label: 'Add note',
+      onClick: () => onOpenAction(customer, 'ADD_NOTE'),
+      variant: 'secondary',
+    })
+  }
+
+  if (canCredit && recommendedAction !== 'WALLET_CREDIT') {
+    secondaryActions.push({
+      disabled: isSubmitting,
+      icon: <Wallet className="size-4" />,
+      key: 'wallet-credit',
+      label: 'Wallet credit',
+      onClick: () => onOpenAction(customer, 'WALLET_CREDIT'),
+      variant: 'secondary',
+    })
+  }
+
+  if (canBlock && recommendedAction !== 'BLOCK') {
+    secondaryActions.push({
+      disabled: isSubmitting,
+      icon: <Ban className="size-4" />,
+      key: 'block',
+      label: 'Block',
+      onClick: () => onOpenAction(customer, 'BLOCK'),
+      variant: 'danger',
+    })
+  }
+
+  if (canUnblock && recommendedAction !== 'UNBLOCK') {
+    secondaryActions.push({
+      disabled: isSubmitting,
+      icon: <UserCheck className="size-4" />,
+      key: 'unblock',
+      label: 'Unblock',
+      onClick: () => onOpenAction(customer, 'UNBLOCK'),
+      variant: 'secondary',
+    })
+  }
 
   return (
     <>
@@ -586,16 +672,16 @@ function CustomerPreviewPanel({
         type="button"
         onClick={onClose}
       />
-      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:sticky xl:inset-auto xl:top-3 xl:z-auto xl:max-h-[calc(100vh-var(--spacing-topbar)-2.5rem)]">
+      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:inset-x-auto xl:bottom-6 xl:right-6 xl:top-[calc(var(--spacing-topbar)+0.75rem)] xl:z-40 xl:w-[22rem]">
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-normal text-muted">
               Customer preview
             </p>
-            <div className="mt-2 flex min-w-0 items-start gap-3">
+            <div className="mt-2 flex min-w-0 items-start gap-2.5">
               <div
                 className={cn(
-                  'flex size-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
+                  'flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
                   customerAvatarClass(customer),
                 )}
               >
@@ -605,10 +691,7 @@ function CustomerPreviewPanel({
                 <h3 className="truncate text-base font-semibold text-foreground">
                   {customer.fullName}
                 </h3>
-                <p className="mt-1 break-all text-xs text-muted">
-                  {customer.customerId}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-1.5 flex flex-wrap gap-2">
                   <Badge tone={statusTone(customer.status)}>
                     {customer.status}
                   </Badge>
@@ -632,198 +715,173 @@ function CustomerPreviewPanel({
           </button>
         </div>
 
+        <QuickPreviewTabs
+          activeTab={activeTab}
+          ariaLabel="Customer preview sections"
+          tabs={previewTabs}
+          onChange={setActiveTab}
+        />
+
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <div className="rounded-[0.75rem] border border-border bg-surface-muted/45 p-3">
-            <div className="flex items-start gap-2">
-              <ShieldAlert
-                className={cn(
-                  'mt-0.5 size-4 shrink-0',
-                  recommendedAction || warnings.length
-                    ? 'text-warning'
-                    : 'text-success',
-                )}
-              />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground">
-                  {recommendedAction
-                    ? humanizeCode(recommendedAction)
-                    : warnings[0]
-                      ? signalLabel(warnings[0])
-                      : 'No active warning'}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-muted">
-                  {recommendedAction
-                    ? 'Recommended by the backend workflow state.'
-                    : warnings.length
-                      ? 'Review warning signals before taking support action.'
-                      : 'This customer has no warnings in the current response.'}
-                </p>
-              </div>
-            </div>
-            {recommendedAction ? (
-              <Button
-                className="mt-3 w-full"
-                disabled={isSubmitting}
-                size="sm"
-                type="button"
-                variant={recommendedAction === 'BLOCK' ? 'danger' : 'primary'}
-                onClick={() => onOpenAction(customer, recommendedAction)}
-              >
-                <ArrowUpRight className="mr-2 size-4" />
-                {humanizeCode(recommendedAction)}
-              </Button>
-            ) : null}
-          </div>
-
-          <div className="mt-3 rounded-[0.75rem] border border-border p-3">
-            <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
-              <Phone className="size-4 text-muted" />
-              Contact
-            </div>
-            <CustomerPreviewField
-              label="Mobile"
-              value={customer.mobileNumber ?? 'No mobile'}
-            />
-            <CustomerPreviewField
-              label="Email"
-              value={customer.email ?? 'No email'}
-            />
-            <CustomerPreviewField
-              label="City"
-              value={customer.city || customer.zone?.city || 'No city'}
-            />
-            <CustomerPreviewField
-              label="Zone"
-              value={customer.zone?.zoneName ?? 'No zone'}
-            />
-          </div>
-
-          <div className="mt-3 rounded-[0.75rem] border border-border p-3">
-            <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
-              <ReceiptText className="size-4 text-muted" />
-              Activity
-            </div>
-            <CustomerPreviewField
-              label="Orders"
-              value={`${customer.orderSummary.totalOrders} total / ${customer.orderSummary.activeOrders} active`}
-            />
-            <CustomerPreviewField
-              label="Lifetime spend"
-              value={formatPaise(customer.orderSummary.lifetimeSpendPaise)}
-            />
-            <CustomerPreviewField
-              label="Last order"
-              value={formatDateSafe(customer.orderSummary.lastOrderAt)}
-            />
-            <CustomerPreviewField
-              label="Last login"
-              value={formatDateSafe(customer.lastLoginAt)}
-            />
-            <CustomerPreviewField
-              label="Notes"
-              value={`${customer.noteSummary.totalNotes} total`}
-            />
-            {featureFlags.customerWallet ? (
-              <CustomerPreviewField
-                label="Wallet"
-                value={`${formatPaise(customer.walletSummary.creditBalancePaise)} / ${customer.walletSummary.providerStatus}`}
-              />
-            ) : null}
-          </div>
-
-          <div className="mt-3 rounded-[0.75rem] border border-border p-3">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Clock3 className="size-4 text-muted" />
-                Signals
-              </div>
-              <span className="text-xs font-semibold text-muted">
-                Health {health}
-              </span>
-            </div>
-            <div className="h-2 rounded-full bg-surface-muted">
+          {activeTab === 'summary' ? (
+            <div className="space-y-2.5">
               <div
-                className={cn('h-2 rounded-full', healthColor(health))}
-                style={{ width: `${health}%` }}
-              />
+                className={cn(
+                  'flex min-h-9 items-center justify-between gap-2 rounded-[0.65rem] border px-2.5 py-2',
+                  hasPrioritySignal
+                    ? 'border-warning/25 bg-warning/10'
+                    : 'border-success/20 bg-success/10',
+                )}
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <ShieldAlert
+                    className={cn(
+                      'size-4 shrink-0',
+                      hasPrioritySignal ? 'text-warning' : 'text-success',
+                    )}
+                  />
+                  <span className="min-w-0 truncate text-sm font-semibold text-foreground">
+                    {priorityLabel}
+                  </span>
+                </div>
+                <span
+                  className={cn(
+                    'shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold',
+                    hasPrioritySignal
+                      ? 'bg-warning/15 text-warning'
+                      : 'bg-success/15 text-success',
+                  )}
+                >
+                  {signalMetaLabel}
+                </span>
+              </div>
+
+              <QuickPreviewFactGrid>
+                <QuickPreviewFact
+                  label="Mobile"
+                  value={customer.mobileNumber ?? 'No mobile'}
+                />
+                <QuickPreviewFact
+                  label="Zone"
+                  tone={customer.zone ? 'neutral' : 'warning'}
+                  value={customer.zone?.zoneName ?? 'No zone'}
+                />
+                <QuickPreviewFact
+                  label="Active orders"
+                  value={customer.orderSummary.activeOrders}
+                />
+                {featureFlags.customerWallet ? (
+                  <QuickPreviewFact
+                    label="Wallet"
+                    value={formatPaise(customer.walletSummary.creditBalancePaise)}
+                  />
+                ) : (
+                  <QuickPreviewFact
+                    label="Lifetime spend"
+                    value={formatPaise(customer.orderSummary.lifetimeSpendPaise)}
+                  />
+                )}
+              </QuickPreviewFactGrid>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {warnings.length ? (
-                warnings.map((warning) => (
-                  <Badge key={warning} tone="warning">
-                    {signalLabel(warning)}
-                  </Badge>
-                ))
-              ) : (
-                <Badge tone="success">No warnings</Badge>
-              )}
+          ) : null}
+
+          {activeTab === 'activity' ? (
+            <div className="space-y-3">
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Phone className="size-4 text-muted" />
+                  Contact
+                </div>
+                <CustomerPreviewField
+                  label="Mobile"
+                  value={customer.mobileNumber ?? 'No mobile'}
+                />
+                <CustomerPreviewField
+                  label="Email"
+                  value={customer.email ?? 'No email'}
+                />
+                <CustomerPreviewField
+                  label="City"
+                  value={customer.city || customer.zone?.city || 'No city'}
+                />
+                <CustomerPreviewField
+                  label="Zone"
+                  value={customer.zone?.zoneName ?? 'No zone'}
+                />
+              </div>
+
+              <div className="rounded-[0.75rem] border border-border p-3">
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <ReceiptText className="size-4 text-muted" />
+                  Activity
+                </div>
+                <CustomerPreviewField
+                  label="Orders"
+                  value={`${customer.orderSummary.totalOrders} total / ${customer.orderSummary.activeOrders} active`}
+                />
+                <CustomerPreviewField
+                  label="Last order"
+                  value={formatDateSafe(customer.orderSummary.lastOrderAt)}
+                />
+                <CustomerPreviewField
+                  label="Lifetime spend"
+                  value={formatPaise(customer.orderSummary.lifetimeSpendPaise)}
+                />
+                <CustomerPreviewField
+                  label="Last login"
+                  value={formatDateSafe(customer.lastLoginAt)}
+                />
+                <CustomerPreviewField
+                  label="Notes"
+                  value={`${customer.noteSummary.totalNotes} total`}
+                />
+                {featureFlags.customerWallet ? (
+                  <CustomerPreviewField
+                    label="Wallet provider"
+                    value={customer.walletSummary.providerStatus}
+                  />
+                ) : null}
+              </div>
             </div>
-          </div>
+          ) : null}
+
+          {activeTab === 'signals' ? (
+            <div className="rounded-[0.75rem] border border-border p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Clock3 className="size-4 text-muted" />
+                  Signals
+                </div>
+                <span className="text-xs font-semibold text-muted">
+                  Health {health}
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-surface-muted">
+                <div
+                  className={cn('h-2 rounded-full', healthColor(health))}
+                  style={{ width: `${health}%` }}
+                />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {warnings.length ? (
+                  warnings.map((warning) => (
+                    <Badge key={warning} tone="warning">
+                      {signalLabel(warning)}
+                    </Badge>
+                  ))
+                ) : (
+                  <Badge tone="success">No warnings</Badge>
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
 
-        <div className="shrink-0 border-t border-border p-3">
-          <div className="grid gap-2">
-            <Button
-              size="sm"
-              type="button"
-              variant="primary"
-              onClick={() => onOpenDetails(customer)}
-            >
-              <Eye className="mr-2 size-4" />
-              Open full detail
-            </Button>
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-              {canAddNote ? (
-                <Button
-                  disabled={isSubmitting}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => onOpenAction(customer, 'ADD_NOTE')}
-                >
-                  <MessageSquarePlus className="mr-2 size-4" />
-                  Add note
-                </Button>
-              ) : null}
-              {canCredit ? (
-                <Button
-                  disabled={isSubmitting}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => onOpenAction(customer, 'WALLET_CREDIT')}
-                >
-                  <Wallet className="mr-2 size-4" />
-                  Wallet credit
-                </Button>
-              ) : null}
-              {canBlock ? (
-                <Button
-                  disabled={isSubmitting}
-                  size="sm"
-                  type="button"
-                  variant="danger"
-                  onClick={() => onOpenAction(customer, 'BLOCK')}
-                >
-                  <Ban className="mr-2 size-4" />
-                  Block
-                </Button>
-              ) : null}
-              {canUnblock ? (
-                <Button
-                  disabled={isSubmitting}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => onOpenAction(customer, 'UNBLOCK')}
-                >
-                  <UserCheck className="mr-2 size-4" />
-                  Unblock
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </div>
+        <QuickPreviewActions
+          detailAction={detailAction}
+          primaryAction={primaryAction}
+          secondaryActions={secondaryActions}
+        />
       </aside>
     </>
   )
@@ -882,9 +940,9 @@ function CustomerRow({
 
   return (
     <article
-      aria-selected={isPreviewed}
+      aria-selected={isPreviewed || isSelected}
       className={cn(
-        'grid min-w-0 cursor-pointer gap-2 border-b border-border bg-surface px-3 py-2 transition last:border-b-0 hover:bg-surface-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--customer-grid-template)] xl:items-center',
+        'workbench-grid-row grid min-w-0 cursor-pointer gap-2 border-b border-border bg-surface px-3 py-2 transition last:border-b-0 hover:bg-surface-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[var(--customer-grid-template)] xl:items-center',
         isPreviewed && 'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
         isSelected && 'bg-primary/5 hover:bg-primary/10',
       )}
@@ -1021,7 +1079,7 @@ function CustomerRow({
         </div>
       ) : null}
 
-      <div className="flex flex-nowrap items-center gap-1.5 xl:sticky xl:right-0 xl:z-20 xl:justify-end xl:bg-inherit xl:pl-2 xl:shadow-[var(--sg-shadow-sticky-action)]">
+      <div className="workbench-sticky-action-cell flex flex-nowrap items-center gap-1.5 pl-2 xl:justify-end">
         {recommendedAction ? (
           <Button
             className="h-8 min-h-8 whitespace-nowrap px-2.5"
@@ -2062,7 +2120,7 @@ export function CustomersPage() {
                               </button>
                             </div>
                           ))}
-                        <div className="relative sticky right-0 z-40 flex min-w-0 items-center justify-end bg-surface-muted pr-3 text-right shadow-[var(--sg-shadow-sticky-action)]">
+                        <div className="workbench-sticky-action-head relative flex min-w-0 pr-3">
                           <span className="truncate">Actions</span>
                           <button
                             aria-label="Resize actions column"

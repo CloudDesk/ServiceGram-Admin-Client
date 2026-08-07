@@ -1,13 +1,17 @@
-import type { InputHTMLAttributes } from "react";
+import { forwardRef, type InputHTMLAttributes } from "react";
 import { cn } from "../../../utils/cn";
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   hasError?: boolean;
 }
 
-export function Input({ className, hasError = false, ...props }: InputProps) {
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
+  { className, hasError = false, ...props },
+  ref,
+) {
   return (
     <input
+      ref={ref}
       className={cn(
         "form-input",
         hasError &&
@@ -17,4 +21,4 @@ export function Input({ className, hasError = false, ...props }: InputProps) {
       {...props}
     />
   );
-}
+});

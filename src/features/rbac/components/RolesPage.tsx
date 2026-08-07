@@ -343,7 +343,7 @@ function RoleRow({
     <div
       aria-selected={isSelected}
       className={cn(
-        'grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--role-grid-template)] xl:items-center',
+        'workbench-grid-row grid min-w-0 cursor-pointer gap-3 border-b border-border bg-surface px-3 py-2.5 text-left transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--role-grid-template)] xl:items-center',
         isSelected && 'bg-primary/5 hover:bg-primary/10',
       )}
       role="button"
@@ -367,7 +367,7 @@ function RoleRow({
         </div>
       ))}
       <div
-        className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end"
+        className="workbench-sticky-action-cell flex min-w-0 flex-wrap items-center gap-2 pl-2 xl:justify-end"
         onClick={(event) => event.stopPropagation()}
       >
         <Button
@@ -988,7 +988,9 @@ export function RolesPage() {
                           </button>
                         </div>
                       ))}
-                    <div className="min-w-0 text-right">Actions</div>
+                    <div className="workbench-sticky-action-head flex min-w-0 pr-3">
+                      <span className="truncate">Actions</span>
+                    </div>
                   </div>
                   <ListSelectionToolbar
                     allVisibleSelected={roleSelection.allVisibleSelected}
