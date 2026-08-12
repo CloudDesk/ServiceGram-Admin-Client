@@ -1,5 +1,5 @@
-import loginVisual from '../assets/new.png'
-import type { PropsWithChildren } from 'react'
+import loginVisual from "../assets/admin_login_hero_image.png";
+import type { PropsWithChildren } from "react";
 
 export function AuthLayout({ children }: PropsWithChildren) {
   return (
@@ -11,17 +11,17 @@ export function AuthLayout({ children }: PropsWithChildren) {
       <div className="auth-compact-shell relative z-10 grid w-full max-w-[102.5rem] items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(30rem,32rem)] lg:gap-12 xl:gap-14">
         <section className="auth-login-hero flex min-w-0 flex-col justify-center">
           <h1 className="auth-hero-title max-w-[61.25rem] font-semibold leading-[0.92] tracking-normal text-[color:var(--sg-color-auth-title)]">
-            One command center to run your{' '}
+            One command center to run your{" "}
             <span className="text-[color:var(--sg-color-auth-title-accent)]">
               ROOT operations.
             </span>
           </h1>
 
           <div className="auth-compact-grid mt-7 min-h-0 w-full">
-            <div className="auth-hero-visual-card flex items-center justify-center overflow-hidden rounded-[2rem] p-3 backdrop-blur-[28px]">
+            <div className="auth-hero-visual-card flex items-center justify-center overflow-hidden rounded-[2rem]">
               <img
                 alt="ServiceGram admin preview"
-                className="auth-hero-visual h-full w-full rounded-[1.5rem] object-contain"
+                className="auth-hero-visual h-full w-full object-fill"
                 src={loginVisual}
               />
             </div>
@@ -35,5 +35,5 @@ export function AuthLayout({ children }: PropsWithChildren) {
         </section>
       </div>
     </div>
-  )
+  );
 }

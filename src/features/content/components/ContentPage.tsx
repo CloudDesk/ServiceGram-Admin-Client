@@ -21,6 +21,7 @@ import type {
   FormEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
+  ReactNode,
 } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -61,6 +62,7 @@ import type {
   ContentPagesQueryParams,
   ContentPageStatus,
   ContentPageType,
+  CustomerAppHomePayload,
 } from '../types/content.types'
 
 const DEFAULT_PAGE_SIZE = 10
@@ -133,6 +135,62 @@ function statusTone(status: ContentPageStatus): StatusTone {
   if (status === 'PUBLISHED') return 'success'
   if (status === 'ARCHIVED') return 'neutral'
   return 'warning'
+}
+
+function customerAppHomeSurfaceStatus({
+  home,
+  isError,
+  isLoading,
+}: {
+  home: CustomerAppHomePayload | null
+  isError: boolean
+  isLoading: boolean
+}): { helper: string; label: string; tone: StatusTone } {
+  if (isError && !home) {
+    return {
+      helper: 'Open the detail view or retry to load the latest home setup.',
+      label: 'Unavailable',
+      tone: 'danger',
+    }
+  }
+
+  if (isLoading && !home) {
+    return {
+      helper: 'Loading the customer app home setup.',
+      label: 'Loading',
+      tone: 'neutral',
+    }
+  }
+
+  if (!home) {
+    return {
+      helper: 'Open the detail view to configure the app home surface.',
+      label: 'Not loaded',
+      tone: 'neutral',
+    }
+  }
+
+  if (!home.section.isEnabled) {
+    return {
+      helper: 'Carousel section is currently hidden from customers.',
+      label: 'Hidden from app',
+      tone: 'danger',
+    }
+  }
+
+  if (home.carousel.summary.published > 0) {
+    return {
+      helper: 'Published slides are visible on the customer app home screen.',
+      label: 'Live in app',
+      tone: 'success',
+    }
+  }
+
+  return {
+    helper: 'Enabled, but no published slides are live yet.',
+    label: 'Needs live slide',
+    tone: 'warning',
+  }
 }
 
 function buildLookupOptions<TValue extends string>(values: readonly TValue[]): LookupOption[] {
@@ -436,6 +494,121 @@ function ContentActionModal({
         </form>
       </div>
     </div>
+  )
+}
+
+function CustomerAppHomeMetric({
+  label,
+  tone = 'neutral',
+  value,
+}: {
+  label: string
+  tone?: StatusTone
+  value: ReactNode
+}) {
+  return (
+    <div className="min-w-0 bg-surface px-3 py-2.5">
+      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+        {label}
+      </p>
+      <div
+        className={cn(
+          'mt-1 min-w-0 truncate text-sm font-semibold',
+          tone === 'success' && 'text-success',
+          tone === 'warning' && 'text-warning',
+          tone === 'danger' && 'text-danger',
+          tone === 'info' && 'text-info',
+          tone === 'neutral' && 'text-foreground',
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function CustomerAppHomeSurface({
+  home,
+  isError,
+  isLoading,
+  isRefreshing,
+  onOpen,
+  onRetry,
+}: {
+  home: CustomerAppHomePayload | null
+  isError: boolean
+  isLoading: boolean
+  isRefreshing: boolean
+  onOpen: () => void
+  onRetry: () => void
+}) {
+  const status = customerAppHomeSurfaceStatus({ home, isError, isLoading })
+  const summary = home?.carousel.summary
+  const updatedAt = home?.section.lifecycle.updatedAt
+
+  return (
+    <section className="shrink-0 overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface">
+      <div className="flex flex-col gap-3 px-3 py-3 lg:flex-row lg:items-center lg:justify-between sm:px-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-[0.75rem] bg-primary/10 text-primary">
+            <Smartphone className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                Content surface
+              </p>
+              <Badge tone={status.tone}>{status.label}</Badge>
+            </div>
+            <h2 className="mt-1 text-base font-semibold text-foreground">
+              Customer App Home
+            </h2>
+            <p className="mt-1 max-w-3xl text-sm leading-5 text-muted">
+              Manage the hero carousel that customers see first in the app.
+              {status.helper ? ` ${status.helper}` : ''}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
+          <Button
+            className="w-full border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted sm:w-auto"
+            isLoading={isRefreshing}
+            size="sm"
+            type="button"
+            variant="secondary"
+            onClick={onRetry}
+          >
+            <RefreshCcw className="mr-2 size-4" />
+            Refresh
+          </Button>
+          <Button className="w-full sm:w-auto" size="sm" type="button" onClick={onOpen}>
+            <ArrowUpRight className="mr-2 size-4" />
+            Open detail
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-px border-t border-border bg-border sm:grid-cols-2 xl:grid-cols-5">
+        <CustomerAppHomeMetric
+          label="Surface"
+          tone={status.tone}
+          value={status.label}
+        />
+        <CustomerAppHomeMetric
+          label="Live slides"
+          tone={(summary?.published ?? 0) > 0 ? 'success' : 'warning'}
+          value={summary?.published ?? '...'}
+        />
+        <CustomerAppHomeMetric label="Drafts" value={summary?.draft ?? '...'} />
+        <CustomerAppHomeMetric
+          label="Scheduled"
+          tone={(summary?.scheduled ?? 0) > 0 ? 'info' : 'neutral'}
+          value={summary?.scheduled ?? '...'}
+        />
+        <CustomerAppHomeMetric label="Updated" value={formatDateSafe(updatedAt)} />
+      </div>
+    </section>
   )
 }
 
@@ -999,6 +1172,11 @@ export function ContentPage() {
     queryKey: ['content-pages', query],
     queryFn: () => contentService.getPages(query),
   })
+  const appHomeQuery = useQuery({
+    queryKey: ['content', 'customer-app-home'],
+    queryFn: () => contentService.getCustomerAppHome(),
+    staleTime: 30_000,
+  })
   const queueCountBaseQuery = useMemo<ContentPagesQueryParams>(
     () => ({
       page: 1,
@@ -1040,10 +1218,12 @@ export function ContentPage() {
   })
 
   const pages = contentQuery.data?.data ?? EMPTY_CONTENT_PAGES
+  const appHome = appHomeQuery.data?.data ?? null
   const pagination = contentQuery.data?.pagination
   const contentSelection = useListSelection(pages, (pageRecord) => pageRecord.pageId)
   const isLoading = contentQuery.isLoading
-  const isRefreshing = contentQuery.isFetching
+  const isRefreshing =
+    contentQuery.isFetching || queueCountsQuery.isFetching || appHomeQuery.isFetching
   const queueItems = buildQueueItems(queueCountsQuery.data)
   const previewPage = pages.find((pageRecord) => pageRecord.pageId === previewPageId) ?? null
   const hasActiveFilters = Boolean(
@@ -1244,6 +1424,10 @@ export function ContentPage() {
     navigate(`${routePaths.content}/${pageRecord.pageId}`)
   }
 
+  const openCustomerAppHomeDetail = () => {
+    navigate(routePaths.customerAppHome)
+  }
+
   const openContentAudit = (pageRecord: ContentPageRecord) => {
     navigate(buildContentAuditPath(pageRecord))
   }
@@ -1335,6 +1519,15 @@ export function ContentPage() {
           {actionMessage}
         </div>
       ) : null}
+
+      <CustomerAppHomeSurface
+        home={appHome}
+        isError={appHomeQuery.isError}
+        isLoading={appHomeQuery.isLoading}
+        isRefreshing={appHomeQuery.isFetching}
+        onOpen={openCustomerAppHomeDetail}
+        onRetry={() => void appHomeQuery.refetch()}
+      />
 
       <main
         className="flex min-w-0 flex-col overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface xl:min-h-0 xl:flex-1"
@@ -1438,22 +1631,15 @@ export function ContentPage() {
                 size="sm"
                 type="button"
                 variant="secondary"
-                onClick={() => void contentQuery.refetch()}
+                onClick={() => {
+                  void appHomeQuery.refetch()
+                  void contentQuery.refetch()
+                  void queueCountsQuery.refetch()
+                }}
               >
                 <RefreshCcw className="mr-2 size-4" />
                 Refresh
               </Button>
-              <Link to={routePaths.customerAppHome}>
-                <Button
-                  className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                >
-                  <Smartphone className="mr-2 size-4" />
-                  App home
-                </Button>
-              </Link>
               {canCreateContent ? (
                 <Link to={`${routePaths.content}/new`}>
                   <Button size="sm" type="button">

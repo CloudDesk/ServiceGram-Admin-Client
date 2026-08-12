@@ -1186,9 +1186,9 @@
   }
 
   .auth-hero-visual-card {
-    border: 1px solid var(--sg-color-auth-panel-border);
-    background: var(--sg-color-auth-panel-bg);
-    box-shadow: var(--sg-shadow-auth-visual);
+    border: 0;
+    background: transparent;
+    box-shadow: none;
   }
 
   .auth-floating-panel {
@@ -1217,7 +1217,8 @@
   }
 
   .auth-hero-visual {
-    transform: scale(1.08);
+    mix-blend-mode: multiply;
+    transform: scale(1);
     transform-origin: center;
   }
 }
