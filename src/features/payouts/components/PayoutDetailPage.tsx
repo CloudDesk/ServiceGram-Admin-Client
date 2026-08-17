@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
-  CreditCard,
   HandCoins,
   ListChecks,
   PauseCircle,
@@ -27,9 +26,14 @@ import {
 import { DynamicTable, type DynamicTableColumn } from '../../../components/ui/Table'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
+import { OverflowText } from '../../../components/ui/OverflowText'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import {
+  RecordField,
+  RecordMetricStrip,
+} from '../../../components/ui/RecordPage'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -128,16 +132,6 @@ function canRunPayoutAction({
   return isPayoutActionKind(action) && canApprovePayouts
 }
 
-function toneTextClass(tone: PayoutTone, neutralForeground = false) {
-  return cn(
-    tone === 'success' && 'text-success',
-    tone === 'warning' && 'text-warning',
-    tone === 'danger' && 'text-danger',
-    tone === 'info' && 'text-primary',
-    tone === 'neutral' && (neutralForeground ? 'text-foreground' : 'text-muted'),
-  )
-}
-
 function DetailField({
   label,
   value,
@@ -145,45 +139,7 @@ function DetailField({
   label: string
   value: string | number | null | undefined
 }) {
-  return (
-    <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface-muted/35 px-3 py-3">
-      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-        {label}
-      </p>
-      <p className="mt-2 break-words text-sm font-medium text-foreground">
-        {value ?? 'Not available'}
-      </p>
-    </div>
-  )
-}
-
-function SummaryCard({
-  icon,
-  label,
-  meta,
-  tone,
-  value,
-}: {
-  icon: ReactNode
-  label: string
-  meta: string
-  tone: PayoutTone
-  value: string
-}) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <div className="flex items-center justify-between gap-3">
-        <p className={cn('text-xs font-semibold uppercase tracking-normal', toneTextClass(tone))}>
-          {label}
-        </p>
-        <span className={toneTextClass(tone)}>{icon}</span>
-      </div>
-      <p className={cn('mt-3 text-2xl font-semibold tracking-normal', toneTextClass(tone, true))}>
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
-    </article>
-  )
+  return <RecordField label={label} value={value} />
 }
 
 function SectionShell({
@@ -308,14 +264,18 @@ function HeaderStatus({ payout }: { payout: AdminPayoutDetail }) {
 function HeaderActions({
   canApprovePayouts,
   canReadVendors,
+  isRefreshing,
   isSubmitting,
+  onRefresh,
   onSelect,
   onViewVendor,
   payout,
 }: {
   canApprovePayouts: boolean
   canReadVendors: boolean
+  isRefreshing: boolean
   isSubmitting: boolean
+  onRefresh: () => void
   onSelect: (kind: PayoutActionKind) => void
   onViewVendor: () => void
   payout: AdminPayoutDetail
@@ -326,6 +286,22 @@ function HeaderActions({
 
   return (
     <div className="flex flex-wrap justify-end gap-2">
+      <Button
+        aria-label={isRefreshing ? 'Refreshing payout' : 'Refresh payout'}
+        size="sm"
+        title={isRefreshing ? 'Refreshing payout' : 'Refresh payout'}
+        type="button"
+        variant="secondary"
+        onClick={onRefresh}
+      >
+        <RefreshCcw
+          className={cn(
+            'mr-2 size-4',
+            isRefreshing && 'animate-spin motion-reduce:animate-none',
+          )}
+        />
+        Refresh
+      </Button>
       {canReadVendors ? (
         <Button size="sm" type="button" variant="secondary" onClick={onViewVendor}>
           <ArrowUpRight className="mr-2 size-4" />
@@ -421,10 +397,16 @@ function RelatedRecordRow({
           <p className="text-xs font-semibold uppercase tracking-normal text-muted">
             {label}
           </p>
-          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+          <OverflowText
+            as="p"
+            className="mt-1 text-sm font-semibold text-foreground"
+            title={value}
+          >
             {value}
-          </p>
-          <p className="mt-1 truncate text-xs text-muted">{meta}</p>
+          </OverflowText>
+          <OverflowText as="p" className="mt-1 text-xs text-muted" title={meta}>
+            {meta}
+          </OverflowText>
         </div>
       </div>
       {canOpen && onOpen ? (
@@ -766,8 +748,10 @@ export function PayoutDetailPage() {
           <HeaderActions
             canApprovePayouts={canApprovePayouts}
             canReadVendors={canReadVendors}
+            isRefreshing={payoutQuery.isFetching}
             isSubmitting={mutation.isPending}
             payout={payout}
+            onRefresh={() => void payoutQuery.refetch()}
             onSelect={(kind) => setSelectedAction({ kind, payout })}
             onViewVendor={() => navigate(`${routePaths.vendors}/${payout.vendor.vendorId}`)}
           />
@@ -785,36 +769,34 @@ export function PayoutDetailPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          icon={<CircleDollarSign className="size-4" />}
-          label="Payout amount"
-          meta={payout.currency}
-          tone={payout.status === 'PAID' ? 'success' : 'info'}
-          value={formatPaise(payout.totalAmountPaise)}
-        />
-        <SummaryCard
-          icon={<HandCoins className="size-4" />}
-          label="Net payable"
-          meta={`${payout.itemSummary.itemCount} payout items`}
-          tone="info"
-          value={formatPaise(payout.itemSummary.netPayablePaise)}
-        />
-        <SummaryCard
-          icon={<CreditCard className="size-4" />}
-          label="Gross value"
-          meta={`Commission ${formatPaise(payout.itemSummary.commissionAmountPaise)}`}
-          tone="neutral"
-          value={formatPaise(payout.itemSummary.grossAmountPaise)}
-        />
-        <SummaryCard
-          icon={<TriangleAlert className="size-4" />}
-          label="Warnings"
-          meta={humanizeCode(payout.nextRecommendedAction)}
-          tone={payout.warnings.length > 0 ? 'danger' : 'neutral'}
-          value={String(payout.warnings.length)}
-        />
-      </section>
+      <RecordMetricStrip
+        ariaLabel="Payout summary"
+        metrics={[
+          {
+            label: 'Payout',
+            value: formatPaise(payout.totalAmountPaise),
+            tone: payout.status === 'PAID' ? 'success' : undefined,
+          },
+          {
+            label: 'Net payable',
+            value: formatPaise(payout.itemSummary.netPayablePaise),
+          },
+          {
+            label: 'Gross',
+            value: formatPaise(payout.itemSummary.grossAmountPaise),
+          },
+          {
+            label: 'Commission',
+            value: formatPaise(payout.itemSummary.commissionAmountPaise),
+          },
+          { label: 'Items', value: String(payout.itemSummary.itemCount) },
+          {
+            label: 'Signals',
+            value: String(payout.warnings.length),
+            tone: payout.warnings.length > 0 ? 'danger' : 'success',
+          },
+        ]}
+      />
 
       <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <SectionShell

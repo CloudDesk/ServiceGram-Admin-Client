@@ -10,6 +10,41 @@ import type {
   OrderProofMimeType,
 } from '../types/order.types'
 
+/**
+ * Mirrors the backend `refund_reason_code` enum. Approval routing reads this;
+ * the free-text reason is not machine-readable.
+ */
+export type RefundReasonCode =
+  | 'PRICE_ADJUSTMENT'
+  | 'CUSTOMER_CANCELLATION'
+  | 'VENDOR_CANCELLATION'
+  | 'SERVICE_ISSUE'
+  | 'DUPLICATE_PAYMENT'
+  | 'DISPUTE'
+
+const refundReasonCodes: RefundReasonCode[] = [
+  'PRICE_ADJUSTMENT',
+  'CUSTOMER_CANCELLATION',
+  'VENDOR_CANCELLATION',
+  'SERVICE_ISSUE',
+  'DUPLICATE_PAYMENT',
+  'DISPUTE',
+]
+
+/**
+ * Three states, not two. "Not assessed" is the default and is sent as
+ * undefined — approval rules treat it as unknown and route to manual review
+ * rather than auto-approving on an assessment nobody made.
+ */
+const disputeStates = ['UNKNOWN', 'NO', 'YES'] as const
+type DisputeState = (typeof disputeStates)[number]
+
+const disputeLabels: Record<DisputeState, string> = {
+  NO: 'No dispute',
+  UNKNOWN: 'Not assessed',
+  YES: 'Disputed',
+}
+
 export type OrderActionKind =
   | 'UPDATE_STATUS'
   | 'CANCEL'
@@ -36,6 +71,8 @@ export interface OrderActionFormValues {
   reason?: string
   paymentId?: string
   amountPaise?: number
+  reasonCode?: RefundReasonCode
+  hasDispute?: boolean
   expiresInMinutes?: number
   otpCode?: string
   note?: string
@@ -153,6 +190,8 @@ export function OrderActionModal({
   const [otpCode, setOtpCode] = useState('')
   const [packageCondition, setPackageCondition] = useState('')
   const [paymentId, setPaymentId] = useState('')
+  const [reasonCode, setReasonCode] = useState<'' | RefundReasonCode>('')
+  const [disputeState, setDisputeState] = useState<DisputeState>('UNKNOWN')
   const [proofMediaAssetId, setProofMediaAssetId] = useState('')
   const [purpose, setPurpose] = useState<OrderMediaPurpose>('DELIVERY_PROOF')
   const [reason, setReason] = useState('')
@@ -212,6 +251,8 @@ export function OrderActionModal({
       reason: reason.trim() || undefined,
       paymentId: paymentId.trim() || undefined,
       amountPaise: amountPaise ? Number(amountPaise) : undefined,
+      reasonCode: reasonCode || undefined,
+      hasDispute: disputeState === 'UNKNOWN' ? undefined : disputeState === 'YES',
       expiresInMinutes: expiresInMinutes ? Number(expiresInMinutes) : undefined,
       otpCode: otpCode.trim() || undefined,
       note: note.trim() || undefined,
@@ -348,6 +389,39 @@ export function OrderActionModal({
                 <span className="text-sm font-semibold text-foreground">Refund amount (paise)</span>
                 <input className="form-input" type="number" value={amountPaise} onChange={(event) => setAmountPaise(event.target.value)} />
               </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-foreground">Reason category</span>
+                <select
+                  className="form-input"
+                  value={reasonCode}
+                  onChange={(event) => setReasonCode(event.target.value as '' | RefundReasonCode)}
+                >
+                  <option value="">Not set</option>
+                  {refundReasonCodes.map((item) => (
+                    <option key={item} value={item}>
+                      {humanizeCode(item)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-foreground">Dispute raised?</span>
+                <select
+                  className="form-input"
+                  value={disputeState}
+                  onChange={(event) => setDisputeState(event.target.value as DisputeState)}
+                >
+                  {disputeStates.map((item) => (
+                    <option key={item} value={item}>
+                      {disputeLabels[item]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="text-xs leading-5 text-muted sm:col-span-2">
+                Both fields drive approval routing. Leaving the dispute check unassessed sends the
+                refund to manual review instead of auto-approving it.
+              </p>
             </div>
           ) : null}
 

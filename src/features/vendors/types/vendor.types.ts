@@ -12,6 +12,7 @@ export interface VendorListQueryParams {
   zoneId?: string
   onboardingStatus?: VendorOnboardingStatus
   vendorStatus?: VendorStatus
+  bankAccountStatus?: VendorBankAccountStatus
 }
 
 export type VendorOnboardingStatus =

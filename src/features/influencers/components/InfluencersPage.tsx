@@ -35,11 +35,14 @@ import {
 } from '../../../components/ui/ListSelection'
 import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
+import { OverflowText } from '../../../components/ui/OverflowText'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import {
   QuickPreviewActions,
   QuickPreviewTabs,
+  quickPreviewOverlayClassName,
+  quickPreviewPanelClassName,
   type QuickPreviewAction,
 } from '../../../components/ui/QuickPreview'
 import { Skeleton } from '../../../components/ui/Skeleton'
@@ -68,7 +71,7 @@ import type {
 } from '../types/influencer.types'
 
 type InfluencerTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
-type InfluencerPreviewTab = 'summary' | 'application' | 'activity'
+type InfluencerPreviewTab = 'overview' | 'application' | 'activity'
 type InfluencerQueueKey =
   | 'pending'
   | 'approved'
@@ -78,14 +81,14 @@ type InfluencerQueueKey =
 
 const DEFAULT_PAGE_SIZE = 10
 const INFLUENCER_DEFAULT_COLUMN_WIDTH = 220
-const INFLUENCER_GRID_COLUMN_GAP = 12
-const INFLUENCER_GRID_INLINE_PADDING = 24
+const INFLUENCER_GRID_COLUMN_GAP = 8
+const INFLUENCER_GRID_INLINE_PADDING = 20
 const INFLUENCER_ACTION_COLUMN_ID = 'actions'
 const INFLUENCER_ACTION_COLUMN_DEFAULT_WIDTH = 232
 const INFLUENCER_ACTION_COLUMN_MIN_WIDTH = 216
 const INFLUENCER_ACTION_COLUMN_MAX_WIDTH = 252
 const INFLUENCER_COLUMN_WIDTH_STORAGE_KEY =
-  'servicegram.influencer.columnWidths.v2'
+  'servicegram.influencer.columnWidths.v3'
 const INFLUENCER_FILTER_CONTROL_CLASS_NAME =
   'h-9 w-full rounded-[0.65rem] border border-border bg-surface px-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30'
 
@@ -454,11 +457,11 @@ function InfluencerRowsSkeleton() {
     <div className="space-y-0">
       {Array.from({ length: 8 }).map((_, index) => (
         <div
-          className="grid gap-3 border-b border-border px-3 py-4 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.9fr_0.9fr]"
+          className="grid gap-2 border-b border-border px-3 py-2 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.9fr_0.9fr]"
           key={index}
         >
           {Array.from({ length: 6 }).map((__, cellIndex) => (
-            <Skeleton className="h-9 w-full" key={cellIndex} />
+            <Skeleton className="h-8 w-full" key={cellIndex} />
           ))}
         </div>
       ))}
@@ -603,7 +606,7 @@ function InfluencerPreviewPanel({
   onOpenCustomer: (influencer: AdminInfluencer) => void
   onOpenDetails: (influencer: AdminInfluencer) => void
 }) {
-  const [activeTab, setActiveTab] = useState<InfluencerPreviewTab>('summary')
+  const [activeTab, setActiveTab] = useState<InfluencerPreviewTab>('overview')
   const primaryAction = getPrimaryInfluencerAction({
     canReviewInfluencers,
     influencer,
@@ -615,7 +618,7 @@ function InfluencerPreviewPanel({
       )
     : []
   const previewTabs: { key: InfluencerPreviewTab; label: string }[] = [
-    { key: 'summary', label: 'Summary' },
+    { key: 'overview', label: 'Overview' },
     { key: 'application', label: 'Application' },
     { key: 'activity', label: 'Activity' },
   ]
@@ -633,22 +636,22 @@ function InfluencerPreviewPanel({
       .filter(Boolean)
       .join(', ') ||
     'Not available'
-  const primaryPreviewAction: QuickPreviewAction | null = primaryAction
+  const primaryPreviewAction: QuickPreviewAction = {
+    icon: <ArrowUpRight className="size-4" />,
+    key: 'details',
+    label: 'Open detail',
+    onClick: () => onOpenDetails(influencer),
+  }
+  const detailAction: QuickPreviewAction | null = primaryAction
     ? {
         disabled: isSubmitting,
         icon: influencerPreviewActionIcon(primaryAction),
         key: primaryAction,
         label: influencerActionLabel(primaryAction),
         onClick: () => onOpenAction(primaryAction, influencer),
-        variant: isDangerInfluencerAction(primaryAction) ? 'danger' : 'primary',
+        variant: isDangerInfluencerAction(primaryAction) ? 'danger' : 'secondary',
       }
     : null
-  const detailAction: QuickPreviewAction = {
-    icon: <ArrowUpRight className="size-4" />,
-    key: 'details',
-    label: primaryPreviewAction ? 'Detail' : 'Open detail',
-    onClick: () => onOpenDetails(influencer),
-  }
   const secondaryPreviewActions: QuickPreviewAction[] = secondaryActions.map(
     (kind) => ({
       disabled: isSubmitting,
@@ -664,29 +667,42 @@ function InfluencerPreviewPanel({
     <>
       <button
         aria-label="Close influencer preview"
-        className="fixed inset-0 z-40 bg-black/20 xl:hidden"
+        className={quickPreviewOverlayClassName}
         type="button"
         onClick={onClose}
       />
-      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:inset-x-auto xl:bottom-6 xl:right-6 xl:top-[calc(var(--spacing-topbar)+0.75rem)] xl:z-40 xl:w-96">
+      <aside className={quickPreviewPanelClassName}>
         <div className="shrink-0 border-b border-border p-3">
           <div className="flex min-w-0 items-start justify-between gap-3">
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <h2 className="min-w-0 truncate text-base font-semibold text-foreground">
+                <OverflowText
+                  as="h3"
+                  className="text-lg font-bold text-foreground"
+                  title={influencer.displayName}
+                >
                   {influencer.displayName}
-                </h2>
+                </OverflowText>
                 <Badge tone={statusTone(influencer.status)}>
                   {humanizeCode(influencer.status)}
                 </Badge>
               </div>
-              <p className="mt-1 truncate text-xs text-muted">
+              <OverflowText
+                as="p"
+                className="mt-1 text-xs text-muted"
+                title={`${influencer.publicInfluencerId} / ${
+                  socialProfilesSummary(
+                    influencer.socialProfiles,
+                    influencer.socialHandle,
+                  ) || 'No social handle'
+                }`}
+              >
                 {influencer.publicInfluencerId} /{' '}
                 {socialProfilesSummary(
                   influencer.socialProfiles,
                   influencer.socialHandle,
                 ) || 'No social handle'}
-              </p>
+              </OverflowText>
             </div>
             <button
               aria-label="Close influencer preview panel"
@@ -723,7 +739,7 @@ function InfluencerPreviewPanel({
         />
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          {activeTab === 'summary' ? (
+          {activeTab === 'overview' ? (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3 rounded-[0.75rem] border border-border p-3">
                 <InfluencerSummaryField
@@ -747,7 +763,11 @@ function InfluencerPreviewPanel({
               <div className="rounded-[0.75rem] border border-border p-3">
                 <InfluencerSummaryField
                   label="Preferred categories"
-                  value={<p className="line-clamp-3">{categorySummary}</p>}
+                  value={
+                    <p className="line-clamp-3" title={categorySummary}>
+                      {categorySummary}
+                    </p>
+                  }
                 />
               </div>
               {canReadCustomers ? (
@@ -794,7 +814,10 @@ function InfluencerPreviewPanel({
                 <InfluencerSummaryField
                   label="Motivation"
                   value={
-                    <p className="line-clamp-4">
+                    <p
+                      className="line-clamp-4"
+                      title={influencer.application?.motivation ?? 'Not available'}
+                    >
                       {influencer.application?.motivation ?? 'Not available'}
                     </p>
                   }
@@ -804,7 +827,10 @@ function InfluencerPreviewPanel({
                 <InfluencerSummaryField
                   label="Review reason"
                   value={
-                    <p className="line-clamp-4">
+                    <p
+                      className="line-clamp-4"
+                      title={applicationReason ?? 'Not available'}
+                    >
                       {applicationReason ?? 'Not available'}
                     </p>
                   }
@@ -1044,9 +1070,34 @@ export function InfluencersPage() {
   )
   const isInitialLoading = influencersQuery.isLoading && !influencersQuery.data
   const isRefreshing = influencersQuery.isFetching && Boolean(influencersQuery.data)
+  const isInfluencersLoading = influencersQuery.isLoading
+  const refetchInfluencers = influencersQuery.refetch
   const refreshStatusLabel = isRefreshing
-    ? 'Refreshing'
+    ? 'Refreshing now'
     : formatRefreshTime(influencersQuery.dataUpdatedAt)
+  const refreshActionNode = useMemo(
+    () => (
+      <Button
+        aria-label={isRefreshing ? 'Refreshing influencers' : 'Refresh influencers'}
+        className="h-9 min-w-9 px-2.5 sm:min-w-[6rem] sm:px-3"
+        disabled={isInfluencersLoading}
+        size="sm"
+        title={refreshStatusLabel}
+        type="button"
+        variant="secondary"
+        onClick={() => void refetchInfluencers()}
+      >
+        <RefreshCcw
+          className={cn(
+            'size-4 sm:mr-2',
+            isRefreshing && 'animate-spin motion-reduce:animate-none',
+          )}
+        />
+        <span className="hidden sm:inline">Refresh</span>
+      </Button>
+    ),
+    [isInfluencersLoading, isRefreshing, refetchInfluencers, refreshStatusLabel],
+  )
   const commissionSetting = commissionSettingQuery.data?.data.find(
     (setting) => setting.settingKey === 'influencer.commission.phase1',
   )
@@ -1313,8 +1364,28 @@ export function InfluencersPage() {
     <>
       {showColumn('creator') ? (
         <InfluencerCell label="Creator">
-          <p className="truncate font-semibold">{influencer.displayName}</p>
-          <p className="mt-1 truncate text-xs text-muted">
+          <OverflowText
+            as="p"
+            className="font-semibold"
+            title={influencer.displayName}
+          >
+            {influencer.displayName}
+          </OverflowText>
+          <OverflowText
+            as="p"
+            className="mt-0.5 text-xs text-muted"
+            title={`${influencer.publicInfluencerId}${
+              socialProfilesSummary(
+                influencer.socialProfiles,
+                influencer.socialHandle,
+              )
+                ? ` / ${socialProfilesSummary(
+                    influencer.socialProfiles,
+                    influencer.socialHandle,
+                  )}`
+                : ''
+            }`}
+          >
             {influencer.publicInfluencerId}
             {socialProfilesSummary(
               influencer.socialProfiles,
@@ -1325,15 +1396,19 @@ export function InfluencersPage() {
                   influencer.socialHandle,
                 )}`
               : ''}
-          </p>
+          </OverflowText>
         </InfluencerCell>
       ) : null}
       {showColumn('customer') ? (
         <InfluencerCell label="Customer">
           <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate font-semibold">
+            <OverflowText
+              as="p"
+              className="font-semibold"
+              title={getInfluencerCustomerLabel(influencer)}
+            >
               {getInfluencerCustomerLabel(influencer)}
-            </p>
+            </OverflowText>
             {canReadCustomers ? (
               <button
                 aria-label={`Open customer ${getInfluencerCustomerLabel(influencer)}`}
@@ -1349,21 +1424,37 @@ export function InfluencersPage() {
               </button>
             ) : null}
           </div>
-          <p className="mt-1 truncate text-xs text-muted">
+          <OverflowText
+            as="p"
+            className="mt-0.5 text-xs text-muted"
+            title={
+              influencer.customer.mobileNumber ??
+              influencer.customer.email ??
+              influencer.customer.customerId
+            }
+          >
             {influencer.customer.mobileNumber ??
               influencer.customer.email ??
               influencer.customer.customerId}
-          </p>
+          </OverflowText>
         </InfluencerCell>
       ) : null}
       {showColumn('city') ? (
         <InfluencerCell label="City">
-          <p className="truncate font-semibold">
+          <OverflowText
+            as="p"
+            className="font-semibold"
+            title={influencer.customer.city ?? 'Not set'}
+          >
             {influencer.customer.city ?? 'Not set'}
-          </p>
-          <p className="mt-1 truncate text-xs text-muted">
+          </OverflowText>
+          <OverflowText
+            as="p"
+            className="mt-0.5 text-xs text-muted"
+            title={influencer.customer.zone?.zoneName ?? 'No zone'}
+          >
             {influencer.customer.zone?.zoneName ?? 'No zone'}
-          </p>
+          </OverflowText>
         </InfluencerCell>
       ) : null}
       {showColumn('status') ? (
@@ -1377,13 +1468,23 @@ export function InfluencersPage() {
               {influencer.warnings.length === 1 ? '' : 's'}
             </p>
           ) : (
-            <p className="mt-1 truncate text-xs text-muted">
+            <OverflowText
+              as="p"
+              className="mt-0.5 text-xs text-muted"
+              title={
+                canReviewInfluencers && influencer.nextRecommendedAction
+                  ? humanizeCode(influencer.nextRecommendedAction)
+                  : canReviewInfluencers
+                    ? 'No next action'
+                    : 'Read only'
+              }
+            >
               {canReviewInfluencers && influencer.nextRecommendedAction
                 ? humanizeCode(influencer.nextRecommendedAction)
                 : canReviewInfluencers
                   ? 'No next action'
                   : 'Read only'}
-            </p>
+            </OverflowText>
           )}
         </InfluencerCell>
       ) : null}
@@ -1419,10 +1520,20 @@ export function InfluencersPage() {
       ) : null}
       {showColumn('updatedAt') ? (
         <InfluencerCell label="Updated">
-          <p className="font-semibold">{formatDateSafe(influencer.updatedAt)}</p>
-          <p className="mt-1 text-xs text-muted">
+          <OverflowText
+            as="p"
+            className="font-semibold"
+            title={formatDateSafe(influencer.updatedAt)}
+          >
+            {formatDateSafe(influencer.updatedAt)}
+          </OverflowText>
+          <OverflowText
+            as="p"
+            className="mt-0.5 text-xs text-muted"
+            title={`Approved ${formatDateSafe(influencer.approvedAt)}`}
+          >
             Approved {formatDateSafe(influencer.approvedAt)}
-          </p>
+          </OverflowText>
         </InfluencerCell>
       ) : null}
     </>
@@ -1495,7 +1606,12 @@ export function InfluencersPage() {
 
   return (
     <PageContainer className="flex min-h-full flex-col space-y-3 !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
-      <PageContextHeader layout="workspace" placement="topbar" title="Influencers" />
+      <PageContextHeader
+        actionNode={refreshActionNode}
+        layout="workspace"
+        placement="topbar"
+        title="Influencers"
+      />
 
       {actionMessage ? (
         <div className="rounded-[0.875rem] border border-success/25 bg-success/10 p-3 text-sm text-success">
@@ -1506,21 +1622,7 @@ export function InfluencersPage() {
       <section className="flex min-w-0 flex-col xl:min-h-0 xl:flex-1">
         <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface xl:min-h-0 xl:flex-1">
           <div className="shrink-0 border-b border-border bg-surface px-3 py-3 sm:px-4">
-            <div className="grid gap-3 xl:grid-cols-[minmax(10rem,auto)_minmax(24rem,1fr)_auto] xl:items-center">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <h2 className="text-lg font-semibold text-foreground">
-                  Influencers
-                </h2>
-                <span
-                  className={cn(
-                    'rounded-full bg-surface-muted px-2 py-1 text-xs font-semibold',
-                    isRefreshing ? 'text-primary' : 'text-muted',
-                  )}
-                >
-                  {refreshStatusLabel}
-                </span>
-              </div>
-
+            <div className="grid gap-3 xl:grid-cols-[minmax(24rem,1fr)_auto] xl:items-center">
               <ListHeaderSearch
                 ariaLabel="Search influencers"
                 className="w-full min-w-0"
@@ -1603,20 +1705,6 @@ export function InfluencersPage() {
                   ) : null}
                 </div>
 
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void influencersQuery.refetch()}
-                >
-                  <RefreshCcw
-                    className={cn(
-                      'mr-2 size-4',
-                      isRefreshing && 'animate-spin motion-reduce:animate-none',
-                    )}
-                  />
-                  Refresh
-                </Button>
               </div>
             </div>
 
@@ -1765,7 +1853,7 @@ export function InfluencersPage() {
               className={cn(
                 'min-h-0 xl:flex-1',
                 previewInfluencer
-                  ? 'grid xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-3 xl:p-3'
+                  ? 'grid xl:grid-cols-[minmax(0,1fr)_26rem] xl:gap-3 xl:p-3'
                   : 'flex flex-col',
               )}
             >
@@ -1775,7 +1863,7 @@ export function InfluencersPage() {
                     className="min-w-0 xl:min-w-[var(--influencer-grid-min-width)]"
                     style={influencerGridStyle}
                   >
-                    <div className="sticky top-0 z-30 hidden gap-3 grid-cols-[var(--influencer-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted shadow-[0_1px_0_var(--adaptive-border)] xl:grid">
+                    <div className="sticky top-0 z-30 hidden gap-2 grid-cols-[var(--influencer-grid-template)] border-b border-border bg-surface-muted px-3 py-2 text-xs font-semibold uppercase tracking-normal text-muted shadow-[0_1px_0_var(--adaptive-border)] xl:grid">
                       <div className="flex min-w-0 items-center">
                         <ListSelectionCheckbox
                           checked={influencerSelection.allVisibleSelected}
@@ -1846,7 +1934,7 @@ export function InfluencersPage() {
                             aria-label={`Preview influencer ${influencer.displayName}`}
                             aria-selected={isPreviewed || isSelected}
                             className={cn(
-                              'workbench-grid-row grid w-full cursor-pointer gap-3 px-3 py-2.5 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--influencer-grid-template)]',
+                              'workbench-grid-row grid w-full cursor-pointer gap-2 px-3 py-2 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--influencer-grid-template)] xl:items-center',
                               isSelected && 'bg-primary/5 hover:bg-primary/10',
                               isPreviewed &&
                                 'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
@@ -1883,7 +1971,7 @@ export function InfluencersPage() {
                                 }
                               />
                             </div>
-                            <div className="grid gap-3 sm:grid-cols-2 xl:contents">
+                            <div className="grid gap-2 sm:grid-cols-2 xl:contents">
                               {renderInfluencerCells(influencer)}
                             </div>
                             {renderRowActions(influencer)}

@@ -1,6 +1,5 @@
 import {
   Activity,
-  AlertTriangle,
   ArrowUpRight,
   Ban,
   CalendarClock,
@@ -27,7 +26,7 @@ import {
   Wallet,
   XCircle,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { Badge } from "../../../components/ui/Badge";
@@ -47,6 +46,16 @@ import { PageContainer } from "../../../components/layout/PageContainer";
 import { featureFlags } from "../../../config/featureFlags";
 import { routePaths } from "../../../config/routes";
 import { usePermission } from "../../../hooks/usePermission";
+import {
+  RecordField,
+  RecordFieldList,
+  RecordHeaderActions,
+  RecordMetricStrip,
+  RecordTabs,
+  type RecordAction,
+  type RecordMetric,
+  type RecordTabItem,
+} from "../../../components/ui/RecordPage";
 import { buildQueryParams } from "../../../utils/buildQueryParams";
 import { cn } from "../../../utils/cn";
 import { formatDate } from "../../../utils/formatDate";
@@ -86,6 +95,11 @@ import {
   type CustomerAddressActionSelection,
 } from "./CustomerAddressActionModal";
 import { CustomerProfileEditModal } from "./CustomerProfileEditModal";
+import {
+  adminCustomerOverviewSections,
+  type AdminCustomerOverviewOmittedReason,
+  type AdminCustomerOverviewSectionName,
+} from "../types/customer.types";
 import type {
   AdminCustomerAddress,
   AdminCustomerDetail,
@@ -98,6 +112,36 @@ import type {
   CustomerAddressReasonPayload,
   CustomerProfileUpdatePayload,
 } from "../types/customer.types";
+
+/**
+ * A section the server withheld is not an empty section. Saying "no records"
+ * for data that was never returned misreports the customer.
+ */
+function omittedSectionCopy(
+  reason: AdminCustomerOverviewOmittedReason | undefined,
+  noun: string,
+) {
+  if (!reason) return null;
+
+  if (reason === "MISSING_PERMISSION") {
+    return {
+      title: `${noun} hidden`,
+      description: `You do not have permission to view ${noun.toLowerCase()} for this customer.`,
+    };
+  }
+
+  if (reason === "SERVICE_UNAVAILABLE") {
+    return {
+      title: `${noun} unavailable`,
+      description: `The ${noun.toLowerCase()} service did not respond. Retry in a moment.`,
+    };
+  }
+
+  return {
+    title: `${noun} not loaded`,
+    description: `This view did not request ${noun.toLowerCase()}. Refresh to try again.`,
+  };
+}
 
 const orderStatuses: AdminOrderStatus[] = [
   "ORDER_PLACED",
@@ -986,28 +1030,6 @@ function customerNeedsAttention(customer: AdminCustomerDetail) {
   );
 }
 
-function customerHealth(customer: AdminCustomerDetail) {
-  let score = 100;
-
-  if (customer.status === "BLOCKED") score -= 55;
-  if (customer.status === "INCOMPLETE") score -= 25;
-  if (!customer.zone) score -= 12;
-  if (customer.orderSummary.activeOrders > 0) score -= 8;
-  if (
-    featureFlags.customerWallet &&
-    customer.walletSummary.creditBalancePaise > 0
-  )
-    score -= 5;
-  score -= Math.min(visibleWarnings(customer.warnings).length * 10, 30);
-
-  return Math.max(18, Math.min(98, score));
-}
-
-function healthColor(score: number) {
-  if (score >= 80) return "bg-success";
-  if (score >= 55) return "bg-warning";
-  return "bg-danger";
-}
 
 function getInitials(name: string) {
   return name
@@ -1028,10 +1050,6 @@ function customerAvatarClass(customer: AdminCustomerDetail) {
   }
 
   return "bg-primary/10 text-primary ring-1 ring-primary/15";
-}
-
-function formatOrderCount(value: number) {
-  return `${value} ${value === 1 ? "order" : "orders"}`;
 }
 
 function DetailPanel({
@@ -1079,17 +1097,7 @@ function DetailField({
   label: string;
   value: string | number | null | undefined;
 }) {
-  return (
-    <div className="rounded-[0.65rem] border border-border bg-surface-muted/45 p-2.5">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-normal text-muted">
-        {icon ? <span className="text-muted">{icon}</span> : null}
-        <span>{label}</span>
-      </div>
-      <p className="mt-1 break-words text-sm font-medium text-foreground">
-        {value ?? "Not available"}
-      </p>
-    </div>
-  );
+  return <RecordField icon={icon} label={label} value={value} />;
 }
 
 function CustomerHeaderStatus({ customer }: { customer: AdminCustomerDetail }) {
@@ -1134,83 +1142,61 @@ function CustomerHeaderActions({
   });
   const hasAction = (action: string) => availableActions.includes(action);
 
-  return (
-    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
-      {canUpdateCustomer && hasAction("EDIT_PROFILE") ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="primary"
-          onClick={onEditProfile}
-        >
-          <Edit3 className="mr-2 size-4" />
-          Edit
-        </Button>
-      ) : null}
-      {canUpdateCustomer && hasAction("BLOCK") ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="danger"
-          onClick={() => onSelectAction("BLOCK")}
-        >
-          <Ban className="mr-2 size-4" />
-          Block
-        </Button>
-      ) : null}
-      {canUpdateCustomer && hasAction("UNBLOCK") ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="secondary"
-          onClick={() => onSelectAction("UNBLOCK")}
-        >
-          <ShieldCheck className="mr-2 size-4" />
-          Unblock
-        </Button>
-      ) : null}
-      {featureFlags.customerWallet &&
-      canCreditWallet &&
-      hasAction("WALLET_CREDIT") ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="secondary"
-          onClick={() => onSelectAction("WALLET_CREDIT")}
-        >
-          <Wallet className="mr-2 size-4" />
-          Credit
-        </Button>
-      ) : null}
-      {canUpdateCustomer && hasAction("ADD_NOTE") ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="secondary"
-          onClick={() => onSelectAction("ADD_NOTE")}
-        >
-          <MessageSquarePlus className="mr-2 size-4" />
-          Note
-        </Button>
-      ) : null}
-    </div>
-  );
+  const actions = [
+    canUpdateCustomer && hasAction("EDIT_PROFILE")
+      ? {
+          key: "EDIT_PROFILE",
+          label: "Edit",
+          icon: <Edit3 className="size-4" />,
+          intent: "primary" as const,
+          onSelect: onEditProfile,
+        }
+      : null,
+    canUpdateCustomer && hasAction("UNBLOCK")
+      ? {
+          key: "UNBLOCK",
+          label: "Unblock",
+          icon: <ShieldCheck className="size-4" />,
+          intent: "secondary" as const,
+          onSelect: () => onSelectAction("UNBLOCK"),
+        }
+      : null,
+    featureFlags.customerWallet && canCreditWallet && hasAction("WALLET_CREDIT")
+      ? {
+          key: "WALLET_CREDIT",
+          label: "Credit",
+          icon: <Wallet className="size-4" />,
+          intent: "secondary" as const,
+          onSelect: () => onSelectAction("WALLET_CREDIT"),
+        }
+      : null,
+    canUpdateCustomer && hasAction("ADD_NOTE")
+      ? {
+          key: "ADD_NOTE",
+          label: "Note",
+          icon: <MessageSquarePlus className="size-4" />,
+          intent: "secondary" as const,
+          onSelect: () => onSelectAction("ADD_NOTE"),
+        }
+      : null,
+    canUpdateCustomer && hasAction("BLOCK")
+      ? {
+          key: "BLOCK",
+          label: "Block",
+          icon: <Ban className="size-4" />,
+          intent: "destructive" as const,
+          onSelect: () => onSelectAction("BLOCK"),
+        }
+      : null,
+  ].filter(Boolean) as RecordAction[];
+
+  return <RecordHeaderActions actions={actions} disabled={isSubmitting} />;
 }
 
 function CustomerHeroCard({
-  canCreditWallet,
-  canUpdateCustomer,
   customer,
-  isSubmitting,
-  onEditProfile,
-  onSelectAction,
 }: {
-  canCreditWallet: boolean;
-  canUpdateCustomer: boolean;
   customer: AdminCustomerDetail;
-  isSubmitting: boolean;
-  onEditProfile: () => void;
-  onSelectAction: (kind: CustomerActionKind) => void;
 }) {
   return (
     <section className="rounded-[1rem] border border-border bg-surface p-3 shadow-surface sm:p-4">
@@ -1272,65 +1258,16 @@ function CustomerHeroCard({
             </div>
           </div>
         </div>
-        <CustomerHeaderActions
-          canCreditWallet={canCreditWallet}
-          canUpdateCustomer={canUpdateCustomer}
-          customer={customer}
-          isSubmitting={isSubmitting}
-          onEditProfile={onEditProfile}
-          onSelectAction={onSelectAction}
-        />
       </div>
     </section>
   );
 }
 
-function CustomerSummaryTile({
-  hint,
-  icon,
-  label,
-  tone = "neutral",
-  value,
-}: {
-  hint?: string;
-  icon: ReactNode;
-  label: string;
-  tone?: CustomerTone;
-  value: string;
-}) {
-  const toneClassName: Record<CustomerTone, string> = {
-    danger: "bg-danger/10 text-danger ring-danger/20",
-    info: "bg-primary/10 text-primary ring-primary/15",
-    neutral: "bg-surface-muted text-muted ring-border",
-    success: "bg-success/10 text-success ring-success/20",
-    warning: "bg-warning/10 text-warning ring-warning/20",
-  };
-
-  return (
-    <div className="flex min-h-[4.6rem] min-w-0 items-center gap-3 rounded-[0.75rem] border border-border bg-surface p-3 shadow-surface">
-      <span
-        className={cn(
-          "flex size-9 shrink-0 items-center justify-center rounded-full ring-1",
-          toneClassName[tone],
-        )}
-      >
-        {icon}
-      </span>
-      <div className="min-w-0">
-        <p className="truncate text-[0.7rem] font-semibold uppercase tracking-normal text-muted">
-          {label}
-        </p>
-        <p className="mt-1 truncate text-base font-semibold text-foreground">
-          {value}
-        </p>
-        {hint ? (
-          <p className="mt-0.5 truncate text-xs text-muted">{hint}</p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
+/**
+ * Six numbers on one line rather than six cards. These are reference values an
+ * admin glances at, not the point of the page, so they get a strip — the cards
+ * they replaced cost 186px to show what fits in 32.
+ */
 function CustomerSummaryStrip({
   customer,
 }: {
@@ -1338,66 +1275,38 @@ function CustomerSummaryStrip({
 }) {
   const warningsCount = visibleWarnings(customer.warnings).length;
 
-  return (
-    <section
-      aria-label="Customer summary"
-      className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6"
-    >
-      <CustomerSummaryTile
-        hint="All orders"
-        icon={<ReceiptText className="size-4" />}
-        label="Total orders"
-        value={String(customer.orderSummary.totalOrders)}
-      />
-      <CustomerSummaryTile
-        hint={formatOrderCount(customer.orderSummary.activeOrders)}
-        icon={<Package className="size-4" />}
-        label="Active orders"
-        tone={customer.orderSummary.activeOrders > 0 ? "warning" : "success"}
-        value={String(customer.orderSummary.activeOrders)}
-      />
-      <CustomerSummaryTile
-        icon={<CreditCard className="size-4" />}
-        label="Lifetime spend"
-        tone="info"
-        value={formatPaise(customer.orderSummary.lifetimeSpendPaise)}
-      />
-      <CustomerSummaryTile
-        hint={formatDateSafe(customer.noteSummary.lastNoteAt)}
-        icon={<MessageSquarePlus className="size-4" />}
-        label="Notes"
-        value={String(customer.noteSummary.totalNotes)}
-      />
-      <CustomerSummaryTile
-        icon={<Home className="size-4" />}
-        label={featureFlags.customerWallet ? "Wallet credit" : "Addresses"}
-        tone={
-          featureFlags.customerWallet &&
-          customer.walletSummary.creditBalancePaise > 0
-            ? "warning"
-            : "neutral"
-        }
-        value={
-          featureFlags.customerWallet
-            ? formatPaise(customer.walletSummary.creditBalancePaise)
-            : String(customer.addresses.length)
-        }
-      />
-      <CustomerSummaryTile
-        hint={customerNeedsAttention(customer) ? "Review needed" : "Clear"}
-        icon={
-          warningsCount > 0 ? (
-            <AlertTriangle className="size-4" />
-          ) : (
-            <CheckCircle2 className="size-4" />
-          )
-        }
-        label="Signals"
-        tone={warningsCount > 0 ? "warning" : "success"}
-        value={String(warningsCount)}
-      />
-    </section>
-  );
+  const metrics: RecordMetric[] = [
+    { label: "Orders", value: String(customer.orderSummary.totalOrders) },
+    {
+      label: "Active",
+      value: String(customer.orderSummary.activeOrders),
+      tone: customer.orderSummary.activeOrders > 0 ? "warning" : undefined,
+    },
+    {
+      label: "Spend",
+      value: formatPaise(customer.orderSummary.lifetimeSpendPaise),
+    },
+    ...(featureFlags.customerWallet
+      ? [
+          {
+            label: "Wallet",
+            value: formatPaise(customer.walletSummary.creditBalancePaise),
+            tone:
+              customer.walletSummary.creditBalancePaise > 0
+                ? ("warning" as const)
+                : undefined,
+          },
+        ]
+      : []),
+    { label: "Notes", value: String(customer.noteSummary.totalNotes) },
+    {
+      label: "Signals",
+      value: String(warningsCount),
+      tone: warningsCount > 0 ? "warning" : "success",
+    },
+  ];
+
+  return <RecordMetricStrip ariaLabel="Customer summary" metrics={metrics} />;
 }
 
 function CustomerContactPanel({
@@ -1407,7 +1316,7 @@ function CustomerContactPanel({
 }) {
   return (
     <DetailPanel icon={<Phone className="size-4" />} title="Contact">
-      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+      <RecordFieldList>
         <DetailField
           icon={<Phone className="size-3.5" />}
           label="Mobile"
@@ -1428,7 +1337,7 @@ function CustomerContactPanel({
           label="Zone"
           value={customer.zone?.zoneName}
         />
-      </div>
+      </RecordFieldList>
     </DetailPanel>
   );
 }
@@ -1440,7 +1349,7 @@ function CustomerAccountPanel({
 }) {
   return (
     <DetailPanel icon={<CalendarClock className="size-4" />} title="Account">
-      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+      <RecordFieldList>
         <DetailField label="Customer ID" value={customer.customerId} />
         <DetailField label="User ID" value={customer.userId} />
         <DetailField
@@ -1455,7 +1364,7 @@ function CustomerAccountPanel({
             value={humanizeCode(customer.walletSummary.providerStatus)}
           />
         ) : null}
-      </div>
+      </RecordFieldList>
     </DetailPanel>
   );
 }
@@ -1550,7 +1459,6 @@ function CustomerSignalsPanel({
   customer: AdminCustomerDetail;
 }) {
   const warnings = visibleWarnings(customer.warnings);
-  const health = customerHealth(customer);
   const nextRecommendedAction = permittedRecommendedAction(customer, {
     canCreditWallet,
     canUpdateCustomer,
@@ -1572,21 +1480,7 @@ function CustomerSignalsPanel({
       ) : (
         <Badge tone="success">Clear</Badge>
       )}
-      <div className="mt-3 rounded-[0.65rem] border border-border bg-surface-muted/45 p-2.5">
-        <div className="flex items-center justify-between gap-3 text-xs">
-          <span className="font-semibold uppercase tracking-normal text-muted">
-            Health
-          </span>
-          <span className="font-semibold text-foreground">{health}</span>
-        </div>
-        <div className="mt-2 h-2 rounded-full bg-surface">
-          <div
-            className={cn("h-2 rounded-full", healthColor(health))}
-            style={{ width: `${health}%` }}
-          />
-        </div>
-      </div>
-      <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
+      <RecordFieldList className="mt-2">
         <DetailField
           label="Next action"
           value={
@@ -1603,7 +1497,7 @@ function CustomerSignalsPanel({
             value={humanizeCode(customer.walletSummary.providerStatus)}
           />
         ) : null}
-      </div>
+      </RecordFieldList>
     </DetailPanel>
   );
 }
@@ -1638,86 +1532,64 @@ function TableToolbar({
   );
 }
 
+export type CustomerDetailTab =
+  | "overview"
+  | "orders"
+  | "vendors"
+  | "finance"
+  | "addresses"
+  | "notes";
+
+/**
+ * Which overview sections each tab needs. Requesting only these is what keeps
+ * a record from loading every section on every visit.
+ */
+const CUSTOMER_TAB_SECTIONS: Record<
+  CustomerDetailTab,
+  AdminCustomerOverviewSectionName[]
+> = {
+  overview: ["orders", "relatedVendors"],
+  orders: ["orders"],
+  vendors: ["relatedVendors"],
+  finance: ["payments", "refunds"],
+  addresses: [],
+  notes: [],
+};
+
 function CustomerDetailSectionNav({
+  activeTab,
   canReadOrders,
   canReadPayments,
-  customer,
-  orderCount,
-  relatedVendorCount,
-  paymentCount,
-  refundCount,
+  counts,
+  customerId,
 }: {
+  activeTab: CustomerDetailTab;
   canReadOrders: boolean;
   canReadPayments: boolean;
-  customer: AdminCustomerDetail;
-  orderCount: number;
-  relatedVendorCount: number;
-  paymentCount: number;
-  refundCount: number;
+  counts: Partial<Record<CustomerDetailTab, number>>;
+  customerId: string;
 }) {
   const items = [
-    { href: "#overview", label: "Overview" },
-    canReadOrders
-      ? { href: "#orders", label: "Orders", count: orderCount }
-      : null,
-    { href: "#related-vendors", label: "Vendors", count: relatedVendorCount },
-    canReadPayments
-      ? {
-          href: "#finance",
-          label: "Finance",
-          count: paymentCount + refundCount,
-        }
-      : null,
-    { href: "#addresses", label: "Addresses", count: customer.addresses.length },
-    { href: "#notes", label: "Notes", count: customer.notes.length },
-  ].filter(Boolean) as {
-    href: string;
-    label: string;
-  count?: number;
-  }[];
-  const [activeHref, setActiveHref] = useState("#overview");
+    { key: "overview", label: "Overview" },
+    canReadOrders ? { key: "orders", label: "Orders", count: counts.orders } : null,
+    { key: "vendors", label: "Vendors", count: counts.vendors },
+    canReadPayments ? { key: "finance", label: "Finance", count: counts.finance } : null,
+    { key: "addresses", label: "Addresses", count: counts.addresses },
+    { key: "notes", label: "Notes", count: counts.notes },
+  ].filter(Boolean) as RecordTabItem[];
 
   return (
-    <nav
-      aria-label="Customer detail sections"
-      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
-    >
-      <div className="flex min-w-max items-center gap-5">
-        {items.map((item) => (
-          <a
-            aria-current={activeHref === item.href ? "page" : undefined}
-            className={cn(
-              "inline-flex h-10 items-center gap-1.5 border-b-2 px-0.5 text-sm font-semibold transition",
-              activeHref === item.href
-                ? "border-primary text-primary"
-                : "border-transparent text-muted hover:text-foreground",
-            )}
-            href={item.href}
-            key={item.href}
-            onClick={() => setActiveHref(item.href)}
-          >
-            <span>{item.label}</span>
-            {typeof item.count === "number" ? (
-              <span
-                className={cn(
-                  "rounded-full px-1.5 text-xs",
-                  activeHref === item.href
-                    ? "bg-primary/10 text-primary"
-                    : "bg-surface-muted text-muted",
-                )}
-              >
-                {item.count}
-              </span>
-            ) : null}
-          </a>
-        ))}
-      </div>
-    </nav>
+    <RecordTabs
+      activeTab={activeTab}
+      ariaLabel="Customer detail sections"
+      basePath={`${routePaths.customers}/${customerId}`}
+      items={items}
+    />
   );
 }
 
 export function CustomerDetailPage() {
-  const { customerId } = useParams();
+  const { customerId, tab: tabParam } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const canCreditWallet = usePermission("customers:wallet_credit");
@@ -1743,14 +1615,54 @@ export function CustomerDetailPage() {
   const [selectedAction, setSelectedAction] =
     useState<CustomerActionSelection | null>(null);
 
+  const activeTab = useMemo<CustomerDetailTab>(() => {
+    const requested = tabParam as CustomerDetailTab | undefined;
+    return requested && requested in CUSTOMER_TAB_SECTIONS ? requested : "overview";
+  }, [tabParam]);
+
+  const tabSections = CUSTOMER_TAB_SECTIONS[activeTab];
+
   const customerOverviewQuery = useQuery({
     enabled: Boolean(customerId),
-    queryKey: ["customer-overview", customerId],
-    queryFn: () => customerService.getCustomerOverview(customerId as string),
+    queryKey: ["customer-overview", customerId, activeTab],
+    // Only the active tab's sections. Every section this page renders must be
+    // named, or it returns null and gets drawn as "no records".
+    queryFn: () =>
+      customerService.getCustomerOverview(customerId as string, {
+        include: tabSections.length ? tabSections : undefined,
+        childLimit: activeTab === "overview" ? 5 : 50,
+      }),
+    staleTime: 30_000,
+  });
+
+  /**
+   * Tab badges must be accurate even for sections this tab did not load, so
+   * they come from a minimal request that fetches one row per section purely
+   * to read the pagination totals.
+   */
+  const sectionCountsQuery = useQuery({
+    enabled: Boolean(customerId),
+    queryKey: ["customer-overview-counts", customerId],
+    queryFn: () =>
+      customerService.getCustomerOverview(customerId as string, {
+        include: adminCustomerOverviewSections,
+        childLimit: 1,
+      }),
     staleTime: 30_000,
   });
 
   const customerOverview = customerOverviewQuery.data?.data;
+  /** Sections the server declined to return, by name, so empty states can say why. */
+  const omittedSections = useMemo(
+    () =>
+      new Map(
+        (customerOverview?.omittedSections ?? []).map((entry) => [
+          entry.section,
+          entry.reason,
+        ]),
+      ),
+    [customerOverview],
+  );
   const customer = customerOverview?.customer;
   const customerOrders = customerOverview?.sections.orders;
   const customerRelatedVendors = customerOverview?.sections.relatedVendors;
@@ -2314,54 +2226,74 @@ export function CustomerDetailPage() {
   const paymentSummary = customerPayments?.summary;
   const refundSummary = customerRefunds?.summary;
 
+  const countsData = sectionCountsQuery.data?.data;
+  const sectionCounts: Partial<Record<CustomerDetailTab, number>> = {
+    orders: canReadOrders
+      ? countsData?.sections.orders?.pagination.totalItems
+      : undefined,
+    vendors: countsData?.sections.relatedVendors?.pagination.totalItems,
+    finance: canReadPayments
+      ? (countsData?.sections.payments?.pagination.totalItems ?? 0) +
+        (countsData?.sections.refunds?.pagination.totalItems ?? 0)
+      : undefined,
+    addresses: customer.addresses.length,
+    notes: customer.notes.length,
+  };
+
   return (
     <PageContainer className="!px-3 !py-3 space-y-3 sm:!px-4 lg:!px-6">
+      {/* Actions live in this bar because it is sticky: an admin can block or
+          credit a customer from any scroll position without returning to the top. */}
       <DetailPageHeader
+        actionNode={
+          <CustomerHeaderActions
+            canCreditWallet={canCreditWallet}
+            canUpdateCustomer={canUpdateCustomer}
+            customer={customer}
+            isSubmitting={isSubmitting}
+            onEditProfile={openProfileEditor}
+            onSelectAction={openAction}
+          />
+        }
         listHref={routePaths.customers}
         listLabel="Customers"
         recordName={customer.fullName}
+        titleMetaNode={<CustomerHeaderStatus customer={customer} />}
       />
 
-      <CustomerHeroCard
-        canCreditWallet={canCreditWallet}
-        canUpdateCustomer={canUpdateCustomer}
-        customer={customer}
-        isSubmitting={isSubmitting}
-        onEditProfile={openProfileEditor}
-        onSelectAction={openAction}
-      />
+      <CustomerHeroCard customer={customer} />
 
       <CustomerDetailSectionNav
+        activeTab={activeTab}
         canReadOrders={canReadOrders}
         canReadPayments={canReadPayments}
-        customer={customer}
-        orderCount={canReadOrders ? (orderSummary?.total ?? 0) : 0}
-        paymentCount={canReadPayments ? (paymentSummary?.total ?? 0) : 0}
-        refundCount={canReadPayments ? (refundSummary?.total ?? 0) : 0}
-        relatedVendorCount={relatedVendorSummary?.total ?? 0}
+        counts={sectionCounts}
+        customerId={customerId as string}
       />
 
       <section className="space-y-3" id="overview">
         <CustomerSummaryStrip customer={customer} />
 
         <div className="min-w-0 space-y-3">
-          <div className="grid items-start gap-3 xl:grid-cols-[minmax(17rem,0.85fr)_minmax(0,1.15fr)]">
-            <div className="space-y-3">
-              <CustomerContactPanel customer={customer} />
-              <CustomerAccountPanel customer={customer} />
-            </div>
+          {activeTab === "overview" ? (
+            <div className="grid items-start gap-3 xl:grid-cols-[minmax(17rem,0.85fr)_minmax(0,1.15fr)]">
+              <div className="space-y-3">
+                <CustomerContactPanel customer={customer} />
+                <CustomerAccountPanel customer={customer} />
+              </div>
 
-            <div className="space-y-3">
-              <CustomerSignalsPanel
-                canCreditWallet={canCreditWallet}
-                canUpdateCustomer={canUpdateCustomer}
-                customer={customer}
-              />
-              <CustomerRecentActivityPanel customer={customer} />
+              <div className="space-y-3">
+                <CustomerSignalsPanel
+                  canCreditWallet={canCreditWallet}
+                  canUpdateCustomer={canUpdateCustomer}
+                  customer={customer}
+                />
+                <CustomerRecentActivityPanel customer={customer} />
+              </div>
             </div>
-          </div>
+          ) : null}
 
-          {canReadOrders ? (
+          {canReadOrders && activeTab === "orders" ? (
             <div id="orders" className="scroll-mt-24 space-y-3">
               <DynamicTable
                 actionColumnLabel="Order Actions"
@@ -2369,8 +2301,14 @@ export function CustomerDetailPage() {
                 bodyMaxHeight={390}
                 columns={orderColumns}
                 data={orderRows}
-                emptyDescription="No orders yet."
-                emptyTitle="No orders"
+                emptyDescription={
+                  omittedSectionCopy(omittedSections.get("orders"), "Orders")
+                    ?.description ?? "No orders yet."
+                }
+                emptyTitle={
+                  omittedSectionCopy(omittedSections.get("orders"), "Orders")
+                    ?.title ?? "No orders"
+                }
                 error={
                   ordersQuery.isError
                     ? "We could not load this customer order history."
@@ -2544,6 +2482,7 @@ export function CustomerDetailPage() {
             </div>
           ) : null}
 
+          {activeTab === "vendors" ? (
           <div id="related-vendors" className="scroll-mt-24 space-y-3">
             <DynamicTable
               actionColumnLabel="Vendor Actions"
@@ -2551,8 +2490,19 @@ export function CustomerDetailPage() {
               bodyMaxHeight={360}
               columns={relatedVendorColumns}
               data={relatedVendorRows}
-              emptyDescription="This customer has not saved vendors or ordered from vendors yet."
-              emptyTitle="No related vendors"
+              emptyDescription={
+                omittedSectionCopy(
+                  omittedSections.get("relatedVendors"),
+                  "Related vendors",
+                )?.description ??
+                "This customer has not saved vendors or ordered from vendors yet."
+              }
+              emptyTitle={
+                omittedSectionCopy(
+                  omittedSections.get("relatedVendors"),
+                  "Related vendors",
+                )?.title ?? "No related vendors"
+              }
               error={
                 relatedVendorsQuery.isError
                   ? "We could not load this customer's related vendors."
@@ -2623,8 +2573,9 @@ export function CustomerDetailPage() {
               }
             />
           </div>
+          ) : null}
 
-          {canReadPayments ? (
+          {canReadPayments && activeTab === "finance" ? (
             <div id="finance" className="scroll-mt-24 space-y-3">
               <div className="grid gap-3 2xl:grid-cols-2">
                 <DynamicTable
@@ -2633,8 +2584,14 @@ export function CustomerDetailPage() {
                 bodyMaxHeight={340}
                 columns={paymentColumns}
                 data={paymentRows}
-                emptyDescription="No payment records."
-                emptyTitle="No payments"
+                emptyDescription={
+                  omittedSectionCopy(omittedSections.get("payments"), "Payments")
+                    ?.description ?? "No payment records."
+                }
+                emptyTitle={
+                  omittedSectionCopy(omittedSections.get("payments"), "Payments")
+                    ?.title ?? "No payments"
+                }
                 error={
                   paymentsQuery.isError
                     ? "We could not load this customer payment history."
@@ -2704,8 +2661,14 @@ export function CustomerDetailPage() {
                 bodyMaxHeight={340}
                 columns={refundColumns}
                 data={refundRows}
-                emptyDescription="No refund records."
-                emptyTitle="No refunds"
+                emptyDescription={
+                  omittedSectionCopy(omittedSections.get("refunds"), "Refunds")
+                    ?.description ?? "No refund records."
+                }
+                emptyTitle={
+                  omittedSectionCopy(omittedSections.get("refunds"), "Refunds")
+                    ?.title ?? "No refunds"
+                }
                 error={
                   refundsQuery.isError
                     ? "We could not load this customer refund history."
@@ -2785,6 +2748,7 @@ export function CustomerDetailPage() {
             </div>
           ) : null}
 
+          {activeTab === "addresses" ? (
           <div id="addresses" className="scroll-mt-24">
             <DynamicTable
               actionColumnMinWidth={260}
@@ -2845,14 +2809,10 @@ export function CustomerDetailPage() {
               }
             />
           </div>
+          ) : null}
 
-          <div
-            className={cn(
-              "grid gap-3",
-              featureFlags.customerWallet && "2xl:grid-cols-2",
-            )}
-          >
-            {featureFlags.customerWallet ? (
+          <div className="grid gap-3">
+            {featureFlags.customerWallet && activeTab === "finance" ? (
               <div id="wallet-credits" className="scroll-mt-24">
                 <DynamicTable
                   bodyMaxHeight={260}
@@ -2874,6 +2834,7 @@ export function CustomerDetailPage() {
               </div>
             ) : null}
 
+            {activeTab === "notes" ? (
             <div id="notes" className="scroll-mt-24">
               <DynamicTable
                 bodyMaxHeight={260}
@@ -2893,6 +2854,7 @@ export function CustomerDetailPage() {
                 }
               />
             </div>
+            ) : null}
           </div>
         </div>
       </section>

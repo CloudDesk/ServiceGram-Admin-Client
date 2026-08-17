@@ -6,18 +6,14 @@ import {
   Archive,
   ArrowUpRight,
   CalendarClock,
-  CheckCircle2,
   ClipboardList,
   Edit3,
   Eye,
-  EyeOff,
   FileJson,
   FilePlus2,
   FileText,
   Globe2,
-  Layers3,
   Send,
-  ShieldAlert,
   TriangleAlert,
   X,
 } from 'lucide-react'
@@ -31,9 +27,12 @@ import { Button } from '../../../components/ui/Button'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import {
+  RecordField,
+  RecordMetricStrip,
+} from '../../../components/ui/RecordPage'
 import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
-import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { contentService } from '../services/content.service'
 import type {
@@ -94,14 +93,6 @@ function statusTone(status: ContentPageRecord['status']): StatusTone {
   return 'warning'
 }
 
-function toneClass(tone: 'danger' | 'info' | 'neutral' | 'success' | 'warning') {
-  if (tone === 'success') return 'text-success'
-  if (tone === 'warning') return 'text-warning'
-  if (tone === 'danger') return 'text-danger'
-  if (tone === 'info') return 'text-primary'
-  return 'text-muted'
-}
-
 function metadataLabel(metadata: Record<string, unknown>) {
   const keys = Object.keys(metadata)
   if (keys.length === 0) return 'No metadata'
@@ -144,47 +135,9 @@ function DetailField({
   value,
 }: {
   label: string
-  value: ReactNode
+  value: string | number | null | undefined
 }) {
-  return (
-    <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface-muted/35 px-3 py-3">
-      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-        {label}
-      </p>
-      <div className="mt-2 break-words text-sm font-medium text-foreground">
-        {value ?? 'Not available'}
-      </div>
-    </div>
-  )
-}
-
-function SummaryCard({
-  icon,
-  label,
-  meta,
-  tone,
-  value,
-}: {
-  icon: ReactNode
-  label: string
-  meta: string
-  tone: 'danger' | 'info' | 'neutral' | 'success' | 'warning'
-  value: string
-}) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <div className="flex items-center justify-between gap-3">
-        <p className={cn('text-xs font-semibold uppercase tracking-normal', toneClass(tone))}>
-          {label}
-        </p>
-        <span className={toneClass(tone)}>{icon}</span>
-      </div>
-      <p className={cn('mt-3 text-2xl font-semibold tracking-normal', toneClass(tone))}>
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
-    </article>
-  )
+  return <RecordField label={label} value={value} />
 }
 
 function SectionShell({
@@ -1160,7 +1113,7 @@ export function ContentDetailPage() {
   }
 
   return (
-    <PageContainer className="!px-3 !py-4 sm:!px-4 lg:!px-6">
+    <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
         actionNode={
           <HeaderActions
@@ -1181,58 +1134,43 @@ export function ContentDetailPage() {
         titleMetaNode={<HeaderStatus contentPage={contentPage} />}
       />
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          icon={<CheckCircle2 className="size-4" />}
-          label="Status"
-          meta={
-            contentPage.nextRecommendedAction
-              ? humanizeCode(contentPage.nextRecommendedAction)
-              : 'No next action'
-          }
-          tone={
-            contentPage.status === 'PUBLISHED'
-              ? 'success'
-              : contentPage.status === 'ARCHIVED'
-                ? 'neutral'
-                : 'warning'
-          }
-          value={humanizeCode(contentPage.status)}
-        />
-        <SummaryCard
-          icon={<Layers3 className="size-4" />}
-          label="Version"
-          meta={hasDraftDrift ? 'Draft differs from published' : 'Current version'}
-          tone={hasDraftDrift ? 'warning' : 'info'}
-          value={`v${contentPage.version}`}
-        />
-        <SummaryCard
-          icon={
-            contentPage.isVisibleToCustomers ? (
-              <Eye className="size-4" />
-            ) : (
-              <EyeOff className="size-4" />
-            )
-          }
-          label="Visibility"
-          meta="Customer-facing surfaces"
-          tone={contentPage.isVisibleToCustomers ? 'success' : 'danger'}
-          value={contentPage.isVisibleToCustomers ? 'Visible' : 'Hidden'}
-        />
-        <SummaryCard
-          icon={<ShieldAlert className="size-4" />}
-          label="Signals"
-          meta={`${contentPage.blockingReasons.length} blocking`}
-          tone={
-            contentPage.blockingReasons.length > 0
-              ? 'danger'
-              : contentPage.warnings.length > 0
-                ? 'warning'
-                : 'success'
-          }
-          value={String(contentPage.warnings.length + contentPage.blockingReasons.length)}
-        />
-      </section>
+      <RecordMetricStrip
+        ariaLabel="Content page summary"
+        metrics={[
+          {
+            label: 'Status',
+            value: humanizeCode(contentPage.status),
+            tone:
+              contentPage.status === 'PUBLISHED'
+                ? 'success'
+                : contentPage.status === 'ARCHIVED'
+                  ? undefined
+                  : 'warning',
+          },
+          {
+            label: 'Version',
+            value: `v${contentPage.version}`,
+            tone: hasDraftDrift ? 'warning' : undefined,
+          },
+          {
+            label: 'Visibility',
+            value: contentPage.isVisibleToCustomers ? 'Visible' : 'Hidden',
+            tone: contentPage.isVisibleToCustomers ? 'success' : 'danger',
+          },
+          {
+            label: 'Signals',
+            value: String(
+              contentPage.warnings.length + contentPage.blockingReasons.length,
+            ),
+            tone:
+              contentPage.blockingReasons.length > 0
+                ? 'danger'
+                : contentPage.warnings.length > 0
+                  ? 'warning'
+                  : 'success',
+          },
+        ]}
+      />
 
       <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
         <div className="space-y-3">

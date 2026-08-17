@@ -91,10 +91,22 @@ export interface CancelOrderPayload {
   notifyVendor?: boolean;
 }
 
+export type RefundReasonCode =
+  | "PRICE_ADJUSTMENT"
+  | "CUSTOMER_CANCELLATION"
+  | "VENDOR_CANCELLATION"
+  | "SERVICE_ISSUE"
+  | "DUPLICATE_PAYMENT"
+  | "DISPUTE";
+
 export interface InitiateOrderRefundPayload {
   paymentId?: string;
   amountPaise?: number;
   reason: string;
+  /** Structured reason approval routing reads. */
+  reasonCode?: RefundReasonCode;
+  /** Omitted when nobody has assessed it — see the refund form. */
+  hasDispute?: boolean;
 }
 
 export interface GenerateDeliveryOtpPayload {

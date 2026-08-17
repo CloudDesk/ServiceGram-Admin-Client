@@ -798,8 +798,6 @@ export function CustomerAppHomeSlideDetailPage() {
             ) : null}
           </>
         }
-        backHref={routePaths.customerAppHome}
-        backLabel="Back to customer app home"
         description="Preview, edit, publish, and manage artwork for this customer app home slide."
         listHref={routePaths.customerAppHome}
         listLabel="Customer App Home"

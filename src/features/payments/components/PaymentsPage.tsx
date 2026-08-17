@@ -1,1289 +1,161 @@
-import {
-  ArrowUpRight,
-  ChevronLeft,
-  ChevronRight,
-  CreditCard,
-  Eye,
-  Filter,
-  ReceiptText,
-  RefreshCcw,
-  RotateCcw,
-  ShieldAlert,
-  SlidersHorizontal,
-  Store,
-  UserRound,
-  X,
-} from 'lucide-react'
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Download, RefreshCcw } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
-import { EmptyState } from '../../../components/ui/EmptyState'
-import { ErrorState } from '../../../components/ui/ErrorState'
-import { Input } from '../../../components/ui/Input'
-import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
-import {
-  LIST_SELECTION_COLUMN_WIDTH,
-  ListSelectionCheckbox,
-  ListSelectionToolbar,
-} from '../../../components/ui/ListSelection'
-import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
-import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
+import { DataList } from '../../../components/ui/DataList'
+import type { DataListColumn, DataListQueueTab } from '../../../components/ui/DataList'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
-import {
-  QuickPreviewActions,
-  QuickPreviewFact,
-  QuickPreviewFactGrid,
-  QuickPreviewTabs,
-  type QuickPreviewAction,
-} from '../../../components/ui/QuickPreview'
-import { Skeleton } from '../../../components/ui/Skeleton'
-import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
-import { useListSelection } from '../../../hooks/useListSelection'
 import { usePermission } from '../../../hooks/usePermission'
-import type { LookupOption } from '../../../types/lookup.types'
-import { readLookupOptionsFromSearchParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
-import { formatDate } from '../../../utils/formatDate'
-import { formatMoney } from '../../../utils/formatMoney'
-import {
-  searchCustomerLookupOptions,
-  searchOrderLookupOptions,
-  searchVendorLookupOptions,
-} from '../../lookups/adminLookups'
+import { downloadCsv, timestampedFilename } from '../../../utils/exportCsv'
 import { paymentService } from '../services/payment.service'
+import {
+  canReconcilePayment,
+  formatDateSafe,
+  formatPaise,
+  getPaymentStatusTone,
+  humanizeCode,
+  paymentReviewStatuses,
+  paymentSignal,
+  type PaymentTone,
+} from '../paymentPresenters'
+import type {
+  AdminPaymentStatus,
+  AdminPaymentSummary,
+  AdminPaymentsQueryParams,
+} from '../types/payment.types'
 import {
   PaymentActionModal,
   type PaymentActionFormValues,
   type PaymentActionSelection,
 } from './PaymentActionModal'
-import type {
-  AdminPaymentGateway,
-  AdminPaymentChildSummary,
-  AdminFinancePagination,
-  AdminPaymentMethod,
-  AdminPaymentsQueryParams,
-  AdminPaymentStatus,
-  AdminPaymentSummary,
-} from '../types/payment.types'
 
-const DEFAULT_PAGE_SIZE = 10
-const PAYMENT_DEFAULT_COLUMN_WIDTH = 220
-const PAYMENT_GRID_COLUMN_GAP = 12
-const PAYMENT_GRID_INLINE_PADDING = 24
-const PAYMENT_ACTION_COLUMN_ID = 'actions'
-const PAYMENT_ACTION_COLUMN_DEFAULT_WIDTH = 116
-const PAYMENT_ACTION_COLUMN_MIN_WIDTH = 104
-const PAYMENT_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.payment.columnWidths.v1'
+const PAYMENT_LIST_STORAGE_KEY = 'servicegram.payments.list.v1'
+const DEFAULT_PAGE_SIZE = 50
 
-const paymentStatuses: AdminPaymentStatus[] = [
-  'CREATED',
-  'PENDING',
-  'SUCCESS',
-  'FAILED',
-  'CANCELLED',
-]
-
-const paymentMethods: AdminPaymentMethod[] = [
-  'UPI',
-  'CARD',
-  'NET_BANKING',
-  ...(featureFlags.customerWallet ? (['WALLET'] as AdminPaymentMethod[]) : []),
-  'COD',
-]
-
-const gateways: AdminPaymentGateway[] = [
-  'RAZORPAY',
-  'INTERNAL_COD',
-  ...(featureFlags.customerWallet ? (['WALLET'] as AdminPaymentGateway[]) : []),
-]
-
-const paymentDataColumns = [
-  {
-    id: 'payment',
-    label: 'Payment',
-    defaultWidth: PAYMENT_DEFAULT_COLUMN_WIDTH,
-    minWidth: 190,
-  },
-  {
-    id: 'order',
-    label: 'Order',
-    defaultWidth: PAYMENT_DEFAULT_COLUMN_WIDTH,
-    minWidth: 180,
-  },
-  {
-    id: 'status',
-    label: 'Status',
-    defaultWidth: 190,
-    minWidth: 155,
-  },
-  {
-    id: 'method',
-    label: 'Method',
-    defaultWidth: 180,
-    minWidth: 145,
-  },
-  {
-    id: 'parties',
-    label: 'Customer / Vendor',
-    defaultWidth: 260,
-    minWidth: 220,
-  },
-  {
-    id: 'amount',
-    label: 'Amount',
-    defaultWidth: 170,
-    minWidth: 145,
-  },
-  {
-    id: 'refunds',
-    label: 'Refunds',
-    defaultWidth: 190,
-    minWidth: 160,
-  },
-  {
-    id: 'gateway',
-    label: 'Gateway',
-    defaultWidth: 190,
-    minWidth: 150,
-  },
-  {
-    id: 'updatedAt',
-    label: 'Updated',
-    defaultWidth: 170,
-    minWidth: 150,
-  },
-] as const
-
-type PaymentTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
-type PaymentColumnId = (typeof paymentDataColumns)[number]['id']
-type PaymentColumnWidthId =
-  | PaymentColumnId
-  | typeof PAYMENT_ACTION_COLUMN_ID
-type PaymentColumnWidths = Partial<Record<PaymentColumnWidthId, number>>
-type PaymentPreviewTab = 'summary' | 'refunds' | 'links'
 type PaymentQueueKey = 'all' | 'needsReview' | 'successful' | 'failed' | 'cancelled'
 
-function readSearchValues(searchParams: URLSearchParams, key: string) {
-  return Array.from(
-    new Set(
-      searchParams
-        .getAll(key)
-        .flatMap((value) => value.split(','))
-        .map((value) => value.trim())
-        .filter(Boolean),
-    ),
-  )
+const PAYMENT_QUEUES: Record<
+  PaymentQueueKey,
+  { label: string; status?: AdminPaymentStatus[]; tone?: 'neutral' | 'warning' | 'danger' }
+> = {
+  all: { label: 'All' },
+  needsReview: { label: 'Needs review', status: paymentReviewStatuses, tone: 'warning' },
+  successful: { label: 'Successful', status: ['SUCCESS'] },
+  failed: { label: 'Failed', status: ['FAILED'], tone: 'danger' },
+  cancelled: { label: 'Cancelled', status: ['CANCELLED'], tone: 'danger' },
 }
 
-function readEnumSearchValues<T extends string>(
-  searchParams: URLSearchParams,
-  key: string,
-  allowedValues: readonly T[],
-) {
-  const allowed = new Set<T>(allowedValues)
-
-  return readSearchValues(searchParams, key).filter((value): value is T =>
-    allowed.has(value as T),
-  )
-}
-
-function queueKeyForPaymentStatuses(
-  selectedStatuses: AdminPaymentStatus[],
-): PaymentQueueKey {
-  if (selectedStatuses.length === 0) return 'all'
-  if (
-    selectedStatuses.every((status) =>
-      ['CREATED', 'PENDING', 'FAILED'].includes(status),
-    )
-  ) {
-    return 'needsReview'
-  }
-  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'SUCCESS') {
-    return 'successful'
-  }
-  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'FAILED') {
-    return 'failed'
-  }
-  if (selectedStatuses.length === 1 && selectedStatuses[0] === 'CANCELLED') {
-    return 'cancelled'
-  }
-
-  return 'all'
-}
-
-const defaultPaymentColumns: PaymentColumnId[] = [
-  'payment',
-  'order',
-  'status',
-  'method',
-  'parties',
-  'amount',
-  'refunds',
-]
-
-interface PaymentGridStyle extends CSSProperties {
-  '--payment-grid-template': string
-  '--payment-grid-min-width': string
-}
-
-interface PaymentMetric {
-  label: string
-  meta: string
-  tone: PaymentTone
-  value: string
-}
-
-interface PaymentActionTarget {
-  action: PaymentActionSelection
-  payment: AdminPaymentSummary
-}
-
-function toneClasses(tone: PaymentTone) {
-  if (tone === 'success') return 'border-border bg-surface text-success'
-  if (tone === 'warning') return 'border-border bg-surface text-warning'
-  if (tone === 'danger') return 'border-border bg-surface text-danger'
-  if (tone === 'info') return 'border-border bg-surface text-primary'
-  return 'border-border bg-surface text-muted'
-}
-
-function humanizeCode(value: string | null | undefined) {
-  if (!value) return 'Not available'
-
-  return value
-    .toLowerCase()
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-}
-
-function formatDateSafe(value: string | null | undefined) {
-  if (!value) return 'Not available'
-  return formatDate(value, true)
-}
-
-function formatPaise(value: number | null | undefined) {
-  return formatMoney((value ?? 0) / 100)
-}
-
-function getPaymentStatusTone(status: AdminPaymentStatus): PaymentTone {
-  if (status === 'SUCCESS') return 'success'
-  if (status === 'FAILED' || status === 'CANCELLED') return 'danger'
-  if (status === 'CREATED' || status === 'PENDING') return 'warning'
-  return 'neutral'
-}
-
-function buildPaymentMetrics(
-  payments: AdminPaymentSummary[],
-  pagination?: AdminFinancePagination,
-  summary?: AdminPaymentChildSummary,
-): PaymentMetric[] {
-  const total = pagination?.totalItems ?? summary?.total ?? payments.length
-  const successfulAmount =
-    summary?.successfulAmountPaise ??
-    payments
-      .filter((payment) => payment.status === 'SUCCESS')
-      .reduce((sum, payment) => sum + payment.amountPaise, 0)
-  const needsReview =
-    summary?.queueSummary?.needsReview ??
-    payments.filter(
-      (payment) =>
-        ['CREATED', 'PENDING', 'FAILED'].includes(payment.status) ||
-        payment.warnings.length > 0,
-    ).length
-  const refundRequests =
-    summary?.requestedRefunds ??
-    payments.reduce(
-      (sum, payment) => sum + payment.refundSummary.requestedCount,
-      0,
-    )
-
-  return [
-    {
-      label: 'Visible review',
-      meta: 'Pending, failed, or refund work matching filters',
-      tone: needsReview > 0 ? 'warning' : 'neutral',
-      value: String(needsReview),
-    },
-    {
-      label: 'Successful value',
-      meta: 'Successful amount matching filters',
-      tone: 'success',
-      value: formatPaise(successfulAmount),
-    },
-    {
-      label: 'Refund requests',
-      meta: 'Open refund requests matching filters',
-      tone: refundRequests > 0 ? 'danger' : 'neutral',
-      value: String(refundRequests),
-    },
-    {
-      label: 'Matched payments',
-      meta: 'Total matching current filters',
-      tone: 'info',
-      value: String(total),
-    },
-  ]
-}
-
-function buildPaymentQueueItems(
-  summary: AdminPaymentChildSummary | undefined,
-  payments: AdminPaymentSummary[],
-) {
-  const queueSummary = summary?.queueSummary
-
-  return [
-    {
-      key: 'all' as const,
-      label: 'All payments',
-      count: queueSummary?.allPayments ?? summary?.total ?? payments.length,
-    },
-    {
-      key: 'needsReview' as const,
-      label: 'Needs review',
-      count:
-        queueSummary?.needsReview ??
-        payments.filter((payment) =>
-          ['CREATED', 'PENDING', 'FAILED'].includes(payment.status),
-        ).length,
-    },
-    {
-      key: 'successful' as const,
-      label: 'Successful',
-      count:
-        queueSummary?.successful ??
-        summary?.successful ??
-        payments.filter((payment) => payment.status === 'SUCCESS').length,
-    },
-    {
-      key: 'failed' as const,
-      label: 'Failed',
-      count:
-        queueSummary?.failed ??
-        summary?.failed ??
-        payments.filter((payment) => payment.status === 'FAILED').length,
-    },
-    {
-      key: 'cancelled' as const,
-      label: 'Cancelled',
-      count:
-        queueSummary?.cancelled ??
-        summary?.cancelled ??
-        payments.filter((payment) => payment.status === 'CANCELLED').length,
-    },
-  ]
-}
-
-function getPaymentColumnDefaultWidth(columnId: PaymentColumnWidthId) {
-  if (columnId === PAYMENT_ACTION_COLUMN_ID) {
-    return PAYMENT_ACTION_COLUMN_DEFAULT_WIDTH
-  }
-
-  return (
-    paymentDataColumns.find((column) => column.id === columnId)?.defaultWidth ??
-    PAYMENT_DEFAULT_COLUMN_WIDTH
-  )
-}
-
-function getPaymentColumnMinWidth(columnId: PaymentColumnWidthId) {
-  if (columnId === PAYMENT_ACTION_COLUMN_ID) {
-    return PAYMENT_ACTION_COLUMN_MIN_WIDTH
-  }
-
-  return (
-    paymentDataColumns.find((column) => column.id === columnId)?.minWidth ?? 140
-  )
-}
-
-function getPaymentColumnWidth(
-  columnWidths: PaymentColumnWidths,
-  columnId: PaymentColumnWidthId,
-) {
-  return columnWidths[columnId] ?? getPaymentColumnDefaultWidth(columnId)
-}
-
-function getPaymentGridTemplate(
-  visibleColumns: PaymentColumnId[],
-  columnWidths: PaymentColumnWidths,
-) {
-  return [
-    `${LIST_SELECTION_COLUMN_WIDTH}px`,
-    ...visibleColumns.map(
-      (columnId) => `${getPaymentColumnWidth(columnWidths, columnId)}px`,
-    ),
-    `${getPaymentColumnWidth(columnWidths, PAYMENT_ACTION_COLUMN_ID)}px`,
-  ].join(' ')
-}
-
-function getPaymentGridMinWidth(
-  visibleColumns: PaymentColumnId[],
-  columnWidths: PaymentColumnWidths,
-) {
-  const visibleWidth = visibleColumns.reduce(
-    (sum, columnId) => sum + getPaymentColumnWidth(columnWidths, columnId),
-    0,
-  )
-  const actionWidth = getPaymentColumnWidth(
-    columnWidths,
-    PAYMENT_ACTION_COLUMN_ID,
-  )
-  const columnCount = visibleColumns.length + 2
-  const gapWidth = Math.max(0, columnCount - 1) * PAYMENT_GRID_COLUMN_GAP
-
-  return `${
-    visibleWidth +
-    LIST_SELECTION_COLUMN_WIDTH +
-    actionWidth +
-    gapWidth +
-    PAYMENT_GRID_INLINE_PADDING
-  }px`
-}
-
-function loadPaymentColumnWidths(): PaymentColumnWidths {
-  try {
-    const storedValue = window.localStorage.getItem(
-      PAYMENT_COLUMN_WIDTH_STORAGE_KEY,
-    )
-
-    if (!storedValue) return {}
-
-    const parsedValue = JSON.parse(storedValue) as PaymentColumnWidths
-
-    return Object.fromEntries(
-      Object.entries(parsedValue).filter(([, width]) => typeof width === 'number'),
-    ) as PaymentColumnWidths
-  } catch {
-    return {}
-  }
-}
-
-function formatRefreshTime(updatedAt: number) {
-  if (!updatedAt) return 'Not refreshed yet'
-
-  return `Updated ${formatDate(new Date(updatedAt).toISOString(), true)}`
-}
-
-function MetricCard({ label, meta, tone, value }: PaymentMetric) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <p className={cn('text-xs font-semibold uppercase tracking-normal', toneClasses(tone))}>
-        {label}
-      </p>
-      <p className={cn('mt-3 text-2xl font-semibold tracking-normal', toneClasses(tone))}>
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
-    </article>
-  )
-}
-
-function PaymentRowsSkeleton() {
-  return (
-    <div className="space-y-0">
-      {Array.from({ length: 8 }).map((_, index) => (
-        <div
-          className="grid gap-3 border-b border-border px-3 py-4 xl:grid-cols-[1.2fr_1fr_0.8fr_0.8fr_1.2fr_0.8fr_0.8fr]"
-          key={index}
-        >
-          {Array.from({ length: 7 }).map((__, cellIndex) => (
-            <Skeleton className="h-9 w-full" key={cellIndex} />
-          ))}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function PaymentCell({
-  children,
-  label,
-}: {
-  children: React.ReactNode
-  label: string
-}) {
-  return (
-    <div className="min-w-0">
-      <p className="text-xs text-muted">{label}</p>
-      <div className="mt-1 min-w-0 text-sm text-foreground">{children}</div>
-    </div>
-  )
-}
-
-function paymentSignalTone(payment: AdminPaymentSummary): PaymentTone {
-  if (
-    payment.status === 'FAILED' ||
-    payment.status === 'CANCELLED' ||
-    payment.warnings.length > 0
-  ) {
-    return 'danger'
-  }
-
-  if (
-    payment.nextRecommendedAction ||
-    payment.status === 'CREATED' ||
-    payment.status === 'PENDING' ||
-    payment.refundSummary.requestedCount > 0
-  ) {
-    return 'warning'
-  }
-
-  if (payment.status === 'SUCCESS') return 'success'
-
-  return 'neutral'
-}
-
-function paymentSignalLabel(payment: AdminPaymentSummary) {
-  if (payment.nextRecommendedAction) {
-    return humanizeCode(payment.nextRecommendedAction)
-  }
-
-  if (payment.warnings[0]) {
-    return humanizeCode(payment.warnings[0])
-  }
-
-  if (payment.refundSummary.requestedCount > 0) {
-    return 'Refund review pending'
-  }
-
-  if (payment.status === 'FAILED') {
-    return payment.failureCode ? humanizeCode(payment.failureCode) : 'Payment failed'
-  }
-
-  if (payment.status === 'CANCELLED') return 'Payment cancelled'
-  if (payment.status === 'SUCCESS') return 'Payment clear'
-
-  return 'Awaiting confirmation'
-}
-
-function paymentSignalMeta(payment: AdminPaymentSummary) {
-  if (payment.nextRecommendedAction) return 'Next action'
-
-  if (payment.warnings.length > 0) {
-    return `${payment.warnings.length} warning${payment.warnings.length === 1 ? '' : 's'}`
-  }
-
-  if (payment.refundSummary.requestedCount > 0) {
-    return `${payment.refundSummary.requestedCount} request${
-      payment.refundSummary.requestedCount === 1 ? '' : 's'
-    }`
-  }
-
-  return humanizeCode(payment.status)
-}
-
-function previewSignalClasses(tone: PaymentTone) {
-  if (tone === 'success') return 'border-success/20 bg-success/10 text-success'
-  if (tone === 'warning') return 'border-warning/25 bg-warning/10 text-warning'
-  if (tone === 'danger') return 'border-danger/20 bg-danger/10 text-danger'
-  if (tone === 'info') return 'border-info/20 bg-info/10 text-primary'
-
-  return 'border-border bg-surface-muted/55 text-muted'
-}
-
-function PaymentPreviewSignal({
-  label,
-  meta,
-  tone,
-}: {
-  label: string
-  meta: string
-  tone: PaymentTone
-}) {
-  return (
-    <div
-      className={cn(
-        'flex min-h-9 items-center justify-between gap-2 rounded-[0.65rem] border px-2.5 py-2',
-        previewSignalClasses(tone),
-      )}
-    >
-      <div className="flex min-w-0 items-center gap-2">
-        <ShieldAlert className="size-4 shrink-0 text-current" />
-        <span className="min-w-0 truncate text-sm font-semibold text-foreground">{label}</span>
-      </div>
-      <span className="shrink-0 rounded-full bg-surface/65 px-2 py-0.5 text-xs font-semibold text-current">
-        {meta}
-      </span>
-    </div>
-  )
-}
-
-function PaymentPreviewField({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-3 border-b border-border py-2.5 last:border-b-0">
-      <span className="text-xs font-semibold uppercase tracking-normal text-muted">{label}</span>
-      <span className="min-w-0 break-words text-right text-sm font-medium text-foreground">
-        {value}
-      </span>
-    </div>
-  )
-}
-
-function PaymentPreviewPanel({
-  canReadCustomers,
-  canReadOrders,
-  canReadRefunds,
-  canReadVendors,
-  canReconcile,
-  isSubmitting,
-  onClose,
-  onOpenCustomer,
-  onOpenDetails,
-  onOpenOrder,
-  onOpenReconcile,
-  onOpenRefunds,
-  onOpenVendor,
-  payment,
-}: {
-  canReadCustomers: boolean
-  canReadOrders: boolean
-  canReadRefunds: boolean
-  canReadVendors: boolean
-  canReconcile: boolean
-  isSubmitting: boolean
-  onClose: () => void
-  onOpenCustomer: (payment: AdminPaymentSummary) => void
-  onOpenDetails: (payment: AdminPaymentSummary) => void
-  onOpenOrder: (payment: AdminPaymentSummary) => void
-  onOpenReconcile: (payment: AdminPaymentSummary) => void
-  onOpenRefunds: (payment: AdminPaymentSummary) => void
-  onOpenVendor: (payment: AdminPaymentSummary) => void
-  payment: AdminPaymentSummary
-}) {
-  const [activeTab, setActiveTab] = useState<PaymentPreviewTab>('summary')
-  const signalTone = paymentSignalTone(payment)
-  const previewTabs: { key: PaymentPreviewTab; label: string }[] = [
-    { key: 'summary', label: 'Summary' },
-    { key: 'refunds', label: 'Refunds' },
-    { key: 'links', label: 'Links' },
-  ]
-  const primaryAction: QuickPreviewAction | null =
-    canReconcile && payment.availableActions.includes('RECONCILE')
-      ? {
-          disabled: isSubmitting,
-          icon: <RefreshCcw className="size-4" />,
-          key: 'reconcile',
-          label: 'Reconcile',
-          onClick: () => onOpenReconcile(payment),
-          variant: 'primary',
-        }
-      : null
-  const detailAction: QuickPreviewAction = {
-    icon: <Eye className="size-4" />,
-    key: 'details',
-    label: primaryAction ? 'Detail' : 'Open detail',
-    onClick: () => onOpenDetails(payment),
-  }
-  const secondaryActions: QuickPreviewAction[] = []
-
-  if (canReadRefunds && payment.refundSummary.refundCount > 0) {
-    secondaryActions.push({
-      icon: <RotateCcw className="size-4" />,
-      key: 'refunds',
-      label: 'Refunds',
-      onClick: () => onOpenRefunds(payment),
-      variant: 'secondary',
-    })
-  }
-
-  if (canReadOrders) {
-    secondaryActions.push({
-      icon: <ReceiptText className="size-4" />,
-      key: 'order',
-      label: 'Order',
-      onClick: () => onOpenOrder(payment),
-      variant: 'secondary',
-    })
-  }
-
-  if (canReadCustomers) {
-    secondaryActions.push({
-      icon: <UserRound className="size-4" />,
-      key: 'customer',
-      label: 'Customer',
-      onClick: () => onOpenCustomer(payment),
-      variant: 'secondary',
-    })
-  }
-
-  if (canReadVendors) {
-    secondaryActions.push({
-      icon: <Store className="size-4" />,
-      key: 'vendor',
-      label: 'Vendor',
-      onClick: () => onOpenVendor(payment),
-      variant: 'secondary',
-    })
-  }
-
-  return (
-    <>
-      <button
-        aria-label="Close payment preview"
-        className="fixed inset-0 z-40 bg-black/20 xl:hidden"
-        type="button"
-        onClick={onClose}
-      />
-      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:static xl:z-auto xl:h-full xl:w-[22rem] xl:self-stretch">
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-              Payment preview
-            </p>
-            <div className="mt-2 flex min-w-0 items-start gap-2.5">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <CreditCard className="size-5" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="truncate text-base font-semibold text-foreground">
-                  {payment.publicPaymentId}
-                </h3>
-                <p className="mt-0.5 truncate text-xs text-muted">
-                  {payment.order.publicOrderId} / {payment.customer.fullName}
-                </p>
-                <div className="mt-1.5 flex flex-wrap gap-2">
-                  <Badge tone={getPaymentStatusTone(payment.status)}>
-                    {humanizeCode(payment.status)}
-                  </Badge>
-                  <Badge tone="info">{humanizeCode(payment.method)}</Badge>
-                  {payment.warnings.length > 0 ? (
-                    <Badge tone="warning">
-                      {payment.warnings.length} warning
-                      {payment.warnings.length === 1 ? '' : 's'}
-                    </Badge>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </div>
-          <button
-            aria-label="Close preview"
-            className="btn-icon shrink-0"
-            title="Close preview"
-            type="button"
-            onClick={onClose}
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-
-        <QuickPreviewTabs
-          activeTab={activeTab}
-          ariaLabel="Payment preview sections"
-          tabs={previewTabs}
-          onChange={setActiveTab}
-        />
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          {activeTab === 'summary' ? (
-            <div className="space-y-2.5">
-              <PaymentPreviewSignal
-                label={paymentSignalLabel(payment)}
-                meta={paymentSignalMeta(payment)}
-                tone={signalTone}
-              />
-
-              <QuickPreviewFactGrid>
-                <QuickPreviewFact
-                  label="Amount"
-                  tone={getPaymentStatusTone(payment.status)}
-                  value={formatPaise(payment.amountPaise)}
-                />
-                <QuickPreviewFact
-                  label="Refundable"
-                  tone={
-                    payment.refundSummary.remainingRefundableAmountPaise > 0 ? 'info' : 'neutral'
-                  }
-                  value={formatPaise(payment.refundSummary.remainingRefundableAmountPaise)}
-                />
-                <QuickPreviewFact
-                  label="Requests"
-                  tone={payment.refundSummary.requestedCount > 0 ? 'warning' : 'neutral'}
-                  value={payment.refundSummary.requestedCount}
-                />
-                <QuickPreviewFact
-                  label="Verified"
-                  tone={payment.verifiedAt ? 'success' : 'warning'}
-                  value={payment.verifiedAt ? 'Yes' : 'Pending'}
-                />
-              </QuickPreviewFactGrid>
-
-              {payment.failureMessage ? (
-                <div className="rounded-[0.75rem] border border-danger/20 bg-danger/10 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-normal text-danger">
-                    Failure
-                  </p>
-                  <p className="mt-1 line-clamp-3 text-sm text-foreground">
-                    {payment.failureMessage}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {activeTab === 'refunds' ? (
-            <div className="rounded-[0.75rem] border border-border p-3">
-              <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
-                <RotateCcw className="size-4 text-muted" />
-                Refund state
-              </div>
-              <PaymentPreviewField label="Total" value={payment.refundSummary.refundCount} />
-              <PaymentPreviewField label="Requested" value={payment.refundSummary.requestedCount} />
-              <PaymentPreviewField label="Approved" value={payment.refundSummary.approvedCount} />
-              <PaymentPreviewField
-                label="Processing"
-                value={payment.refundSummary.processingCount}
-              />
-              <PaymentPreviewField
-                label="Successful"
-                value={payment.refundSummary.successfulCount}
-              />
-              <PaymentPreviewField
-                label="Committed"
-                value={formatPaise(payment.refundSummary.committedAmountPaise)}
-              />
-            </div>
-          ) : null}
-
-          {activeTab === 'links' ? (
-            <div className="space-y-3">
-              <div className="rounded-[0.75rem] border border-border p-3">
-                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <ReceiptText className="size-4 text-muted" />
-                  Context
-                </div>
-                <PaymentPreviewField label="Order" value={payment.order.publicOrderId} />
-                <PaymentPreviewField label="Customer" value={payment.customer.fullName} />
-                <PaymentPreviewField label="Vendor" value={payment.vendor.shopName} />
-                <PaymentPreviewField
-                  label="Category"
-                  value={payment.category?.name ?? 'No category'}
-                />
-              </div>
-
-              <div className="rounded-[0.75rem] border border-border p-3">
-                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <CreditCard className="size-4 text-muted" />
-                  Provider
-                </div>
-                <PaymentPreviewField label="Gateway" value={humanizeCode(payment.gateway)} />
-                <PaymentPreviewField
-                  label="Payment ref"
-                  value={payment.razorpayPaymentId ?? 'Not available'}
-                />
-                <PaymentPreviewField
-                  label="Order ref"
-                  value={payment.razorpayOrderId ?? 'Not available'}
-                />
-                <PaymentPreviewField label="Updated" value={formatDateSafe(payment.updatedAt)} />
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <QuickPreviewActions
-          detailAction={detailAction}
-          primaryAction={primaryAction}
-          secondaryActions={secondaryActions}
-        />
-      </aside>
-    </>
-  )
+function badgeTone(tone: PaymentTone) {
+  if (tone === 'success') return 'success' as const
+  if (tone === 'danger') return 'danger' as const
+  if (tone === 'warning') return 'warning' as const
+  return 'neutral' as const
 }
 
 export function PaymentsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
-  const canReadOrders = usePermission('orders:read')
-  const canReadCustomers = usePermission('customers:read')
-  const canReadVendors = usePermission('vendors:read')
-  const canReadRefunds = usePermission('payments:read')
   const canReconcile = usePermission('payments:reconcile')
-  const seededStatuses = readEnumSearchValues(searchParams, 'status', paymentStatuses)
+
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
+  const [queue, setQueue] = useState<PaymentQueueKey>('all')
+  const [city, setCity] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
-  const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
-  const [selectedStatuses, setSelectedStatuses] =
-    useState<AdminPaymentStatus[]>(() => seededStatuses)
-  const [selectedMethods, setSelectedMethods] = useState<AdminPaymentMethod[]>([])
-  const [selectedGateways, setSelectedGateways] = useState<AdminPaymentGateway[]>([])
-  const [city, setCity] = useState(() => searchParams.get('city') ?? '')
-  const [selectedOrders, setSelectedOrders] = useState<LookupOption[]>(() =>
-    readLookupOptionsFromSearchParams(searchParams, 'orderId', 'orderLabel'),
-  )
-  const [selectedCustomers, setSelectedCustomers] = useState<LookupOption[]>(() =>
-    readLookupOptionsFromSearchParams(searchParams, 'customerId', 'customerLabel'),
-  )
-  const [selectedVendors, setSelectedVendors] = useState<LookupOption[]>(() =>
-    readLookupOptionsFromSearchParams(searchParams, 'vendorId', 'vendorLabel'),
-  )
-  const [dateFrom, setDateFrom] = useState(() => searchParams.get('dateFrom') ?? '')
-  const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') ?? '')
-  const [minAmountPaise, setMinAmountPaise] = useState('')
-  const [maxAmountPaise, setMaxAmountPaise] = useState('')
-  const [queue, setQueue] = useState<PaymentQueueKey>(() =>
-    queueKeyForPaymentStatuses(seededStatuses),
-  )
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [actionError, setActionError] = useState<string | null>(null)
-  const [actionTarget, setActionTarget] = useState<PaymentActionTarget | null>(null)
-  const [previewPaymentId, setPreviewPaymentId] = useState<string | null>(null)
-  const [columnsOpen, setColumnsOpen] = useState(false)
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
-  const [visibleColumns, setVisibleColumns] =
-    useState<PaymentColumnId[]>(defaultPaymentColumns)
-  const [columnWidths, setColumnWidths] =
-    useState<PaymentColumnWidths>(loadPaymentColumnWidths)
-  const columnsMenuRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        PAYMENT_COLUMN_WIDTH_STORAGE_KEY,
-        JSON.stringify(columnWidths),
-      )
-    } catch {
-      // Column persistence is optional; the table still works without it.
-    }
-  }, [columnWidths])
-
-  useEffect(() => {
-    if (!columnsOpen) return
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target
-
-      if (target instanceof Node && columnsMenuRef.current?.contains(target)) {
-        return
-      }
-
-      setColumnsOpen(false)
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setColumnsOpen(false)
-      }
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [columnsOpen])
-
-  const statusOptions = useMemo<LookupOption[]>(
-    () =>
-      paymentStatuses.map((status) => ({
-        label: humanizeCode(status),
-        value: status,
-      })),
-    [],
-  )
-  const methodOptions = useMemo<LookupOption[]>(
-    () =>
-      paymentMethods.map((method) => ({
-        label: humanizeCode(method),
-        value: method,
-      })),
-    [],
-  )
-  const gatewayOptions = useMemo<LookupOption[]>(
-    () =>
-      gateways.map((gateway) => ({
-        label: humanizeCode(gateway),
-        value: gateway,
-      })),
-    [],
-  )
-  const orderIds = useMemo(
-    () => selectedOrders.map((order) => order.value),
-    [selectedOrders],
-  )
-  const customerIds = useMemo(
-    () => selectedCustomers.map((customer) => customer.value),
-    [selectedCustomers],
-  )
-  const vendorIds = useMemo(
-    () => selectedVendors.map((vendor) => vendor.value),
-    [selectedVendors],
-  )
-
-  const resetToFirstPage = () => setPage(1)
-  const clearSeededPaymentParams = () => {
-    const seededKeys = [
-      'city',
-      'customerId',
-      'customerLabel',
-      'dateFrom',
-      'dateTo',
-      'orderId',
-      'orderLabel',
-      'search',
-      'status',
-      'vendorId',
-      'vendorLabel',
-    ] as const
-
-    if (!seededKeys.some((key) => searchParams.has(key))) return
-
-    const nextParams = new URLSearchParams(searchParams)
-    seededKeys.forEach((key) => nextParams.delete(key))
-    setSearchParams(nextParams, { replace: true })
-  }
+  const [actionTarget, setActionTarget] = useState<PaymentActionSelection | null>(null)
 
   const query = useMemo<AdminPaymentsQueryParams>(
     () => ({
       page,
       limit,
       search: search.trim() || undefined,
-      status: selectedStatuses.length > 0 ? selectedStatuses : undefined,
-      method: selectedMethods.length > 0 ? selectedMethods : undefined,
-      gateway: selectedGateways.length > 0 ? selectedGateways : undefined,
+      status: PAYMENT_QUEUES[queue].status,
       city: city.trim() || undefined,
-      orderId: orderIds.length > 0 ? orderIds : undefined,
-      customerId: customerIds.length > 0 ? customerIds : undefined,
-      vendorId: vendorIds.length > 0 ? vendorIds : undefined,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
-      minAmountPaise: minAmountPaise ? Number(minAmountPaise) : undefined,
-      maxAmountPaise: maxAmountPaise ? Number(maxAmountPaise) : undefined,
     }),
-    [
-      city,
-      customerIds,
-      dateFrom,
-      dateTo,
-      limit,
-      maxAmountPaise,
-      minAmountPaise,
-      orderIds,
-      page,
-      search,
-      selectedGateways,
-      selectedMethods,
-      selectedStatuses,
-      vendorIds,
-    ],
+    [city, dateFrom, dateTo, limit, page, queue, search],
   )
 
   const paymentsQuery = useQuery({
     queryKey: ['payments', query],
     queryFn: () => paymentService.getPaymentList(query),
   })
-  const queueSummaryQuery = useMemo<AdminPaymentsQueryParams>(
-    () => ({
-      page: 1,
-      limit: 1,
-      search: search.trim() || undefined,
-      status:
-        queue === 'all' && selectedStatuses.length > 0
-          ? selectedStatuses
-          : undefined,
-      method: selectedMethods.length > 0 ? selectedMethods : undefined,
-      gateway: selectedGateways.length > 0 ? selectedGateways : undefined,
-      city: city.trim() || undefined,
-      orderId: orderIds.length > 0 ? orderIds : undefined,
-      customerId: customerIds.length > 0 ? customerIds : undefined,
-      vendorId: vendorIds.length > 0 ? vendorIds : undefined,
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
-      minAmountPaise: minAmountPaise ? Number(minAmountPaise) : undefined,
-      maxAmountPaise: maxAmountPaise ? Number(maxAmountPaise) : undefined,
-    }),
-    [
-      city,
-      customerIds,
-      dateFrom,
-      dateTo,
-      maxAmountPaise,
-      minAmountPaise,
-      orderIds,
-      queue,
-      search,
-      selectedGateways,
-      selectedMethods,
-      selectedStatuses,
-      vendorIds,
-    ],
+
+  const payments = useMemo(
+    () => paymentsQuery.data?.data ?? [],
+    [paymentsQuery.data],
   )
-  const queueSummaryResultQuery = useQuery({
-    queryKey: ['payments-summary', queueSummaryQuery],
-    queryFn: () => paymentService.getPaymentList(queueSummaryQuery),
+  const pagination = paymentsQuery.data?.pagination
+
+  /** Queue counts span the result set, not the page. */
+  const summaryQuery = useQuery({
+    queryKey: [
+      'payments',
+      'queue-counts',
+      { city: city.trim(), dateFrom, dateTo, search: search.trim() },
+    ],
+    queryFn: () =>
+      paymentService.getPaymentList({
+        page: 1,
+        limit: 1,
+        search: search.trim() || undefined,
+        city: city.trim() || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+      }),
     placeholderData: (previousData) => previousData,
   })
 
-  const payments = paymentsQuery.data?.data ?? []
-  const pagination = paymentsQuery.data?.pagination
-  const summary = paymentsQuery.data?.summary
-  const queueSummary = queueSummaryResultQuery.data?.summary
-  const previewPayment =
-    payments.find((payment) => payment.paymentId === previewPaymentId) ?? null
-  const paymentSelection = useListSelection(payments, (payment) => payment.paymentId)
-  const isInitialLoading = paymentsQuery.isLoading && !paymentsQuery.data
-  const isRefreshing = paymentsQuery.isFetching && Boolean(paymentsQuery.data)
-  const refreshStatusLabel = isRefreshing
-    ? 'Refreshing now'
-    : formatRefreshTime(paymentsQuery.dataUpdatedAt)
+  const summary = summaryQuery.data?.summary
+  const queueSummary = summary?.queueSummary
 
-  const metrics = buildPaymentMetrics(payments, pagination, summary)
-  const queueItems = buildPaymentQueueItems(queueSummary, payments)
-  const paymentGridStyle = useMemo<PaymentGridStyle>(
-    () => ({
-      '--payment-grid-template': getPaymentGridTemplate(
-        visibleColumns,
-        columnWidths,
-      ),
-      '--payment-grid-min-width': getPaymentGridMinWidth(
-        visibleColumns,
-        columnWidths,
-      ),
-    }),
-    [columnWidths, visibleColumns],
-  )
+  const queueTabs: DataListQueueTab[] = [
+    { key: 'all', label: 'All', count: queueSummary?.allPayments ?? summary?.total },
+    {
+      key: 'needsReview',
+      label: 'Needs review',
+      count: queueSummary?.needsReview,
+      tone: 'warning',
+    },
+    {
+      key: 'successful',
+      label: 'Successful',
+      count: queueSummary?.successful ?? summary?.successful,
+    },
+    {
+      key: 'failed',
+      label: 'Failed',
+      count: queueSummary?.failed ?? summary?.failed,
+      tone: 'danger',
+    },
+    {
+      key: 'cancelled',
+      label: 'Cancelled',
+      count: queueSummary?.cancelled ?? summary?.cancelled,
+      tone: 'danger',
+    },
+  ]
 
-  const hasActiveFilters = Boolean(
-    search ||
-      selectedStatuses.length > 0 ||
-      selectedMethods.length > 0 ||
-      selectedGateways.length > 0 ||
-      city ||
-      orderIds.length > 0 ||
-      customerIds.length > 0 ||
-      vendorIds.length > 0 ||
-      dateFrom ||
-      dateTo ||
-      minAmountPaise ||
-      maxAmountPaise ||
-      queue !== 'all',
-  )
+  const appliedFilterCount = [city.trim(), dateFrom, dateTo].filter(Boolean).length
 
-  const clearPaymentFilters = () => {
-    clearSeededPaymentParams()
-    setQueue('all')
-    setSearch('')
-    setSelectedStatuses([])
-    setSelectedMethods([])
-    setSelectedGateways([])
-    setCity('')
-    setSelectedOrders([])
-    setSelectedCustomers([])
-    setSelectedVendors([])
-    setDateFrom('')
-    setDateTo('')
-    setMinAmountPaise('')
-    setMaxAmountPaise('')
-    setPage(1)
-  }
+  const clearSeededParams = () => {
+    const seededKeys = ['search', 'status', 'method', 'gateway', 'orderId', 'customerId', 'vendorId']
+    if (!seededKeys.some((key) => searchParams.has(key))) return
 
-  const applyQueue = (nextQueue: PaymentQueueKey) => {
-    clearSeededPaymentParams()
-    setQueue(nextQueue)
-    setSelectedStatuses([])
-
-    if (nextQueue === 'needsReview') {
-      setSelectedStatuses(['CREATED', 'PENDING', 'FAILED'])
-    }
-
-    if (nextQueue === 'successful') {
-      setSelectedStatuses(['SUCCESS'])
-    }
-
-    if (nextQueue === 'failed') {
-      setSelectedStatuses(['FAILED'])
-    }
-
-    if (nextQueue === 'cancelled') {
-      setSelectedStatuses(['CANCELLED'])
-    }
-
-    setPage(1)
-  }
-
-  const startColumnResize = (
-    columnId: PaymentColumnWidthId,
-    event: ReactPointerEvent<HTMLButtonElement>,
-  ) => {
-    event.preventDefault()
-    event.stopPropagation()
-
-    const startX = event.clientX
-    const startWidth = getPaymentColumnWidth(columnWidths, columnId)
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const nextWidth = startWidth + moveEvent.clientX - startX
-
-      setColumnWidths((currentWidths) => ({
-        ...currentWidths,
-        [columnId]: Math.max(
-          getPaymentColumnMinWidth(columnId),
-          Math.round(nextWidth),
-        ),
-      }))
-    }
-
-    const stopResize = () => {
-      document.removeEventListener('pointermove', handlePointerMove)
-      document.removeEventListener('pointerup', stopResize)
-      document.removeEventListener('pointercancel', stopResize)
-    }
-
-    document.addEventListener('pointermove', handlePointerMove)
-    document.addEventListener('pointerup', stopResize)
-    document.addEventListener('pointercancel', stopResize)
-  }
-
-  const resetColumnWidth = (columnId: PaymentColumnWidthId) => {
-    setColumnWidths((currentWidths) => ({
-      ...currentWidths,
-      [columnId]: getPaymentColumnDefaultWidth(columnId),
-    }))
-  }
-
-  const toggleColumn = (columnId: PaymentColumnId) => {
-    setVisibleColumns((currentColumns) => {
-      if (currentColumns.includes(columnId)) {
-        if (currentColumns.length === 1) return currentColumns
-
-        return currentColumns.filter((currentColumn) => currentColumn !== columnId)
-      }
-
-      return [...currentColumns, columnId]
-    })
-  }
-
-  const showColumn = (columnId: PaymentColumnId) =>
-    visibleColumns.includes(columnId)
-
-  const viewDetails = (payment: AdminPaymentSummary) => {
-    navigate(`${routePaths.payments}/${payment.paymentId}`)
-  }
-
-  const viewOrder = (payment: AdminPaymentSummary) => {
-    navigate(`${routePaths.orders}/${payment.order.orderId}`)
-  }
-
-  const viewCustomer = (payment: AdminPaymentSummary) => {
-    navigate(`${routePaths.customers}/${payment.customer.customerId}`)
-  }
-
-  const viewVendor = (payment: AdminPaymentSummary) => {
-    navigate(`${routePaths.vendors}/${payment.vendor.vendorId}`)
-  }
-
-  const viewRefunds = (payment: AdminPaymentSummary) => {
-    const params = new URLSearchParams({
-      paymentId: payment.paymentId,
-      paymentLabel: payment.publicPaymentId,
-    })
-
-    navigate(`${routePaths.refunds}?${params.toString()}`)
+    const nextParams = new URLSearchParams(searchParams)
+    seededKeys.forEach((key) => nextParams.delete(key))
+    setSearchParams(nextParams, { replace: true })
   }
 
   const actionMutation = useMutation({
@@ -1313,826 +185,343 @@ export function PaymentsPage() {
       }
     },
     onError: (error) => {
-      setActionError(
-        error instanceof Error ? error.message : 'Payment action failed.',
-      )
+      setActionError(error instanceof Error ? error.message : 'Payment action failed.')
     },
   })
 
-  const openReconcile = (
-    payment: AdminPaymentSummary,
-    event?: React.MouseEvent<HTMLButtonElement>,
-  ) => {
-    event?.stopPropagation()
-    if (!canReconcile || !payment.availableActions.includes('RECONCILE')) return
-
-    setActionError(null)
-    setActionTarget({
-      action: { kind: 'RECONCILE_PAYMENT', payment },
-      payment,
-    })
-  }
-
-  const renderPaymentCells = (payment: AdminPaymentSummary) => (
-    <>
-      {showColumn('payment') ? (
-        <PaymentCell label="Payment">
-          <p className="truncate font-semibold">{payment.publicPaymentId}</p>
-          <p className="mt-1 truncate text-xs text-muted">
-            {payment.razorpayPaymentId ??
-              payment.razorpayOrderId ??
-              humanizeCode(payment.gateway)}
-          </p>
-        </PaymentCell>
-      ) : null}
-      {showColumn('order') ? (
-        <PaymentCell label="Order">
-          <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate font-semibold">{payment.order.publicOrderId}</p>
-            {canReadOrders ? (
-              <button
-                aria-label={`Open order ${payment.order.publicOrderId}`}
-                className="btn-icon size-7 shrink-0"
-                title="Open order"
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  viewOrder(payment)
-                }}
-              >
-                <ReceiptText className="size-3.5" />
-              </button>
-            ) : null}
+  const columns: DataListColumn<AdminPaymentSummary>[] = useMemo(
+    () => [
+      {
+        id: 'payment',
+        label: 'Payment',
+        defaultWidth: 200,
+        minWidth: 160,
+        priority: 1,
+        grow: true,
+        locked: true,
+        render: (payment) => (
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="truncate font-medium text-foreground">
+              {payment.publicPaymentId}
+            </span>
+            <span className="shrink-0 text-xs text-muted">
+              {formatDateSafe(payment.createdAt)}
+            </span>
           </div>
-          <p className="mt-1 truncate text-xs text-muted">
-            {humanizeCode(payment.order.orderStatus)}
-          </p>
-        </PaymentCell>
-      ) : null}
-      {showColumn('status') ? (
-        <PaymentCell label="Status">
-          <Badge tone={getPaymentStatusTone(payment.status)}>
+        ),
+      },
+      {
+        id: 'status',
+        label: 'Status',
+        defaultWidth: 110,
+        minWidth: 96,
+        priority: 1,
+        render: (payment) => (
+          <Badge tone={badgeTone(getPaymentStatusTone(payment.status))}>
             {humanizeCode(payment.status)}
           </Badge>
-          {payment.warnings.length > 0 ? (
-            <p className="mt-1 text-xs text-warning">
-              {payment.warnings.length} warning
-              {payment.warnings.length === 1 ? '' : 's'}
-            </p>
-          ) : null}
-        </PaymentCell>
-      ) : null}
-      {showColumn('method') ? (
-        <PaymentCell label="Method">
-          <p className="font-semibold">{humanizeCode(payment.method)}</p>
-          <p className="mt-1 text-xs text-muted">{humanizeCode(payment.gateway)}</p>
-        </PaymentCell>
-      ) : null}
-      {showColumn('parties') ? (
-        <PaymentCell label="Customer / Vendor">
-          <div className="space-y-1">
-            <div className="flex min-w-0 items-center gap-2">
-              <p className="truncate font-semibold">{payment.customer.fullName}</p>
-              {canReadCustomers ? (
-                <button
-                  aria-label={`Open customer ${payment.customer.fullName}`}
-                  className="btn-icon size-7 shrink-0"
-                  title="Open customer"
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    viewCustomer(payment)
-                  }}
-                >
-                  <UserRound className="size-3.5" />
-                </button>
-              ) : null}
-            </div>
-            <div className="flex min-w-0 items-center gap-2">
-              <p className="truncate text-xs text-muted">{payment.vendor.shopName}</p>
-              {canReadVendors ? (
-                <button
-                  aria-label={`Open vendor ${payment.vendor.shopName}`}
-                  className="btn-icon size-7 shrink-0"
-                  title="Open vendor"
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    viewVendor(payment)
-                  }}
-                >
-                  <Store className="size-3.5" />
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </PaymentCell>
-      ) : null}
-      {showColumn('amount') ? (
-        <PaymentCell label="Amount">
-          <p className="font-semibold">{formatPaise(payment.amountPaise)}</p>
-          <p className="mt-1 text-xs text-muted">{payment.currency}</p>
-        </PaymentCell>
-      ) : null}
-      {showColumn('refunds') ? (
-        <PaymentCell label="Refunds">
-          <div className="flex min-w-0 items-center gap-2">
-            <Badge
-              tone={
-                payment.refundSummary.requestedCount > 0
-                  ? 'warning'
-                  : payment.refundSummary.refundCount > 0
-                    ? 'info'
-                    : 'neutral'
-              }
+        ),
+      },
+      {
+        id: 'signal',
+        label: 'Signal',
+        defaultWidth: 150,
+        minWidth: 120,
+        priority: 1,
+        render: (payment) => {
+          const signal = paymentSignal(payment)
+
+          if (!signal) return <span className="text-muted">—</span>
+
+          return (
+            <span
+              className={cn(
+                'truncate text-xs',
+                signal.tone === 'danger' && 'text-danger',
+                signal.tone === 'warning' && 'text-warning',
+              )}
+              title={signal.label}
             >
-              {payment.refundSummary.refundCount} refund
-              {payment.refundSummary.refundCount === 1 ? '' : 's'}
-            </Badge>
-            {canReadRefunds && payment.refundSummary.refundCount > 0 ? (
-              <button
-                aria-label={`Open refunds for ${payment.publicPaymentId}`}
-                className="btn-icon size-7 shrink-0"
-                title="Open refunds"
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  viewRefunds(payment)
-                }}
-              >
-                <RotateCcw className="size-3.5" />
-              </button>
-            ) : null}
-          </div>
-          <p className="mt-1 text-xs text-muted">
-            {formatPaise(payment.refundSummary.remainingRefundableAmountPaise)} left
-          </p>
-        </PaymentCell>
-      ) : null}
-      {showColumn('gateway') ? (
-        <PaymentCell label="Gateway">
-          <p className="truncate font-semibold">{humanizeCode(payment.gateway)}</p>
-          <p className="mt-1 truncate text-xs text-muted">
-            {payment.razorpayPaymentId ?? payment.razorpayOrderId ?? 'No provider id'}
-          </p>
-        </PaymentCell>
-      ) : null}
-      {showColumn('updatedAt') ? (
-        <PaymentCell label="Updated">
-          <p className="font-semibold">{formatDateSafe(payment.updatedAt)}</p>
-          <p className="mt-1 text-xs text-muted">
-            Created {formatDateSafe(payment.createdAt)}
-          </p>
-        </PaymentCell>
-      ) : null}
-    </>
+              {signal.label}
+            </span>
+          )
+        },
+      },
+      {
+        id: 'amount',
+        label: 'Amount',
+        defaultWidth: 100,
+        minWidth: 88,
+        priority: 2,
+        align: 'right',
+        render: (payment) => <span>{formatPaise(payment.amountPaise)}</span>,
+      },
+      {
+        id: 'method',
+        label: 'Method',
+        defaultWidth: 110,
+        minWidth: 96,
+        priority: 2,
+        render: (payment) => (
+          <span className="truncate text-muted">{humanizeCode(payment.method)}</span>
+        ),
+      },
+      {
+        id: 'order',
+        label: 'Order',
+        defaultWidth: 160,
+        minWidth: 130,
+        priority: 2,
+        render: (payment) => (
+          <span className="truncate text-muted">
+            {payment.order?.publicOrderId ?? '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'refunds',
+        label: 'Refunds',
+        defaultWidth: 90,
+        minWidth: 80,
+        priority: 3,
+        align: 'right',
+        render: (payment) => (
+          <span
+            className={cn(
+              'tabular-nums',
+              payment.refundSummary.requestedCount > 0 && 'text-warning',
+            )}
+          >
+            {payment.refundSummary.refundCount || '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'parties',
+        label: 'Customer',
+        defaultWidth: 150,
+        minWidth: 120,
+        priority: 3,
+        render: (payment) => (
+          <span className="truncate text-muted">
+            {payment.customer?.fullName ?? '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'gateway',
+        label: 'Gateway',
+        defaultWidth: 110,
+        minWidth: 96,
+        priority: 4,
+        defaultHidden: true,
+        render: (payment) => (
+          <span className="truncate text-muted">{humanizeCode(payment.gateway)}</span>
+        ),
+      },
+      {
+        id: 'updatedAt',
+        label: 'Updated',
+        defaultWidth: 110,
+        minWidth: 96,
+        priority: 4,
+        defaultHidden: true,
+        render: (payment) => (
+          <span className="text-muted">{formatDateSafe(payment.updatedAt)}</span>
+        ),
+      },
+    ],
+    [],
   )
 
-  const renderRowActions = (payment: AdminPaymentSummary) => (
-    <div className="flex flex-nowrap items-center justify-end gap-1.5">
-      {canReconcile && payment.availableActions.includes('RECONCILE') ? (
-        <button
-          aria-label={`Reconcile payment ${payment.publicPaymentId}`}
-          className="btn-icon size-8 min-h-8 shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={actionMutation.isPending}
-          title="Reconcile payment"
-          type="button"
-          onClick={(event) => openReconcile(payment, event)}
-        >
-          <RefreshCcw className="size-3.5" />
-        </button>
-      ) : null}
-      <button
-        aria-label={`Open payment detail ${payment.publicPaymentId}`}
-        className="btn-icon size-8 min-h-8 shrink-0"
-        title="Open payment detail"
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation()
-          viewDetails(payment)
-        }}
-      >
-        <Eye className="size-3.5" />
-      </button>
-    </div>
+  const selectedPayments = useMemo(
+    () => payments.filter((payment) => selectedIds.includes(payment.paymentId)),
+    [payments, selectedIds],
   )
+
+  const exportSelected = () => {
+    downloadCsv(timestampedFilename('payments'), selectedPayments, [
+      { header: 'Payment ID', value: (payment) => payment.publicPaymentId },
+      { header: 'Created', value: (payment) => payment.createdAt },
+      { header: 'Status', value: (payment) => payment.status },
+      { header: 'Method', value: (payment) => payment.method },
+      { header: 'Gateway', value: (payment) => payment.gateway },
+      { header: 'Amount (INR)', value: (payment) => (payment.amountPaise ?? 0) / 100 },
+      { header: 'Order', value: (payment) => payment.order?.publicOrderId ?? '' },
+      { header: 'Customer', value: (payment) => payment.customer?.fullName ?? '' },
+      { header: 'Vendor', value: (payment) => payment.vendor?.shopName ?? '' },
+      { header: 'Refunds', value: (payment) => payment.refundSummary.refundCount },
+      {
+        header: 'Refund requests',
+        value: (payment) => payment.refundSummary.requestedCount,
+      },
+      { header: 'Failure code', value: (payment) => payment.failureCode ?? '' },
+      { header: 'Signals', value: (payment) => payment.warnings.join('; ') },
+    ])
+  }
+
+  const filterControlClass =
+    'h-9 w-full rounded-[0.55rem] border border-border bg-surface px-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30'
 
   return (
-    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
+    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
-        description="Review, reconcile, and trace backend payment records."
+        actionNode={
+          <Button
+            aria-label="Refresh payments"
+            className="h-9"
+            disabled={paymentsQuery.isLoading}
+            size="sm"
+            type="button"
+            variant="secondary"
+            onClick={() => void paymentsQuery.refetch()}
+          >
+            <RefreshCcw
+              className={cn(
+                'size-4 sm:mr-2',
+                paymentsQuery.isFetching && 'animate-spin motion-reduce:animate-none',
+              )}
+            />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+        }
         layout="workspace"
         placement="topbar"
         title="Payments"
       />
 
-      <div className="flex flex-col gap-3 xl:min-h-0 xl:flex-1">
-        <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          {metrics.map((metric) => (
-            <MetricCard
-              key={metric.label}
-              label={metric.label}
-              meta={metric.meta}
-              tone={metric.tone}
-              value={metric.value}
-            />
-          ))}
-        </section>
-
-        <section
-          className={cn(
-            'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
-            previewPayment
-              ? filtersCollapsed
-                ? 'xl:grid-cols-[4.25rem_minmax(0,1fr)_22rem]'
-                : 'xl:grid-cols-[18rem_minmax(0,1fr)_22rem]'
-              : filtersCollapsed
-                ? 'xl:grid-cols-[4.25rem_minmax(0,1fr)]'
-                : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
-          )}
-        >
-          <aside
-            className={cn(
-              'self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0',
-              filtersCollapsed
-                ? 'flex items-center justify-between gap-3 p-2.5 xl:flex-col xl:justify-start'
-                : 'space-y-3 p-3 xl:overflow-y-auto',
-            )}
-          >
-            {filtersCollapsed ? (
-              <>
-                <button
-                  aria-label="Expand payment filters"
-                  className="btn-icon"
-                  title="Expand filters"
-                  type="button"
-                  onClick={() => setFiltersCollapsed(false)}
-                >
-                  <ChevronRight className="size-4" />
-                </button>
-                <span
-                  aria-hidden="true"
-                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
-                >
-                  <Filter className="size-4" />
-                </span>
-                {hasActiveFilters ? (
-                  <span
-                    aria-label="Active filters"
-                    className="size-2 rounded-full bg-primary"
-                    title="Active filters"
-                  />
-                ) : null}
-              </>
-            ) : (
-              <>
-                <div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-sm font-semibold text-foreground">
-                        Payment queues
-                      </h2>
-                      <p className="text-xs text-muted">
-                        Counts match current filters.
-                      </p>
-                    </div>
-                    <button
-                      aria-label="Collapse payment filters"
-                      className="btn-icon"
-                      title="Collapse filters"
-                      type="button"
-                      onClick={() => setFiltersCollapsed(true)}
-                    >
-                      <ChevronLeft className="size-4" />
-                    </button>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {queueItems.map((queueItem) => (
-                      <button
-                        className={cn(
-                          'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border px-3 text-left text-sm transition',
-                          queue === queueItem.key
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border bg-surface-muted/50 text-foreground hover:border-primary/35',
-                        )}
-                        key={queueItem.key}
-                        type="button"
-                        onClick={() => applyQueue(queueItem.key)}
-                      >
-                        <span className="font-medium">{queueItem.label}</span>
-                        <span className="text-xs font-semibold">
-                          {queueItem.count}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t border-border pt-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Filter stack
-                    </h3>
-                    {hasActiveFilters ? (
-                      <button
-                        className="text-xs font-semibold text-primary"
-                        type="button"
-                        onClick={clearPaymentFilters}
-                      >
-                        Reset
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 space-y-3">
-                    <MultiSelectFilter
-                      label="Payment status"
-                      options={statusOptions}
-                      placeholder="All statuses"
-                      values={selectedStatuses}
-                      onChange={(values) => {
-                        clearSeededPaymentParams()
-                        setSelectedStatuses(values as AdminPaymentStatus[])
-                        setQueue('all')
-                        resetToFirstPage()
-                      }}
-                    />
-                    <MultiSelectFilter
-                      label="Payment method"
-                      options={methodOptions}
-                      placeholder="All methods"
-                      values={selectedMethods}
-                      onChange={(values) => {
-                        setSelectedMethods(values as AdminPaymentMethod[])
-                        resetToFirstPage()
-                      }}
-                    />
-                    <MultiSelectFilter
-                      label="Gateway"
-                      options={gatewayOptions}
-                      placeholder="All gateways"
-                      values={selectedGateways}
-                      onChange={(values) => {
-                        setSelectedGateways(values as AdminPaymentGateway[])
-                        resetToFirstPage()
-                      }}
-                    />
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        City
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        placeholder="Chennai"
-                        value={city}
-                        onChange={(event) => {
-                          clearSeededPaymentParams()
-                          setCity(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <LookupMultiSelect
-                      fetchOptions={searchOrderLookupOptions}
-                      label="Order"
-                      placeholder="Search order"
-                      queryKey={['lookup', 'orders']}
-                      selectedOptions={selectedOrders}
-                      onChange={(options) => {
-                        clearSeededPaymentParams()
-                        setSelectedOrders(options)
-                        resetToFirstPage()
-                      }}
-                    />
-                    <LookupMultiSelect
-                      fetchOptions={searchCustomerLookupOptions}
-                      label="Customer"
-                      placeholder="Search customer"
-                      queryKey={['lookup', 'customers']}
-                      selectedOptions={selectedCustomers}
-                      onChange={(options) => {
-                        clearSeededPaymentParams()
-                        setSelectedCustomers(options)
-                        resetToFirstPage()
-                      }}
-                    />
-                    <LookupMultiSelect
-                      fetchOptions={searchVendorLookupOptions}
-                      label="Vendor"
-                      placeholder="Search vendor"
-                      queryKey={['lookup', 'vendors', 'payments']}
-                      selectedOptions={selectedVendors}
-                      onChange={(options) => {
-                        clearSeededPaymentParams()
-                        setSelectedVendors(options)
-                        resetToFirstPage()
-                      }}
-                    />
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Minimum amount
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        inputMode="numeric"
-                        placeholder="Paise"
-                        value={minAmountPaise}
-                        onChange={(event) => {
-                          setMinAmountPaise(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Maximum amount
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        inputMode="numeric"
-                        placeholder="Paise"
-                        value={maxAmountPaise}
-                        onChange={(event) => {
-                          setMaxAmountPaise(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Date from
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        type="datetime-local"
-                        value={dateFrom}
-                        onChange={(event) => {
-                          clearSeededPaymentParams()
-                          setDateFrom(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Date to
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        type="datetime-local"
-                        value={dateTo}
-                        onChange={(event) => {
-                          clearSeededPaymentParams()
-                          setDateTo(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-              </>
-            )}
-          </aside>
-
-          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  Payment operations
-                </h2>
-                <p className="text-sm text-muted">
-                  {pagination
-                    ? `${pagination.totalItems} payments matching current filters`
-                    : 'Search, filter, and reconcile backend payments.'}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <ListHeaderSearch
-                  className="w-full sm:w-72 lg:w-80"
-                  placeholder="Search payment, order, customer, vendor"
-                  value={search}
-                  onChange={(nextSearch) => {
-                    clearSeededPaymentParams()
-                    setSearch(nextSearch)
-                    resetToFirstPage()
+      <DataList
+        activeQueue={queue}
+        appliedFilterCount={appliedFilterCount}
+        columns={columns}
+        emptyHint="Try a different search term or clear the active filters."
+        emptyMessage="No payments match these filters"
+        errorMessage="Could not load payments."
+        filters={
+          <>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">City</span>
+              <input
+                className={filterControlClass}
+                placeholder="Any city"
+                value={city}
+                onChange={(event) => {
+                  setCity(event.target.value)
+                  setPage(1)
+                }}
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-muted">From</span>
+                <input
+                  className={filterControlClass}
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => {
+                    setDateFrom(event.target.value)
+                    setPage(1)
                   }}
                 />
-                <span
-                  className={cn(
-                    'text-xs font-medium',
-                    isRefreshing ? 'text-primary' : 'text-muted',
-                  )}
-                >
-                  {refreshStatusLabel}
-                </span>
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => navigate(routePaths.refunds)}
-                >
-                  <ArrowUpRight className="mr-2 size-4" />
-                  Refund Queue
-                </Button>
-                <div className="relative" ref={columnsMenuRef}>
-                  <Button
-                    aria-expanded={columnsOpen}
-                    aria-haspopup="menu"
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setColumnsOpen((current) => !current)}
-                  >
-                    <SlidersHorizontal className="mr-2 size-4" />
-                    Columns
-                    {visibleColumns.length ? (
-                      <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
-                        {visibleColumns.length}
-                      </span>
-                    ) : null}
-                  </Button>
-
-                  {columnsOpen ? (
-                    <div
-                      className="absolute right-0 top-[calc(100%+0.5rem)] z-[60] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
-                      role="menu"
-                    >
-                      <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
-                        Visible columns
-                      </p>
-                      {paymentDataColumns.map((column) => {
-                        const isChecked = visibleColumns.includes(column.id)
-                        const isRequiredLastColumn =
-                          isChecked && visibleColumns.length === 1
-
-                        return (
-                          <label
-                            className={cn(
-                              'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
-                              isRequiredLastColumn &&
-                                'cursor-not-allowed opacity-60',
-                            )}
-                            key={column.id}
-                          >
-                            <input
-                              checked={isChecked}
-                              className="size-4 accent-[color:var(--adaptive-primary)]"
-                              disabled={isRequiredLastColumn}
-                              type="checkbox"
-                              onChange={() => toggleColumn(column.id)}
-                            />
-                            <span>{column.label}</span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void paymentsQuery.refetch()}
-                >
-                  <RefreshCcw
-                    className={cn(
-                      'mr-2 size-4',
-                      isRefreshing && 'animate-spin motion-reduce:animate-none',
-                    )}
-                  />
-                  Refresh
-                </Button>
-              </div>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-muted">To</span>
+                <input
+                  className={filterControlClass}
+                  type="date"
+                  value={dateTo}
+                  onChange={(event) => {
+                    setDateTo(event.target.value)
+                    setPage(1)
+                  }}
+                />
+              </label>
             </div>
-
-            {paymentsQuery.isError ? (
-              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <ErrorState
-                  description="We could not load payment data. Please retry."
-                  title="Payment data unavailable"
-                  onRetry={() => void paymentsQuery.refetch()}
-                />
-              </div>
-            ) : isInitialLoading ? (
-              <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <PaymentRowsSkeleton />
-              </div>
-            ) : payments.length === 0 ? (
-              <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <EmptyState
-                  description="No payment records matched the current filters."
-                  title="No payments found"
-                />
-              </div>
-            ) : (
-              <div className="flex flex-col xl:min-h-0 xl:flex-1">
-                <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
-                  <div
-                    className="min-w-0 xl:min-w-[var(--payment-grid-min-width)]"
-                    style={paymentGridStyle}
-                  >
-                    <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--payment-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
-                      <div className="flex min-w-0 items-center">
-                        <ListSelectionCheckbox
-                          checked={paymentSelection.allVisibleSelected}
-                          indeterminate={paymentSelection.someVisibleSelected}
-                          label="Select visible payments"
-                          onChange={paymentSelection.setVisibleSelected}
-                        />
-                      </div>
-                      {paymentDataColumns
-                        .filter((column) => visibleColumns.includes(column.id))
-                        .map((column) => (
-                          <div
-                            className="relative flex min-w-0 items-center pr-3"
-                            key={column.id}
-                          >
-                            <span className="truncate">{column.label}</span>
-                            <button
-                              aria-label={`Resize ${column.label} column`}
-                              className="absolute right-0 top-1/2 h-5 w-2 -translate-y-1/2 cursor-col-resize rounded-full border-l border-border transition hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                              title="Drag to resize"
-                              type="button"
-                              onDoubleClick={() => resetColumnWidth(column.id)}
-                              onPointerDown={(event) =>
-                                startColumnResize(column.id, event)
-                              }
-                            />
-                          </div>
-                        ))}
-                      <div className="workbench-sticky-action-head relative flex min-w-0 pr-3">
-                        <span>Actions</span>
-                        <button
-                          aria-label="Resize actions column"
-                          className="absolute right-0 top-1/2 h-5 w-2 -translate-y-1/2 cursor-col-resize rounded-full border-l border-border transition hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          title="Drag to resize"
-                          type="button"
-                          onDoubleClick={() =>
-                            resetColumnWidth(PAYMENT_ACTION_COLUMN_ID)
-                          }
-                          onPointerDown={(event) =>
-                            startColumnResize(PAYMENT_ACTION_COLUMN_ID, event)
-                          }
-                        />
-                      </div>
-                    </div>
-                    <ListSelectionToolbar
-                      allVisibleSelected={paymentSelection.allVisibleSelected}
-                      selectedCount={paymentSelection.selectedCount}
-                      visibleCount={paymentSelection.visibleCount}
-                      onClear={paymentSelection.clearSelection}
-                      onSelectVisible={() => paymentSelection.setVisibleSelected(true)}
-                    />
-
-                    <div className="divide-y divide-border">
-                      {payments.map((payment) => (
-                        <div
-                          aria-label={`Preview payment ${payment.publicPaymentId}`}
-                          aria-selected={
-                            previewPaymentId === payment.paymentId ||
-                            paymentSelection.isSelected(payment.paymentId)
-                          }
-                          className={cn(
-                            'workbench-grid-row grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--payment-grid-template)]',
-                            previewPaymentId === payment.paymentId &&
-                              'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
-                            paymentSelection.isSelected(payment.paymentId) &&
-                              'bg-primary/5 hover:bg-primary/10',
-                          )}
-                          key={payment.paymentId}
-                          role="button"
-                          style={paymentGridStyle}
-                          tabIndex={0}
-                          onClick={() => setPreviewPaymentId(payment.paymentId)}
-                          onKeyDown={(event) => {
-                            if (event.target !== event.currentTarget) return
-
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault()
-                              setPreviewPaymentId(payment.paymentId)
-                            }
-                          }}
-                        >
-                          <div className="flex min-w-0 items-start xl:items-center">
-                            <ListSelectionCheckbox
-                              checked={paymentSelection.isSelected(payment.paymentId)}
-                              label={`Select payment ${payment.paymentId}`}
-                              onChange={(selected) =>
-                                paymentSelection.setItemSelected(
-                                  payment.paymentId,
-                                  selected,
-                                )
-                              }
-                            />
-                          </div>
-                          <div className="grid gap-3 sm:grid-cols-2 xl:contents">
-                            {renderPaymentCells(payment)}
-                          </div>
-                          <div className="workbench-sticky-action-cell flex min-w-0 items-center justify-start pl-2 xl:justify-end">
-                            {renderRowActions(payment)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {pagination ? (
-                  <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border px-3 py-3 text-sm text-muted">
-                    <div className="flex items-center gap-2">
-                      <span>
-                        Showing {(pagination.page - 1) * pagination.limit + 1}-
-                        {Math.min(
-                          pagination.page * pagination.limit,
-                          pagination.totalItems,
-                        )}{' '}
-                        of {pagination.totalItems}
-                      </span>
-                      <label className="flex items-center gap-2">
-                        <span>Rows</span>
-                        <select
-                          className="h-9 rounded-[0.65rem] border border-border bg-surface px-2 text-foreground outline-none"
-                          value={limit}
-                          onChange={(event) => {
-                            setLimit(Number(event.target.value))
-                            setPage(1)
-                          }}
-                        >
-                          {[10, 20, 50, 100].map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        aria-label="Previous page"
-                        className="btn-icon"
-                        disabled={!pagination.hasPreviousPage}
-                        type="button"
-                        onClick={() => setPage((currentPage) => currentPage - 1)}
-                      >
-                        <ChevronLeft className="size-4" />
-                      </button>
-                      <span className="font-medium text-foreground">
-                        Page {pagination.page} of {pagination.totalPages}
-                      </span>
-                      <button
-                        aria-label="Next page"
-                        className="btn-icon"
-                        disabled={!pagination.hasNextPage}
-                        type="button"
-                        onClick={() => setPage((currentPage) => currentPage + 1)}
-                      >
-                        <ChevronRight className="size-4" />
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </main>
-          {previewPayment ? (
-            <PaymentPreviewPanel
-              canReadCustomers={canReadCustomers}
-              canReadOrders={canReadOrders}
-              canReadRefunds={canReadRefunds}
-              canReadVendors={canReadVendors}
-              canReconcile={canReconcile}
-              isSubmitting={actionMutation.isPending}
-              payment={previewPayment}
-              onClose={() => setPreviewPaymentId(null)}
-              onOpenCustomer={viewCustomer}
-              onOpenDetails={viewDetails}
-              onOpenOrder={viewOrder}
-              onOpenReconcile={openReconcile}
-              onOpenRefunds={viewRefunds}
-              onOpenVendor={viewVendor}
-            />
-          ) : null}
-        </section>
-      </div>
-
-      <PaymentActionModal
-        action={actionTarget?.action ?? null}
-        error={actionError}
-        isSubmitting={actionMutation.isPending}
-        onClose={() => {
-          if (!actionMutation.isPending) {
-            setActionTarget(null)
-            setActionError(null)
-          }
+          </>
+        }
+        getRowId={(payment) => payment.paymentId}
+        isError={paymentsQuery.isError}
+        isLoading={paymentsQuery.isLoading}
+        pagination={{
+          page,
+          pageSize: limit,
+          totalItems: pagination?.totalItems ?? 0,
+          totalPages: pagination?.totalPages ?? 1,
+          onPageChange: setPage,
+          onPageSizeChange: (nextLimit) => {
+            setLimit(nextLimit)
+            setPage(1)
+          },
         }}
-        onSubmit={(values) => {
-          if (!actionTarget) return
-
-          void actionMutation.mutateAsync({
-            action: actionTarget.action,
-            values,
-          })
+        queueTabs={queueTabs}
+        rowActions={(payment) =>
+          canReconcile && canReconcilePayment(payment) ? (
+            <Button
+              className="h-7 whitespace-nowrap px-2 text-xs"
+              size="sm"
+              type="button"
+              variant="primary"
+              onClick={() => {
+                setActionError(null)
+                setActionTarget({ kind: 'RECONCILE_PAYMENT', payment })
+              }}
+            >
+              Reconcile
+            </Button>
+          ) : null
+        }
+        rowActionsWidth={104}
+        rows={payments}
+        search={search}
+        searchPlaceholder="Search payment, order, customer…"
+        selection={{
+          selectedIds,
+          onSelectionChange: setSelectedIds,
+          actions: (
+            <Button size="sm" type="button" variant="ghost" onClick={exportSelected}>
+              <Download className="mr-1.5 size-3.5" />
+              Export CSV
+            </Button>
+          ),
+        }}
+        storageKey={PAYMENT_LIST_STORAGE_KEY}
+        onQueueChange={(key) => {
+          setQueue(key as PaymentQueueKey)
+          setPage(1)
+        }}
+        onResetFilters={() => {
+          setCity('')
+          setDateFrom('')
+          setDateTo('')
+          setPage(1)
+        }}
+        onRetry={() => void paymentsQuery.refetch()}
+        onRowClick={(payment) =>
+          navigate(`${routePaths.payments}/${payment.paymentId}`)
+        }
+        onSearchChange={(nextSearch) => {
+          clearSeededParams()
+          setSearch(nextSearch)
+          setPage(1)
         }}
       />
+
+      {actionTarget ? (
+        <PaymentActionModal
+          action={actionTarget}
+          error={actionError}
+          isSubmitting={actionMutation.isPending}
+          onClose={() => {
+            if (!actionMutation.isPending) {
+              setActionTarget(null)
+              setActionError(null)
+            }
+          }}
+          onSubmit={(values) =>
+            void actionMutation.mutateAsync({ action: actionTarget, values })
+          }
+        />
+      ) : null}
     </PageContainer>
   )
 }

@@ -1,9 +1,9 @@
 import { Check, Minus } from 'lucide-react'
-import { type MouseEvent, useEffect, useRef } from 'react'
+import { type MouseEvent, type ReactNode, useEffect, useRef } from 'react'
 import { cn } from '../../../utils/cn'
 import { Button } from '../Button'
 
-export const LIST_SELECTION_COLUMN_WIDTH = 44
+export const LIST_SELECTION_COLUMN_WIDTH = 36
 
 interface ListSelectionCheckboxProps {
   checked: boolean
@@ -19,6 +19,12 @@ interface ListSelectionToolbarProps {
   visibleCount: number
   allVisibleSelected: boolean
   className?: string
+  /**
+   * Bulk operations for the current selection. Rendered before the
+   * Select visible / Clear controls. Selection is meaningless without at
+   * least one of these, so callers should pass an export action at minimum.
+   */
+  actions?: ReactNode
   onClear: () => void
   onSelectVisible: () => void
 }
@@ -82,6 +88,7 @@ export function ListSelectionCheckbox({
 }
 
 export function ListSelectionToolbar({
+  actions,
   allVisibleSelected,
   className,
   onClear,
@@ -108,7 +115,11 @@ export function ListSelectionToolbar({
           {selectedCount === 1 ? 'record selected' : 'records selected'}
         </span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {actions}
+        {actions ? (
+          <span aria-hidden="true" className="h-5 w-px bg-border" />
+        ) : null}
         {!allVisibleSelected && visibleCount > selectedCount ? (
           <Button size="sm" type="button" variant="ghost" onClick={onSelectVisible}>
             Select visible

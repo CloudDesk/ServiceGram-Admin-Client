@@ -7,8 +7,6 @@ import { Skeleton } from '../ui/Skeleton'
 import { DetailBreadcrumbNav } from './DetailBreadcrumbNav'
 
 interface DetailPageHeaderProps {
-  backHref?: string
-  backLabel?: string
   breadcrumbs?: NavCrumb[]
   listHref: string
   listLabel: string
@@ -20,10 +18,13 @@ interface DetailPageHeaderProps {
   actionNode?: ReactNode
 }
 
+// The negative margins must mirror .page-content's padding (px-3 / sm:px-4 /
+// lg:px-6) exactly, or the bar overhangs the container and the page scrolls
+// sideways by the difference.
 const detailHeaderDockClassName =
-  'sticky top-0 z-20 -mx-4 pb-3 premium-page-surface sm:-mx-6 lg:-mx-10'
+  'sticky top-0 z-20 -mx-3 pb-3 premium-page-surface sm:-mx-4 lg:-mx-6'
 const detailHeaderBarClassName =
-  'border-y border-border bg-surface/95 px-4 py-2 shadow-[var(--sg-shadow-surface)] backdrop-blur-xl sm:px-6 lg:px-10'
+  'border-y border-border bg-surface/95 px-3 py-2 shadow-[var(--sg-shadow-surface)] backdrop-blur-xl sm:px-4 lg:px-6'
 
 export function DetailPageHeaderSkeleton() {
   return (
@@ -48,8 +49,6 @@ export function DetailPageHeaderSkeleton() {
 
 export function DetailPageHeader({
   actionNode,
-  backHref,
-  backLabel,
   breadcrumbs,
   description,
   listHref,
@@ -83,12 +82,7 @@ export function DetailPageHeader({
           <div className={detailHeaderBarClassName}>
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
               {showBreadcrumbs ? (
-                <DetailBreadcrumbNav
-                  backHref={backHref ?? listHref}
-                  backLabel={backLabel}
-                  items={breadcrumbItems}
-                  variant="inline"
-                />
+                <DetailBreadcrumbNav items={breadcrumbItems} variant="inline" />
               ) : null}
               {titleMetaNode || actionNode ? (
                 <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">

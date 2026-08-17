@@ -8,6 +8,7 @@ import {
   HandCoins,
   ReceiptText,
   PauseCircle,
+  RefreshCcw,
   RotateCcw,
   Store,
   TriangleAlert,
@@ -26,6 +27,7 @@ import { Button } from '../../../components/ui/Button'
 import { DynamicTable, type DynamicTableColumn } from '../../../components/ui/Table'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
+import { OverflowText } from '../../../components/ui/OverflowText'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import {
   DetailPageHeader,
@@ -33,6 +35,12 @@ import {
 } from '../../../components/layout/DetailPageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
+import {
+  RecordHeaderActions,
+  RecordTabs,
+  type RecordAction,
+  type RecordTabItem,
+} from '../../../components/ui/RecordPage'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -334,10 +342,15 @@ function SocialProfilesList({
               <span className="block text-sm font-semibold text-foreground">
                 {socialPlatformLabel(profile.platform)}
               </span>
-              <span className="block truncate text-xs text-muted">
+              <OverflowText
+                className="block text-xs text-muted"
+                title={`${profile.handle ?? profile.profileUrl}${
+                  followerCount ? ` / ${followerCount} followers` : ''
+                }`}
+              >
                 {profile.handle ?? profile.profileUrl}
                 {followerCount ? ` · ${followerCount} followers` : ''}
-              </span>
+              </OverflowText>
             </span>
             <ArrowUpRight className="size-3.5 shrink-0 text-primary" />
           </a>
@@ -427,15 +440,19 @@ function MetricCard({
         </p>
         <span className={toneTextClasses(tone)}>{icon}</span>
       </div>
-      <p
+      <OverflowText
+        as="p"
         className={cn(
           'mt-2 text-xl font-semibold tracking-normal',
           toneTextClasses(tone),
         )}
+        title={String(value)}
       >
         {value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
+      </OverflowText>
+      <OverflowText as="p" className="mt-1 text-xs text-muted" title={meta}>
+        {meta}
+      </OverflowText>
     </div>
   )
 }
@@ -459,128 +476,6 @@ function InfluencerHeaderStatus({
         </Badge>
       ) : null}
     </div>
-  )
-}
-
-function InfluencerHeaderActions({
-  canReviewInfluencers,
-  influencer,
-  isSubmitting,
-  onSelectAction,
-}: {
-  canReviewInfluencers: boolean
-  influencer: AdminInfluencer
-  isSubmitting: boolean
-  onSelectAction: (kind: InfluencerActionKind) => void
-}) {
-  const hasAction = (kind: InfluencerActionKind) =>
-    influencer.availableActions.includes(kind) &&
-    canRunInfluencerAction({ action: kind, canReviewInfluencers })
-
-  return (
-    <div className="flex flex-wrap justify-end gap-2">
-      {hasAction('APPROVE') ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          onClick={() => onSelectAction('APPROVE')}
-        >
-          <CheckCircle2 className="mr-2 size-4" />
-          Approve
-        </Button>
-      ) : null}
-      {hasAction('REJECT') ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="danger"
-          onClick={() => onSelectAction('REJECT')}
-        >
-          <XCircle className="mr-2 size-4" />
-          Reject
-        </Button>
-      ) : null}
-      {hasAction('SUSPEND') ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="danger"
-          onClick={() => onSelectAction('SUSPEND')}
-        >
-          <PauseCircle className="mr-2 size-4" />
-          Suspend
-        </Button>
-      ) : null}
-      {hasAction('REACTIVATE') ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          onClick={() => onSelectAction('REACTIVATE')}
-        >
-          <RotateCcw className="mr-2 size-4" />
-          Reactivate
-        </Button>
-      ) : null}
-    </div>
-  )
-}
-
-function InfluencerDetailSectionNav({
-  influencer,
-}: {
-  influencer: AdminInfluencerDetail
-}) {
-  const navItems: {
-    count?: number
-    href: string
-    label: string
-  }[] = [
-    { href: `#${influencerDetailSectionIds.overview}`, label: 'Overview' },
-    { href: `#${influencerDetailSectionIds.profile}`, label: 'Profile' },
-    {
-      href: `#${influencerDetailSectionIds.application}`,
-      label: 'Application',
-    },
-    {
-      count: influencer.reels.length,
-      href: `#${influencerDetailSectionIds.reels}`,
-      label: 'Reels',
-    },
-    {
-      count: influencer.commissions.length,
-      href: `#${influencerDetailSectionIds.commission}`,
-      label: 'Commission',
-    },
-    { href: `#${influencerDetailSectionIds.related}`, label: 'Related' },
-    {
-      count: influencer.warnings.length,
-      href: `#${influencerDetailSectionIds.signals}`,
-      label: 'Signals',
-    },
-  ]
-
-  return (
-    <nav
-      aria-label="Influencer detail sections"
-      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
-    >
-      <div className="flex min-w-max items-center gap-1.5 py-2">
-        {navItems.map((item) => (
-          <a
-            className="inline-flex min-h-9 items-center gap-2 rounded-[0.65rem] px-3 text-sm font-semibold text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            href={item.href}
-            key={item.href}
-          >
-            <span>{item.label}</span>
-            {typeof item.count === 'number' ? (
-              <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">
-                {item.count}
-              </span>
-            ) : null}
-          </a>
-        ))}
-      </div>
-    </nav>
   )
 }
 
@@ -691,6 +586,115 @@ const commissionColumns: DynamicTableColumn<AdminInfluencerCommission>[] = [
   },
 ]
 
+function InfluencerHeaderActions({
+  canReviewInfluencers,
+  influencer,
+  isRefreshing,
+  isSubmitting,
+  onRefresh,
+  onSelectAction,
+}: {
+  canReviewInfluencers: boolean
+  influencer: AdminInfluencer
+  isRefreshing: boolean
+  isSubmitting: boolean
+  onRefresh: () => void
+  onSelectAction: (kind: InfluencerActionKind) => void
+}) {
+  const hasAction = (kind: InfluencerActionKind) =>
+    influencer.availableActions.includes(kind) &&
+    canRunInfluencerAction({ action: kind, canReviewInfluencers })
+
+  const build = (
+    kind: InfluencerActionKind,
+    label: string,
+    icon: ReactNode,
+    intent: RecordAction['intent'],
+  ): RecordAction | null =>
+    hasAction(kind)
+      ? { key: kind, label, icon, intent, onSelect: () => onSelectAction(kind) }
+      : null
+
+  const actions = [
+    build('APPROVE', 'Approve', <CheckCircle2 className="size-4" />, 'primary'),
+    build('REACTIVATE', 'Reactivate', <RotateCcw className="size-4" />, 'primary'),
+    build('SUSPEND', 'Suspend', <PauseCircle className="size-4" />, 'destructive'),
+    build('REJECT', 'Reject', <XCircle className="size-4" />, 'destructive'),
+  ].filter(Boolean) as RecordAction[]
+
+  return (
+    <RecordHeaderActions
+      actions={actions}
+      disabled={isSubmitting}
+      utility={
+        <Button
+          aria-label={isRefreshing ? 'Refreshing influencer' : 'Refresh influencer'}
+          size="sm"
+          title={isRefreshing ? 'Refreshing influencer' : 'Refresh influencer'}
+          type="button"
+          variant="secondary"
+          onClick={onRefresh}
+        >
+          <RefreshCcw
+            className={cn(
+              'mr-2 size-4',
+              isRefreshing && 'animate-spin motion-reduce:animate-none',
+            )}
+          />
+          Refresh
+        </Button>
+      }
+    />
+  )
+}
+
+export type InfluencerDetailTab =
+  | 'overview'
+  | 'profile'
+  | 'application'
+  | 'reels'
+  | 'commission'
+
+const INFLUENCER_DETAIL_TABS: InfluencerDetailTab[] = [
+  'overview',
+  'profile',
+  'application',
+  'reels',
+  'commission',
+]
+
+function InfluencerDetailSectionNav({
+  activeTab,
+  influencer,
+  profileId,
+}: {
+  activeTab: InfluencerDetailTab
+  influencer: AdminInfluencerDetail
+  profileId: string
+}) {
+  const items: RecordTabItem[] = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'profile', label: 'Profile' },
+    { key: 'application', label: 'Application' },
+    { key: 'reels', label: 'Reels', count: influencer.reels.length },
+    {
+      key: 'commission',
+      label: 'Commission',
+      count: influencer.commissions.length,
+    },
+  ]
+
+  return (
+    <RecordTabs
+      activeTab={activeTab}
+      ariaLabel="Influencer detail sections"
+      basePath={`${routePaths.influencers}/${profileId}`}
+      tabPrefix="/tab"
+      defaultTab="overview"
+      items={items}
+    />
+  )
+}
 function SectionShell({
   actionNode,
   children,
@@ -755,10 +759,16 @@ function RelatedRecordRow({
           <p className="text-xs font-semibold uppercase tracking-normal text-muted">
             {label}
           </p>
-          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+          <OverflowText
+            as="p"
+            className="mt-1 text-sm font-semibold text-foreground"
+            title={value}
+          >
             {value}
-          </p>
-          <p className="mt-1 truncate text-xs text-muted">{meta}</p>
+          </OverflowText>
+          <OverflowText as="p" className="mt-1 text-xs text-muted" title={meta}>
+            {meta}
+          </OverflowText>
         </div>
       </div>
       {canOpen && onOpen ? (
@@ -947,7 +957,12 @@ function LifecyclePanel({ influencer }: { influencer: AdminInfluencer }) {
 }
 
 export function InfluencerDetailPage() {
-  const { profileId } = useParams()
+  const { profileId, tab: tabParam } = useParams()
+  const activeTab: InfluencerDetailTab = INFLUENCER_DETAIL_TABS.includes(
+    tabParam as InfluencerDetailTab,
+  )
+    ? (tabParam as InfluencerDetailTab)
+    : 'overview' 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const canReadCustomers = usePermission('customers:read')
@@ -1093,7 +1108,9 @@ export function InfluencerDetailPage() {
           <InfluencerHeaderActions
             canReviewInfluencers={canReviewInfluencers}
             influencer={influencer}
+            isRefreshing={influencerQuery.isFetching}
             isSubmitting={actionMutation.isPending}
+            onRefresh={() => void influencerQuery.refetch()}
             onSelectAction={(kind) =>
               setSelectedAction({ kind, influencer })
             }
@@ -1108,8 +1125,13 @@ export function InfluencerDetailPage() {
         titleMetaNode={<InfluencerHeaderStatus influencer={influencer} />}
       />
 
-      <InfluencerDetailSectionNav influencer={influencer} />
+      <InfluencerDetailSectionNav
+        activeTab={activeTab}
+        influencer={influencer}
+        profileId={profileId as string}
+      />
 
+      {activeTab === 'overview' ? (
       <div
         className="grid scroll-mt-24 gap-2.5 md:grid-cols-2 xl:grid-cols-4"
         id={influencerDetailSectionIds.overview}
@@ -1149,12 +1171,14 @@ export function InfluencerDetailPage() {
           value={formatPaise(influencer.summary.confirmedCommissionPaise)}
         />
       </div>
+      ) : null}
 
       <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-3">
-          <LifecyclePanel influencer={influencer} />
+          {activeTab === 'overview' ? <LifecyclePanel influencer={influencer} /> : null}
 
           <section className="grid gap-3 2xl:grid-cols-[1.15fr_0.85fr]">
+            {activeTab === 'profile' ? (
             <SectionShell
               description="Customer identity stays active while creator capabilities are managed here."
               id={influencerDetailSectionIds.profile}
@@ -1197,7 +1221,9 @@ export function InfluencerDetailPage() {
                 </div>
               ) : null}
             </SectionShell>
+            ) : null}
 
+            {activeTab === 'application' ? (
             <SectionShell
               description="Submitted creator application and latest review context."
               id={influencerDetailSectionIds.application}
@@ -1261,9 +1287,11 @@ export function InfluencerDetailPage() {
                 />
               )}
             </SectionShell>
+            ) : null}
           </section>
         </div>
 
+        {activeTab === 'overview' ? (
         <div className="space-y-3">
           <RelatedRecordsPanel
             canReadCustomers={canReadCustomers}
@@ -1279,8 +1307,10 @@ export function InfluencerDetailPage() {
             influencer={influencer}
           />
         </div>
+        ) : null}
       </section>
 
+      {activeTab === 'reels' ? (
       <SectionShell
         actionNode={
           canReadReels ? (
@@ -1340,7 +1370,9 @@ export function InfluencerDetailPage() {
           />
         )}
       </SectionShell>
+      ) : null}
 
+      {activeTab === 'commission' ? (
       <SectionShell
         description="Phase 1 records manual commission entries; payout automation is not enabled."
         id={influencerDetailSectionIds.commission}
@@ -1397,6 +1429,7 @@ export function InfluencerDetailPage() {
           />
         )}
       </SectionShell>
+      ) : null}
 
       <InfluencerActionModal
         action={selectedAction}

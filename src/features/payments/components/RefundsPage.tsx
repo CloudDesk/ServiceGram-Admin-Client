@@ -36,6 +36,7 @@ import {
 } from '../../../components/ui/ListSelection'
 import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
+import { OverflowText } from '../../../components/ui/OverflowText'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import {
@@ -43,6 +44,8 @@ import {
   QuickPreviewFact,
   QuickPreviewFactGrid,
   QuickPreviewTabs,
+  quickPreviewOverlayClassName,
+  quickPreviewPanelClassName,
   type QuickPreviewAction,
 } from '../../../components/ui/QuickPreview'
 import { Skeleton } from '../../../components/ui/Skeleton'
@@ -67,7 +70,6 @@ import {
   type PaymentActionSelection,
 } from './PaymentActionModal'
 import type {
-  AdminFinancePagination,
   AdminRefundChildSummary,
   AdminRefundStatus,
   AdminRefundSummary,
@@ -76,12 +78,12 @@ import type {
 
 const DEFAULT_PAGE_SIZE = 10
 const REFUND_DEFAULT_COLUMN_WIDTH = 220
-const REFUND_GRID_COLUMN_GAP = 12
-const REFUND_GRID_INLINE_PADDING = 24
+const REFUND_GRID_COLUMN_GAP = 8
+const REFUND_GRID_INLINE_PADDING = 20
 const REFUND_ACTION_COLUMN_ID = 'actions'
 const REFUND_ACTION_COLUMN_DEFAULT_WIDTH = 128
 const REFUND_ACTION_COLUMN_MIN_WIDTH = 112
-const REFUND_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.refund.columnWidths.v1'
+const REFUND_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.refund.columnWidths.v2'
 
 const refundStatuses: AdminRefundStatus[] = [
   'REQUESTED',
@@ -96,8 +98,8 @@ const refundDataColumns = [
   {
     id: 'refund',
     label: 'Refund',
-    defaultWidth: REFUND_DEFAULT_COLUMN_WIDTH,
-    minWidth: 200,
+    defaultWidth: 250,
+    minWidth: 225,
   },
   {
     id: 'status',
@@ -108,20 +110,20 @@ const refundDataColumns = [
   {
     id: 'payment',
     label: 'Payment',
-    defaultWidth: REFUND_DEFAULT_COLUMN_WIDTH,
-    minWidth: 190,
+    defaultWidth: 240,
+    minWidth: 215,
   },
   {
     id: 'order',
     label: 'Order',
-    defaultWidth: REFUND_DEFAULT_COLUMN_WIDTH,
-    minWidth: 180,
+    defaultWidth: 230,
+    minWidth: 205,
   },
   {
     id: 'parties',
     label: 'Customer / Vendor',
-    defaultWidth: 260,
-    minWidth: 220,
+    defaultWidth: 290,
+    minWidth: 250,
   },
   {
     id: 'amount',
@@ -132,8 +134,8 @@ const refundDataColumns = [
   {
     id: 'reason',
     label: 'Reason',
-    defaultWidth: 280,
-    minWidth: 220,
+    defaultWidth: 320,
+    minWidth: 250,
   },
   {
     id: 'review',
@@ -153,7 +155,7 @@ type RefundTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
 type RefundColumnId = (typeof refundDataColumns)[number]['id']
 type RefundColumnWidthId = RefundColumnId | typeof REFUND_ACTION_COLUMN_ID
 type RefundColumnWidths = Partial<Record<RefundColumnWidthId, number>>
-type RefundPreviewTab = 'summary' | 'review' | 'links'
+type RefundPreviewTab = 'overview' | 'review' | 'links'
 type RefundQueueKey =
   | 'all'
   | 'requested'
@@ -226,21 +228,6 @@ interface RefundGridStyle extends CSSProperties {
   '--refund-grid-min-width': string
 }
 
-interface RefundMetric {
-  label: string
-  meta: string
-  tone: RefundTone
-  value: string
-}
-
-function toneClasses(tone: RefundTone) {
-  if (tone === 'success') return 'text-success'
-  if (tone === 'warning') return 'text-warning'
-  if (tone === 'danger') return 'text-danger'
-  if (tone === 'info') return 'text-primary'
-  return 'text-muted'
-}
-
 function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
 
@@ -278,56 +265,6 @@ function getPaymentStatusTone(
   if (status === 'CREATED' || status === 'PENDING') return 'warning'
 
   return 'neutral'
-}
-
-function buildRefundMetrics(
-  refunds: AdminRefundSummary[],
-  pagination?: AdminFinancePagination,
-  summary?: AdminRefundChildSummary,
-): RefundMetric[] {
-  const total = pagination?.totalItems ?? summary?.total ?? refunds.length
-  const requested =
-    summary?.requested ??
-    refunds.filter((refund) => refund.status === 'REQUESTED').length
-  const processing =
-    (summary ? summary.approved + summary.processing : undefined) ??
-    refunds.filter((refund) =>
-      ['APPROVED', 'PROCESSING'].includes(refund.status),
-    ).length
-  const approvedValue =
-    summary?.committedAmountPaise ??
-    refunds
-      .filter((refund) =>
-        ['APPROVED', 'PROCESSING', 'SUCCESS'].includes(refund.status),
-      )
-      .reduce((sum, refund) => sum + refund.amountPaise, 0)
-
-  return [
-    {
-      label: 'Needs review',
-      meta: 'Requested refunds matching filters',
-      tone: requested > 0 ? 'warning' : 'neutral',
-      value: String(requested),
-    },
-    {
-      label: 'Approved value',
-      meta: 'Approved, processing, or completed value',
-      tone: approvedValue > 0 ? 'success' : 'neutral',
-      value: formatPaise(approvedValue),
-    },
-    {
-      label: 'In process',
-      meta: 'Approved or processing refunds',
-      tone: processing > 0 ? 'info' : 'neutral',
-      value: String(processing),
-    },
-    {
-      label: 'Matched refunds',
-      meta: 'Total matching current filters',
-      tone: 'info',
-      value: String(total),
-    },
-  ]
 }
 
 function buildRefundQueueItems(
@@ -461,30 +398,16 @@ function formatRefreshTime(updatedAt: number) {
   return `Updated ${formatDate(new Date(updatedAt).toISOString(), true)}`
 }
 
-function MetricCard({ label, meta, tone, value }: RefundMetric) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <p className={cn('text-xs font-semibold uppercase tracking-normal', toneClasses(tone))}>
-        {label}
-      </p>
-      <p className={cn('mt-3 text-2xl font-semibold tracking-normal', toneClasses(tone))}>
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
-    </article>
-  )
-}
-
 function RefundRowsSkeleton() {
   return (
     <div className="space-y-0">
       {Array.from({ length: 8 }).map((_, index) => (
         <div
-          className="grid gap-3 border-b border-border px-3 py-4 xl:grid-cols-[1fr_0.8fr_1fr_1fr_1.2fr_0.8fr_1fr]"
+          className="grid gap-2 border-b border-border px-3 py-2 xl:grid-cols-[1fr_0.8fr_1fr_1fr_1.2fr_0.8fr_1fr]"
           key={index}
         >
           {Array.from({ length: 7 }).map((__, cellIndex) => (
-            <Skeleton className="h-9 w-full" key={cellIndex} />
+            <Skeleton className="h-8 w-full" key={cellIndex} />
           ))}
         </div>
       ))}
@@ -501,8 +424,8 @@ function RefundCell({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-xs text-muted">{label}</p>
-      <div className="mt-1 min-w-0 text-sm text-foreground">{children}</div>
+      <p className="text-xs text-muted xl:hidden">{label}</p>
+      <div className="mt-1 min-w-0 text-sm text-foreground xl:mt-0">{children}</div>
     </div>
   )
 }
@@ -632,31 +555,32 @@ function RefundPreviewPanel({
   onOpenVendor: (refund: AdminRefundSummary) => void
   refund: AdminRefundSummary
 }) {
-  const [activeTab, setActiveTab] = useState<RefundPreviewTab>('summary')
+  const [activeTab, setActiveTab] = useState<RefundPreviewTab>('overview')
   const signalTone = refundSignalTone(refund)
   const previewTabs: { key: RefundPreviewTab; label: string }[] = [
-    { key: 'summary', label: 'Summary' },
+    { key: 'overview', label: 'Overview' },
     { key: 'review', label: 'Review' },
     { key: 'links', label: 'Links' },
   ]
   const canApprove = canReviewRefunds && refund.availableActions.includes('APPROVE')
   const canReject = canReviewRefunds && refund.availableActions.includes('REJECT')
-  const primaryAction: QuickPreviewAction | null = canApprove
+  const primaryAction: QuickPreviewAction = {
+    icon: <Eye className="size-4" />,
+    key: 'details',
+    label: 'Open detail',
+    onClick: () => onOpenDetails(refund),
+    variant: 'primary',
+  }
+  const detailAction: QuickPreviewAction | null = canApprove
     ? {
         disabled: isSubmitting,
         icon: <CheckCircle2 className="size-4" />,
         key: 'approve',
         label: 'Approve',
         onClick: () => onOpenAction({ kind: 'APPROVE_REFUND', refund }),
-        variant: 'primary',
+        variant: 'secondary',
       }
     : null
-  const detailAction: QuickPreviewAction = {
-    icon: <Eye className="size-4" />,
-    key: 'details',
-    label: primaryAction ? 'Detail' : 'Open detail',
-    onClick: () => onOpenDetails(refund),
-  }
   const secondaryActions: QuickPreviewAction[] = []
 
   if (canReject) {
@@ -714,40 +638,53 @@ function RefundPreviewPanel({
     <>
       <button
         aria-label="Close refund preview"
-        className="fixed inset-0 z-40 bg-black/20 xl:hidden"
+        className={quickPreviewOverlayClassName}
         type="button"
         onClick={onClose}
       />
-      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:static xl:z-auto xl:h-full xl:w-[22rem] xl:self-stretch">
+      <aside className={quickPreviewPanelClassName}>
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-              Refund preview
-            </p>
-            <div className="mt-2 flex min-w-0 items-start gap-2.5">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <RefreshCcw className="size-5" />
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
+              <RefreshCcw className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                Refund
+              </p>
+              <OverflowText
+                as="h3"
+                className="mt-1 text-lg font-bold text-foreground"
+                title={formatPaise(refund.amountPaise)}
+              >
+                {formatPaise(refund.amountPaise)}
+              </OverflowText>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                <Badge tone={getRefundStatusTone(refund.status)}>
+                  {humanizeCode(refund.status)}
+                </Badge>
+                <Badge tone={getPaymentStatusTone(refund.payment.status)}>
+                  {humanizeCode(refund.payment.status)}
+                </Badge>
+                {refund.warnings.length > 0 ? (
+                  <Badge tone="warning">
+                    {refund.warnings.length} warning
+                    {refund.warnings.length === 1 ? '' : 's'}
+                  </Badge>
+                ) : null}
               </div>
-              <div className="min-w-0">
-                <h3 className="truncate text-base font-semibold text-foreground">
-                  {formatPaise(refund.amountPaise)}
-                </h3>
-                <p className="mt-0.5 truncate text-xs text-muted">
-                  {refund.publicPaymentId} / {refund.customer.fullName}
-                </p>
-                <div className="mt-1.5 flex flex-wrap gap-2">
-                  <Badge tone={getRefundStatusTone(refund.status)}>
-                    {humanizeCode(refund.status)}
-                  </Badge>
-                  <Badge tone={getPaymentStatusTone(refund.payment.status)}>
-                    {humanizeCode(refund.payment.status)}
-                  </Badge>
-                  {refund.warnings.length > 0 ? (
-                    <Badge tone="warning">
-                      {refund.warnings.length} warning
-                      {refund.warnings.length === 1 ? '' : 's'}
-                    </Badge>
-                  ) : null}
+              <div className="mt-2 space-y-1 text-xs text-muted">
+                <div className="flex min-w-0 items-center gap-2">
+                  <CreditCard className="size-3.5 shrink-0" />
+                  <OverflowText title={refund.publicPaymentId}>
+                    {refund.publicPaymentId}
+                  </OverflowText>
+                </div>
+                <div className="flex min-w-0 items-center gap-2">
+                  <UserRound className="size-3.5 shrink-0" />
+                  <OverflowText title={refund.customer.fullName}>
+                    {refund.customer.fullName}
+                  </OverflowText>
                 </div>
               </div>
             </div>
@@ -771,7 +708,7 @@ function RefundPreviewPanel({
         />
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          {activeTab === 'summary' ? (
+          {activeTab === 'overview' ? (
             <div className="space-y-2.5">
               <RefundPreviewSignal
                 label={refundSignalLabel(refund)}
@@ -963,7 +900,7 @@ export function RefundsPage() {
     useState<PaymentActionSelection | null>(null)
   const [previewRefundId, setPreviewRefundId] = useState<string | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
+  const [showFilters, setFiltersOpen] = useState(false)
   const [visibleColumns, setVisibleColumns] =
     useState<RefundColumnId[]>(defaultRefundColumns)
   const [columnWidths, setColumnWidths] =
@@ -1133,7 +1070,6 @@ export function RefundsPage() {
 
   const refunds = refundsQuery.data?.data ?? []
   const pagination = refundsQuery.data?.pagination
-  const summary = refundsQuery.data?.summary
   const queueSummary = queueSummaryResultQuery.data?.summary
   const previewRefund =
     refunds.find((refund) => refund.refundId === previewRefundId) ?? null
@@ -1143,8 +1079,33 @@ export function RefundsPage() {
   const refreshStatusLabel = isRefreshing
     ? 'Refreshing now'
     : formatRefreshTime(refundsQuery.dataUpdatedAt)
+  const refreshActionNode = (
+    <div className="flex items-center gap-2">
+      <span
+        className={cn(
+          'hidden text-xs font-medium sm:inline',
+          isRefreshing ? 'text-primary' : 'text-muted',
+        )}
+      >
+        {refreshStatusLabel}
+      </span>
+      <Button
+        size="sm"
+        type="button"
+        variant="secondary"
+        onClick={() => void refundsQuery.refetch()}
+      >
+        <RefreshCcw
+          className={cn(
+            'mr-2 size-4',
+            isRefreshing && 'animate-spin motion-reduce:animate-none',
+          )}
+        />
+        Refresh
+      </Button>
+    </div>
+  )
 
-  const metrics = buildRefundMetrics(refunds, pagination, summary)
   const queueItems = buildRefundQueueItems(queueSummary, refunds)
   const refundGridStyle = useMemo<RefundGridStyle>(
     () => ({
@@ -1360,155 +1321,215 @@ export function RefundsPage() {
     setSelectedAction(action)
   }
 
-  const renderRefundCells = (refund: AdminRefundSummary) => (
-    <>
-      {showColumn('refund') ? (
-        <RefundCell label="Refund">
-          <p className="truncate font-semibold">
-            {refund.razorpayRefundId ?? 'Refund request'}
-          </p>
-          <p className="mt-1 truncate text-xs text-muted">
-            Created {formatDateSafe(refund.createdAt)}
-          </p>
-        </RefundCell>
-      ) : null}
-      {showColumn('status') ? (
-        <RefundCell label="Status">
-          <Badge tone={getRefundStatusTone(refund.status)}>
-            {humanizeCode(refund.status)}
-          </Badge>
-          {refund.warnings.length > 0 ? (
-            <p className="mt-1 text-xs text-warning">
-              {refund.warnings.length} warning
-              {refund.warnings.length === 1 ? '' : 's'}
-            </p>
-          ) : null}
-        </RefundCell>
-      ) : null}
-      {showColumn('payment') ? (
-        <RefundCell label="Payment">
-          <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate font-semibold">{refund.publicPaymentId}</p>
-            {canReadPayments ? (
-              <button
-                aria-label={`Open payment ${refund.publicPaymentId}`}
-                className="btn-icon size-7 shrink-0"
-                title="Open payment"
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  viewPayment(refund)
-                }}
-              >
-                <CreditCard className="size-3.5" />
-              </button>
+  const renderRefundCells = (refund: AdminRefundSummary) => {
+    const refundLabel = refund.razorpayRefundId ?? 'Refund request'
+    const createdAtLabel = `Created ${formatDateSafe(refund.createdAt)}`
+    const paymentMeta = `${humanizeCode(refund.payment.status)} / ${humanizeCode(
+      refund.payment.gateway,
+    )}`
+    const orderStatusLabel = humanizeCode(refund.order.orderStatus)
+    const reviewLabel = humanizeCode(refund.nextRecommendedAction)
+    const reviewedLabel = `Reviewed ${formatDateSafe(refund.reviewedAt)}`
+    const processedLabel = `Processed ${formatDateSafe(refund.processedAt)}`
+
+    return (
+      <>
+        {showColumn('refund') ? (
+          <RefundCell label="Refund">
+            <OverflowText as="p" className="font-semibold" title={refundLabel}>
+              {refundLabel}
+            </OverflowText>
+            <OverflowText
+              as="p"
+              className="mt-0.5 text-xs text-muted"
+              title={createdAtLabel}
+            >
+              {createdAtLabel}
+            </OverflowText>
+          </RefundCell>
+        ) : null}
+        {showColumn('status') ? (
+          <RefundCell label="Status">
+            <Badge tone={getRefundStatusTone(refund.status)}>
+              {humanizeCode(refund.status)}
+            </Badge>
+            {refund.warnings.length > 0 ? (
+              <p className="mt-1 text-xs text-warning">
+                {refund.warnings.length} warning
+                {refund.warnings.length === 1 ? '' : 's'}
+              </p>
             ) : null}
-          </div>
-          <p className="mt-1 truncate text-xs text-muted">
-            {humanizeCode(refund.payment.status)} · {humanizeCode(refund.payment.gateway)}
-          </p>
-        </RefundCell>
-      ) : null}
-      {showColumn('order') ? (
-        <RefundCell label="Order">
-          <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate font-semibold">{refund.order.publicOrderId}</p>
-            {canReadOrders ? (
-              <button
-                aria-label={`Open order ${refund.order.publicOrderId}`}
-                className="btn-icon size-7 shrink-0"
-                title="Open order"
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  viewOrder(refund)
-                }}
-              >
-                <ReceiptText className="size-3.5" />
-              </button>
-            ) : null}
-          </div>
-          <p className="mt-1 truncate text-xs text-muted">
-            {humanizeCode(refund.order.orderStatus)}
-          </p>
-        </RefundCell>
-      ) : null}
-      {showColumn('parties') ? (
-        <RefundCell label="Customer / Vendor">
-          <div className="space-y-1">
+          </RefundCell>
+        ) : null}
+        {showColumn('payment') ? (
+          <RefundCell label="Payment">
             <div className="flex min-w-0 items-center gap-2">
-              <p className="truncate font-semibold">{refund.customer.fullName}</p>
-              {canReadCustomers ? (
+              <OverflowText
+                as="p"
+                className="font-semibold"
+                title={refund.publicPaymentId}
+              >
+                {refund.publicPaymentId}
+              </OverflowText>
+              {canReadPayments ? (
                 <button
-                  aria-label={`Open customer ${refund.customer.fullName}`}
+                  aria-label={`Open payment ${refund.publicPaymentId}`}
                   className="btn-icon size-7 shrink-0"
-                  title="Open customer"
+                  title="Open payment"
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation()
-                    viewCustomer(refund)
+                    viewPayment(refund)
                   }}
                 >
-                  <UserRound className="size-3.5" />
+                  <CreditCard className="size-3.5" />
                 </button>
               ) : null}
             </div>
+            <OverflowText as="p" className="mt-0.5 text-xs text-muted" title={paymentMeta}>
+              {paymentMeta}
+            </OverflowText>
+          </RefundCell>
+        ) : null}
+        {showColumn('order') ? (
+          <RefundCell label="Order">
             <div className="flex min-w-0 items-center gap-2">
-              <p className="truncate text-xs text-muted">{refund.vendor.shopName}</p>
-              {canReadVendors ? (
+              <OverflowText
+                as="p"
+                className="font-semibold"
+                title={refund.order.publicOrderId}
+              >
+                {refund.order.publicOrderId}
+              </OverflowText>
+              {canReadOrders ? (
                 <button
-                  aria-label={`Open vendor ${refund.vendor.shopName}`}
+                  aria-label={`Open order ${refund.order.publicOrderId}`}
                   className="btn-icon size-7 shrink-0"
-                  title="Open vendor"
+                  title="Open order"
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation()
-                    viewVendor(refund)
+                    viewOrder(refund)
                   }}
                 >
-                  <Store className="size-3.5" />
+                  <ReceiptText className="size-3.5" />
                 </button>
               ) : null}
             </div>
-          </div>
-        </RefundCell>
-      ) : null}
-      {showColumn('amount') ? (
-        <RefundCell label="Amount">
-          <p className="font-semibold">{formatPaise(refund.amountPaise)}</p>
-          <p className="mt-1 text-xs text-muted">{refund.currency}</p>
-        </RefundCell>
-      ) : null}
-      {showColumn('reason') ? (
-        <RefundCell label="Reason">
-          <p className="line-clamp-2">{refund.reason}</p>
-          {refund.rejectionReason ? (
-            <p className="mt-1 line-clamp-1 text-xs text-danger">
-              {refund.rejectionReason}
+            <OverflowText
+              as="p"
+              className="mt-0.5 text-xs text-muted"
+              title={orderStatusLabel}
+            >
+              {orderStatusLabel}
+            </OverflowText>
+          </RefundCell>
+        ) : null}
+        {showColumn('parties') ? (
+          <RefundCell label="Customer / Vendor">
+            <div className="space-y-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <OverflowText
+                  as="p"
+                  className="font-semibold"
+                  title={refund.customer.fullName}
+                >
+                  {refund.customer.fullName}
+                </OverflowText>
+                {canReadCustomers ? (
+                  <button
+                    aria-label={`Open customer ${refund.customer.fullName}`}
+                    className="btn-icon size-7 shrink-0"
+                    title="Open customer"
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      viewCustomer(refund)
+                    }}
+                  >
+                    <UserRound className="size-3.5" />
+                  </button>
+                ) : null}
+              </div>
+              <div className="flex min-w-0 items-center gap-2">
+                <OverflowText
+                  as="p"
+                  className="text-xs text-muted"
+                  title={refund.vendor.shopName}
+                >
+                  {refund.vendor.shopName}
+                </OverflowText>
+                {canReadVendors ? (
+                  <button
+                    aria-label={`Open vendor ${refund.vendor.shopName}`}
+                    className="btn-icon size-7 shrink-0"
+                    title="Open vendor"
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      viewVendor(refund)
+                    }}
+                  >
+                    <Store className="size-3.5" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </RefundCell>
+        ) : null}
+        {showColumn('amount') ? (
+          <RefundCell label="Amount">
+            <p className="font-semibold" title={formatPaise(refund.amountPaise)}>
+              {formatPaise(refund.amountPaise)}
             </p>
-          ) : null}
-        </RefundCell>
-      ) : null}
-      {showColumn('review') ? (
-        <RefundCell label="Review">
-          <p className="font-semibold">
-            {humanizeCode(refund.nextRecommendedAction)}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            Reviewed {formatDateSafe(refund.reviewedAt)}
-          </p>
-        </RefundCell>
-      ) : null}
-      {showColumn('updatedAt') ? (
-        <RefundCell label="Updated">
-          <p className="font-semibold">{formatDateSafe(refund.updatedAt)}</p>
-          <p className="mt-1 text-xs text-muted">
-            Processed {formatDateSafe(refund.processedAt)}
-          </p>
-        </RefundCell>
-      ) : null}
-    </>
-  )
+            <p className="mt-0.5 text-xs text-muted" title={refund.currency}>
+              {refund.currency}
+            </p>
+          </RefundCell>
+        ) : null}
+        {showColumn('reason') ? (
+          <RefundCell label="Reason">
+            <p className="line-clamp-2" title={refund.reason}>
+              {refund.reason}
+            </p>
+            {refund.rejectionReason ? (
+              <p className="mt-0.5 line-clamp-1 text-xs text-danger" title={refund.rejectionReason}>
+                {refund.rejectionReason}
+              </p>
+            ) : null}
+          </RefundCell>
+        ) : null}
+        {showColumn('review') ? (
+          <RefundCell label="Review">
+            <OverflowText as="p" className="font-semibold" title={reviewLabel}>
+              {reviewLabel}
+            </OverflowText>
+            <OverflowText
+              as="p"
+              className="mt-0.5 text-xs text-muted"
+              title={reviewedLabel}
+            >
+              {reviewedLabel}
+            </OverflowText>
+          </RefundCell>
+        ) : null}
+        {showColumn('updatedAt') ? (
+          <RefundCell label="Updated">
+            <p className="font-semibold" title={formatDateSafe(refund.updatedAt)}>
+              {formatDateSafe(refund.updatedAt)}
+            </p>
+            <OverflowText
+              as="p"
+              className="mt-0.5 text-xs text-muted"
+              title={processedLabel}
+            >
+              {processedLabel}
+            </OverflowText>
+          </RefundCell>
+        ) : null}
+      </>
+    )
+  }
 
   const renderRowActions = (refund: AdminRefundSummary) => (
     <div className="flex flex-nowrap items-center justify-end gap-1.5">
@@ -1554,25 +1575,13 @@ export function RefundsPage() {
   return (
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
-        description="Review, approve, reject, and trace refund requests."
+        actionNode={refreshActionNode}
         layout="workspace"
         placement="topbar"
         title="Refunds"
       />
 
       <div className="flex flex-col gap-3 xl:min-h-0 xl:flex-1">
-        <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          {metrics.map((metric) => (
-            <MetricCard
-              key={metric.label}
-              label={metric.label}
-              meta={metric.meta}
-              tone={metric.tone}
-              value={metric.value}
-            />
-          ))}
-        </section>
-
         {actionMessage ? (
           <div className="rounded-[0.875rem] border border-success/25 bg-success/10 p-3 text-sm text-success">
             {actionMessage}
@@ -1582,108 +1591,141 @@ export function RefundsPage() {
         <section
           className={cn(
             'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
-            previewRefund
-              ? filtersCollapsed
-                ? 'xl:grid-cols-[4.25rem_minmax(0,1fr)_22rem]'
-                : 'xl:grid-cols-[18rem_minmax(0,1fr)_22rem]'
-              : filtersCollapsed
-                ? 'xl:grid-cols-[4.25rem_minmax(0,1fr)]'
-                : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
+            previewRefund ? 'xl:grid-cols-[minmax(0,1fr)_26rem]' : 'xl:grid-cols-1',
           )}
         >
-          <aside
-            className={cn(
-              'self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0',
-              filtersCollapsed
-                ? 'flex items-center justify-between gap-3 p-2.5 xl:flex-col xl:justify-start'
-                : 'space-y-3 p-3 xl:overflow-y-auto',
-            )}
-          >
-            {filtersCollapsed ? (
-              <>
-                <button
-                  aria-label="Expand refund filters"
-                  className="btn-icon"
-                  title="Expand filters"
+          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
+            <div className="grid shrink-0 gap-3 border-b border-border px-3 py-3 xl:grid-cols-[minmax(24rem,1fr)_auto] xl:items-center">
+              <div className="min-w-0">
+                <ListHeaderSearch
+                  className="w-full"
+                  placeholder="Search refund, payment, order, customer, vendor"
+                  value={search}
+                  onChange={(nextSearch) => {
+                    clearSeededRefundParams()
+                    setSearch(nextSearch)
+                    resetToFirstPage()
+                  }}
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                <Button
+                  aria-expanded={showFilters}
+                  className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
+                  size="sm"
                   type="button"
-                  onClick={() => setFiltersCollapsed(false)}
+                  variant="secondary"
+                  onClick={() => setFiltersOpen((current) => !current)}
                 >
-                  <ChevronRight className="size-4" />
-                </button>
-                <span
-                  aria-hidden="true"
-                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
+                  <Filter className="mr-2 size-4" />
+                  Filters
+                  {hasActiveFilters ? (
+                    <span className="ml-1 size-2 rounded-full bg-primary" />
+                  ) : null}
+                </Button>
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => navigate(routePaths.payments)}
                 >
-                  <Filter className="size-4" />
-                </span>
-                {hasActiveFilters ? (
-                  <span
-                    aria-label="Active filters"
-                    className="size-2 rounded-full bg-primary"
-                    title="Active filters"
-                  />
-                ) : null}
-              </>
-            ) : (
-              <>
-                <div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-sm font-semibold text-foreground">
-                        Refund queues
-                      </h2>
-                      <p className="text-xs text-muted">
-                        Counts match current filters.
-                      </p>
-                    </div>
-                    <button
-                      aria-label="Collapse refund filters"
-                      className="btn-icon"
-                      title="Collapse filters"
-                      type="button"
-                      onClick={() => setFiltersCollapsed(true)}
-                    >
-                      <ChevronLeft className="size-4" />
-                    </button>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {queueItems.map((queueItem) => (
-                      <button
-                        className={cn(
-                          'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border px-3 text-left text-sm transition',
-                          queue === queueItem.key
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border bg-surface-muted/50 text-foreground hover:border-primary/35',
-                        )}
-                        key={queueItem.key}
-                        type="button"
-                        onClick={() => applyQueue(queueItem.key)}
-                      >
-                        <span className="font-medium">{queueItem.label}</span>
-                        <span className="text-xs font-semibold">
-                          {queueItem.count}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t border-border pt-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Filter stack
-                    </h3>
-                    {hasActiveFilters ? (
-                      <button
-                        className="text-xs font-semibold text-primary"
-                        type="button"
-                        onClick={clearRefundFilters}
-                      >
-                        Reset
-                      </button>
+                  <ArrowUpRight className="mr-2 size-4" />
+                  Payments
+                </Button>
+                <div className="relative" ref={columnsMenuRef}>
+                  <Button
+                    aria-expanded={columnsOpen}
+                    aria-haspopup="menu"
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setColumnsOpen((current) => !current)}
+                  >
+                    <SlidersHorizontal className="mr-2 size-4" />
+                    Columns
+                    {visibleColumns.length ? (
+                      <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
+                        {visibleColumns.length}
+                      </span>
                     ) : null}
-                  </div>
-                  <div className="mt-3 space-y-3">
+                  </Button>
+
+                  {columnsOpen ? (
+                    <div
+                      className="absolute right-0 top-[calc(100%+0.5rem)] z-[60] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
+                      role="menu"
+                    >
+                      <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
+                        Visible columns
+                      </p>
+                      {refundDataColumns.map((column) => {
+                        const isChecked = visibleColumns.includes(column.id)
+                        const isRequiredLastColumn =
+                          isChecked && visibleColumns.length === 1
+
+                        return (
+                          <label
+                            className={cn(
+                              'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
+                              isRequiredLastColumn &&
+                                'cursor-not-allowed opacity-60',
+                            )}
+                            key={column.id}
+                          >
+                            <input
+                              checked={isChecked}
+                              className="size-4 accent-[color:var(--adaptive-primary)]"
+                              disabled={isRequiredLastColumn}
+                              type="checkbox"
+                              onChange={() => toggleColumn(column.id)}
+                            />
+                            <span>{column.label}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0 border-b border-border bg-surface px-3 pb-3 sm:px-4">
+              <div className="flex gap-1 overflow-x-auto rounded-[0.875rem] border border-border bg-surface-muted/40 p-1">
+                {queueItems.map((queueItem) => {
+                  const isActive = queue === queueItem.key
+
+                  return (
+                    <button
+                      aria-pressed={isActive}
+                      className={cn(
+                        'inline-flex h-8 shrink-0 items-center gap-2 rounded-[0.65rem] border px-2.5 text-sm font-medium transition',
+                        isActive
+                          ? 'border-primary/30 bg-surface text-primary shadow-[var(--sg-shadow-surface)]'
+                          : 'border-transparent text-muted hover:bg-surface hover:text-foreground',
+                      )}
+                      key={queueItem.key}
+                      type="button"
+                      onClick={() => applyQueue(queueItem.key)}
+                    >
+                      <span>{queueItem.label}</span>
+                      <span
+                        className={cn(
+                          'rounded-full px-2 py-0.5 text-xs font-semibold',
+                          isActive
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-surface text-muted',
+                        )}
+                      >
+                        {queueItem.count ?? '...'}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {showFilters ? (
+                <div className="mt-2 rounded-[0.75rem] border border-border bg-surface-muted/45 p-2.5">
+                  <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-[repeat(5,minmax(10rem,1fr))_auto] 2xl:items-end">
                     <MultiSelectFilter
                       label="Refund status"
                       options={statusOptions}
@@ -1697,9 +1739,7 @@ export function RefundsPage() {
                       }}
                     />
                     <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        City
-                      </span>
+                      <span className="text-xs font-semibold text-muted">City</span>
                       <Input
                         className="min-h-10"
                         placeholder="Chennai"
@@ -1790,9 +1830,7 @@ export function RefundsPage() {
                       />
                     </label>
                     <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Date from
-                      </span>
+                      <span className="text-xs font-semibold text-muted">Date from</span>
                       <Input
                         className="min-h-10"
                         type="datetime-local"
@@ -1805,9 +1843,7 @@ export function RefundsPage() {
                       />
                     </label>
                     <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Date to
-                      </span>
+                      <span className="text-xs font-semibold text-muted">Date to</span>
                       <Input
                         className="min-h-10"
                         type="datetime-local"
@@ -1819,121 +1855,19 @@ export function RefundsPage() {
                         }}
                       />
                     </label>
+                    <Button
+                      className="w-full 2xl:w-auto"
+                      disabled={!hasActiveFilters}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                      onClick={clearRefundFilters}
+                    >
+                      Reset
+                    </Button>
                   </div>
                 </div>
-              </>
-            )}
-          </aside>
-
-          <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  Refund operations
-                </h2>
-                <p className="text-sm text-muted">
-                  {pagination
-                    ? `${pagination.totalItems} refunds matching current filters`
-                    : 'Search, filter, and review refund requests.'}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <ListHeaderSearch
-                  className="w-full sm:w-72 lg:w-80"
-                  placeholder="Search refund, payment, order, customer, vendor"
-                  value={search}
-                  onChange={(nextSearch) => {
-                    clearSeededRefundParams()
-                    setSearch(nextSearch)
-                    resetToFirstPage()
-                  }}
-                />
-                <span
-                  className={cn(
-                    'text-xs font-medium',
-                    isRefreshing ? 'text-primary' : 'text-muted',
-                  )}
-                >
-                  {refreshStatusLabel}
-                </span>
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => navigate(routePaths.payments)}
-                >
-                  <ArrowUpRight className="mr-2 size-4" />
-                  Payments
-                </Button>
-                <div className="relative" ref={columnsMenuRef}>
-                  <Button
-                    aria-expanded={columnsOpen}
-                    aria-haspopup="menu"
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setColumnsOpen((current) => !current)}
-                  >
-                    <SlidersHorizontal className="mr-2 size-4" />
-                    Columns
-                    {visibleColumns.length ? (
-                      <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
-                        {visibleColumns.length}
-                      </span>
-                    ) : null}
-                  </Button>
-
-                  {columnsOpen ? (
-                    <div
-                      className="absolute right-0 top-[calc(100%+0.5rem)] z-[60] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
-                      role="menu"
-                    >
-                      <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
-                        Visible columns
-                      </p>
-                      {refundDataColumns.map((column) => {
-                        const isChecked = visibleColumns.includes(column.id)
-                        const isRequiredLastColumn =
-                          isChecked && visibleColumns.length === 1
-
-                        return (
-                          <label
-                            className={cn(
-                              'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
-                              isRequiredLastColumn &&
-                                'cursor-not-allowed opacity-60',
-                            )}
-                            key={column.id}
-                          >
-                            <input
-                              checked={isChecked}
-                              className="size-4 accent-[color:var(--adaptive-primary)]"
-                              disabled={isRequiredLastColumn}
-                              type="checkbox"
-                              onChange={() => toggleColumn(column.id)}
-                            />
-                            <span>{column.label}</span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void refundsQuery.refetch()}
-                >
-                  <RefreshCcw
-                    className={cn(
-                      'mr-2 size-4',
-                      isRefreshing && 'animate-spin motion-reduce:animate-none',
-                    )}
-                  />
-                  Refresh
-                </Button>
-              </div>
+              ) : null}
             </div>
 
             {refundsQuery.isError ? (
@@ -1962,7 +1896,7 @@ export function RefundsPage() {
                     className="min-w-0 xl:min-w-[var(--refund-grid-min-width)]"
                     style={refundGridStyle}
                   >
-                    <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--refund-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                    <div className="sticky top-0 z-10 hidden gap-2 grid-cols-[var(--refund-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
                       <div className="flex min-w-0 items-center">
                         <ListSelectionCheckbox
                           checked={refundSelection.allVisibleSelected}
@@ -2024,7 +1958,7 @@ export function RefundsPage() {
                             refundSelection.isSelected(refund.refundId)
                           }
                           className={cn(
-                            'workbench-grid-row grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--refund-grid-template)]',
+                            'workbench-grid-row grid w-full cursor-pointer gap-2 px-3 py-2 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--refund-grid-template)] xl:items-center',
                             previewRefundId === refund.refundId &&
                               'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
                             refundSelection.isSelected(refund.refundId) &&
@@ -2056,7 +1990,7 @@ export function RefundsPage() {
                               }
                             />
                           </div>
-                          <div className="grid gap-3 sm:grid-cols-2 xl:contents">
+                          <div className="grid gap-2 sm:grid-cols-2 xl:contents">
                             {renderRefundCells(refund)}
                           </div>
                           <div className="workbench-sticky-action-cell flex min-w-0 items-center justify-start pl-2 xl:justify-end">

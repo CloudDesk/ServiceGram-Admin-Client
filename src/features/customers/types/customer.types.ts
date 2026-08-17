@@ -338,9 +338,28 @@ export type AdminCustomerOverviewSectionName =
   | 'payments'
   | 'refunds'
 
+export const adminCustomerOverviewSections: AdminCustomerOverviewSectionName[] = [
+  'orders',
+  'relatedVendors',
+  'payments',
+  'refunds',
+]
+
+export type AdminCustomerOverviewOmittedReason =
+  | 'NOT_REQUESTED'
+  | 'MISSING_PERMISSION'
+  | 'SERVICE_UNAVAILABLE'
+
 export interface AdminCustomerOverviewOmittedSection {
   section: AdminCustomerOverviewSectionName
-  reason: 'NOT_REQUESTED' | 'MISSING_PERMISSION' | 'SERVICE_UNAVAILABLE'
+  reason: AdminCustomerOverviewOmittedReason
+}
+
+export interface AdminCustomerOverviewQueryParams {
+  /** Sections to fetch. Server defaults to orders + relatedVendors only. */
+  include?: AdminCustomerOverviewSectionName[]
+  /** Rows per child section. Server default 5, max 50. */
+  childLimit?: number
 }
 
 export interface AdminCustomerOverview {

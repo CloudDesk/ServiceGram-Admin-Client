@@ -14,6 +14,7 @@ import { LoginPage } from '../features/auth/pages/LoginPage'
 import { ForgotPasswordPage } from '../features/auth/pages/ForgotPasswordPage'
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
 import { AuditLogsPage } from '../features/audit/components/AuditLogsPage'
+import { ApprovalsPage } from '../features/approvals/components/ApprovalsPage'
 import { ContentDetailPage } from '../features/content/components/ContentDetailPage'
 import { ContentPage } from '../features/content/components/ContentPage'
 import { CreateContentPage } from '../features/content/components/CreateContentPage'
@@ -25,7 +26,6 @@ import { MarketingCampaignDetailPage } from '../features/marketing-campaigns/com
 import { MarketingCampaignsPage } from '../features/marketing-campaigns/components/MarketingCampaignsPage'
 import { InfluencerDetailPage } from '../features/influencers/components/InfluencerDetailPage'
 import { InfluencersPage } from '../features/influencers/components/InfluencersPage'
-import { CustomerWorkbenchPreviewPage } from '../features/customers/components/CustomerWorkbenchPreviewPage'
 import { CustomerDetailPage } from '../features/customers/components/CustomerDetailPage'
 import { CustomersPage } from '../features/customers/components/CustomersPage'
 import { ManualLogisticsPage } from '../features/orders/components/ManualLogisticsPage'
@@ -82,6 +82,10 @@ export const appRoutes: RouteObject[] = [
                 children: [{ path: routePaths.dashboard, element: <DashboardPage /> }],
               },
               {
+                element: <PermissionGuard permission={routePermissions.approvals} />,
+                children: [{ path: routePaths.approvals, element: <ApprovalsPage /> }],
+              },
+              {
                 element: <PermissionGuard permission={routePermissions.adminUsers} />,
                 children: [
                   {
@@ -127,11 +131,11 @@ export const appRoutes: RouteObject[] = [
                     element: <CustomersPage />,
                   },
                   {
-                    path: routePaths.customerWorkbenchPreview,
-                    element: <CustomerWorkbenchPreviewPage />,
+                    path: `${routePaths.customers}/:customerId`,
+                    element: <CustomerDetailPage />,
                   },
                   {
-                    path: `${routePaths.customers}/:customerId`,
+                    path: `${routePaths.customers}/:customerId/:tab`,
                     element: <CustomerDetailPage />,
                   },
                 ],
@@ -153,6 +157,10 @@ export const appRoutes: RouteObject[] = [
                   },
                   {
                     path: `${routePaths.vendors}/:vendorId`,
+                    element: <VendorDetailPage />,
+                  },
+                  {
+                    path: `${routePaths.vendors}/:vendorId/tab/:tab`,
                     element: <VendorDetailPage />,
                   },
                   {
@@ -179,6 +187,10 @@ export const appRoutes: RouteObject[] = [
                   },
                   {
                     path: `${routePaths.orders}/:orderId`,
+                    element: <OrderDetailPage />,
+                  },
+                  {
+                    path: `${routePaths.orders}/:orderId/tab/:tab`,
                     element: <OrderDetailPage />,
                   },
                   {
@@ -246,6 +258,10 @@ export const appRoutes: RouteObject[] = [
                     path: `${routePaths.reels}/:reelId`,
                     element: <ReelDetailPage />,
                   },
+                  {
+                    path: `${routePaths.reels}/:reelId/tab/:tab`,
+                    element: <ReelDetailPage />,
+                  },
                 ],
               },
               {
@@ -257,6 +273,10 @@ export const appRoutes: RouteObject[] = [
                   },
                   {
                     path: `${routePaths.influencers}/:profileId`,
+                    element: <InfluencerDetailPage />,
+                  },
+                  {
+                    path: `${routePaths.influencers}/:profileId/tab/:tab`,
                     element: <InfluencerDetailPage />,
                   },
                 ],

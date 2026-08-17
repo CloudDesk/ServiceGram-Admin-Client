@@ -14,10 +14,14 @@ import {
   CUSTOMER_WALLET_CREDIT_PATH,
 } from '../../../config/customerApiPaths'
 import { apiClient } from '../../../services/apiClient'
-import { buildQueryParams } from '../../../utils/buildQueryParams'
+import {
+  buildPathWithQueryParams,
+  buildQueryParams,
+} from '../../../utils/buildQueryParams'
 import type {
   AddCustomerNoteResponse,
   AdminCustomerDetailResponse,
+  AdminCustomerOverviewQueryParams,
   AdminCustomerOverviewResponse,
   AdminCustomerRelatedVendorsQueryParams,
   AdminCustomerRelatedVendorsResponse,
@@ -107,10 +111,24 @@ async function getCustomerById(
   return parseJsonResponse<AdminCustomerDetailResponse>(response)
 }
 
+/**
+ * `include` must name every section the caller intends to render. The endpoint
+ * defaults to orders + relatedVendors, and anything not requested comes back in
+ * `omittedSections` as NOT_REQUESTED with its data null — which is
+ * indistinguishable from "no records" unless the caller checks.
+ */
 async function getCustomerOverview(
   customerId: string,
+  query: AdminCustomerOverviewQueryParams = {},
 ): Promise<AdminCustomerOverviewResponse> {
-  const response = await apiClient.request(buildApiUrl(CUSTOMER_OVERVIEW_PATH(customerId)))
+  const response = await apiClient.request(
+    buildApiUrl(
+      buildPathWithQueryParams(CUSTOMER_OVERVIEW_PATH(customerId), {
+        include: query.include,
+        childLimit: query.childLimit,
+      }),
+    ),
+  )
 
   return parseJsonResponse<AdminCustomerOverviewResponse>(response)
 }

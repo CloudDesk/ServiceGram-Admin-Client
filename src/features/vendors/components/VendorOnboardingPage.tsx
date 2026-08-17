@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { DynamicTable, TableSkeleton, type DynamicTableColumn } from '../../../components/ui/Table'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
@@ -85,6 +85,12 @@ function readOnboardingStatusFilter(
   return onboardingStatuses.includes(status as VendorOnboardingStatus)
     ? (status as VendorOnboardingStatus)
     : ''
+}
+
+function buildLegacyBankApprovalRedirect(searchParams: URLSearchParams) {
+  if (!searchParams.has('bankAccountStatus')) return null
+
+  return `${routePaths.vendors}?approvalQueue=BANK_ACCOUNT_APPROVALS`
 }
 
 function documentSummaryTone(vendor: VendorListItem) {
@@ -279,6 +285,7 @@ const columns: DynamicTableColumn<VendorListItem>[] = [
 export function VendorOnboardingPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const legacyBankApprovalRedirect = buildLegacyBankApprovalRedirect(searchParams)
   const queryClient = useQueryClient()
   const canApproveVendors = usePermission('vendors:approve')
   const canReadAudit = usePermission('audit:read')
@@ -307,6 +314,7 @@ export function VendorOnboardingPage() {
   )
 
   const onboardingQuery = useQuery({
+    enabled: !legacyBankApprovalRedirect,
     queryKey: ['vendor-onboarding', query],
     queryFn: () => vendorService.getVendorOnboardingQueue(query),
   })
@@ -492,6 +500,10 @@ export function VendorOnboardingPage() {
         onClick: (row: VendorListItem) => navigate(buildVendorAuditPath(row)),
       },
     ]
+  }
+
+  if (legacyBankApprovalRedirect) {
+    return <Navigate replace to={legacyBankApprovalRedirect} />
   }
 
   return (

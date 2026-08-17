@@ -38,6 +38,7 @@ import {
 } from '../../../components/ui/ListSelection'
 import { LookupMultiSelect } from '../../../components/ui/LookupMultiSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
+import { OverflowText } from '../../../components/ui/OverflowText'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import {
@@ -45,6 +46,8 @@ import {
   QuickPreviewFact,
   QuickPreviewFactGrid,
   QuickPreviewTabs,
+  quickPreviewOverlayClassName,
+  quickPreviewPanelClassName,
   type QuickPreviewAction,
 } from '../../../components/ui/QuickPreview'
 import { Skeleton } from '../../../components/ui/Skeleton'
@@ -67,7 +70,6 @@ import {
 import type {
   AdminPayoutChildSummary,
   AdminPayoutMethod,
-  AdminPayoutPagination,
   AdminPayoutStatus,
   AdminPayoutSummary,
   AdminPayoutsQueryParams,
@@ -75,12 +77,12 @@ import type {
 
 const DEFAULT_PAGE_SIZE = 10
 const PAYOUT_DEFAULT_COLUMN_WIDTH = 220
-const PAYOUT_GRID_COLUMN_GAP = 12
-const PAYOUT_GRID_INLINE_PADDING = 24
+const PAYOUT_GRID_COLUMN_GAP = 8
+const PAYOUT_GRID_INLINE_PADDING = 20
 const PAYOUT_ACTION_COLUMN_ID = 'actions'
 const PAYOUT_ACTION_COLUMN_DEFAULT_WIDTH = 112
 const PAYOUT_ACTION_COLUMN_MIN_WIDTH = 96
-const PAYOUT_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.payout.columnWidths.v1'
+const PAYOUT_COLUMN_WIDTH_STORAGE_KEY = 'servicegram.payout.columnWidths.v2'
 
 const payoutStatuses: AdminPayoutStatus[] = [
   'PENDING',
@@ -103,8 +105,8 @@ const payoutDataColumns = [
   {
     id: 'payout',
     label: 'Payout',
-    defaultWidth: PAYOUT_DEFAULT_COLUMN_WIDTH,
-    minWidth: 190,
+    defaultWidth: 250,
+    minWidth: 220,
   },
   {
     id: 'status',
@@ -115,8 +117,8 @@ const payoutDataColumns = [
   {
     id: 'vendor',
     label: 'Vendor',
-    defaultWidth: 250,
-    minWidth: 210,
+    defaultWidth: 290,
+    minWidth: 250,
   },
   {
     id: 'amount',
@@ -127,8 +129,8 @@ const payoutDataColumns = [
   {
     id: 'method',
     label: 'Method',
-    defaultWidth: 200,
-    minWidth: 160,
+    defaultWidth: 220,
+    minWidth: 180,
   },
   {
     id: 'items',
@@ -161,7 +163,7 @@ type PayoutQueueKey =
   | 'approved'
   | 'paid'
   | 'exceptions'
-type PayoutPreviewTab = 'summary' | 'vendor' | 'settlement'
+type PayoutPreviewTab = 'overview' | 'vendor' | 'settlement'
 
 const payoutActionKinds: PayoutActionKind[] = [
   'APPROVE',
@@ -235,13 +237,6 @@ const defaultPayoutColumns: PayoutColumnId[] = [
 interface PayoutGridStyle extends CSSProperties {
   '--payout-grid-template': string
   '--payout-grid-min-width': string
-}
-
-interface PayoutMetric {
-  label: string
-  meta: string
-  tone: PayoutTone
-  value: string
 }
 
 function toneClasses(tone: PayoutTone) {
@@ -362,54 +357,6 @@ function payoutSignalMeta(payout: AdminPayoutSummary) {
   }
   if (payout.paidAt) return `Paid ${formatDateSafe(payout.paidAt)}`
   return 'No immediate backend action is recommended.'
-}
-
-function buildPayoutMetrics(
-  payouts: AdminPayoutSummary[],
-  pagination?: AdminPayoutPagination,
-  summary?: AdminPayoutChildSummary,
-): PayoutMetric[] {
-  const total = pagination?.totalItems ?? summary?.total ?? payouts.length
-  const needsReview =
-    summary?.needsAttention ??
-    payouts.filter((payout) =>
-      ['PENDING', 'UNDER_REVIEW', 'HELD'].includes(payout.status),
-    ).length
-  const approved =
-    summary?.approved ??
-    payouts.filter((payout) => payout.status === 'APPROVED').length
-  const paidValue =
-    summary?.paidAmountPaise ??
-    payouts
-      .filter((payout) => payout.status === 'PAID')
-      .reduce((sum, payout) => sum + payout.totalAmountPaise, 0)
-
-  return [
-    {
-      label: 'Visible review',
-      meta: 'Pending, held, failed, or warning payouts',
-      tone: needsReview > 0 ? 'warning' : 'neutral',
-      value: String(needsReview),
-    },
-    {
-      label: 'Ready to pay',
-      meta: 'Approved payouts matching filters',
-      tone: approved > 0 ? 'info' : 'neutral',
-      value: String(approved),
-    },
-    {
-      label: 'Paid value',
-      meta: 'Paid amount matching filters',
-      tone: paidValue > 0 ? 'success' : 'neutral',
-      value: formatPaise(paidValue),
-    },
-    {
-      label: 'Matched payouts',
-      meta: 'Total matching current filters',
-      tone: 'info',
-      value: String(total),
-    },
-  ]
 }
 
 function buildPayoutQueueItems(
@@ -544,30 +491,16 @@ function formatRefreshTime(updatedAt: number) {
   return `Updated ${formatDate(new Date(updatedAt).toISOString(), true)}`
 }
 
-function MetricCard({ label, meta, tone, value }: PayoutMetric) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <p className={cn('text-xs font-semibold uppercase tracking-normal', toneClasses(tone))}>
-        {label}
-      </p>
-      <p className={cn('mt-3 text-2xl font-semibold tracking-normal', toneClasses(tone))}>
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
-    </article>
-  )
-}
-
 function PayoutRowsSkeleton() {
   return (
     <div className="space-y-0">
       {Array.from({ length: 8 }).map((_, index) => (
         <div
-          className="grid gap-3 border-b border-border px-3 py-4 xl:grid-cols-[1fr_0.8fr_1.2fr_0.8fr_0.9fr_0.9fr_1fr]"
+          className="grid gap-2 border-b border-border px-3 py-2 xl:grid-cols-[1fr_0.8fr_1.2fr_0.8fr_0.9fr_0.9fr_1fr]"
           key={index}
         >
           {Array.from({ length: 7 }).map((__, cellIndex) => (
-            <Skeleton className="h-9 w-full" key={cellIndex} />
+            <Skeleton className="h-8 w-full" key={cellIndex} />
           ))}
         </div>
       ))}
@@ -584,8 +517,8 @@ function PayoutCell({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-xs text-muted">{label}</p>
-      <div className="mt-1 min-w-0 text-sm text-foreground">{children}</div>
+      <p className="text-xs text-muted xl:hidden">{label}</p>
+      <div className="mt-1 min-w-0 text-sm text-foreground xl:mt-0">{children}</div>
     </div>
   )
 }
@@ -661,31 +594,32 @@ function PayoutPreviewPanel({
   onOpenVendor: (payout: AdminPayoutSummary) => void
   payout: AdminPayoutSummary
 }) {
-  const [activeTab, setActiveTab] = useState<PayoutPreviewTab>('summary')
+  const [activeTab, setActiveTab] = useState<PayoutPreviewTab>('overview')
   const primaryActionKind = canApprovePayouts
     ? getPrimaryPayoutActionKind(payout)
     : null
   const previewTabs: { key: PayoutPreviewTab; label: string }[] = [
-    { key: 'summary', label: 'Summary' },
+    { key: 'overview', label: 'Overview' },
     { key: 'vendor', label: 'Vendor' },
     { key: 'settlement', label: 'Settlement' },
   ]
-  const primaryAction: QuickPreviewAction | null = primaryActionKind
+  const primaryAction: QuickPreviewAction = {
+    icon: <Eye className="size-4" />,
+    key: 'details',
+    label: 'Open detail',
+    onClick: () => onOpenDetails(payout),
+    variant: 'primary',
+  }
+  const detailAction: QuickPreviewAction | null = primaryActionKind
     ? {
         disabled: isSubmitting,
         icon: payoutActionIcon(primaryActionKind),
         key: primaryActionKind,
         label: humanizeCode(primaryActionKind),
         onClick: () => onOpenAction(primaryActionKind, payout),
-        variant: primaryActionKind === 'MARK_FAILED' ? 'danger' : 'primary',
+        variant: primaryActionKind === 'MARK_FAILED' ? 'danger' : 'secondary',
       }
     : null
-  const detailAction: QuickPreviewAction = {
-    icon: <Eye className="size-4" />,
-    key: 'details',
-    label: primaryAction ? 'Detail' : 'Open detail',
-    onClick: () => onOpenDetails(payout),
-  }
   const secondaryActions: QuickPreviewAction[] = []
 
   if (canApprovePayouts) {
@@ -720,38 +654,51 @@ function PayoutPreviewPanel({
     <>
       <button
         aria-label="Close payout preview"
-        className="fixed inset-0 z-40 bg-black/20 2xl:hidden"
+        className={quickPreviewOverlayClassName}
         type="button"
         onClick={onClose}
       />
-      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface sm:left-auto sm:w-[22rem] 2xl:static 2xl:z-auto 2xl:h-full 2xl:w-[22rem] 2xl:self-stretch">
+      <aside className={quickPreviewPanelClassName}>
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-              Payout preview
-            </p>
-            <div className="mt-2 flex min-w-0 items-start gap-2.5">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <HandCoins className="size-5" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="truncate text-base font-semibold text-foreground">
-                  {payout.publicPayoutId}
-                </h3>
-                <p className="mt-0.5 truncate text-xs text-muted">
-                  {payout.vendor.shopName} / {formatPaise(payout.totalAmountPaise)}
-                </p>
-                <div className="mt-1.5 flex flex-wrap gap-2">
-                  <Badge tone={getPayoutStatusTone(payout.status)}>
-                    {humanizeCode(payout.status)}
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
+              <HandCoins className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-normal text-muted">
+                Payout
+              </p>
+              <OverflowText
+                as="h3"
+                className="mt-1 text-lg font-bold text-foreground"
+                title={payout.publicPayoutId}
+              >
+                {payout.publicPayoutId}
+              </OverflowText>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                <Badge tone={getPayoutStatusTone(payout.status)}>
+                  {humanizeCode(payout.status)}
+                </Badge>
+                <Badge tone="info">{humanizeCode(payout.payoutMethod)}</Badge>
+                {payout.warnings.length > 0 ? (
+                  <Badge tone="warning">
+                    {payout.warnings.length} warning
+                    {payout.warnings.length === 1 ? '' : 's'}
                   </Badge>
-                  <Badge tone="info">{humanizeCode(payout.payoutMethod)}</Badge>
-                  {payout.warnings.length > 0 ? (
-                    <Badge tone="warning">
-                      {payout.warnings.length} warning
-                      {payout.warnings.length === 1 ? '' : 's'}
-                    </Badge>
-                  ) : null}
+                ) : null}
+              </div>
+              <div className="mt-2 space-y-1 text-xs text-muted">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Store className="size-3.5 shrink-0" />
+                  <OverflowText title={payout.vendor.shopName}>
+                    {payout.vendor.shopName}
+                  </OverflowText>
+                </div>
+                <div className="flex min-w-0 items-center gap-2">
+                  <CircleDollarSign className="size-3.5 shrink-0" />
+                  <OverflowText title={formatPaise(payout.totalAmountPaise)}>
+                    {formatPaise(payout.totalAmountPaise)}
+                  </OverflowText>
                 </div>
               </div>
             </div>
@@ -775,7 +722,7 @@ function PayoutPreviewPanel({
         />
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          {activeTab === 'summary' ? (
+          {activeTab === 'overview' ? (
             <div className="space-y-2.5">
               <PayoutPreviewSignal
                 label={payoutSignalLabel(payout)}
@@ -942,7 +889,7 @@ export function PayoutsPage() {
   )
   const [previewPayoutId, setPreviewPayoutId] = useState<string | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
+  const [showFilters, setFiltersOpen] = useState(false)
   const [visibleColumns, setVisibleColumns] =
     useState<PayoutColumnId[]>(defaultPayoutColumns)
   const [columnWidths, setColumnWidths] =
@@ -1094,7 +1041,6 @@ export function PayoutsPage() {
 
   const payouts = payoutsQuery.data?.data ?? []
   const pagination = payoutsQuery.data?.pagination
-  const summary = payoutsQuery.data?.summary
   const queueSummary = queueSummaryResultQuery.data?.summary
   const previewPayout =
     payouts.find((payout) => payout.payoutId === previewPayoutId) ?? null
@@ -1104,8 +1050,33 @@ export function PayoutsPage() {
   const refreshStatusLabel = isRefreshing
     ? 'Refreshing now'
     : formatRefreshTime(payoutsQuery.dataUpdatedAt)
+  const refreshActionNode = (
+    <div className="flex items-center gap-2">
+      <span
+        className={cn(
+          'hidden text-xs font-medium sm:inline',
+          isRefreshing ? 'text-primary' : 'text-muted',
+        )}
+      >
+        {refreshStatusLabel}
+      </span>
+      <Button
+        size="sm"
+        type="button"
+        variant="secondary"
+        onClick={() => void payoutsQuery.refetch()}
+      >
+        <RefreshCcw
+          className={cn(
+            'mr-2 size-4',
+            isRefreshing && 'animate-spin motion-reduce:animate-none',
+          )}
+        />
+        Refresh
+      </Button>
+    </div>
+  )
 
-  const metrics = buildPayoutMetrics(payouts, pagination, summary)
   const queueItems = buildPayoutQueueItems(queueSummary, payouts)
   const payoutGridStyle = useMemo<PayoutGridStyle>(
     () => ({
@@ -1337,102 +1308,148 @@ export function PayoutsPage() {
     setSelectedAction(action)
   }
 
-  const renderPayoutCells = (payout: AdminPayoutSummary) => (
-    <>
-      {showColumn('payout') ? (
-        <PayoutCell label="Payout">
-          <p className="truncate font-semibold">{payout.publicPayoutId}</p>
-          <p className="mt-1 truncate text-xs text-muted">
-            Created {formatDateSafe(payout.createdAt)}
-          </p>
-        </PayoutCell>
-      ) : null}
-      {showColumn('status') ? (
-        <PayoutCell label="Status">
-          <Badge tone={getPayoutStatusTone(payout.status)}>
-            {humanizeCode(payout.status)}
-          </Badge>
-          {payout.warnings.length > 0 ? (
-            <p className="mt-1 text-xs text-warning">
-              {payout.warnings.length} warning
-              {payout.warnings.length === 1 ? '' : 's'}
-            </p>
-          ) : null}
-        </PayoutCell>
-      ) : null}
-      {showColumn('vendor') ? (
-        <PayoutCell label="Vendor">
-          <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate font-semibold">{payout.vendor.shopName}</p>
-            {canReadVendors ? (
-              <button
-                aria-label={`Open vendor ${payout.vendor.shopName}`}
-                className="btn-icon size-7 shrink-0"
-                title="Open vendor"
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  viewVendor(payout)
-                }}
-              >
-                <Store className="size-3.5" />
-              </button>
+  const renderPayoutCells = (payout: AdminPayoutSummary) => {
+    const createdAtLabel = `Created ${formatDateSafe(payout.createdAt)}`
+    const vendorMeta = `${payout.vendor.publicVendorId} / ${payout.vendor.city}`
+    const payoutMethodLabel = humanizeCode(payout.payoutMethod)
+    const utrLabel = `UTR ${payout.utrReference ?? 'Not available'}`
+    const itemCountLabel = `${payout.itemSummary.itemCount} item${
+      payout.itemSummary.itemCount === 1 ? '' : 's'
+    }`
+    const netPayableLabel = `Net ${formatPaise(payout.itemSummary.netPayablePaise)}`
+    const settlementLabel = payout.nextRecommendedAction
+      ? humanizeCode(payout.nextRecommendedAction)
+      : 'No action'
+    const paidAtLabel = `Paid ${formatDateSafe(payout.paidAt)}`
+
+    return (
+      <>
+        {showColumn('payout') ? (
+          <PayoutCell label="Payout">
+            <OverflowText
+              as="p"
+              className="font-semibold"
+              title={payout.publicPayoutId}
+            >
+              {payout.publicPayoutId}
+            </OverflowText>
+            <OverflowText
+              as="p"
+              className="mt-0.5 text-xs text-muted"
+              title={createdAtLabel}
+            >
+              {createdAtLabel}
+            </OverflowText>
+          </PayoutCell>
+        ) : null}
+        {showColumn('status') ? (
+          <PayoutCell label="Status">
+            <Badge tone={getPayoutStatusTone(payout.status)}>
+              {humanizeCode(payout.status)}
+            </Badge>
+            {payout.warnings.length > 0 ? (
+              <p className="mt-1 text-xs text-warning">
+                {payout.warnings.length} warning
+                {payout.warnings.length === 1 ? '' : 's'}
+              </p>
             ) : null}
-          </div>
-          <p className="mt-1 truncate text-xs text-muted">
-            {payout.vendor.publicVendorId} · {payout.vendor.city}
-          </p>
-        </PayoutCell>
-      ) : null}
-      {showColumn('amount') ? (
-        <PayoutCell label="Amount">
-          <p className="font-semibold">{formatPaise(payout.totalAmountPaise)}</p>
-          <p className="mt-1 text-xs text-muted">{payout.currency}</p>
-        </PayoutCell>
-      ) : null}
-      {showColumn('method') ? (
-        <PayoutCell label="Method">
-          <p className="truncate font-semibold">
-            {humanizeCode(payout.payoutMethod)}
-          </p>
-          <p className="mt-1 truncate text-xs text-muted">
-            UTR {payout.utrReference ?? 'Not available'}
-          </p>
-        </PayoutCell>
-      ) : null}
-      {showColumn('items') ? (
-        <PayoutCell label="Items">
-          <p className="font-semibold">
-            {payout.itemSummary.itemCount} item
-            {payout.itemSummary.itemCount === 1 ? '' : 's'}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            Net {formatPaise(payout.itemSummary.netPayablePaise)}
-          </p>
-        </PayoutCell>
-      ) : null}
-      {showColumn('settlement') ? (
-        <PayoutCell label="Settlement">
-          <p className="font-semibold">
-            {payout.nextRecommendedAction
-              ? humanizeCode(payout.nextRecommendedAction)
-              : 'No action'}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            Paid {formatDateSafe(payout.paidAt)}
-          </p>
-        </PayoutCell>
-      ) : null}
-      {showColumn('updatedAt') ? (
-        <PayoutCell label="Updated">
-          <p className="font-semibold">{formatDateSafe(payout.updatedAt)}</p>
-          <p className="mt-1 text-xs text-muted">
-            Created {formatDateSafe(payout.createdAt)}
-          </p>
-        </PayoutCell>
-      ) : null}
-    </>
-  )
+          </PayoutCell>
+        ) : null}
+        {showColumn('vendor') ? (
+          <PayoutCell label="Vendor">
+            <div className="flex min-w-0 items-center gap-2">
+              <OverflowText
+                as="p"
+                className="font-semibold"
+                title={payout.vendor.shopName}
+              >
+                {payout.vendor.shopName}
+              </OverflowText>
+              {canReadVendors ? (
+                <button
+                  aria-label={`Open vendor ${payout.vendor.shopName}`}
+                  className="btn-icon size-7 shrink-0"
+                  title="Open vendor"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    viewVendor(payout)
+                  }}
+                >
+                  <Store className="size-3.5" />
+                </button>
+              ) : null}
+            </div>
+            <OverflowText as="p" className="mt-0.5 text-xs text-muted" title={vendorMeta}>
+              {vendorMeta}
+            </OverflowText>
+          </PayoutCell>
+        ) : null}
+        {showColumn('amount') ? (
+          <PayoutCell label="Amount">
+            <p className="font-semibold" title={formatPaise(payout.totalAmountPaise)}>
+              {formatPaise(payout.totalAmountPaise)}
+            </p>
+            <p className="mt-0.5 text-xs text-muted" title={payout.currency}>
+              {payout.currency}
+            </p>
+          </PayoutCell>
+        ) : null}
+        {showColumn('method') ? (
+          <PayoutCell label="Method">
+            <OverflowText
+              as="p"
+              className="font-semibold"
+              title={payoutMethodLabel}
+            >
+              {payoutMethodLabel}
+            </OverflowText>
+            <OverflowText as="p" className="mt-0.5 text-xs text-muted" title={utrLabel}>
+              {utrLabel}
+            </OverflowText>
+          </PayoutCell>
+        ) : null}
+        {showColumn('items') ? (
+          <PayoutCell label="Items">
+            <p className="font-semibold" title={itemCountLabel}>
+              {itemCountLabel}
+            </p>
+            <p className="mt-0.5 text-xs text-muted" title={netPayableLabel}>
+              {netPayableLabel}
+            </p>
+          </PayoutCell>
+        ) : null}
+        {showColumn('settlement') ? (
+          <PayoutCell label="Settlement">
+            <OverflowText
+              as="p"
+              className="font-semibold"
+              title={settlementLabel}
+            >
+              {settlementLabel}
+            </OverflowText>
+            <OverflowText as="p" className="mt-0.5 text-xs text-muted" title={paidAtLabel}>
+              {paidAtLabel}
+            </OverflowText>
+          </PayoutCell>
+        ) : null}
+        {showColumn('updatedAt') ? (
+          <PayoutCell label="Updated">
+            <p className="font-semibold" title={formatDateSafe(payout.updatedAt)}>
+              {formatDateSafe(payout.updatedAt)}
+            </p>
+            <OverflowText
+              as="p"
+              className="mt-0.5 text-xs text-muted"
+              title={createdAtLabel}
+            >
+              {createdAtLabel}
+            </OverflowText>
+          </PayoutCell>
+        ) : null}
+      </>
+    )
+  }
 
   const renderRowActions = (payout: AdminPayoutSummary) => {
     const primaryActionKind = canApprovePayouts
@@ -1477,25 +1494,13 @@ export function PayoutsPage() {
   return (
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
-        description="Review, create, approve, and settle vendor payouts."
+        actionNode={refreshActionNode}
         layout="workspace"
         placement="topbar"
         title="Payouts"
       />
 
       <div className="flex flex-col gap-3 xl:min-h-0 xl:flex-1">
-        <section className="grid shrink-0 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-          {metrics.map((metric) => (
-            <MetricCard
-              key={metric.label}
-              label={metric.label}
-              meta={metric.meta}
-              tone={metric.tone}
-              value={metric.value}
-            />
-          ))}
-        </section>
-
         {actionMessage ? (
           <div className="rounded-[0.875rem] border border-success/25 bg-success/10 p-3 text-sm text-success">
             {actionMessage}
@@ -1505,238 +1510,14 @@ export function PayoutsPage() {
         <section
           className={cn(
             'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
-            previewPayout
-              ? filtersCollapsed
-                ? 'xl:grid-cols-[4.25rem_minmax(0,1fr)] 2xl:grid-cols-[4.25rem_minmax(0,1fr)_22rem]'
-                : 'xl:grid-cols-[18rem_minmax(0,1fr)] 2xl:grid-cols-[18rem_minmax(0,1fr)_22rem]'
-              : filtersCollapsed
-                ? 'xl:grid-cols-[4.25rem_minmax(0,1fr)]'
-                : 'xl:grid-cols-[18rem_minmax(0,1fr)]',
+            previewPayout ? 'xl:grid-cols-[minmax(0,1fr)_26rem]' : 'xl:grid-cols-1',
           )}
         >
-          <aside
-            className={cn(
-              'self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0',
-              filtersCollapsed
-                ? 'flex items-center justify-between gap-3 p-2.5 xl:flex-col xl:justify-start'
-                : 'space-y-3 p-3 xl:overflow-y-auto',
-            )}
-          >
-            {filtersCollapsed ? (
-              <>
-                <button
-                  aria-label="Expand payout filters"
-                  className="btn-icon"
-                  title="Expand filters"
-                  type="button"
-                  onClick={() => setFiltersCollapsed(false)}
-                >
-                  <ChevronRight className="size-4" />
-                </button>
-                <span
-                  aria-hidden="true"
-                  className="inline-flex size-9 items-center justify-center rounded-[0.65rem] bg-surface-muted/70 text-muted"
-                >
-                  <Filter className="size-4" />
-                </span>
-                {hasActiveFilters ? (
-                  <span
-                    aria-label="Active filters"
-                    className="size-2 rounded-full bg-primary"
-                    title="Active filters"
-                  />
-                ) : null}
-              </>
-            ) : (
-              <>
-                <div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-sm font-semibold text-foreground">
-                        Payout queues
-                      </h2>
-                      <p className="text-xs text-muted">
-                        Counts match current filters.
-                      </p>
-                    </div>
-                    <button
-                      aria-label="Collapse payout filters"
-                      className="btn-icon"
-                      title="Collapse filters"
-                      type="button"
-                      onClick={() => setFiltersCollapsed(true)}
-                    >
-                      <ChevronLeft className="size-4" />
-                    </button>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {queueItems.map((queueItem) => (
-                      <button
-                        className={cn(
-                          'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border px-3 text-left text-sm transition',
-                          queue === queueItem.key
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border bg-surface-muted/50 text-foreground hover:border-primary/35',
-                        )}
-                        key={queueItem.key}
-                        type="button"
-                        onClick={() => applyQueue(queueItem.key)}
-                      >
-                        <span className="font-medium">{queueItem.label}</span>
-                        <span className="text-xs font-semibold">
-                          {queueItem.count}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t border-border pt-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Filter stack
-                    </h3>
-                    {hasActiveFilters ? (
-                      <button
-                        className="text-xs font-semibold text-primary"
-                        type="button"
-                        onClick={clearPayoutFilters}
-                      >
-                        Reset
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 space-y-3">
-                    <MultiSelectFilter
-                      label="Payout status"
-                      options={statusOptions}
-                      placeholder="All statuses"
-                      values={selectedStatuses}
-                      onChange={(values) => {
-                        clearSeededPayoutParams()
-                        setSelectedStatuses(values as AdminPayoutStatus[])
-                        setQueue('all')
-                        resetToFirstPage()
-                      }}
-                    />
-                    <MultiSelectFilter
-                      label="Payout method"
-                      options={methodOptions}
-                      placeholder="All methods"
-                      values={selectedMethods}
-                      onChange={(values) => {
-                        setSelectedMethods(values as AdminPayoutMethod[])
-                        resetToFirstPage()
-                      }}
-                    />
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        City
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        placeholder="Chennai"
-                        value={city}
-                        onChange={(event) => {
-                          clearSeededPayoutParams()
-                          setCity(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <LookupMultiSelect
-                      fetchOptions={searchVendorLookupOptions}
-                      label="Vendor"
-                      placeholder="Search vendor"
-                      queryKey={['lookup', 'vendors', 'payouts']}
-                      selectedOptions={selectedVendors}
-                      onChange={(options) => {
-                        setSelectedVendors(options)
-                        clearSeededPayoutParams()
-                        resetToFirstPage()
-                      }}
-                    />
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Minimum amount
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        inputMode="numeric"
-                        placeholder="Paise"
-                        value={minAmountPaise}
-                        onChange={(event) => {
-                          setMinAmountPaise(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Maximum amount
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        inputMode="numeric"
-                        placeholder="Paise"
-                        value={maxAmountPaise}
-                        onChange={(event) => {
-                          setMaxAmountPaise(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Date from
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        type="datetime-local"
-                        value={dateFrom}
-                        onChange={(event) => {
-                          clearSeededPayoutParams()
-                          setDateFrom(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Date to
-                      </span>
-                      <Input
-                        className="min-h-10"
-                        type="datetime-local"
-                        value={dateTo}
-                        onChange={(event) => {
-                          clearSeededPayoutParams()
-                          setDateTo(event.target.value)
-                          resetToFirstPage()
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-              </>
-            )}
-          </aside>
-
           <main className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  Payout operations
-                </h2>
-                <p className="text-sm text-muted">
-                  {pagination
-                    ? `${pagination.totalItems} payouts matching current filters`
-                    : 'Search, filter, and settle vendor payouts.'}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="grid shrink-0 gap-3 border-b border-border px-3 py-3 xl:grid-cols-[minmax(24rem,1fr)_auto] xl:items-center">
+              <div className="min-w-0">
                 <ListHeaderSearch
-                  className="w-full sm:w-72 lg:w-80"
+                  className="w-full"
                   placeholder="Search payout, UTR, vendor"
                   value={search}
                   onChange={(nextSearch) => {
@@ -1745,14 +1526,22 @@ export function PayoutsPage() {
                     resetToFirstPage()
                   }}
                 />
-                <span
-                  className={cn(
-                    'text-xs font-medium',
-                    isRefreshing ? 'text-primary' : 'text-muted',
-                  )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                <Button
+                  aria-expanded={showFilters}
+                  className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setFiltersOpen((current) => !current)}
                 >
-                  {refreshStatusLabel}
-                </span>
+                  <Filter className="mr-2 size-4" />
+                  Filters
+                  {hasActiveFilters ? (
+                    <span className="ml-1 size-2 rounded-full bg-primary" />
+                  ) : null}
+                </Button>
                 {canApprovePayouts ? (
                   <Button
                     size="sm"
@@ -1819,21 +1608,162 @@ export function PayoutsPage() {
                     </div>
                   ) : null}
                 </div>
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void payoutsQuery.refetch()}
-                >
-                  <RefreshCcw
-                    className={cn(
-                      'mr-2 size-4',
-                      isRefreshing && 'animate-spin motion-reduce:animate-none',
-                    )}
-                  />
-                  Refresh
-                </Button>
               </div>
+            </div>
+
+            <div className="shrink-0 border-b border-border bg-surface px-3 pb-3 sm:px-4">
+              <div className="flex gap-1 overflow-x-auto rounded-[0.875rem] border border-border bg-surface-muted/40 p-1">
+                {queueItems.map((queueItem) => {
+                  const isActive = queue === queueItem.key
+
+                  return (
+                    <button
+                      aria-pressed={isActive}
+                      className={cn(
+                        'inline-flex h-8 shrink-0 items-center gap-2 rounded-[0.65rem] border px-2.5 text-sm font-medium transition',
+                        isActive
+                          ? 'border-primary/30 bg-surface text-primary shadow-[var(--sg-shadow-surface)]'
+                          : 'border-transparent text-muted hover:bg-surface hover:text-foreground',
+                      )}
+                      key={queueItem.key}
+                      type="button"
+                      onClick={() => applyQueue(queueItem.key)}
+                    >
+                      <span>{queueItem.label}</span>
+                      <span
+                        className={cn(
+                          'rounded-full px-2 py-0.5 text-xs font-semibold',
+                          isActive
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-surface text-muted',
+                        )}
+                      >
+                        {queueItem.count ?? '...'}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {showFilters ? (
+                <div className="mt-2 rounded-[0.75rem] border border-border bg-surface-muted/45 p-2.5">
+                  <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-[repeat(5,minmax(10rem,1fr))_auto] 2xl:items-end">
+                    <MultiSelectFilter
+                      label="Payout status"
+                      options={statusOptions}
+                      placeholder="All statuses"
+                      values={selectedStatuses}
+                      onChange={(values) => {
+                        clearSeededPayoutParams()
+                        setSelectedStatuses(values as AdminPayoutStatus[])
+                        setQueue('all')
+                        resetToFirstPage()
+                      }}
+                    />
+                    <MultiSelectFilter
+                      label="Payout method"
+                      options={methodOptions}
+                      placeholder="All methods"
+                      values={selectedMethods}
+                      onChange={(values) => {
+                        setSelectedMethods(values as AdminPayoutMethod[])
+                        resetToFirstPage()
+                      }}
+                    />
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">City</span>
+                      <Input
+                        className="min-h-10"
+                        placeholder="Chennai"
+                        value={city}
+                        onChange={(event) => {
+                          clearSeededPayoutParams()
+                          setCity(event.target.value)
+                          resetToFirstPage()
+                        }}
+                      />
+                    </label>
+                    <LookupMultiSelect
+                      fetchOptions={searchVendorLookupOptions}
+                      label="Vendor"
+                      placeholder="Search vendor"
+                      queryKey={['lookup', 'vendors', 'payouts']}
+                      selectedOptions={selectedVendors}
+                      onChange={(options) => {
+                        setSelectedVendors(options)
+                        clearSeededPayoutParams()
+                        resetToFirstPage()
+                      }}
+                    />
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">
+                        Minimum amount
+                      </span>
+                      <Input
+                        className="min-h-10"
+                        inputMode="numeric"
+                        placeholder="Paise"
+                        value={minAmountPaise}
+                        onChange={(event) => {
+                          setMinAmountPaise(event.target.value)
+                          resetToFirstPage()
+                        }}
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">
+                        Maximum amount
+                      </span>
+                      <Input
+                        className="min-h-10"
+                        inputMode="numeric"
+                        placeholder="Paise"
+                        value={maxAmountPaise}
+                        onChange={(event) => {
+                          setMaxAmountPaise(event.target.value)
+                          resetToFirstPage()
+                        }}
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">Date from</span>
+                      <Input
+                        className="min-h-10"
+                        type="datetime-local"
+                        value={dateFrom}
+                        onChange={(event) => {
+                          clearSeededPayoutParams()
+                          setDateFrom(event.target.value)
+                          resetToFirstPage()
+                        }}
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">Date to</span>
+                      <Input
+                        className="min-h-10"
+                        type="datetime-local"
+                        value={dateTo}
+                        onChange={(event) => {
+                          clearSeededPayoutParams()
+                          setDateTo(event.target.value)
+                          resetToFirstPage()
+                        }}
+                      />
+                    </label>
+                    <Button
+                      className="w-full 2xl:w-auto"
+                      disabled={!hasActiveFilters}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                      onClick={clearPayoutFilters}
+                    >
+                      Reset
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {payoutsQuery.isError ? (
@@ -1862,7 +1792,7 @@ export function PayoutsPage() {
                     className="min-w-0 xl:min-w-[var(--payout-grid-min-width)]"
                     style={payoutGridStyle}
                   >
-                    <div className="sticky top-0 z-10 hidden gap-3 grid-cols-[var(--payout-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
+                    <div className="sticky top-0 z-10 hidden gap-2 grid-cols-[var(--payout-grid-template)] border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted xl:grid">
                       <div className="flex min-w-0 items-center">
                         <ListSelectionCheckbox
                           checked={payoutSelection.allVisibleSelected}
@@ -1924,7 +1854,7 @@ export function PayoutsPage() {
                             payoutSelection.isSelected(payout.payoutId)
                           }
                           className={cn(
-                            'workbench-grid-row grid w-full cursor-pointer gap-3 px-3 py-3 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--payout-grid-template)]',
+                            'workbench-grid-row grid w-full cursor-pointer gap-2 px-3 py-2 text-left transition hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-[var(--payout-grid-template)] xl:items-center',
                             previewPayoutId === payout.payoutId &&
                               'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
                             payoutSelection.isSelected(payout.payoutId) &&
@@ -1956,7 +1886,7 @@ export function PayoutsPage() {
                               }
                             />
                           </div>
-                          <div className="grid gap-3 sm:grid-cols-2 xl:contents">
+                          <div className="grid gap-2 sm:grid-cols-2 xl:contents">
                             {renderPayoutCells(payout)}
                           </div>
                           <div className="workbench-sticky-action-cell flex min-w-0 items-center justify-start pl-2 xl:justify-end">

@@ -6,7 +6,6 @@ import {
   CircleCheck,
   ClipboardList,
   CreditCard,
-  FileText,
   FileUp,
   Film,
   ImageIcon,
@@ -38,6 +37,14 @@ import { PageContainer } from '../../../components/layout/PageContainer'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
+import {
+  RecordHeaderActions,
+  RecordMetricStrip,
+  RecordTabs,
+  type RecordAction,
+  type RecordMetric,
+  type RecordTabItem,
+} from '../../../components/ui/RecordPage'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
@@ -496,98 +503,77 @@ function DetailMetricCard({
   )
 }
 
+export type OrderDetailTab =
+  | 'overview'
+  | 'logistics'
+  | 'finance'
+  | 'history'
+  | 'proofs'
+  | 'items'
+  | 'notes'
+
+const ORDER_DETAIL_TABS: OrderDetailTab[] = [
+  'overview',
+  'logistics',
+  'finance',
+  'history',
+  'proofs',
+  'items',
+  'notes',
+]
+
 function OrderDetailSectionNav({
+  activeTab,
   canReadPayments,
   order,
+  orderId,
 }: {
+  activeTab: OrderDetailTab
   canReadPayments: boolean
   order: AdminOrderDetail
+  orderId: string
 }) {
   const items = [
-    { href: `#${orderSectionIds.overview}`, label: 'Overview' },
+    { key: 'overview', label: 'Overview' },
     {
-      count: order.logisticsTimeline.length,
-      href: `#${orderSectionIds.logistics}`,
+      key: 'logistics',
       label: 'Logistics',
+      count: order.counts?.logisticsEventCount ?? order.logisticsTimeline.length,
     },
     canReadPayments
       ? {
-          count: order.payments.length + order.refunds.length,
-          href: `#${orderSectionIds.finance}`,
+          key: 'finance',
           label: 'Finance',
+          count: order.payments.length + order.refunds.length,
         }
       : null,
     {
-      count: order.statusHistory.length + order.logisticsTimeline.length,
-      href: `#${orderSectionIds.history}`,
+      key: 'history',
       label: 'History',
+      count: order.statusHistory.length,
     },
+    { key: 'proofs', label: 'Proofs', count: order.mediaAssets.length },
     {
-      count: order.mediaAssets.length,
-      href: `#${orderSectionIds.proofMedia}`,
-      label: 'Proofs',
-    },
-    {
-      count: order.counts?.itemCount ?? order.items.length,
-      href: `#${orderSectionIds.items}`,
+      key: 'items',
       label: 'Items',
+      count: order.counts?.itemCount ?? order.items.length,
     },
     {
-      count: order.counts?.noteCount ?? order.notes.length,
-      href: `#${orderSectionIds.notes}`,
+      key: 'notes',
       label: 'Notes',
+      count: order.counts?.noteCount ?? order.notes.length,
     },
-    { href: `#${orderSectionIds.related}`, label: 'Related' },
-    {
-      count: order.warnings.length,
-      href: `#${orderSectionIds.signals}`,
-      label: 'Signals',
-    },
-  ].filter(Boolean) as {
-    count?: number
-    href: string
-    label: string
-  }[]
-  const [activeHref, setActiveHref] = useState(
-    `#${orderSectionIds.overview}`,
-  )
+  ].filter(Boolean) as RecordTabItem[]
 
   return (
-    <nav
-      aria-label="Order detail sections"
-      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
-    >
-      <div className="flex min-w-max items-center gap-5">
-        {items.map((item) => (
-          <a
-            aria-current={activeHref === item.href ? 'page' : undefined}
-            className={cn(
-              'inline-flex h-10 items-center gap-1.5 border-b-2 px-0.5 text-sm font-semibold transition',
-              activeHref === item.href
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted hover:text-foreground',
-            )}
-            href={item.href}
-            key={item.href}
-            onClick={() => setActiveHref(item.href)}
-          >
-            <span>{item.label}</span>
-            {typeof item.count === 'number' ? (
-              <span
-                className={cn(
-                  'rounded-full px-1.5 text-xs',
-                  activeHref === item.href
-                    ? 'bg-primary/10 text-primary'
-                    : 'bg-surface-muted text-muted',
-                )}
-              >
-                {item.count}
-              </span>
-            ) : null}
-          </a>
-        ))}
-      </div>
-    </nav>
+    <RecordTabs
+      activeTab={activeTab}
+      ariaLabel="Order detail sections"
+      basePath={`${routePaths.orders}/${orderId}`}
+      tabPrefix="/tab"
+      defaultTab="overview"
+      items={items}
+    />
   )
 }
 
@@ -829,34 +815,25 @@ function OrderHeaderActions({
   onSelectAction: (kind: OrderActionKind, targetStatus?: AdminOrderStatus) => void
   order: AdminOrderDetail
 }) {
-  return (
-    <div className="flex flex-wrap justify-end gap-2">
-      {canRefundPayments && hasOrderAction(order, 'INITIATE_REFUND') ? (
-        <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('INITIATE_REFUND')}>
-          <RotateCcw className="mr-2 size-4" />
-          Refund
-        </Button>
-      ) : null}
-      {canUpdateOrders && hasOrderAction(order, 'CREATE_PROOF_UPLOAD_INTENT') ? (
-        <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('CREATE_PROOF_UPLOAD_INTENT')}>
-          <FileUp className="mr-2 size-4" />
-          Request proof
-        </Button>
-      ) : null}
-      {canUpdateOrders && hasOrderAction(order, 'CANCEL') ? (
-        <Button disabled={isSubmitting} size="sm" variant="danger" onClick={() => onSelectAction('CANCEL')}>
-          <Ban className="mr-2 size-4" />
-          Cancel
-        </Button>
-      ) : null}
-      {canUpdateOrders && hasOrderAction(order, 'ADD_NOTE') ? (
-        <Button disabled={isSubmitting} size="sm" variant="secondary" onClick={() => onSelectAction('ADD_NOTE')}>
-          <MessageSquarePlus className="mr-2 size-4" />
-          Add Note
-        </Button>
-      ) : null}
-    </div>
-  )
+  const build = (
+    kind: OrderActionKind,
+    label: string,
+    icon: ReactNode,
+    intent: RecordAction['intent'],
+    allowed: boolean,
+  ): RecordAction | null =>
+    allowed && hasOrderAction(order, kind)
+      ? { key: kind, label, icon, intent, onSelect: () => onSelectAction(kind) }
+      : null
+
+  const actions = [
+    build('CREATE_PROOF_UPLOAD_INTENT', 'Request proof', <FileUp className="size-4" />, 'secondary', canUpdateOrders),
+    build('ADD_NOTE', 'Add note', <MessageSquarePlus className="size-4" />, 'secondary', canUpdateOrders),
+    build('INITIATE_REFUND', 'Refund', <RotateCcw className="size-4" />, 'destructive', canRefundPayments),
+    build('CANCEL', 'Cancel order', <Ban className="size-4" />, 'destructive', canUpdateOrders),
+  ].filter(Boolean) as RecordAction[]
+
+  return <RecordHeaderActions actions={actions} disabled={isSubmitting} />
 }
 
 function ManualLogisticsPanel({
@@ -1289,9 +1266,14 @@ export function OrderDetailPage({
   listHref = routePaths.orders,
   listLabel = 'Orders',
 }: OrderDetailPageProps = {}) {
-  const { orderId } = useParams()
+  const { orderId, tab: tabParam } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const activeTab: OrderDetailTab = ORDER_DETAIL_TABS.includes(
+    tabParam as OrderDetailTab,
+  )
+    ? (tabParam as OrderDetailTab)
+    : 'overview'
   const canReadCustomers = usePermission('customers:read')
   const canReadVendors = usePermission('vendors:read')
   const canReadPayments = usePermission('payments:read')
@@ -1365,6 +1347,8 @@ export function OrderDetailPage({
           paymentId: values.paymentId,
           amountPaise: values.amountPaise,
           reason: values.reason,
+          reasonCode: values.reasonCode,
+          hasDispute: values.hasDispute,
         })
       }
 
@@ -1457,6 +1441,36 @@ export function OrderDetailPage({
     return <PageContainer><EmptyState title="Order not found" description="The order detail API returned no order data." /></PageContainer>
   }
 
+  const orderMetrics: RecordMetric[] = [
+    { label: 'Status', value: formatStatusLabel(order.orderStatus) },
+    {
+      label: 'Payment',
+      value: formatStatusLabel(order.paymentStatus),
+      tone: order.paymentStatus === 'FAILED' ? 'danger' : undefined,
+    },
+    { label: 'Value', value: orderDisplayValue(order) },
+    {
+      label: 'Events',
+      value: String(
+        order.counts?.logisticsEventCount ?? order.logisticsTimeline.length,
+      ),
+    },
+    {
+      label: 'Notes',
+      value: String(order.counts?.noteCount ?? order.notes.length),
+    },
+    {
+      label: 'Refunds',
+      value: String(order.counts?.refundCount ?? order.refunds.length),
+      tone: (order.counts?.refundCount ?? order.refunds.length) > 0 ? 'warning' : undefined,
+    },
+    {
+      label: 'Signals',
+      value: String(order.warnings.length),
+      tone: order.warnings.length > 0 ? 'warning' : 'success',
+    },
+  ]
+
   return (
     <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
@@ -1478,42 +1492,19 @@ export function OrderDetailPage({
 
       <PriceRevisionNotice order={order} />
 
-      <OrderDetailSectionNav canReadPayments={canReadPayments} order={order} />
+      <OrderDetailSectionNav
+        activeTab={activeTab}
+        canReadPayments={canReadPayments}
+        order={order}
+        orderId={orderId as string}
+      />
 
-      <section
-        id={orderSectionIds.overview}
-        className="grid scroll-mt-24 gap-2.5 md:grid-cols-2 xl:grid-cols-4"
-      >
-        <DetailMetricCard
-          icon={<Route className="size-4" />}
-          label="Order status"
-          meta={order.nextRecommendedAction ? `Next: ${formatStatusLabel(order.nextRecommendedAction)}` : 'No immediate action'}
-          tone={statusTone(order.orderStatus)}
-          value={formatStatusLabel(order.orderStatus)}
-        />
-        <DetailMetricCard
-          icon={<CreditCard className="size-4" />}
-          label="Payment"
-          meta={order.paymentMethod}
-          tone={paymentTone(order.paymentStatus)}
-          value={formatStatusLabel(order.paymentStatus)}
-        />
-        <DetailMetricCard
-          icon={<PackageCheck className="size-4" />}
-          label="Value"
-          meta={order.pricing.pendingPriceRevision ? 'Price revision pending' : 'Current payable value'}
-          tone={order.pricing.pendingPriceRevision ? 'warning' : 'info'}
-          value={orderDisplayValue(order)}
-        />
-        <DetailMetricCard
-          icon={<CalendarClock className="size-4" />}
-          label="Timeline"
-          meta={`${order.counts?.noteCount ?? order.notes.length} notes / ${order.counts?.refundCount ?? order.refunds.length} refunds`}
-          tone={(order.counts?.logisticsEventCount ?? order.logisticsTimeline.length) ? 'info' : 'neutral'}
-          value={String(order.counts?.logisticsEventCount ?? order.logisticsTimeline.length)}
-        />
-      </section>
+      <RecordMetricStrip
+        ariaLabel="Order summary"
+        metrics={orderMetrics}
+      />
 
+      {activeTab === 'logistics' ? (
       <div id={orderSectionIds.logistics} className="scroll-mt-24">
         <ManualLogisticsPanel
           canUpdateOrders={canUpdateOrders}
@@ -1522,9 +1513,11 @@ export function OrderDetailPage({
           onSelectAction={openAction}
         />
       </div>
+      ) : null}
 
       <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-3">
+          {activeTab === 'overview' ? (
           <DetailPanel
             description="Core booking, schedule, customer, vendor, and pricing fields."
             id="order-information"
@@ -1549,43 +1542,9 @@ export function OrderDetailPage({
               <DetailField label="Updated" value={formatDateSafe(order.updatedAt)} />
             </div>
           </DetailPanel>
+          ) : null}
 
-          <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-            <DetailMetricCard
-              icon={<PackageCheck className="size-4" />}
-              label="Items"
-              meta="Service line items"
-              tone={order.items.length ? 'info' : 'neutral'}
-              value={String(order.counts?.itemCount ?? order.items.length)}
-            />
-            <DetailMetricCard
-              icon={<CreditCard className="size-4" />}
-              label="Payments"
-              meta={
-                canReadPayments
-                  ? `${order.refunds.length} linked refunds`
-                  : 'Payments permission required'
-              }
-              tone={canReadPayments && order.payments.length ? 'success' : 'neutral'}
-              value={canReadPayments ? String(order.payments.length) : 'Locked'}
-            />
-            <DetailMetricCard
-              icon={<ImageIcon className="size-4" />}
-              label="Proofs"
-              meta="Order media assets"
-              tone={order.mediaAssets.length ? 'info' : 'neutral'}
-              value={String(order.mediaAssets.length)}
-            />
-            <DetailMetricCard
-              icon={<FileText className="size-4" />}
-              label="Notes"
-              meta="Internal admin notes"
-              tone={order.notes.length ? 'warning' : 'neutral'}
-              value={String(order.counts?.noteCount ?? order.notes.length)}
-            />
-          </div>
-
-        {canReadPayments ? (
+        {activeTab === 'finance' && canReadPayments ? (
           <div id={orderSectionIds.finance} className="grid scroll-mt-24 gap-3 2xl:grid-cols-2">
             <DynamicTable
               actionColumnLabel="Payment Actions"
@@ -1662,10 +1621,11 @@ export function OrderDetailPage({
               onRowClick={(refund) => navigate(`${routePaths.refunds}/${refund.refundId}`)}
             />
           </div>
-        ) : (
+        ) : activeTab === 'finance' ? (
           <FinanceLockedPanel order={order} />
-        )}
+        ) : null}
 
+        {activeTab === 'history' ? (
         <div id={orderSectionIds.history} className="grid scroll-mt-24 gap-3 2xl:grid-cols-2">
           <DynamicTable
             bodyMaxHeight={340}
@@ -1705,7 +1665,9 @@ export function OrderDetailPage({
             }
           />
         </div>
+        ) : null}
 
+        {activeTab === 'proofs' ? (
         <div id={orderSectionIds.proofMedia} className="scroll-mt-24">
           <DynamicTable
             actionColumnLabel="Proof Actions"
@@ -1741,8 +1703,10 @@ export function OrderDetailPage({
             }
           />
         </div>
+        ) : null}
 
         <div className="grid gap-3 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+          {activeTab === 'items' ? (
           <div id={orderSectionIds.items} className="scroll-mt-24">
             <DynamicTable
               bodyMaxHeight={300}
@@ -1763,7 +1727,9 @@ export function OrderDetailPage({
               }
             />
           </div>
+          ) : null}
 
+          {activeTab === 'notes' ? (
           <div id={orderSectionIds.notes} className="scroll-mt-24">
             <DynamicTable
               actionColumnLabel="Note Actions"
@@ -1799,9 +1765,11 @@ export function OrderDetailPage({
               }
             />
           </div>
+          ) : null}
         </div>
         </div>
 
+        {activeTab === 'overview' ? (
         <aside className="space-y-3 xl:sticky xl:top-[5.5rem]">
           <RelatedRecordsPanel
             canReadAudit={canReadAudit}
@@ -1815,6 +1783,7 @@ export function OrderDetailPage({
           />
           <OperationalSignalsPanel order={order} />
         </aside>
+        ) : null}
       </section>
 
       <OrderActionModal

@@ -1,49 +1,21 @@
-import { ArrowLeft, ChevronRight, Home } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
-import { routePaths } from '../../config/routes'
+import { ChevronRight, Home } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import type { NavCrumb } from '../../types/common.types'
 import { cn } from '../../utils/cn'
 
 interface DetailBreadcrumbNavProps {
-  backHref?: string
-  backLabel?: string
   className?: string
   items: NavCrumb[]
   variant?: 'bar' | 'inline'
 }
 
-function getBackHref(items: NavCrumb[], backHref?: string) {
-  if (backHref) return backHref
-
-  const previousLinkedCrumb = [...items]
-    .reverse()
-    .find((item) => Boolean(item.href))
-
-  return previousLinkedCrumb?.href ?? routePaths.dashboard
-}
-
 export function DetailBreadcrumbNav({
-  backHref,
-  backLabel = 'Back',
   className,
   items,
   variant = 'bar',
 }: DetailBreadcrumbNavProps) {
-  const navigate = useNavigate()
   const normalizedItems = items.filter((item) => item.label.trim().length > 0)
-  const resolvedBackHref = getBackHref(normalizedItems, backHref)
   const isInline = variant === 'inline'
-
-  const goBack = () => {
-    const historyIndex = window.history.state?.idx
-
-    if (typeof historyIndex === 'number' && historyIndex > 0) {
-      navigate(-1)
-      return
-    }
-
-    navigate(resolvedBackHref)
-  }
 
   if (!normalizedItems.length) {
     return null
@@ -59,23 +31,8 @@ export function DetailBreadcrumbNav({
         className,
       )}
     >
-      <button
-        className={cn(
-          'inline-flex shrink-0 items-center gap-2 rounded-[0.7rem] text-sm font-semibold text-foreground transition hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          isInline ? 'h-8 px-2' : 'h-9 px-2.5',
-        )}
-        type="button"
-        onClick={goBack}
-      >
-        <ArrowLeft className="size-4" />
-        <span>{backLabel}</span>
-      </button>
-
-      <span
-        aria-hidden="true"
-        className={cn('w-px shrink-0 bg-border', isInline ? 'h-4' : 'h-5')}
-      />
-
+      {/* No Back button: the parent crumb below navigates to the same place and
+          names where it goes, and the browser's own Back covers history. */}
       <ol
         className={cn(
           'flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap pr-1 text-muted',

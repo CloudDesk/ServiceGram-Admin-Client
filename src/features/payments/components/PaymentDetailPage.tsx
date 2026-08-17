@@ -21,9 +21,14 @@ import {
 import { DynamicTable, type DynamicTableColumn } from '../../../components/ui/Table'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
+import { OverflowText } from '../../../components/ui/OverflowText'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
+import {
+  RecordField,
+  RecordMetricStrip,
+} from '../../../components/ui/RecordPage'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -61,7 +66,10 @@ const refundColumns: DynamicTableColumn<AdminRefundCore>[] = [
             {humanizeCode(refund.status)}
           </Badge>
         </div>
-        <p className="mt-1 truncate text-xs text-muted">
+        <p
+          className="mt-1 truncate text-xs text-muted"
+          title={`Created ${formatDateSafe(refund.createdAt)}`}
+        >
           Created {formatDateSafe(refund.createdAt)}
         </p>
       </div>
@@ -83,7 +91,9 @@ const refundColumns: DynamicTableColumn<AdminRefundCore>[] = [
     label: 'Reason',
     minWidth: 280,
     renderCell: (refund) => (
-      <p className="line-clamp-2 text-sm text-foreground">{refund.reason}</p>
+      <p className="line-clamp-2 text-sm text-foreground" title={refund.reason}>
+        {refund.reason}
+      </p>
     ),
   },
   {
@@ -160,58 +170,7 @@ function DetailField({
   label: string
   value: string | number | null | undefined
 }) {
-  return (
-    <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface-muted/35 px-3 py-3">
-      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-        {label}
-      </p>
-      <p className="mt-2 break-words text-sm font-medium text-foreground">
-        {value ?? 'Not available'}
-      </p>
-    </div>
-  )
-}
-
-function SummaryCard({
-  label,
-  meta,
-  tone,
-  value,
-}: {
-  label: string
-  meta: string
-  tone: 'success' | 'warning' | 'danger' | 'info' | 'neutral'
-  value: string
-}) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <p
-        className={cn(
-          'text-xs font-semibold uppercase tracking-normal',
-          tone === 'success' && 'text-success',
-          tone === 'warning' && 'text-warning',
-          tone === 'danger' && 'text-danger',
-          tone === 'info' && 'text-primary',
-          tone === 'neutral' && 'text-muted',
-        )}
-      >
-        {label}
-      </p>
-      <p
-        className={cn(
-          'mt-3 text-2xl font-semibold tracking-normal',
-          tone === 'success' && 'text-success',
-          tone === 'warning' && 'text-warning',
-          tone === 'danger' && 'text-danger',
-          tone === 'info' && 'text-primary',
-          tone === 'neutral' && 'text-foreground',
-        )}
-      >
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
-    </article>
-  )
+  return <RecordField label={label} value={value} />
 }
 
 function TableToolbar({
@@ -291,10 +250,16 @@ function RelatedRecordRow({
           <p className="text-xs font-semibold uppercase tracking-normal text-muted">
             {label}
           </p>
-          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+          <OverflowText
+            as="p"
+            className="mt-1 text-sm font-semibold text-foreground"
+            title={value}
+          >
             {value}
-          </p>
-          <p className="mt-1 truncate text-xs text-muted">{meta}</p>
+          </OverflowText>
+          <OverflowText as="p" className="mt-1 text-xs text-muted" title={meta}>
+            {meta}
+          </OverflowText>
         </div>
       </div>
       {canOpen && onOpen ? (
@@ -334,7 +299,9 @@ function HeaderStatus({ payment }: { payment: AdminPaymentDetail }) {
       <Badge tone={paymentTone(payment.status)}>{humanizeCode(payment.status)}</Badge>
       <Badge tone="info">{humanizeCode(payment.gateway)}</Badge>
       {payment.warnings.length > 0 ? (
-        <Badge tone="warning">{payment.warnings.length} warning</Badge>
+        <Badge tone="warning">
+          {payment.warnings.length} warning{payment.warnings.length === 1 ? '' : 's'}
+        </Badge>
       ) : null}
     </div>
   )
@@ -343,20 +310,40 @@ function HeaderStatus({ payment }: { payment: AdminPaymentDetail }) {
 function HeaderActions({
   canReadOrders,
   canReconcile,
+  isRefreshing,
   isSubmitting,
+  onRefresh,
   onSelect,
   onViewOrder,
   payment,
 }: {
   canReadOrders: boolean
   canReconcile: boolean
+  isRefreshing: boolean
   isSubmitting: boolean
+  onRefresh: () => void
   onSelect: (action: PaymentActionSelection) => void
   onViewOrder: () => void
   payment: AdminPaymentDetail
 }) {
   return (
     <div className="flex flex-wrap justify-end gap-2">
+      <Button
+        aria-label={isRefreshing ? 'Refreshing payment' : 'Refresh payment'}
+        size="sm"
+        title={isRefreshing ? 'Refreshing payment' : 'Refresh payment'}
+        type="button"
+        variant="secondary"
+        onClick={onRefresh}
+      >
+        <RefreshCcw
+          className={cn(
+            'mr-2 size-4',
+            isRefreshing && 'animate-spin motion-reduce:animate-none',
+          )}
+        />
+        Refresh
+      </Button>
       {canReadOrders ? (
         <Button size="sm" type="button" variant="secondary" onClick={onViewOrder}>
           <ArrowUpRight className="mr-2 size-4" />
@@ -513,8 +500,10 @@ export function PaymentDetailPage() {
           <HeaderActions
             canReadOrders={canReadOrders}
             canReconcile={canReconcile}
+            isRefreshing={paymentQuery.isFetching}
             isSubmitting={mutation.isPending}
             payment={payment}
+            onRefresh={() => void paymentQuery.refetch()}
             onSelect={setSelectedAction}
             onViewOrder={() => navigate(`${routePaths.orders}/${payment.order.orderId}`)}
           />
@@ -532,36 +521,37 @@ export function PaymentDetailPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          label="Amount"
-          meta={payment.currency}
-          tone={payment.status === 'SUCCESS' ? 'success' : 'neutral'}
-          value={formatPaise(payment.amountPaise)}
-        />
-        <SummaryCard
-          label="Refundable"
-          meta={`${payment.refundSummary.refundCount} refund records`}
-          tone={
-            payment.refundSummary.remainingRefundableAmountPaise > 0
-              ? 'info'
-              : 'neutral'
-          }
-          value={formatPaise(payment.refundSummary.remainingRefundableAmountPaise)}
-        />
-        <SummaryCard
-          label="Requested refunds"
-          meta="Open refund review count"
-          tone={payment.refundSummary.requestedCount > 0 ? 'warning' : 'neutral'}
-          value={String(payment.refundSummary.requestedCount)}
-        />
-        <SummaryCard
-          label="Warnings"
-          meta={payment.nextRecommendedAction ?? 'No recommended action'}
-          tone={payment.warnings.length > 0 ? 'danger' : 'neutral'}
-          value={String(payment.warnings.length)}
-        />
-      </section>
+      <RecordMetricStrip
+        ariaLabel="Payment summary"
+        metrics={[
+          {
+            label: 'Amount',
+            value: formatPaise(payment.amountPaise),
+            tone: payment.status === 'SUCCESS' ? 'success' : undefined,
+          },
+          {
+            label: 'Refundable',
+            value: formatPaise(
+              payment.refundSummary.remainingRefundableAmountPaise,
+            ),
+          },
+          {
+            label: 'Refunds',
+            value: String(payment.refundSummary.refundCount),
+          },
+          {
+            label: 'Requested',
+            value: String(payment.refundSummary.requestedCount),
+            tone:
+              payment.refundSummary.requestedCount > 0 ? 'warning' : undefined,
+          },
+          {
+            label: 'Signals',
+            value: String(payment.warnings.length),
+            tone: payment.warnings.length > 0 ? 'danger' : 'success',
+          },
+        ]}
+      />
 
       <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <SectionShell

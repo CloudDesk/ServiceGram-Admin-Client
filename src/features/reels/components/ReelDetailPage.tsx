@@ -7,6 +7,7 @@ import {
   ImageIcon,
   PauseCircle,
   PencilLine,
+  RefreshCcw,
   ShieldCheck,
   Store,
   Tags,
@@ -23,6 +24,7 @@ import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
+import { OverflowText } from '../../../components/ui/OverflowText'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { DynamicTable, type DynamicTableColumn } from '../../../components/ui/Table'
 import {
@@ -32,6 +34,13 @@ import {
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { useMediaViewer, type MediaViewerItem } from '../../../components/media'
 import { routePaths } from '../../../config/routes'
+import {
+  RecordHeaderActions,
+  RecordMetricStrip,
+  RecordTabs,
+  type RecordAction,
+  type RecordTabItem,
+} from '../../../components/ui/RecordPage'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
@@ -111,22 +120,6 @@ function DetailField({
   )
 }
 
-function toneTextClasses(tone: ReelTone) {
-  if (tone === 'success') return 'text-success'
-  if (tone === 'warning') return 'text-warning'
-  if (tone === 'danger') return 'text-danger'
-  if (tone === 'info') return 'text-primary'
-  return 'text-muted'
-}
-
-function metricToneClasses(tone: ReelTone) {
-  if (tone === 'success') return 'border-border bg-surface text-success'
-  if (tone === 'warning') return 'border-border bg-surface text-warning'
-  if (tone === 'danger') return 'border-border bg-surface text-danger'
-  if (tone === 'info') return 'border-border bg-surface text-primary'
-  return 'border-border bg-surface text-muted'
-}
-
 function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
 
@@ -191,44 +184,6 @@ function canRunReelAction({
   }
 
   return canModerateReels
-}
-
-function DetailMetricCard({
-  icon,
-  label,
-  meta,
-  tone,
-  value,
-}: {
-  icon: ReactNode
-  label: string
-  meta: string
-  tone: ReelTone
-  value: string
-}) {
-  return (
-    <article
-      className={cn(
-        'min-h-[4.35rem] rounded-[0.75rem] border p-2.5',
-        metricToneClasses(tone),
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-normal opacity-80">
-            {label}
-          </p>
-          <p className="mt-1 truncate text-lg font-semibold tracking-normal">
-            {value}
-          </p>
-        </div>
-        <span className={cn('mt-0.5 shrink-0 opacity-80', toneTextClasses(tone))}>
-          {icon}
-        </span>
-      </div>
-      <p className="mt-0.5 truncate text-xs leading-4 opacity-80">{meta}</p>
-    </article>
-  )
 }
 
 function isOpenableUrl(value: string | null | undefined): value is string {
@@ -442,75 +397,48 @@ function buildReelDetailMetrics(
   }[]
 }
 
-function ReelDetailSectionNav({ reel }: { reel: AdminReel }) {
-  const signalCount =
-    reel.warnings.length + reel.blockingReasons.length + reel.missingFields.length
+export type ReelDetailTab =
+  | 'overview'
+  | 'media'
+  | 'moderation'
+  | 'context'
+  | 'checklist'
+
+const REEL_DETAIL_TABS: ReelDetailTab[] = [
+  'overview',
+  'media',
+  'moderation',
+  'context',
+  'checklist',
+]
+
+function ReelDetailSectionNav({
+  activeTab,
+  reel,
+  reelId,
+}: {
+  activeTab: ReelDetailTab
+  reel: AdminReel
+  reelId: string
+}) {
   const mediaCount = buildReelMediaViewerItems(reel).length
-  const items = [
-    { href: `#${reelDetailSectionIds.overview}`, label: 'Overview' },
-    {
-      count: mediaCount,
-      href: `#${reelDetailSectionIds.media}`,
-      label: 'Media',
-    },
-    {
-      href: `#${reelDetailSectionIds.moderation}`,
-      label: 'Moderation',
-    },
-    {
-      href: `#${reelDetailSectionIds.context}`,
-      label: 'Context',
-    },
-    {
-      count: reel.reviewChecklist.length,
-      href: `#${reelDetailSectionIds.checklist}`,
-      label: 'Checklist',
-    },
-    { href: `#${reelDetailSectionIds.related}`, label: 'Related' },
-    {
-      count: signalCount,
-      href: `#${reelDetailSectionIds.signals}`,
-      label: 'Signals',
-    },
+  const items: RecordTabItem[] = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'media', label: 'Media', count: mediaCount },
+    { key: 'moderation', label: 'Moderation' },
+    { key: 'context', label: 'Context' },
+    { key: 'checklist', label: 'Checklist', count: reel.reviewChecklist.length },
   ]
-  const [activeHref, setActiveHref] = useState(`#${reelDetailSectionIds.overview}`)
 
   return (
-    <nav
-      aria-label="Reel detail sections"
-      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
-    >
-      <div className="flex min-w-max items-center gap-5">
-        {items.map((item) => (
-          <a
-            aria-current={activeHref === item.href ? 'page' : undefined}
-            className={cn(
-              'inline-flex h-10 items-center gap-1.5 border-b-2 px-0.5 text-sm font-semibold transition',
-              activeHref === item.href
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted hover:text-foreground',
-            )}
-            href={item.href}
-            key={item.href}
-            onClick={() => setActiveHref(item.href)}
-          >
-            <span>{item.label}</span>
-            {typeof item.count === 'number' ? (
-              <span
-                className={cn(
-                  'rounded-full px-1.5 text-xs',
-                  activeHref === item.href
-                    ? 'bg-primary/10 text-primary'
-                    : 'bg-surface-muted text-muted',
-                )}
-              >
-                {item.count}
-              </span>
-            ) : null}
-          </a>
-        ))}
-      </div>
-    </nav>
+    <RecordTabs
+      activeTab={activeTab}
+      ariaLabel="Reel detail sections"
+      basePath={`${routePaths.reels}/${reelId}`}
+      tabPrefix="/tab"
+      defaultTab="overview"
+      items={items}
+    />
   )
 }
 
@@ -533,13 +461,17 @@ function ReelHeaderStatus({ reel }: { reel: AdminReel }) {
 function ReelHeaderActions({
   canDeleteReels,
   canModerateReels,
+  isRefreshing,
   isSubmitting,
+  onRefresh,
   onSelectAction,
   reel,
 }: {
   canDeleteReels: boolean
   canModerateReels: boolean
+  isRefreshing: boolean
   isSubmitting: boolean
+  onRefresh: () => void
   onSelectAction: (kind: ReelActionKind) => void
   reel: AdminReel
 }) {
@@ -547,85 +479,49 @@ function ReelHeaderActions({
     reel.availableActions.includes(action) &&
     canRunReelAction({ action, canDeleteReels, canModerateReels })
 
+  const build = (
+    kind: ReelActionKind,
+    label: string,
+    icon: ReactNode,
+    intent: RecordAction['intent'],
+  ): RecordAction | null =>
+    hasAction(kind)
+      ? { key: kind, label, icon, intent, onSelect: () => onSelectAction(kind) }
+      : null
+
+  const actions = [
+    build('APPROVE', 'Approve', <CheckCircle2 className="size-4" />, 'primary'),
+    build('REQUEST_EDIT', 'Request edit', <PencilLine className="size-4" />, 'secondary'),
+    build('PAUSE', 'Pause', <PauseCircle className="size-4" />, 'secondary'),
+    build('REJECT', 'Reject', <XCircle className="size-4" />, 'destructive'),
+    build('REMOVE', 'Remove', <Trash2 className="size-4" />, 'destructive'),
+    build('SOFT_DELETE', 'Soft delete', <Trash2 className="size-4" />, 'destructive'),
+    build('HARD_DELETE', 'Hard delete', <Trash2 className="size-4" />, 'destructive'),
+  ].filter(Boolean) as RecordAction[]
+
   return (
-    <div className="flex flex-wrap justify-end gap-2">
-      {hasAction('APPROVE') ? (
+    <RecordHeaderActions
+      actions={actions}
+      disabled={isSubmitting}
+      utility={
         <Button
-          disabled={isSubmitting}
+          aria-label={isRefreshing ? 'Refreshing reel' : 'Refresh reel'}
           size="sm"
-          onClick={() => onSelectAction('APPROVE')}
-        >
-          <CheckCircle2 className="mr-2 size-4" />
-          Approve
-        </Button>
-      ) : null}
-      {hasAction('REJECT') ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="danger"
-          onClick={() => onSelectAction('REJECT')}
-        >
-          <XCircle className="mr-2 size-4" />
-          Reject
-        </Button>
-      ) : null}
-      {hasAction('REQUEST_EDIT') ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
+          title={isRefreshing ? 'Refreshing reel' : 'Refresh reel'}
+          type="button"
           variant="secondary"
-          onClick={() => onSelectAction('REQUEST_EDIT')}
+          onClick={onRefresh}
         >
-          <PencilLine className="mr-2 size-4" />
-          Request edit
+          <RefreshCcw
+            className={cn(
+              'mr-2 size-4',
+              isRefreshing && 'animate-spin motion-reduce:animate-none',
+            )}
+          />
+          Refresh
         </Button>
-      ) : null}
-      {hasAction('PAUSE') ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="secondary"
-          onClick={() => onSelectAction('PAUSE')}
-        >
-          <PauseCircle className="mr-2 size-4" />
-          Pause
-        </Button>
-      ) : null}
-      {hasAction('REMOVE') ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="danger"
-          onClick={() => onSelectAction('REMOVE')}
-        >
-          <Trash2 className="mr-2 size-4" />
-          Remove
-        </Button>
-      ) : null}
-      {canDeleteReels && hasAction('SOFT_DELETE') ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="danger"
-          onClick={() => onSelectAction('SOFT_DELETE')}
-        >
-          <Trash2 className="mr-2 size-4" />
-          Soft delete
-        </Button>
-      ) : null}
-      {canDeleteReels && hasAction('HARD_DELETE') ? (
-        <Button
-          disabled={isSubmitting}
-          size="sm"
-          variant="danger"
-          onClick={() => onSelectAction('HARD_DELETE')}
-        >
-          <Trash2 className="mr-2 size-4" />
-          Hard delete
-        </Button>
-      ) : null}
-    </div>
+      }
+    />
   )
 }
 
@@ -691,10 +587,16 @@ function RelatedRecordRow({
           <p className="text-xs font-semibold uppercase tracking-normal text-muted">
             {label}
           </p>
-          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+          <OverflowText
+            as="p"
+            className="mt-1 text-sm font-semibold text-foreground"
+            title={value}
+          >
             {value}
-          </p>
-          <p className="mt-1 truncate text-xs text-muted">{meta}</p>
+          </OverflowText>
+          <OverflowText as="p" className="mt-1 text-xs text-muted" title={meta}>
+            {meta}
+          </OverflowText>
         </div>
       </div>
       {canOpen && onOpen ? (
@@ -999,7 +901,12 @@ function ReelMediaPanel({ id, reel }: { id?: string; reel: AdminReel }) {
 }
 
 export function ReelDetailPage() {
-  const { reelId } = useParams()
+  const { reelId, tab: tabParam } = useParams()
+  const activeTab: ReelDetailTab = REEL_DETAIL_TABS.includes(
+    tabParam as ReelDetailTab,
+  )
+    ? (tabParam as ReelDetailTab)
+    : 'overview' 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const canModerateReels = usePermission('reels:moderate')
@@ -1174,8 +1081,10 @@ export function ReelDetailPage() {
           <ReelHeaderActions
             canDeleteReels={canDeleteReels}
             canModerateReels={canModerateReels}
+            isRefreshing={reelQuery.isFetching}
             isSubmitting={actionMutation.isPending}
             reel={reel}
+            onRefresh={() => void reelQuery.refetch()}
             onSelectAction={openAction}
           />
         }
@@ -1186,24 +1095,22 @@ export function ReelDetailPage() {
         titleMetaNode={<ReelHeaderStatus reel={reel} />}
       />
 
-      <ReelDetailSectionNav reel={reel} />
+      <ReelDetailSectionNav
+        activeTab={activeTab}
+        reel={reel}
+        reelId={reelId as string}
+      />
 
-      <section
-        className="grid scroll-mt-24 gap-2.5 md:grid-cols-2 xl:grid-cols-4"
-        id={reelDetailSectionIds.overview}
-      >
-        {detailMetrics.map((metric) => (
-          <DetailMetricCard
-            icon={metric.icon}
-            key={metric.label}
-            label={metric.label}
-            meta={metric.meta}
-            tone={metric.tone}
-            value={metric.value}
-          />
-        ))}
-      </section>
+      <RecordMetricStrip
+        ariaLabel="Reel summary"
+        metrics={detailMetrics.map((metric) => ({
+          label: metric.label,
+          value: metric.value,
+          tone: metric.tone === 'warning' || metric.tone === 'danger' || metric.tone === 'success' ? metric.tone : undefined,
+        }))}
+      />
 
+      {activeTab === 'overview' ? (
       <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <SectionShell
           description="Core content, identity, and lifecycle timestamps."
@@ -1241,10 +1148,14 @@ export function ReelDetailPage() {
           />
         </div>
       </section>
+      ) : null}
 
       <section className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
+        {activeTab === 'media' ? (
         <ReelMediaPanel id={reelDetailSectionIds.media} reel={reel} />
+        ) : null}
 
+        {activeTab === 'moderation' ? (
         <SectionShell
           description="Review decision state and customer visibility."
           id={reelDetailSectionIds.moderation}
@@ -1279,8 +1190,10 @@ export function ReelDetailPage() {
             />
           </div>
         </SectionShell>
+        ) : null}
       </section>
 
+      {activeTab === 'context' ? (
       <SectionShell
         description="Vendor, zone, and category context used by moderation and customer discovery."
         id={reelDetailSectionIds.context}
@@ -1317,7 +1230,9 @@ export function ReelDetailPage() {
           <DetailField label="Category Active" value={reel.category?.isActive} />
         </div>
       </SectionShell>
+      ) : null}
 
+      {activeTab === 'checklist' ? (
       <div className="scroll-mt-24" id={reelDetailSectionIds.checklist}>
         <DynamicTable
           bodyMaxHeight={360}
@@ -1330,6 +1245,7 @@ export function ReelDetailPage() {
           title="Review Checklist"
         />
       </div>
+      ) : null}
 
       <ReelActionModal
         action={selectedAction}

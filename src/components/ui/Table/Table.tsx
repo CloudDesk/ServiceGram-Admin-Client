@@ -770,7 +770,76 @@ export function DynamicTable<T>({
   return (
     <Card className={cn('premium-table-card overflow-hidden', className)}>
       {toolbar ? <div className="premium-table-toolbar px-4 py-3">{toolbar}</div> : null}
-      <div className="overflow-x-auto">
+
+      {/* Below lg a wide table would scroll sideways inside a page that already
+          scrolls down. Each row becomes a stacked label/value card instead, so
+          there is only ever one scroll direction. */}
+      <ul className="divide-y divide-border lg:hidden">
+        {computedData.map((row, rowIndex) => {
+          const rowId = getRowId?.(row, rowIndex) ?? String(rowIndex)
+          const actions = resolvedActions[rowIndex] ?? []
+          const inlineActions = actions
+            .filter((action) => action.placement !== 'menu')
+            .slice(0, resolvedInlineActionLimit)
+          const menuActions = [
+            ...actions.filter((action) => action.placement === 'menu'),
+            ...actions
+              .filter((action) => action.placement !== 'menu')
+              .slice(resolvedInlineActionLimit),
+          ]
+
+          return (
+            <li
+              className={cn('px-4 py-3', onRowClick && 'cursor-pointer')}
+              key={rowId}
+              onClick={() => onRowClick?.(row)}
+            >
+              <dl className="flex flex-col">
+                {columns.map((column) => (
+                  <div
+                    className="flex items-baseline justify-between gap-4 py-1"
+                    key={`${rowId}-${column.key}-stacked`}
+                  >
+                    <dt className="shrink-0 text-xs text-muted">{column.label}</dt>
+                    <dd className="min-w-0 break-words text-right text-sm">
+                      {resolveCellContent(column, row)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              {rowActions && actions.length ? (
+                <div
+                  className="mt-2 flex flex-wrap items-center justify-end gap-1"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {inlineActions.map((action) => (
+                    <Button
+                      className="gap-2 whitespace-nowrap"
+                      disabled={isActionDisabled(action, row)}
+                      key={action.key}
+                      size="sm"
+                      type="button"
+                      variant={action.variant ?? 'ghost'}
+                      onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                        event.stopPropagation()
+                        action.onClick(row)
+                      }}
+                    >
+                      {action.icon}
+                      <span>{action.label}</span>
+                    </Button>
+                  ))}
+                  {menuActions.length ? (
+                    <DynamicRowActionMenu actions={menuActions} row={row} />
+                  ) : null}
+                </div>
+              ) : null}
+            </li>
+          )
+        })}
+      </ul>
+
+      <div className="hidden overflow-x-auto lg:block">
         <div className="overflow-auto" style={tableBodyStyle}>
           <table className="min-w-full border-separate border-spacing-0">
             <thead

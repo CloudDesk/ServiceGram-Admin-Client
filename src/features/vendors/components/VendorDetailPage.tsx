@@ -86,6 +86,12 @@ import type {
   ReelModerationStatus,
   ReelUploadStatus,
 } from "../../reels/types/reel.types";
+import {
+  RecordHeaderActions,
+  RecordTabs,
+  type RecordAction,
+  type RecordTabItem,
+} from "../../../components/ui/RecordPage";
 import { vendorService } from "../services/vendor.service";
 import {
   VendorActionModal,
@@ -112,7 +118,6 @@ import type {
   VendorOverviewResponse,
   VendorProfileUpdatePayload,
   VendorServiceRecord,
-  VendorReviewTimelineItem,
   VendorStatus,
   VendorOnboardingStatus,
 } from "../types/vendor.types";
@@ -163,7 +168,6 @@ const vendorDetailSectionIds = {
   overview: "vendor-detail-overview",
   documents: "vendor-detail-documents",
   payoutAccount: "vendor-detail-payout-account",
-  activity: "vendor-detail-activity",
   payouts: "vendor-detail-payouts",
   orders: "vendor-detail-orders",
   services: "vendor-detail-services",
@@ -243,6 +247,14 @@ function formatDateSafe(value: string | null | undefined) {
   if (!value) return "Not available";
 
   return new Date(value).toLocaleDateString("en-IN");
+}
+
+function canVerifyVendorDocument(document: VendorDocument) {
+  return ["PENDING", "REJECTED"].includes(document.status);
+}
+
+function canRejectVendorDocument(document: VendorDocument) {
+  return ["PENDING", "VERIFIED"].includes(document.status);
 }
 
 function getUploadStatusTone(status: ReelUploadStatus): VendorTone {
@@ -615,662 +627,6 @@ function getVisibleVendorDetailActions(
     },
   );
 }
-
-function toVendorHeaderActionKind(
-  action: string | null | undefined,
-): VendorHeaderActionKind | null {
-  const normalizedAction = action?.toUpperCase();
-
-  if (
-    normalizedAction === "ADD_NOTE" ||
-    normalizedAction === "APPROVE" ||
-    normalizedAction === "REACTIVATE" ||
-    normalizedAction === "REJECT" ||
-    normalizedAction === "SUSPEND"
-  ) {
-    return normalizedAction;
-  }
-
-  return null;
-}
-
-function getRecommendedVendorHeaderAction(
-  vendor: VendorDetail,
-  visibleActions: string[],
-) {
-  const recommendedAction = toVendorHeaderActionKind(
-    vendor.nextRecommendedAction,
-  );
-
-  if (
-    recommendedAction &&
-    (recommendedAction === "ADD_NOTE" ||
-      visibleActions.includes(recommendedAction))
-  ) {
-    return recommendedAction;
-  }
-
-  if (isRejectedVendor(vendor) && visibleActions.includes("REACTIVATE")) {
-    return "REACTIVATE";
-  }
-
-  return null;
-}
-
-const documentColumns: DynamicTableColumn<VendorDocument>[] = [
-  {
-    key: "documentType",
-    label: "Document",
-    minWidth: 220,
-  },
-  {
-    key: "status",
-    label: "Status",
-    format: "status",
-    statusTone: (value) =>
-      value === "VERIFIED"
-        ? "success"
-        : value === "REJECTED"
-          ? "danger"
-          : "warning",
-    minWidth: 140,
-  },
-  {
-    key: "verifiedAt",
-    label: "Verified",
-    format: "date",
-    minWidth: 180,
-    placeholder: "Not verified",
-  },
-  {
-    key: "updatedAt",
-    label: "Updated",
-    format: "date",
-    minWidth: 180,
-  },
-];
-
-const bankAccountColumns: DynamicTableColumn<VendorBankAccount>[] = [
-  {
-    key: "account",
-    label: "Account",
-    minWidth: 260,
-    renderCell: (account) => (
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="font-semibold text-foreground">{account.bankName}</p>
-          {account.isPrimary ? <Badge tone="info">Primary</Badge> : null}
-        </div>
-        <p className="text-xs text-muted">{account.accountNumberMasked}</p>
-      </div>
-    ),
-  },
-  {
-    key: "accountHolderName",
-    label: "Holder",
-    minWidth: 180,
-  },
-  {
-    key: "ifscCode",
-    label: "IFSC",
-    minWidth: 140,
-  },
-  {
-    key: "upiId",
-    label: "UPI",
-    minWidth: 180,
-    placeholder: "Not linked",
-  },
-  {
-    key: "status",
-    label: "Status",
-    format: "status",
-    statusTone: (value) =>
-      value === "VERIFIED"
-        ? "success"
-        : value === "REJECTED" || value === "DISABLED"
-          ? "danger"
-          : "warning",
-    minWidth: 190,
-  },
-  {
-    key: "verifiedAt",
-    label: "Verified",
-    format: "date",
-    minWidth: 180,
-    placeholder: "Not verified",
-  },
-  {
-    key: "updatedAt",
-    label: "Updated",
-    format: "date",
-    minWidth: 180,
-  },
-];
-
-const serviceColumns: DynamicTableColumn<VendorServiceRecord>[] = [
-  {
-    key: "service",
-    label: "Service",
-    minWidth: 260,
-    renderCell: (service) => (
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="font-semibold text-foreground">{service.serviceName}</p>
-          {service.nextRecommendedAction === "EDIT_CATALOG" ? (
-            <Badge tone="warning">Catalog needed</Badge>
-          ) : null}
-        </div>
-        <p className="mt-1 line-clamp-2 text-xs text-muted">
-          {service.description ?? "No description"}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          {service.category.name}
-          {service.serviceType ? ` · ${service.serviceType.name}` : ""}
-        </p>
-      </div>
-    ),
-  },
-  {
-    key: "pricing",
-    label: "Pricing",
-    minWidth: 220,
-    renderCell: (service) => (
-      <div>
-        <p className="font-semibold text-foreground">
-          {formatPaise(
-            service.pricing.basePricePaise,
-            service.pricing.currency,
-          )}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          {formatServicePriceType(service.pricing.priceType)}
-        </p>
-        {service.pricing.minPricePaise != null ||
-        service.pricing.maxPricePaise != null ? (
-          <p className="mt-1 text-xs text-muted">
-            {formatPaise(
-              service.pricing.minPricePaise,
-              service.pricing.currency,
-            )}{" "}
-            to{" "}
-            {formatPaise(
-              service.pricing.maxPricePaise,
-              service.pricing.currency,
-            )}
-          </p>
-        ) : null}
-      </div>
-    ),
-  },
-  {
-    key: "catalog",
-    label: "Catalog",
-    minWidth: 210,
-    renderCell: (service) => {
-      const isConfigured = service.pricing.catalog.isConfigured;
-      const itemCount = isConfigured
-        ? service.pricing.catalog.configuredItemCount
-        : service.pricing.catalog.items.length;
-      const activeItemCount = isConfigured
-        ? service.pricing.catalog.activeItemCount
-        : service.pricing.catalog.items.filter(
-            (item) => item.isActive !== false,
-          ).length;
-
-      return (
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={isConfigured ? "success" : "warning"}>
-              {isConfigured ? "Configured" : "Suggested"}
-            </Badge>
-          </div>
-          <p className="mt-2 text-xs text-muted">
-            {activeItemCount} active / {itemCount} items
-          </p>
-          {service.warnings.length ? (
-            <p className="mt-1 line-clamp-1 text-xs text-warning">
-              {service.warnings.map(formatServiceWarning).join(", ")}
-            </p>
-          ) : null}
-        </div>
-      );
-    },
-  },
-  {
-    key: "isActive",
-    label: "Status",
-    minWidth: 130,
-    renderCell: (service) => (
-      <Badge tone={service.isActive ? "success" : "danger"}>
-        {service.isActive ? "ACTIVE" : "INACTIVE"}
-      </Badge>
-    ),
-  },
-  {
-    key: "updatedAt",
-    label: "Updated",
-    format: "date",
-    minWidth: 180,
-  },
-];
-
-const orderColumns: DynamicTableColumn<AdminOrderSummary>[] = [
-  {
-    key: "order",
-    label: "Order",
-    minWidth: 260,
-    renderCell: (order) => (
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="font-semibold text-foreground">{order.publicOrderId}</p>
-          <Badge tone={getOrderStatusTone(order.orderStatus)}>
-            {humanizeCode(order.orderStatus)}
-          </Badge>
-        </div>
-        <p className="mt-1 text-xs text-muted">
-          Created {formatDateSafe(order.createdAt)}
-        </p>
-        <p className="mt-1 truncate text-xs text-muted">
-          {order.category?.name ?? "No category"}
-        </p>
-      </div>
-    ),
-  },
-  {
-    key: "customer",
-    label: "Customer",
-    minWidth: 220,
-    renderCell: (order) => (
-      <div>
-        <p className="font-medium text-foreground">{order.customer.fullName}</p>
-        <p className="mt-1 text-xs text-muted">
-          {order.customer.mobileNumber ?? "No mobile"}
-        </p>
-        <p className="mt-1 truncate text-xs text-muted">
-          {order.customer.city ?? "No city"}
-        </p>
-      </div>
-    ),
-  },
-  {
-    key: "payment",
-    label: "Payment",
-    minWidth: 210,
-    renderCell: (order) => {
-      const value = orderDisplayValue(order);
-
-      return (
-        <div>
-          <Badge tone={getPaymentStatusTone(order.paymentStatus)}>
-            {humanizeCode(order.paymentStatus)}
-          </Badge>
-          <p className="mt-2 font-semibold text-foreground">{value.value}</p>
-          <p className="mt-1 text-xs text-muted">
-            {order.paymentMethod} · {value.meta}
-          </p>
-        </div>
-      );
-    },
-  },
-  {
-    key: "pickup",
-    label: "Pickup",
-    minWidth: 210,
-    renderCell: (order) => (
-      <div>
-        <div className="flex items-center gap-2 text-sm text-foreground">
-          <CalendarClock className="size-4 text-muted" />
-          <span>{formatDateSafe(order.schedule.pickupDate)}</span>
-        </div>
-        <p className="mt-1 pl-6 text-xs text-muted">
-          {order.schedule.pickupSlotStart} - {order.schedule.pickupSlotEnd}
-        </p>
-        <p className="mt-1 pl-6 text-xs text-muted">
-          Delivery {formatDateSafe(order.schedule.expectedDeliveryAt)}
-        </p>
-      </div>
-    ),
-  },
-  {
-    key: "activity",
-    label: "Activity",
-    minWidth: 210,
-    renderCell: (order) => (
-      <div>
-        <div className="flex items-center gap-2 text-sm text-foreground">
-          <Package className="size-4 text-muted" />
-          <span>{order.counts?.itemCount ?? 0} items</span>
-        </div>
-        <p className="mt-1 pl-6 text-xs text-muted">
-          {order.counts?.noteCount ?? 0} notes /{" "}
-          {order.counts?.refundCount ?? 0} refunds
-        </p>
-        {order.warnings.length ? (
-          <p className="mt-1 line-clamp-1 pl-6 text-xs text-warning">
-            {order.warnings.map(humanizeCode).join(", ")}
-          </p>
-        ) : null}
-      </div>
-    ),
-  },
-  {
-    key: "updatedAt",
-    label: "Updated",
-    minWidth: 180,
-    renderCell: (order) => (
-      <div>
-        <p className="font-semibold text-foreground">
-          {formatDateSafe(order.updatedAt)}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          {order.nextRecommendedAction
-            ? humanizeCode(order.nextRecommendedAction)
-            : "No next action"}
-        </p>
-      </div>
-    ),
-  },
-];
-
-const payoutColumns: DynamicTableColumn<AdminPayoutSummary>[] = [
-  {
-    key: "payout",
-    label: "Payout",
-    minWidth: 260,
-    renderCell: (payout) => (
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="font-semibold text-foreground">
-            {payout.publicPayoutId}
-          </p>
-          <Badge tone={getPayoutStatusTone(payout.status)}>
-            {humanizeCode(payout.status)}
-          </Badge>
-        </div>
-        <p className="mt-1 text-xs text-muted">
-          Created {formatDateSafe(payout.createdAt)}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          {humanizeCode(payout.payoutMethod)}
-        </p>
-      </div>
-    ),
-  },
-  {
-    key: "amount",
-    label: "Amount",
-    minWidth: 210,
-    renderCell: (payout) => (
-      <div>
-        <p className="font-semibold text-foreground">
-          {formatPaise(payout.totalAmountPaise, payout.currency)}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          Net payable{" "}
-          {formatPaise(payout.itemSummary.netPayablePaise, payout.currency)}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          {payout.itemSummary.itemCount} earning items
-        </p>
-      </div>
-    ),
-  },
-  {
-    key: "deductions",
-    label: "Deductions",
-    minWidth: 220,
-    renderCell: (payout) => (
-      <div>
-        <p className="text-sm text-foreground">
-          Commission{" "}
-          <span className="font-semibold">
-            {formatPaise(
-              payout.itemSummary.commissionAmountPaise,
-              payout.currency,
-            )}
-          </span>
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          Logistics{" "}
-          {formatPaise(
-            payout.itemSummary.logisticsDeductionPaise,
-            payout.currency,
-          )}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          Adjustments{" "}
-          {formatPaise(
-            payout.itemSummary.adjustmentAmountPaise,
-            payout.currency,
-          )}
-        </p>
-      </div>
-    ),
-  },
-  {
-    key: "lifecycle",
-    label: "Lifecycle",
-    minWidth: 230,
-    renderCell: (payout) => (
-      <div>
-        <p className="text-sm font-semibold text-foreground">
-          {payout.paidAt
-            ? `Paid ${formatDateSafe(payout.paidAt)}`
-            : payout.approvedAt
-              ? `Approved ${formatDateSafe(payout.approvedAt)}`
-              : "Awaiting review"}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          {payout.utrReference
-            ? `UTR ${payout.utrReference}`
-            : payout.holdReason
-              ? payout.holdReason
-              : payout.failureReason
-                ? payout.failureReason
-                : "No transfer reference"}
-        </p>
-      </div>
-    ),
-  },
-  {
-    key: "warnings",
-    label: "Signals",
-    minWidth: 220,
-    renderCell: (payout) => (
-      <div>
-        {payout.warnings.length ? (
-          <p className="line-clamp-2 text-xs text-warning">
-            {payout.warnings.map(humanizeCode).join(", ")}
-          </p>
-        ) : (
-          <p className="text-xs text-muted">No warnings</p>
-        )}
-        <p className="mt-2 text-xs text-muted">
-          Next{" "}
-          {payout.nextRecommendedAction
-            ? humanizeCode(payout.nextRecommendedAction)
-            : "No action"}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          Updated {formatDateSafe(payout.updatedAt)}
-        </p>
-      </div>
-    ),
-  },
-];
-
-const reelColumns: DynamicTableColumn<AdminReel>[] = [
-  {
-    key: "reel",
-    label: "Reel",
-    minWidth: 320,
-    renderCell: (reel) => (
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="flex h-20 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[0.65rem] border border-border bg-surface-muted">
-          {reel.media.thumbnailUrl ? (
-            <img
-              alt=""
-              className="h-full w-full object-cover"
-              src={reel.media.thumbnailUrl}
-            />
-          ) : (
-            <Film className="size-5 text-muted" />
-          )}
-        </div>
-        <div className="min-w-0">
-          <p className="font-semibold text-foreground">{reel.publicReelId}</p>
-          <p className="mt-1 line-clamp-2 text-xs text-muted">
-            {reel.caption ?? "No caption"}
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Badge tone="neutral">{humanizeCode(reel.contentType)}</Badge>
-            {reel.priceIndicator ? (
-              <span className="text-xs text-muted">{reel.priceIndicator}</span>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    ),
-  },
-  {
-    key: "media",
-    label: "Media",
-    minWidth: 170,
-    renderCell: (reel) => (
-      <div>
-        <Badge tone={getUploadStatusTone(reel.media.uploadStatus)}>
-          {humanizeCode(reel.media.uploadStatus)}
-        </Badge>
-        <p className="mt-2 text-xs text-muted">
-          {reel.media.durationSeconds
-            ? `${reel.media.durationSeconds} seconds`
-            : "Duration unavailable"}
-        </p>
-      </div>
-    ),
-  },
-  {
-    key: "moderation",
-    label: "Moderation",
-    minWidth: 210,
-    renderCell: (reel) => (
-      <div>
-        <Badge tone={getModerationStatusTone(reel.moderation.status)}>
-          {humanizeCode(reel.moderation.status)}
-        </Badge>
-        {reel.warnings.length ? (
-          <p className="mt-2 line-clamp-1 text-xs text-warning">
-            {reel.warnings.map(humanizeCode).join(", ")}
-          </p>
-        ) : (
-          <p className="mt-2 line-clamp-1 text-xs text-muted">
-            {reel.nextRecommendedAction
-              ? humanizeCode(reel.nextRecommendedAction)
-              : "No next action"}
-          </p>
-        )}
-      </div>
-    ),
-  },
-  {
-    key: "visibility",
-    label: "Visibility",
-    minWidth: 170,
-    renderCell: (reel) => (
-      <div>
-        <Badge
-          tone={
-            reel.publish.customerVisibility === "VISIBLE"
-              ? "success"
-              : "neutral"
-          }
-        >
-          {humanizeCode(reel.publish.customerVisibility)}
-        </Badge>
-        <p className="mt-2 text-xs text-muted">
-          Published {formatDateSafe(reel.publish.publishedAt)}
-        </p>
-      </div>
-    ),
-  },
-  {
-    key: "updatedAt",
-    label: "Updated",
-    minWidth: 180,
-    renderCell: (reel) => (
-      <div>
-        <p className="font-semibold text-foreground">
-          {formatDateSafe(reel.updatedAt)}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          Created {formatDateSafe(reel.createdAt)}
-        </p>
-      </div>
-    ),
-  },
-];
-
-const timelineColumns: DynamicTableColumn<VendorReviewTimelineItem>[] = [
-  {
-    key: "actionCode",
-    label: "Action",
-    minWidth: 180,
-  },
-  {
-    key: "reason",
-    label: "Reason",
-    minWidth: 260,
-    placeholder: "No reason recorded",
-  },
-  {
-    key: "createdAt",
-    label: "Created",
-    format: "date",
-    minWidth: 180,
-  },
-];
-
-interface VendorDocumentHistoryRow {
-  reviewEventId: string;
-  action: string;
-  fromStatus: string | null;
-  toStatus: string | null;
-  reason: string | null;
-  createdAt: string;
-}
-
-const documentHistoryColumns: DynamicTableColumn<VendorDocumentHistoryRow>[] = [
-  {
-    key: "action",
-    label: "Action",
-    minWidth: 220,
-  },
-  {
-    key: "fromStatus",
-    label: "From",
-    minWidth: 120,
-    placeholder: "—",
-  },
-  {
-    key: "toStatus",
-    label: "To",
-    minWidth: 120,
-    placeholder: "—",
-  },
-  {
-    key: "reason",
-    label: "Reason",
-    minWidth: 280,
-    placeholder: "No reason recorded",
-  },
-  {
-    key: "createdAt",
-    label: "When",
-    format: "date",
-    minWidth: 180,
-  },
-];
 
 function DetailField({
   label,
@@ -1856,7 +1212,7 @@ function VendorReviewJumpPanel({
           </div>
         </div>
 
-        <div className="grid gap-2 text-sm sm:grid-cols-4">
+        <div className="grid gap-2 text-sm sm:grid-cols-3">
           <DetailField
             label="Documents"
             value={
@@ -1870,7 +1226,6 @@ function VendorReviewJumpPanel({
             value={vendor.bankAccountSummary.payoutReady ? "Ready" : "Review"}
           />
           <DetailField label="Onboarding" value={vendor.onboardingStatus} />
-          <DetailField label="Timeline" value={vendor.reviewTimeline.length} />
         </div>
       </div>
 
@@ -1897,7 +1252,29 @@ function VendorReviewJumpPanel({
   );
 }
 
+export type VendorDetailTab =
+  | 'overview'
+  | 'documents'
+  | 'payout-account'
+  | 'payouts'
+  | 'orders'
+  | 'services'
+  | 'reels'
+  | 'profile'
+
+const VENDOR_DETAIL_TABS: VendorDetailTab[] = [
+  'overview',
+  'documents',
+  'payout-account',
+  'payouts',
+  'orders',
+  'services',
+  'reels',
+  'profile',
+]
+
 function VendorDetailSectionNav({
+  activeTab,
   bankAccountCount,
   canReadOrders,
   canReadPayouts,
@@ -1907,8 +1284,9 @@ function VendorDetailSectionNav({
   payoutCount,
   reelCount,
   serviceCount,
-  timelineCount,
+  vendorId,
 }: {
+  activeTab: VendorDetailTab;
   bankAccountCount: number;
   canReadOrders: boolean;
   canReadPayouts: boolean;
@@ -1918,97 +1296,30 @@ function VendorDetailSectionNav({
   payoutCount: number;
   reelCount: number;
   serviceCount: number;
-  timelineCount: number;
+  vendorId: string;
 }) {
   const items = [
-    { href: `#${vendorDetailSectionIds.overview}`, label: "Overview" },
-    {
-      count: documentCount,
-      href: `#${vendorDetailSectionIds.documents}`,
-      label: "Documents",
-    },
-    {
-      count: bankAccountCount,
-      href: `#${vendorDetailSectionIds.payoutAccount}`,
-      label: "Payout Account",
-    },
-    {
-      count: timelineCount,
-      href: `#${vendorDetailSectionIds.activity}`,
-      label: "Activity",
-    },
+    { key: "overview", label: "Overview" },
+    { key: "documents", label: "Documents", count: documentCount },
+    { key: "payout-account", label: "Payout account", count: bankAccountCount },
     canReadPayouts
-      ? {
-          count: payoutCount,
-          href: `#${vendorDetailSectionIds.payouts}`,
-          label: "Payouts",
-        }
+      ? { key: "payouts", label: "Payouts", count: payoutCount }
       : null,
-    canReadOrders
-      ? {
-          count: orderCount,
-          href: `#${vendorDetailSectionIds.orders}`,
-          label: "Orders",
-        }
-      : null,
-    {
-      count: serviceCount,
-      href: `#${vendorDetailSectionIds.services}`,
-      label: "Services",
-    },
-    canReadReels
-      ? {
-          count: reelCount,
-          href: `#${vendorDetailSectionIds.reels}`,
-          label: "Reels",
-        }
-      : null,
-    { href: `#${vendorDetailSectionIds.profile}`, label: "Profile" },
-  ].filter(Boolean) as {
-    count?: number;
-    href: string;
-    label: string;
-  }[];
-  const [activeHref, setActiveHref] = useState(
-    `#${vendorDetailSectionIds.overview}`,
-  );
+    canReadOrders ? { key: "orders", label: "Orders", count: orderCount } : null,
+    { key: "services", label: "Services", count: serviceCount },
+    canReadReels ? { key: "reels", label: "Reels", count: reelCount } : null,
+    { key: "profile", label: "Profile" },
+  ].filter(Boolean) as RecordTabItem[];
 
   return (
-    <nav
-      aria-label="Vendor detail sections"
-      className="sticky top-[3.4rem] z-40 -mx-3 overflow-x-auto border-b border-border bg-surface/95 px-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
-    >
-      <div className="flex min-w-max items-center gap-5">
-        {items.map((item) => (
-          <a
-            aria-current={activeHref === item.href ? "page" : undefined}
-            className={cn(
-              "inline-flex h-10 items-center gap-1.5 border-b-2 px-0.5 text-sm font-semibold transition",
-              activeHref === item.href
-                ? "border-primary text-primary"
-                : "border-transparent text-muted hover:text-foreground",
-            )}
-            href={item.href}
-            key={item.href}
-            onClick={() => setActiveHref(item.href)}
-          >
-            <span>{item.label}</span>
-            {typeof item.count === "number" ? (
-              <span
-                className={cn(
-                  "rounded-full px-1.5 text-xs",
-                  activeHref === item.href
-                    ? "bg-primary/10 text-primary"
-                    : "bg-surface-muted text-muted",
-                )}
-              >
-                {item.count}
-              </span>
-            ) : null}
-          </a>
-        ))}
-      </div>
-    </nav>
+    <RecordTabs
+      activeTab={activeTab}
+      ariaLabel="Vendor detail sections"
+      basePath={`${routePaths.vendors}/${vendorId}`}
+      tabPrefix="/tab"
+      defaultTab="overview"
+      items={items}
+    />
   );
 }
 
@@ -2090,6 +1401,601 @@ function getDocumentHistoryRows(
     }));
 }
 
+const documentColumns: DynamicTableColumn<VendorDocument>[] = [
+  {
+    key: "documentType",
+    label: "Document",
+    minWidth: 220,
+  },
+  {
+    key: "status",
+    label: "Status",
+    format: "status",
+    statusTone: (value) =>
+      value === "VERIFIED"
+        ? "success"
+        : value === "REJECTED"
+          ? "danger"
+          : "warning",
+    minWidth: 140,
+  },
+  {
+    key: "verifiedAt",
+    label: "Verified",
+    format: "date",
+    minWidth: 180,
+    placeholder: "Not verified",
+  },
+  {
+    key: "updatedAt",
+    label: "Updated",
+    format: "date",
+    minWidth: 180,
+  },
+];
+
+const bankAccountColumns: DynamicTableColumn<VendorBankAccount>[] = [
+  {
+    key: "account",
+    label: "Account",
+    minWidth: 260,
+    renderCell: (account) => (
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold text-foreground">{account.bankName}</p>
+          {account.isPrimary ? <Badge tone="info">Primary</Badge> : null}
+        </div>
+        <p className="text-xs text-muted">{account.accountNumberMasked}</p>
+      </div>
+    ),
+  },
+  {
+    key: "accountHolderName",
+    label: "Holder",
+    minWidth: 180,
+  },
+  {
+    key: "ifscCode",
+    label: "IFSC",
+    minWidth: 140,
+  },
+  {
+    key: "upiId",
+    label: "UPI",
+    minWidth: 180,
+    placeholder: "Not linked",
+  },
+  {
+    key: "status",
+    label: "Status",
+    format: "status",
+    statusTone: (value) =>
+      value === "VERIFIED"
+        ? "success"
+        : value === "REJECTED" || value === "DISABLED"
+          ? "danger"
+          : "warning",
+    minWidth: 190,
+  },
+  {
+    key: "verifiedAt",
+    label: "Verified",
+    format: "date",
+    minWidth: 180,
+    placeholder: "Not verified",
+  },
+  {
+    key: "updatedAt",
+    label: "Updated",
+    format: "date",
+    minWidth: 180,
+  },
+];
+
+const serviceColumns: DynamicTableColumn<VendorServiceRecord>[] = [
+  {
+    key: "service",
+    label: "Service",
+    minWidth: 260,
+    renderCell: (service) => (
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold text-foreground">{service.serviceName}</p>
+          {service.nextRecommendedAction === "EDIT_CATALOG" ? (
+            <Badge tone="warning">Catalog needed</Badge>
+          ) : null}
+        </div>
+        <p className="mt-1 line-clamp-2 text-xs text-muted">
+          {service.description ?? "No description"}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          {service.category.name}
+          {service.serviceType ? ` · ${service.serviceType.name}` : ""}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "pricing",
+    label: "Pricing",
+    minWidth: 220,
+    renderCell: (service) => (
+      <div>
+        <p className="font-semibold text-foreground">
+          {formatPaise(
+            service.pricing.basePricePaise,
+            service.pricing.currency,
+          )}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          {formatServicePriceType(service.pricing.priceType)}
+        </p>
+        {service.pricing.minPricePaise != null ||
+        service.pricing.maxPricePaise != null ? (
+          <p className="mt-1 text-xs text-muted">
+            {formatPaise(
+              service.pricing.minPricePaise,
+              service.pricing.currency,
+            )}{" "}
+            to{" "}
+            {formatPaise(
+              service.pricing.maxPricePaise,
+              service.pricing.currency,
+            )}
+          </p>
+        ) : null}
+      </div>
+    ),
+  },
+  {
+    key: "catalog",
+    label: "Catalog",
+    minWidth: 210,
+    renderCell: (service) => {
+      const isConfigured = service.pricing.catalog.isConfigured;
+      const itemCount = isConfigured
+        ? service.pricing.catalog.configuredItemCount
+        : service.pricing.catalog.items.length;
+      const activeItemCount = isConfigured
+        ? service.pricing.catalog.activeItemCount
+        : service.pricing.catalog.items.filter(
+            (item) => item.isActive !== false,
+          ).length;
+
+      return (
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={isConfigured ? "success" : "warning"}>
+              {isConfigured ? "Configured" : "Suggested"}
+            </Badge>
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            {activeItemCount} active / {itemCount} items
+          </p>
+          {service.warnings.length ? (
+            <p className="mt-1 line-clamp-1 text-xs text-warning">
+              {service.warnings.map(formatServiceWarning).join(", ")}
+            </p>
+          ) : null}
+        </div>
+      );
+    },
+  },
+  {
+    key: "isActive",
+    label: "Status",
+    minWidth: 130,
+    renderCell: (service) => (
+      <Badge tone={service.isActive ? "success" : "danger"}>
+        {service.isActive ? "ACTIVE" : "INACTIVE"}
+      </Badge>
+    ),
+  },
+  {
+    key: "updatedAt",
+    label: "Updated",
+    format: "date",
+    minWidth: 180,
+  },
+];
+
+const orderColumns: DynamicTableColumn<AdminOrderSummary>[] = [
+  {
+    key: "order",
+    label: "Order",
+    minWidth: 260,
+    renderCell: (order) => (
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold text-foreground">{order.publicOrderId}</p>
+          <Badge tone={getOrderStatusTone(order.orderStatus)}>
+            {humanizeCode(order.orderStatus)}
+          </Badge>
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Created {formatDateSafe(order.createdAt)}
+        </p>
+        <p className="mt-1 truncate text-xs text-muted">
+          {order.category?.name ?? "No category"}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "customer",
+    label: "Customer",
+    minWidth: 220,
+    renderCell: (order) => (
+      <div>
+        <p className="font-medium text-foreground">{order.customer.fullName}</p>
+        <p className="mt-1 text-xs text-muted">
+          {order.customer.mobileNumber ?? "No mobile"}
+        </p>
+        <p className="mt-1 truncate text-xs text-muted">
+          {order.customer.city ?? "No city"}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "payment",
+    label: "Payment",
+    minWidth: 210,
+    renderCell: (order) => {
+      const value = orderDisplayValue(order);
+
+      return (
+        <div>
+          <Badge tone={getPaymentStatusTone(order.paymentStatus)}>
+            {humanizeCode(order.paymentStatus)}
+          </Badge>
+          <p className="mt-2 font-semibold text-foreground">{value.value}</p>
+          <p className="mt-1 text-xs text-muted">
+            {order.paymentMethod} · {value.meta}
+          </p>
+        </div>
+      );
+    },
+  },
+  {
+    key: "pickup",
+    label: "Pickup",
+    minWidth: 210,
+    renderCell: (order) => (
+      <div>
+        <div className="flex items-center gap-2 text-sm text-foreground">
+          <CalendarClock className="size-4 text-muted" />
+          <span>{formatDateSafe(order.schedule.pickupDate)}</span>
+        </div>
+        <p className="mt-1 pl-6 text-xs text-muted">
+          {order.schedule.pickupSlotStart} - {order.schedule.pickupSlotEnd}
+        </p>
+        <p className="mt-1 pl-6 text-xs text-muted">
+          Delivery {formatDateSafe(order.schedule.expectedDeliveryAt)}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "activity",
+    label: "Activity",
+    minWidth: 210,
+    renderCell: (order) => (
+      <div>
+        <div className="flex items-center gap-2 text-sm text-foreground">
+          <Package className="size-4 text-muted" />
+          <span>{order.counts?.itemCount ?? 0} items</span>
+        </div>
+        <p className="mt-1 pl-6 text-xs text-muted">
+          {order.counts?.noteCount ?? 0} notes /{" "}
+          {order.counts?.refundCount ?? 0} refunds
+        </p>
+        {order.warnings.length ? (
+          <p className="mt-1 line-clamp-1 pl-6 text-xs text-warning">
+            {order.warnings.map(humanizeCode).join(", ")}
+          </p>
+        ) : null}
+      </div>
+    ),
+  },
+  {
+    key: "updatedAt",
+    label: "Updated",
+    minWidth: 180,
+    renderCell: (order) => (
+      <div>
+        <p className="font-semibold text-foreground">
+          {formatDateSafe(order.updatedAt)}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          {order.nextRecommendedAction
+            ? humanizeCode(order.nextRecommendedAction)
+            : "No next action"}
+        </p>
+      </div>
+    ),
+  },
+];
+
+const payoutColumns: DynamicTableColumn<AdminPayoutSummary>[] = [
+  {
+    key: "payout",
+    label: "Payout",
+    minWidth: 260,
+    renderCell: (payout) => (
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold text-foreground">
+            {payout.publicPayoutId}
+          </p>
+          <Badge tone={getPayoutStatusTone(payout.status)}>
+            {humanizeCode(payout.status)}
+          </Badge>
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Created {formatDateSafe(payout.createdAt)}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          {humanizeCode(payout.payoutMethod)}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "amount",
+    label: "Amount",
+    minWidth: 210,
+    renderCell: (payout) => (
+      <div>
+        <p className="font-semibold text-foreground">
+          {formatPaise(payout.totalAmountPaise, payout.currency)}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          Net payable{" "}
+          {formatPaise(payout.itemSummary.netPayablePaise, payout.currency)}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          {payout.itemSummary.itemCount} earning items
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "deductions",
+    label: "Deductions",
+    minWidth: 220,
+    renderCell: (payout) => (
+      <div>
+        <p className="text-sm text-foreground">
+          Commission{" "}
+          <span className="font-semibold">
+            {formatPaise(
+              payout.itemSummary.commissionAmountPaise,
+              payout.currency,
+            )}
+          </span>
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          Logistics{" "}
+          {formatPaise(
+            payout.itemSummary.logisticsDeductionPaise,
+            payout.currency,
+          )}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          Adjustments{" "}
+          {formatPaise(
+            payout.itemSummary.adjustmentAmountPaise,
+            payout.currency,
+          )}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "lifecycle",
+    label: "Lifecycle",
+    minWidth: 230,
+    renderCell: (payout) => (
+      <div>
+        <p className="text-sm font-semibold text-foreground">
+          {payout.paidAt
+            ? `Paid ${formatDateSafe(payout.paidAt)}`
+            : payout.approvedAt
+              ? `Approved ${formatDateSafe(payout.approvedAt)}`
+              : "Awaiting review"}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          {payout.utrReference
+            ? `UTR ${payout.utrReference}`
+            : payout.holdReason
+              ? payout.holdReason
+              : payout.failureReason
+                ? payout.failureReason
+                : "No transfer reference"}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "warnings",
+    label: "Signals",
+    minWidth: 220,
+    renderCell: (payout) => (
+      <div>
+        {payout.warnings.length ? (
+          <p className="line-clamp-2 text-xs text-warning">
+            {payout.warnings.map(humanizeCode).join(", ")}
+          </p>
+        ) : (
+          <p className="text-xs text-muted">No warnings</p>
+        )}
+        <p className="mt-2 text-xs text-muted">
+          Next{" "}
+          {payout.nextRecommendedAction
+            ? humanizeCode(payout.nextRecommendedAction)
+            : "No action"}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          Updated {formatDateSafe(payout.updatedAt)}
+        </p>
+      </div>
+    ),
+  },
+];
+
+const reelColumns: DynamicTableColumn<AdminReel>[] = [
+  {
+    key: "reel",
+    label: "Reel",
+    minWidth: 320,
+    renderCell: (reel) => (
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="flex h-20 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[0.65rem] border border-border bg-surface-muted">
+          {reel.media.thumbnailUrl ? (
+            <img
+              alt=""
+              className="h-full w-full object-cover"
+              src={reel.media.thumbnailUrl}
+            />
+          ) : (
+            <Film className="size-5 text-muted" />
+          )}
+        </div>
+        <div className="min-w-0">
+          <p className="font-semibold text-foreground">{reel.publicReelId}</p>
+          <p className="mt-1 line-clamp-2 text-xs text-muted">
+            {reel.caption ?? "No caption"}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Badge tone="neutral">{humanizeCode(reel.contentType)}</Badge>
+            {reel.priceIndicator ? (
+              <span className="text-xs text-muted">{reel.priceIndicator}</span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    ),
+  },
+  {
+    key: "media",
+    label: "Media",
+    minWidth: 170,
+    renderCell: (reel) => (
+      <div>
+        <Badge tone={getUploadStatusTone(reel.media.uploadStatus)}>
+          {humanizeCode(reel.media.uploadStatus)}
+        </Badge>
+        <p className="mt-2 text-xs text-muted">
+          {reel.media.durationSeconds
+            ? `${reel.media.durationSeconds} seconds`
+            : "Duration unavailable"}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "moderation",
+    label: "Moderation",
+    minWidth: 210,
+    renderCell: (reel) => (
+      <div>
+        <Badge tone={getModerationStatusTone(reel.moderation.status)}>
+          {humanizeCode(reel.moderation.status)}
+        </Badge>
+        {reel.warnings.length ? (
+          <p className="mt-2 line-clamp-1 text-xs text-warning">
+            {reel.warnings.map(humanizeCode).join(", ")}
+          </p>
+        ) : (
+          <p className="mt-2 line-clamp-1 text-xs text-muted">
+            {reel.nextRecommendedAction
+              ? humanizeCode(reel.nextRecommendedAction)
+              : "No next action"}
+          </p>
+        )}
+      </div>
+    ),
+  },
+  {
+    key: "visibility",
+    label: "Visibility",
+    minWidth: 170,
+    renderCell: (reel) => (
+      <div>
+        <Badge
+          tone={
+            reel.publish.customerVisibility === "VISIBLE"
+              ? "success"
+              : "neutral"
+          }
+        >
+          {humanizeCode(reel.publish.customerVisibility)}
+        </Badge>
+        <p className="mt-2 text-xs text-muted">
+          Published {formatDateSafe(reel.publish.publishedAt)}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "updatedAt",
+    label: "Updated",
+    minWidth: 180,
+    renderCell: (reel) => (
+      <div>
+        <p className="font-semibold text-foreground">
+          {formatDateSafe(reel.updatedAt)}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          Created {formatDateSafe(reel.createdAt)}
+        </p>
+      </div>
+    ),
+  },
+];
+
+interface VendorDocumentHistoryRow {
+  reviewEventId: string;
+  action: string;
+  fromStatus: string | null;
+  toStatus: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
+const documentHistoryColumns: DynamicTableColumn<VendorDocumentHistoryRow>[] = [
+  {
+    key: "action",
+    label: "Action",
+    minWidth: 220,
+  },
+  {
+    key: "fromStatus",
+    label: "From",
+    minWidth: 120,
+    placeholder: "—",
+  },
+  {
+    key: "toStatus",
+    label: "To",
+    minWidth: 120,
+    placeholder: "—",
+  },
+  {
+    key: "reason",
+    label: "Reason",
+    minWidth: 280,
+    placeholder: "No reason recorded",
+  },
+  {
+    key: "createdAt",
+    label: "When",
+    format: "date",
+    minWidth: 180,
+  },
+];
+
 function VendorHeaderActions({
   canApproveVendors,
   canUpdateProfile,
@@ -2114,122 +2020,48 @@ function VendorHeaderActions({
   );
   const hasAction = (action: string) => visibleActions.includes(action);
   const approvalBlockMessage = getApprovalBlockMessage(vendor);
-  const rawRecommendedAction = getRecommendedVendorHeaderAction(
-    vendor,
-    visibleActions,
-  );
-  const recommendedAction =
-    rawRecommendedAction === "APPROVE" && approvalBlockMessage
-      ? null
-      : rawRecommendedAction;
-  const secondaryActionCandidates: {
-    icon: ReactNode;
-    isDisabled?: boolean;
-    kind: VendorHeaderActionKind;
-    label: string;
-    title?: string;
-    variant?: "primary" | "secondary" | "danger" | "ghost";
-  }[] = [
-    {
-      icon: <CheckCircle2 className="mr-1.5 size-3.5" />,
-      isDisabled: Boolean(approvalBlockMessage),
-      kind: "APPROVE",
-      label: "Approve",
-      title: approvalBlockMessage ?? undefined,
-    },
-    {
-      icon: <XCircle className="mr-1.5 size-3.5" />,
-      kind: "REJECT",
-      label: "Reject",
-      variant: "danger",
-    },
-    {
-      icon: <PauseCircle className="mr-1.5 size-3.5" />,
-      kind: "SUSPEND",
-      label: "Suspend",
-      variant: "secondary",
-    },
-    {
-      icon: <RotateCcw className="mr-1.5 size-3.5" />,
-      kind: "REACTIVATE",
-      label: "Reactivate",
-      variant: "secondary",
-    },
-  ];
-  const secondaryActions = secondaryActionCandidates.filter(
-    (action) => hasAction(action.kind) && action.kind !== recommendedAction,
-  );
+  const buildAction = (
+    kind: VendorHeaderActionKind,
+    label: string,
+    icon: ReactNode,
+    intent: RecordAction["intent"],
+    extra?: { disabled?: boolean; title?: string },
+  ): RecordAction | null =>
+    hasAction(kind)
+      ? {
+          key: kind,
+          label,
+          icon,
+          intent,
+          disabled: extra?.disabled,
+          title: extra?.title,
+          onSelect: () => onSelectAction(kind),
+        }
+      : null;
 
-  return (
-    <div className="flex flex-wrap justify-end gap-1.5">
-      {recommendedAction ? (
-        <Button
-          className="h-8 min-h-8 whitespace-nowrap px-2.5"
-          disabled={
-            isSubmitting ||
-            (recommendedAction === "APPROVE" && Boolean(approvalBlockMessage))
-          }
-          size="sm"
-          title={
-            recommendedAction === "APPROVE"
-              ? approvalBlockMessage ?? undefined
-              : undefined
-          }
-          variant={
-            recommendedAction === "REJECT" || recommendedAction === "SUSPEND"
-              ? "danger"
-              : "primary"
-          }
-          onClick={() => onSelectAction(recommendedAction)}
-        >
-          {recommendedAction === "ADD_NOTE" ? (
-            <MessageSquarePlus className="mr-1.5 size-3.5" />
-          ) : (
-            <ArrowUpRight className="mr-1.5 size-3.5" />
-          )}
-          {humanizeCode(recommendedAction)}
-        </Button>
-      ) : null}
-      {canUpdateProfile && hasAction("EDIT_PROFILE") ? (
-        <Button
-          className="h-8 min-h-8 whitespace-nowrap px-2.5"
-          disabled={isSubmitting}
-          size="sm"
-          variant="secondary"
-          onClick={onEditProfile}
-        >
-          <Pencil className="mr-1.5 size-3.5" />
-          Edit Profile
-        </Button>
-      ) : null}
-      {secondaryActions.map((action) => (
-        <Button
-          className="h-8 min-h-8 whitespace-nowrap px-2.5"
-          disabled={isSubmitting || action.isDisabled}
-          key={action.kind}
-          size="sm"
-          title={action.title}
-          variant={action.variant ?? "secondary"}
-          onClick={() => onSelectAction(action.kind)}
-        >
-          {action.icon}
-          {action.label}
-        </Button>
-      ))}
-      {recommendedAction !== "ADD_NOTE" ? (
-        <Button
-          className="h-8 min-h-8 whitespace-nowrap px-2.5"
-          disabled={isSubmitting}
-          size="sm"
-          variant="secondary"
-          onClick={() => onSelectAction("ADD_NOTE")}
-        >
-          <MessageSquarePlus className="mr-1.5 size-3.5" />
-          Add Note
-        </Button>
-      ) : null}
-    </div>
-  );
+  // Approve stays visible but disabled when documents block it: a missing
+  // button reads as a bug, a disabled one that explains itself does not.
+  const actions = [
+    buildAction("APPROVE", "Approve", <CheckCircle2 className="size-3.5" />, "primary", {
+      disabled: Boolean(approvalBlockMessage),
+      title: approvalBlockMessage ?? undefined,
+    }),
+    buildAction("REACTIVATE", "Reactivate", <RotateCcw className="size-3.5" />, "primary"),
+    canUpdateProfile && hasAction("EDIT_PROFILE")
+      ? {
+          key: "EDIT_PROFILE",
+          label: "Edit profile",
+          icon: <Pencil className="size-3.5" />,
+          intent: "secondary" as const,
+          onSelect: onEditProfile,
+        }
+      : null,
+    buildAction("ADD_NOTE", "Add note", <MessageSquarePlus className="size-3.5" />, "secondary"),
+    buildAction("SUSPEND", "Suspend", <PauseCircle className="size-3.5" />, "destructive"),
+    buildAction("REJECT", "Reject", <XCircle className="size-3.5" />, "destructive"),
+  ].filter(Boolean) as RecordAction[];
+
+  return <RecordHeaderActions actions={actions} disabled={isSubmitting} />;
 }
 
 interface VendorDetailPageProps {
@@ -2241,7 +2073,12 @@ export function VendorDetailPage({
   listHref = routePaths.vendors,
   listLabel = "Vendors",
 }: VendorDetailPageProps = {}) {
-  const { vendorId } = useParams();
+  const { vendorId, tab: tabParam } = useParams();
+  const activeTab: VendorDetailTab = VENDOR_DETAIL_TABS.includes(
+    tabParam as VendorDetailTab,
+  )
+    ? (tabParam as VendorDetailTab)
+    : "overview";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { openMediaViewer } = useMediaViewer();
@@ -3124,8 +2961,7 @@ export function VendorDetailPage({
     },
   );
   const documentsPendingReview = vendor.documents.filter(
-    (document) =>
-      vendor.onboardingStatus !== "APPROVED" && document.status !== "VERIFIED",
+    (document) => document.status !== "VERIFIED",
   );
   const bankAccountsPendingReview = vendor.bankAccounts.filter(
     (bankAccount) =>
@@ -3240,6 +3076,8 @@ export function VendorDetailPage({
       />
 
       <VendorDetailSectionNav
+        activeTab={activeTab}
+        vendorId={vendorId as string}
         bankAccountCount={vendor.bankAccounts.length}
         canReadOrders={canReadOrders}
         canReadPayouts={canReadPayouts}
@@ -3257,9 +3095,9 @@ export function VendorDetailPage({
           canReadReels ? (vendorReels?.summary?.total ?? reelRows.length) : 0
         }
         serviceCount={vendorServices?.summary.total ?? serviceRows.length}
-        timelineCount={vendor.reviewTimeline.length}
       />
 
+      {activeTab === 'overview' ? (
       <section
         className="scroll-mt-24 space-y-3 focus:outline-none"
         id={vendorDetailSectionIds.overview}
@@ -3271,7 +3109,9 @@ export function VendorDetailPage({
           vendor={vendor}
         />
       </section>
+      ) : null}
 
+      {activeTab === 'documents' ? (
       <section
         className="scroll-mt-24 space-y-4 focus:outline-none"
         id={vendorDetailSectionIds.documents}
@@ -3306,20 +3146,16 @@ export function VendorDetailPage({
         ) : null}
 
         <DynamicTable
-          actionColumnLabel="Document Actions"
-          actionColumnMinWidth={410}
+          actionColumnLabel="Actions"
+          actionColumnMinWidth={260}
           bodyMaxHeight={360}
           columns={documentColumns}
           data={vendor.documents}
-          description={
-            vendor.onboardingStatus === "APPROVED"
-              ? "Approved vendor documents are locked from onboarding resubmission."
-              : "Verified documents can still be requested for resubmission before vendor approval."
-          }
+          description="Review submitted files, then verify them or request resubmission."
           emptyDescription="This vendor has no uploaded documents."
           emptyTitle="No documents"
           getRowId={(row) => row.documentId}
-          inlineActionLimit={3}
+          inlineActionLimit={2}
           rowActions={(document) => [
             {
               icon: <Eye className="size-4" />,
@@ -3333,9 +3169,7 @@ export function VendorDetailPage({
             {
               icon: <FileCheck2 className="size-4" />,
               isVisible:
-                canApproveVendors &&
-                vendor.onboardingStatus !== "APPROVED" &&
-                document.status !== "VERIFIED",
+                canApproveVendors && canVerifyVendorDocument(document),
               key: "verify",
               label: "Verify",
               onClick: () => openAction("VERIFY_DOCUMENT", document),
@@ -3344,9 +3178,7 @@ export function VendorDetailPage({
             {
               icon: <FileWarning className="size-4" />,
               isVisible:
-                canApproveVendors &&
-                vendor.onboardingStatus !== "APPROVED" &&
-                ["PENDING", "VERIFIED"].includes(document.status),
+                canApproveVendors && canRejectVendorDocument(document),
               key: "reject",
               label:
                 document.status === "VERIFIED"
@@ -3419,7 +3251,9 @@ export function VendorDetailPage({
           </section>
         ) : null}
       </section>
+      ) : null}
 
+      {activeTab === 'payout-account' ? (
       <section
         className="scroll-mt-24 space-y-4 rounded-[1rem] border border-border bg-surface p-4 focus:outline-none"
         id={vendorDetailSectionIds.payoutAccount}
@@ -3504,29 +3338,9 @@ export function VendorDetailPage({
           title="Bank Accounts"
         />
       </section>
+      ) : null}
 
-      <section
-        className="scroll-mt-24 space-y-4 focus:outline-none"
-        id={vendorDetailSectionIds.activity}
-        tabIndex={-1}
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <History className="size-4 text-muted" />
-          <h2 className="text-base font-semibold text-foreground">
-            Review Timeline
-          </h2>
-        </div>
-        <DynamicTable
-          bodyMaxHeight={320}
-          columns={timelineColumns}
-          data={vendor.reviewTimeline}
-          emptyDescription="No review events have been recorded."
-          emptyTitle="No review timeline"
-          getRowId={(row) => row.reviewEventId}
-          title="Review Timeline"
-        />
-      </section>
-
+      {activeTab === 'payouts' ? (
       <section
         className="scroll-mt-24 space-y-4 focus:outline-none"
         id={vendorDetailSectionIds.payouts}
@@ -3637,7 +3451,9 @@ export function VendorDetailPage({
           }
         />
       </section>
+      ) : null}
 
+      {activeTab === 'orders' ? (
       <section
         className="scroll-mt-24 space-y-4 focus:outline-none"
         id={vendorDetailSectionIds.orders}
@@ -3811,7 +3627,9 @@ export function VendorDetailPage({
           }
         />
       </section>
+      ) : null}
 
+      {activeTab === 'services' ? (
       <section
         className="scroll-mt-24 space-y-4 focus:outline-none"
         id={vendorDetailSectionIds.services}
@@ -3896,7 +3714,9 @@ export function VendorDetailPage({
           onRetry={() => void servicesQuery.refetch()}
         />
       </section>
+      ) : null}
 
+      {activeTab === 'reels' ? (
       <section
         className="scroll-mt-24 space-y-4 focus:outline-none"
         id={vendorDetailSectionIds.reels}
@@ -4037,7 +3857,9 @@ export function VendorDetailPage({
           onRetry={() => void reelsQuery.refetch()}
         />
       </section>
+      ) : null}
 
+      {activeTab === 'profile' ? (
       <section
         className="scroll-mt-24 grid gap-4 focus:outline-none lg:grid-cols-3"
         id={vendorDetailSectionIds.profile}
@@ -4172,6 +3994,7 @@ export function VendorDetailPage({
           <DetailField label="Longitude" value={vendor.address.longitude} />
         </div>
       </section>
+      ) : null}
 
       <VendorActionModal
         action={selectedAction}
