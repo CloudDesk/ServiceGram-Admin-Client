@@ -12,27 +12,45 @@ import {
   FileText,
   KeyRound,
   Megaphone,
+  Rocket,
   RotateCcw,
   Settings,
   Shield,
+  SlidersHorizontal,
+  ToggleLeft,
   UserCircle2,
   Users,
   Wrench,
+  GitBranch,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { permissions } from './permissions'
 import { routePaths } from './routes'
+import type { PermissionKey } from '../types/common.types'
+
+/** Sidebar section a nav item belongs to. Ungrouped items render first. */
+export type NavigationGroup = 'release2'
+
+export const navigationGroupLabels: Record<NavigationGroup, string> = {
+  release2: 'Release 2',
+}
 
 export interface NavigationItem {
   label: string
   href: string
   icon: LucideIcon
   permission?: string
+  /** Visible when the admin holds any one of these. Use for multi-permission screens. */
+  anyPermission?: PermissionKey[]
   alwaysVisible?: boolean
+  group?: NavigationGroup
+  /** Highlight only on an exact path match. Needed for section landing pages. */
+  exactMatch?: boolean
 }
 
 export const navigationItems: NavigationItem[] = [
   { label: 'Dashboard', href: routePaths.dashboard, icon: LayoutDashboard, permission: permissions.dashboard },
+  { label: 'Approvals', href: routePaths.approvals, icon: GitBranch, permission: permissions.approvals },
   { label: 'Customers', href: routePaths.customers, icon: Users, permission: permissions.customers },
   { label: 'Vendors', href: routePaths.vendors, icon: Wrench, permission: permissions.vendors },
   { label: 'Document Review', href: routePaths.vendorDocuments, icon: FileCheck2, permission: permissions.vendors },
@@ -50,5 +68,42 @@ export const navigationItems: NavigationItem[] = [
   { label: 'Settings', href: routePaths.settings, icon: Settings, permission: permissions.settings },
   { label: 'Roles', href: routePaths.roles, icon: KeyRound, permission: permissions.roles },
   { label: 'Users', href: routePaths.adminUsers, icon: Shield, permission: permissions.adminUsers },
+  {
+    label: 'Overview',
+    href: routePaths.release2Overview,
+    icon: Rocket,
+    anyPermission: ['feature-flags:read', 'settings:read'],
+    exactMatch: true,
+    group: 'release2',
+  },
+  {
+    label: 'Feature Flags',
+    href: routePaths.featureFlags,
+    icon: ToggleLeft,
+    permission: permissions.featureFlags,
+    group: 'release2',
+  },
+  {
+    label: 'Release 2 Settings',
+    href: routePaths.release2Settings,
+    icon: SlidersHorizontal,
+    permission: permissions.release2Settings,
+    group: 'release2',
+  },
   { label: 'Profile', href: routePaths.profile, icon: UserCircle2, alwaysVisible: true },
 ] as const
+
+export function isNavigationItemVisible(
+  item: NavigationItem,
+  can: (permission: string) => boolean,
+) {
+  if (item.alwaysVisible) {
+    return true
+  }
+
+  if (item.anyPermission?.length) {
+    return item.anyPermission.some((permission) => can(permission))
+  }
+
+  return Boolean(item.permission && can(item.permission))
+}

@@ -716,7 +716,7 @@ export function NotificationDetailPage() {
   const failed = event.status === 'FAILED'
 
   return (
-    <PageContainer className="!px-3 !py-4 sm:!px-4 lg:!px-6">
+    <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
         actionNode={<HeaderActions canSendNotifications={canSendNotifications} />}
         description={`${humanizeCode(event.recipientType)} notification delivery event`}

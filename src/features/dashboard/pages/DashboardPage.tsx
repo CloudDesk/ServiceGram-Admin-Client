@@ -484,7 +484,6 @@ function KpiCard({
           <p className={cn('text-xs font-semibold uppercase tracking-normal', toneClass(tone))}>
             {card.label}
           </p>
-          <p className="mt-1 truncate text-xs text-muted">{card.code}</p>
         </div>
         <span className={toneClass(tone)}>{getCardIcon(card.code)}</span>
       </div>
@@ -1341,39 +1340,48 @@ export function DashboardPage() {
     ],
   )
   const isRefreshing = dashboardQuery.isFetching && !dashboardQuery.isLoading
+  const isDashboardLoading = dashboardQuery.isLoading
+  const refetchDashboard = dashboardQuery.refetch
   const refreshStatusLabel = isRefreshing
     ? 'Refreshing...'
     : formatRefreshTime(dashboardQuery.dataUpdatedAt)
   const data = dashboardQuery.data
+  const refreshActionNode = useMemo(
+    () => (
+      <Button
+        aria-label={isRefreshing ? 'Refreshing dashboard' : 'Refresh dashboard'}
+        className="h-9 min-w-9 px-2.5 sm:min-w-[6rem] sm:px-3"
+        disabled={isDashboardLoading}
+        size="sm"
+        title={refreshStatusLabel}
+        type="button"
+        variant="secondary"
+        onClick={() => void refetchDashboard()}
+      >
+        <RefreshCcw
+          className={cn(
+            'size-4 sm:mr-2',
+            isRefreshing && 'animate-spin motion-reduce:animate-none',
+          )}
+        />
+        <span className="hidden sm:inline">Refresh</span>
+      </Button>
+    ),
+    [
+      isDashboardLoading,
+      isRefreshing,
+      refetchDashboard,
+      refreshStatusLabel,
+    ],
+  )
 
   return (
     <PageContainer className="!px-3 !py-4 sm:!px-4 lg:!px-6">
       <PageContextHeader
-        description="Operational dashboard using backend-provided summaries, queues, and warnings."
+        actionNode={refreshActionNode}
         placement="topbar"
         title="Dashboard"
       />
-
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <span className={cn('text-xs font-medium', isRefreshing ? 'text-primary' : 'text-muted')}>
-          {refreshStatusLabel}
-        </span>
-        <Button
-          disabled={dashboardQuery.isLoading}
-          size="sm"
-          type="button"
-          variant="secondary"
-          onClick={() => void dashboardQuery.refetch()}
-        >
-          <RefreshCcw
-            className={cn(
-              'mr-2 size-4',
-              isRefreshing && 'animate-spin motion-reduce:animate-none',
-            )}
-          />
-          Refresh
-        </Button>
-      </div>
 
       {dashboardQuery.isLoading ? <DashboardSkeleton /> : null}
 

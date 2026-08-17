@@ -1,6 +1,7 @@
 export const routePermissions = {
   adminUsers: 'admin_users:read',
   dashboard: 'dashboard:read',
+  approvals: 'approvals:read',
   customers: 'customers:read',
   vendors: 'vendors:read',
   vendorOnboarding: 'vendors:approve',
@@ -16,6 +17,8 @@ export const routePermissions = {
   marketingCampaigns: 'marketing_campaigns:read',
   reports: 'reports:read',
   settings: 'settings:read',
+  featureFlags: 'feature-flags:read',
+  release2Settings: 'settings:read',
   audit: 'audit:read',
   profile: 'admin_users:read',
   roles: 'roles:read',

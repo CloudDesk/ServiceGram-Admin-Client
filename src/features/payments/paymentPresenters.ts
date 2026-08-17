@@ -3,6 +3,8 @@ import { formatMoney } from '../../utils/formatMoney'
 import type {
   AdminPaymentStatus,
   AdminPaymentSummary,
+  AdminRefundStatus,
+  AdminRefundSummary,
 } from './types/payment.types'
 
 export type PaymentTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
@@ -90,4 +92,47 @@ export function paymentSignal(payment: AdminPaymentSummary) {
  */
 export function canReconcilePayment(payment: AdminPaymentSummary) {
   return payment.availableActions.includes('RECONCILE')
+}
+
+export function getRefundStatusTone(status: AdminRefundStatus): PaymentTone {
+  if (status === 'SUCCESS') return 'success'
+  if (status === 'FAILED' || status === 'REJECTED') return 'danger'
+  if (status === 'REQUESTED' || status === 'PROCESSING') return 'warning'
+  return 'neutral'
+}
+
+/** A one-line reason this refund needs attention, or null when it is clear. */
+export function refundSignal(refund: AdminRefundSummary) {
+  if (refund.warnings[0]) {
+    return { label: humanizeCode(refund.warnings[0]), tone: 'danger' as const }
+  }
+
+  if (refund.status === 'FAILED') {
+    return { label: 'Refund failed', tone: 'danger' as const }
+  }
+
+  if (refund.status === 'REJECTED') {
+    return {
+      label: refund.rejectionReason || 'Rejected',
+      tone: 'danger' as const,
+    }
+  }
+
+  if (refund.status === 'REQUESTED') {
+    return { label: 'Awaiting review', tone: 'warning' as const }
+  }
+
+  if (refund.status === 'PROCESSING') {
+    return { label: 'Processing', tone: 'warning' as const }
+  }
+
+  return null
+}
+
+export function canApproveRefund(refund: AdminRefundSummary) {
+  return refund.availableActions.includes('APPROVE')
+}
+
+export function canRejectRefund(refund: AdminRefundSummary) {
+  return refund.availableActions.includes('REJECT')
 }

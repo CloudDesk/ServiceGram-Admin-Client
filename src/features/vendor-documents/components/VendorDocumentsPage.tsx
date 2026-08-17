@@ -18,6 +18,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
 import { LookupSelect } from '../../../components/ui/LookupSelect'
+import { OverflowText } from '../../../components/ui/OverflowText'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
@@ -414,19 +415,39 @@ function ActiveFilterChips({
 }
 
 function DocumentSummaryChips({ group }: { group: VendorDocumentGroup }) {
+  const hasReviewIssue =
+    group.counts.pending > 0 ||
+    group.counts.rejected > 0 ||
+    group.counts.mediaIssues > 0
+
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      <Badge tone={group.counts.pending ? 'warning' : 'neutral'}>
-        {group.counts.pending} pending
-      </Badge>
-      <Badge tone={group.counts.rejected ? 'danger' : 'neutral'}>
-        {group.counts.rejected} rejected
-      </Badge>
-      <Badge tone={group.counts.verified ? 'success' : 'neutral'}>
-        {group.counts.verified} verified
-      </Badge>
+    <div className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden">
+      {group.counts.pending ? (
+        <Badge tone="warning">{group.counts.pending} pending</Badge>
+      ) : null}
+      {group.counts.rejected ? (
+        <Badge tone="danger">{group.counts.rejected} rejected</Badge>
+      ) : null}
       {group.counts.mediaIssues ? (
         <Badge tone="danger">{group.counts.mediaIssues} media</Badge>
+      ) : null}
+      {!hasReviewIssue && group.counts.verified ? (
+        <Badge tone="success">
+          {group.counts.verified}/{group.counts.total} verified
+        </Badge>
+      ) : null}
+      {hasReviewIssue && group.counts.verified ? (
+        <OverflowText
+          className="text-xs text-muted"
+          title={`${group.counts.verified} verified documents`}
+        >
+          {group.counts.verified} verified
+        </OverflowText>
+      ) : null}
+      {!hasReviewIssue && !group.counts.verified ? (
+        <Badge tone="neutral">
+          {group.counts.verified} verified
+        </Badge>
       ) : null}
     </div>
   )
@@ -537,13 +558,16 @@ function VendorDocumentGroupRow({
     group.documents.some(documentNeedsAdminAction) || reviewState.tone !== 'success'
       ? 'Review'
       : 'Open'
+  const ownerLabel = group.vendor.ownerName ?? group.vendor.mobileNumber
+  const updatedAtLabel = formatDate(group.latestUpdatedAt, true)
+  const cityLabel = group.vendor.city || 'No city'
 
   return (
     <article
       aria-label={`Review documents for ${group.vendor.shopName}`}
       aria-selected={isSelected}
       className={cn(
-        'workbench-grid-row grid min-w-0 cursor-pointer gap-2 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[minmax(16rem,1fr)_15rem_11rem_10rem_11.5rem] xl:items-center',
+        'workbench-grid-row grid min-w-0 cursor-pointer gap-2 border-b border-border bg-surface px-3 py-2 transition last:border-b-0 hover:bg-surface-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset xl:grid-cols-[minmax(16rem,1fr)_15rem_11rem_10rem_11.5rem] xl:items-center',
         isSelected && 'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
       )}
       role="button"
@@ -560,43 +584,41 @@ function VendorDocumentGroupRow({
     >
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
-          <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+          <OverflowText
+            as="p"
+            className="text-sm font-semibold text-foreground"
+            title={group.vendor.shopName}
+          >
             {group.vendor.shopName}
-          </p>
+          </OverflowText>
           <Badge tone={vendorStatusTone(group.vendor.vendorStatus)}>
             {humanizeCode(group.vendor.vendorStatus)}
           </Badge>
         </div>
-        <div className="mt-1 flex min-w-0 items-center gap-x-1.5 overflow-hidden text-xs text-muted">
-          <span className="shrink-0">{group.vendor.publicVendorId}</span>
-          <span className="shrink-0 text-border">/</span>
-          <span className="min-w-0 truncate">
-            {group.vendor.ownerName ?? group.vendor.mobileNumber}
+        <div className="mt-0.5 flex min-w-0 items-center gap-x-1.5 overflow-hidden text-xs text-muted">
+          <span className="shrink-0" title={group.vendor.publicVendorId}>
+            {group.vendor.publicVendorId}
           </span>
+          <span className="shrink-0 text-border">/</span>
+          <OverflowText title={ownerLabel}>{ownerLabel}</OverflowText>
         </div>
       </div>
 
       <div className="min-w-0">
         <DocumentSummaryChips group={group} />
-        <p className="mt-1 truncate text-xs text-muted">
-          {group.counts.total} document{group.counts.total === 1 ? '' : 's'} on this page
-        </p>
       </div>
 
       <div className="min-w-0">
         <Badge tone={reviewState.tone}>{reviewState.label}</Badge>
-        <p className="mt-1 truncate text-xs text-muted">
-          {humanizeCode(group.vendor.onboardingStatus)}
-        </p>
       </div>
 
       <div className="min-w-0 text-sm">
-        <p className="truncate text-foreground">
-          {formatDate(group.latestUpdatedAt, true)}
-        </p>
-        <p className="mt-1 truncate text-xs text-muted">
-          {group.vendor.city || 'No city'}
-        </p>
+        <OverflowText as="p" className="text-foreground" title={updatedAtLabel}>
+          {updatedAtLabel}
+        </OverflowText>
+        <OverflowText as="p" className="mt-0.5 text-xs text-muted" title={cityLabel}>
+          {cityLabel}
+        </OverflowText>
       </div>
 
       <div className="workbench-sticky-action-cell flex flex-nowrap items-center justify-start gap-1.5 pl-2 xl:justify-end">
@@ -708,9 +730,41 @@ export function VendorDocumentsPage() {
   )
   const pagination = documentQuery.data?.pagination
   const isRefreshing = documentQuery.isFetching && !documentQuery.isLoading
+  const isDocumentsLoading = documentQuery.isLoading
+  const refetchDocuments = documentQuery.refetch
   const refreshStatusLabel = isRefreshing
     ? 'Refreshing'
     : formatRefreshTime(documentQuery.dataUpdatedAt)
+  const refreshActionNode = useMemo(
+    () => (
+      <Button
+        aria-label={
+          isRefreshing ? 'Refreshing document review' : 'Refresh document review'
+        }
+        className="h-9 min-w-9 px-2.5 sm:min-w-[6rem] sm:px-3"
+        disabled={isDocumentsLoading}
+        size="sm"
+        title={refreshStatusLabel}
+        type="button"
+        variant="secondary"
+        onClick={() => void refetchDocuments()}
+      >
+        <RefreshCcw
+          className={cn(
+            'size-4 sm:mr-2',
+            isRefreshing && 'animate-spin motion-reduce:animate-none',
+          )}
+        />
+        <span className="hidden sm:inline">Refresh</span>
+      </Button>
+    ),
+    [
+      isDocumentsLoading,
+      isRefreshing,
+      refetchDocuments,
+      refreshStatusLabel,
+    ],
+  )
 
   const actionMutation = useMutation({
     mutationFn: async ({
@@ -782,9 +836,16 @@ export function VendorDocumentsPage() {
     if (query.vendorStatus) {
       addChip('vendorStatus', `Vendor: ${humanizeCode(query.vendorStatus)}`)
     }
+    if (activeQueue === 'mediaIssue') {
+      chips.push({
+        key: 'documentQueue',
+        label: 'Queue: Media issue',
+        onClear: () => updateParams({ documentQueue: null }),
+      })
+    }
 
     return chips
-  }, [categoryLabel, query, updateParams])
+  }, [activeQueue, categoryLabel, query, updateParams])
 
   const hasActiveDocumentFilters = activeFilters.length > 0 || activeQueue !== 'all'
 
@@ -853,6 +914,7 @@ export function VendorDocumentsPage() {
   return (
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
+        actionNode={refreshActionNode}
         layout="workspace"
         placement="topbar"
         title="Document Review"
@@ -860,21 +922,7 @@ export function VendorDocumentsPage() {
 
       <main className="flex min-w-0 flex-col overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface xl:min-h-0 xl:flex-1">
         <div className="shrink-0 border-b border-border bg-surface px-3 py-3 sm:px-4">
-          <div className="grid gap-3 xl:grid-cols-[minmax(13rem,auto)_minmax(22rem,1fr)_auto] xl:items-center">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold text-foreground">
-                Document Review
-              </h2>
-              <span
-                className={cn(
-                  'rounded-full border border-border bg-surface-muted/65 px-2 py-0.5 text-xs font-medium',
-                  isRefreshing ? 'text-primary' : 'text-muted',
-                )}
-              >
-                {refreshStatusLabel}
-              </span>
-            </div>
-
+          <div className="grid gap-3 xl:grid-cols-[minmax(22rem,1fr)_auto] xl:items-center">
             <ListHeaderSearch
               className="w-full min-w-0"
               placeholder="Search vendor, mobile, file..."
@@ -883,6 +931,24 @@ export function VendorDocumentsPage() {
             />
 
             <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+              <label className="min-w-[11rem]">
+                <span className="sr-only">Document review queue</span>
+                <select
+                  aria-label="Document review queue"
+                  className={DOCUMENT_FILTER_CONTROL_CLASS_NAME}
+                  value={activeQueue}
+                  onChange={(event) =>
+                    applyQueue(event.target.value as DocumentReviewQueueKey)
+                  }
+                >
+                  {documentReviewQueueItems.map((queue) => (
+                    <option key={queue.key} value={queue.key}>
+                      {queue.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <Button
                 aria-expanded={showFilters}
                 className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
@@ -897,45 +963,7 @@ export function VendorDocumentsPage() {
                   <span className="ml-1 size-2 rounded-full bg-primary" />
                 ) : null}
               </Button>
-              <Button
-                className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
-                size="sm"
-                type="button"
-                variant="secondary"
-                onClick={() => void documentQuery.refetch()}
-              >
-                <RefreshCcw
-                  className={cn(
-                    'mr-2 size-4',
-                    isRefreshing && 'animate-spin motion-reduce:animate-none',
-                  )}
-                />
-                Refresh
-              </Button>
             </div>
-          </div>
-
-          <div className="mt-3 flex gap-1 overflow-x-auto rounded-[0.875rem] border border-border bg-surface-muted/40 p-1">
-            {documentReviewQueueItems.map((queue) => {
-              const isActive = activeQueue === queue.key
-
-              return (
-                <button
-                  aria-pressed={isActive}
-                  className={cn(
-                    'inline-flex h-8 shrink-0 items-center gap-2 rounded-[0.65rem] border px-2.5 text-sm font-medium transition',
-                    isActive
-                      ? 'border-primary/30 bg-surface text-primary shadow-[var(--sg-shadow-surface)]'
-                      : 'border-transparent text-muted hover:bg-surface hover:text-foreground',
-                  )}
-                  key={queue.key}
-                  type="button"
-                  onClick={() => applyQueue(queue.key)}
-                >
-                  <span>{queue.label}</span>
-                </button>
-              )
-            })}
           </div>
 
           <ActiveFilterChips chips={activeFilters} onClearAll={clearFilters} />

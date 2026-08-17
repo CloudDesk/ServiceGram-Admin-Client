@@ -15,6 +15,24 @@ export interface QuickPreviewAction {
   variant?: ButtonProps['variant']
 }
 
+export const quickPreviewOverlayClassName =
+  'fixed inset-0 z-40 bg-black/20 xl:hidden'
+
+export const quickPreviewOverlayUntil2xlClassName =
+  'fixed inset-0 z-40 bg-black/20 2xl:hidden'
+
+export const quickPreviewPanelClassName =
+  'fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:static xl:z-auto xl:h-full xl:w-[26rem] xl:self-stretch'
+
+export const quickPreviewCompactPanelClassName =
+  'fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:static xl:z-auto xl:h-full xl:w-[22rem] xl:self-stretch'
+
+export const quickPreviewMediumPanelClassName =
+  'fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:static xl:z-auto xl:h-full xl:w-96 xl:self-stretch'
+
+export const quickPreviewPanelUntil2xlClassName =
+  'fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface sm:left-auto sm:w-[22rem] 2xl:static 2xl:z-auto 2xl:h-full 2xl:w-[22rem] 2xl:self-stretch'
+
 interface QuickPreviewActionsProps {
   detailAction?: QuickPreviewAction | null
   primaryAction?: QuickPreviewAction | null

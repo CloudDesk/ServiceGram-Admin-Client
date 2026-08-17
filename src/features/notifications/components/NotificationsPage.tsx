@@ -24,7 +24,7 @@ import type {
   PointerEvent as ReactPointerEvent,
   ReactNode,
 } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { InlineAlert } from '../../../components/feedback/InlineAlert'
@@ -42,12 +42,15 @@ import {
   ListSelectionToolbar,
 } from '../../../components/ui/ListSelection'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
+import { OverflowText } from '../../../components/ui/OverflowText'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import {
   QuickPreviewActions,
   QuickPreviewFact,
   QuickPreviewFactGrid,
   QuickPreviewTabs,
+  quickPreviewOverlayUntil2xlClassName,
+  quickPreviewPanelUntil2xlClassName,
   type QuickPreviewAction,
 } from '../../../components/ui/QuickPreview'
 import { routePaths } from '../../../config/routes'
@@ -167,13 +170,6 @@ interface NotificationGridStyle extends CSSProperties {
   '--notification-grid-min-width': string
 }
 
-interface NotificationMetric {
-  label: string
-  meta: string
-  tone: NotificationTone
-  value: string
-}
-
 interface NotificationQueueCounts {
   all: number
   needsReview: number
@@ -189,11 +185,18 @@ const templateColumns: DynamicTableColumn<NotificationTemplate>[] = [
     minWidth: 280,
     renderCell: (template) => (
       <div className="space-y-1">
-        <p className="font-semibold text-foreground">{template.templateCode}</p>
-        <p className="line-clamp-1 text-xs text-muted">
+        <OverflowText as="p" className="font-semibold text-foreground" title={template.templateCode}>
+          {template.templateCode}
+        </OverflowText>
+        <p
+          className="line-clamp-1 text-xs text-muted"
+          title={template.titleTemplate ?? 'No title template'}
+        >
           {template.titleTemplate ?? 'No title template'}
         </p>
-        <p className="line-clamp-1 text-xs text-muted">{template.bodyTemplate}</p>
+        <p className="line-clamp-1 text-xs text-muted" title={template.bodyTemplate}>
+          {template.bodyTemplate}
+        </p>
       </div>
     ),
   },
@@ -528,52 +531,6 @@ function canOpenRecipientDirectory(
   return permissions.canReadAdminUsers
 }
 
-function buildNotificationMetrics(
-  events: NotificationEvent[],
-  totalItems: number,
-  queueCounts?: NotificationQueueCounts,
-): NotificationMetric[] {
-  const failed =
-    queueCounts?.needsReview ??
-    events.filter((event) => event.status === 'FAILED').length
-  const queued =
-    queueCounts?.queued ??
-    events.filter((event) => event.status === 'QUEUED').length
-  const sent =
-    queueCounts?.sent ??
-    events.filter((event) => event.status === 'SENT').length
-  const matched = queueCounts?.all ?? totalItems
-
-  return [
-    {
-      label: 'Failed',
-      meta: queueCounts ? 'Failures under base filters' : 'Visible delivery failures',
-      tone: failed > 0 ? 'danger' : 'neutral',
-      value: String(failed),
-    },
-    {
-      label: 'Queued',
-      meta: queueCounts ? 'Queued under base filters' : 'Visible queued events',
-      tone: queued > 0 ? 'warning' : 'neutral',
-      value: String(queued),
-    },
-    {
-      label: 'Sent',
-      meta: queueCounts ? 'Sent under base filters' : 'Visible sent events',
-      tone: 'success',
-      value: String(sent),
-    },
-    {
-      label: 'Matched events',
-      meta: queueCounts
-        ? 'Total matching base filters'
-        : 'Total matching current filters',
-      tone: 'info',
-      value: String(matched),
-    },
-  ]
-}
-
 function buildQueueItems(counts?: NotificationQueueCounts) {
   return [
     {
@@ -758,20 +715,6 @@ function TemplateEditModal({
   )
 }
 
-function SummaryCard({ metric }: { metric: NotificationMetric }) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <p className={cn('text-xs font-semibold uppercase tracking-normal', metricToneClass(metric.tone))}>
-        {metric.label}
-      </p>
-      <p className={cn('mt-3 text-2xl font-semibold tracking-normal', metricToneClass(metric.tone))}>
-        {metric.value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{metric.meta}</p>
-    </article>
-  )
-}
-
 function NotificationPreviewSignal({
   label,
   meta,
@@ -794,11 +737,11 @@ function NotificationPreviewSignal({
     >
       <div className="flex items-center gap-2">
         <TriangleAlert className={cn('size-4 shrink-0', metricToneClass(tone))} />
-        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+        <OverflowText as="p" className="text-sm font-semibold text-foreground" title={label}>
           {label}
-        </p>
+        </OverflowText>
       </div>
-      <p className="mt-1 line-clamp-2 pl-6 text-xs leading-5 text-muted">
+      <p className="mt-1 line-clamp-2 pl-6 text-xs leading-5 text-muted" title={meta}>
         {meta}
       </p>
     </div>
@@ -928,11 +871,11 @@ function NotificationPreviewPanel({
     <>
       <button
         aria-label="Close notification preview"
-        className="fixed inset-0 z-40 bg-black/20 2xl:hidden"
+        className={quickPreviewOverlayUntil2xlClassName}
         type="button"
         onClick={onClose}
       />
-      <aside className="fixed inset-x-3 bottom-3 top-20 z-50 flex min-h-0 flex-col overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface sm:left-auto sm:w-[22rem] 2xl:static 2xl:z-auto 2xl:h-full 2xl:w-[22rem] 2xl:self-stretch">
+      <aside className={quickPreviewPanelUntil2xlClassName}>
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-normal text-muted">
@@ -943,12 +886,20 @@ function NotificationPreviewPanel({
                 {channelIcon(event.channel)}
               </div>
               <div className="min-w-0">
-                <h3 className="truncate text-base font-semibold text-foreground">
+                <OverflowText
+                  as="h3"
+                  className="text-base font-semibold text-foreground"
+                  title={event.title ?? humanizeCode(event.templateCode)}
+                >
                   {event.title ?? humanizeCode(event.templateCode)}
-                </h3>
-                <p className="mt-0.5 truncate text-xs text-muted">
+                </OverflowText>
+                <OverflowText
+                  as="p"
+                  className="mt-0.5 text-xs text-muted"
+                  title={`${event.templateCode} / ${recipientLabel(event)}`}
+                >
                   {event.templateCode} / {recipientLabel(event)}
-                </p>
+                </OverflowText>
                 <div className="mt-1.5 flex flex-wrap gap-2">
                   <Badge tone={statusTone(event.status)}>
                     {humanizeCode(event.status)}
@@ -1131,11 +1082,15 @@ function EventCell({
   onOpen: (event: NotificationEvent) => void
 }) {
   if (columnId === 'event') {
+    const eventSummary = event.title ?? event.body
+
     return (
       <div className="min-w-0 space-y-1">
-        <p className="truncate font-semibold text-foreground">{event.templateCode}</p>
-        <p className="line-clamp-1 text-xs text-muted">
-          {event.title ?? event.body}
+        <OverflowText as="p" className="font-semibold text-foreground" title={event.templateCode}>
+          {event.templateCode}
+        </OverflowText>
+        <p className="line-clamp-1 text-xs text-muted" title={eventSummary}>
+          {eventSummary}
         </p>
         <div className="flex items-center gap-1 pt-1">
           <button
@@ -1168,13 +1123,17 @@ function EventCell({
   }
 
   if (columnId === 'recipient') {
+    const recipientSummary = event.recipient?.status
+      ? humanizeCode(event.recipient.status)
+      : 'Recipient summary unavailable'
+
     return (
       <div className="min-w-0 space-y-1">
         <Badge tone="neutral">{humanizeCode(event.recipientType)}</Badge>
         <div className="flex min-w-0 items-center gap-2">
-          <p className="truncate text-sm text-foreground">
+          <OverflowText as="p" className="text-sm text-foreground" title={recipientLabel(event)}>
             {recipientLabel(event)}
-          </p>
+          </OverflowText>
           {event.recipientUserId ? (
             <button
               aria-label={`Filter events by recipient ${event.recipientUserId}`}
@@ -1204,9 +1163,9 @@ function EventCell({
             </button>
           ) : null}
         </div>
-        <p className="truncate text-xs text-muted">
-          {event.recipient?.status ? humanizeCode(event.recipient.status) : 'Recipient summary unavailable'}
-        </p>
+        <OverflowText as="p" className="text-xs text-muted" title={recipientSummary}>
+          {recipientSummary}
+        </OverflowText>
       </div>
     )
   }
@@ -1216,13 +1175,23 @@ function EventCell({
       <div className="min-w-0 space-y-1">
         <Badge tone={statusTone(event.status)}>{humanizeCode(event.status)}</Badge>
         {event.failureReason ? (
-          <p className="line-clamp-2 text-xs text-danger">{humanizeCode(event.failureReason)}</p>
+          <p className="line-clamp-2 text-xs text-danger" title={humanizeCode(event.failureReason)}>
+            {humanizeCode(event.failureReason)}
+          </p>
         ) : (
-          <p className="truncate whitespace-nowrap text-xs text-muted">
+          <OverflowText
+            as="p"
+            className="whitespace-nowrap text-xs text-muted"
+            title={
+              event.warnings.length > 0
+                ? `${event.warnings.length} warning signals`
+                : 'No warning signals'
+            }
+          >
             {event.warnings.length > 0
               ? `${event.warnings.length} warning signals`
               : 'No warning signals'}
-          </p>
+          </OverflowText>
         )}
       </div>
     )
@@ -1232,9 +1201,9 @@ function EventCell({
     return (
       <div className="min-w-0 space-y-1">
         <Badge tone="info">{event.channel}</Badge>
-        <p className="truncate whitespace-nowrap text-xs text-muted">
+        <OverflowText as="p" className="whitespace-nowrap text-xs text-muted">
           {event.sentAt ? 'Sent' : 'Not sent yet'}
-        </p>
+        </OverflowText>
       </div>
     )
   }
@@ -1242,10 +1211,15 @@ function EventCell({
   if (columnId === 'message') {
     return (
       <div className="min-w-0 space-y-1">
-        <p className="line-clamp-1 font-medium text-foreground">
+        <p
+          className="line-clamp-1 font-medium text-foreground"
+          title={event.title ?? 'No title'}
+        >
           {event.title ?? 'No title'}
         </p>
-        <p className="line-clamp-2 text-xs text-muted">{event.body}</p>
+        <p className="line-clamp-2 text-xs text-muted" title={event.body}>
+          {event.body}
+        </p>
       </div>
     )
   }
@@ -1256,10 +1230,13 @@ function EventCell({
     if (!retry) {
       return (
         <div className="min-w-0 space-y-1">
-          <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">
+          <OverflowText as="p" className="whitespace-nowrap text-sm font-medium text-foreground">
             No retry
-          </p>
-          <p className="line-clamp-2 text-xs text-muted">
+          </OverflowText>
+          <p
+            className="line-clamp-2 text-xs text-muted"
+            title="Current provider state is final or waiting"
+          >
             Current provider state is final or waiting
           </p>
         </div>
@@ -1271,11 +1248,19 @@ function EventCell({
         <Badge tone={retry.exhausted ? 'danger' : 'warning'}>
           {retry.attemptNumber}/{retry.maxAttempts} attempts
         </Badge>
-        <p className="truncate text-xs text-muted">
+        <OverflowText
+          as="p"
+          className="text-xs text-muted"
+          title={
+            retry.nextRetryAt
+              ? `Next ${formatDateSafe(retry.nextRetryAt)}`
+              : humanizeCode(retry.lastProviderStatus)
+          }
+        >
           {retry.nextRetryAt
             ? `Next ${formatDateSafe(retry.nextRetryAt)}`
             : humanizeCode(retry.lastProviderStatus)}
-        </p>
+        </OverflowText>
       </div>
     )
   }
@@ -1283,14 +1268,26 @@ function EventCell({
   if (columnId === 'provider') {
     return (
       <div className="min-w-0 space-y-1">
-        <p className="truncate text-sm font-medium text-foreground">
+        <OverflowText
+          as="p"
+          className="text-sm font-medium text-foreground"
+          title={event.providerMessageId ?? 'No provider message'}
+        >
           {event.providerMessageId ?? 'No provider message'}
-        </p>
-        <p className="truncate text-xs text-muted">
+        </OverflowText>
+        <OverflowText
+          as="p"
+          className="text-xs text-muted"
+          title={
+            event.deliveryRetry?.lastProviderStatus
+              ? humanizeCode(event.deliveryRetry.lastProviderStatus)
+              : 'Provider status unavailable'
+          }
+        >
           {event.deliveryRetry?.lastProviderStatus
             ? humanizeCode(event.deliveryRetry.lastProviderStatus)
             : 'Provider status unavailable'}
-        </p>
+        </OverflowText>
       </div>
     )
   }
@@ -1298,24 +1295,24 @@ function EventCell({
   if (columnId === 'readAt') {
     return (
       <div className="min-w-0 space-y-1">
-        <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">
+        <OverflowText as="p" className="whitespace-nowrap text-sm font-medium text-foreground">
           {formatDateSafe(event.readAt)}
-        </p>
-        <p className="truncate whitespace-nowrap text-xs text-muted">
+        </OverflowText>
+        <OverflowText as="p" className="whitespace-nowrap text-xs text-muted">
           Push inbox read state
-        </p>
+        </OverflowText>
       </div>
     )
   }
 
   return (
     <div className="min-w-0 space-y-1">
-      <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">
+      <OverflowText as="p" className="whitespace-nowrap text-sm font-medium text-foreground">
         {formatDateSafe(event.createdAt)}
-      </p>
-      <p className="truncate whitespace-nowrap text-xs text-muted">
+      </OverflowText>
+      <OverflowText as="p" className="whitespace-nowrap text-xs text-muted">
         Updated {formatDateSafe(event.updatedAt)}
-      </p>
+      </OverflowText>
     </div>
   )
 }
@@ -1348,7 +1345,7 @@ export function NotificationsPage() {
   )
   const [eventStatuses, setEventStatuses] =
     useState<NotificationEventStatus[]>(() => seededEventStatuses)
-  const [isFilterRailCollapsed, setIsFilterRailCollapsed] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false)
   const [templatesPanelOpen, setTemplatesPanelOpen] = useState(
     () =>
@@ -1524,12 +1521,9 @@ export function NotificationsPage() {
   const templateSummary = templatesQuery.data?.summary
   const isEventsLoading = eventsQuery.isLoading
   const isRefreshing = eventsQuery.isFetching || templatesQuery.isFetching
+  const refetchNotificationEvents = eventsQuery.refetch
+  const refetchNotificationTemplates = templatesQuery.refetch
   const queueCounts = queueCountsFromEventsResponse(eventsQuery.data)
-  const metrics = buildNotificationMetrics(
-    events,
-    pagination?.totalItems ?? events.length,
-    queueCounts,
-  )
   const queueItems = buildQueueItems(queueCounts)
   const templateCodeOptions = useMemo<LookupOption[]>(() => {
     const uniqueTemplateCodes = Array.from(
@@ -1555,6 +1549,25 @@ export function NotificationsPage() {
     }),
     [columnWidths, visibleColumns],
   )
+  const hasActiveFilters = Boolean(
+    eventSearch.trim() ||
+      eventChannels.length ||
+      eventStatuses.length ||
+      recipientTypesState.length ||
+      recipientUserId.trim() ||
+      templateCodes.length ||
+      dateFrom ||
+      dateTo,
+  )
+  const hasAdvancedFilters = Boolean(
+    eventChannels.length ||
+      recipientTypesState.length ||
+      recipientUserId.trim() ||
+      templateCodes.length ||
+      dateFrom ||
+      dateTo,
+  )
+  const showFilters = filtersOpen || hasAdvancedFilters
 
   const resetEventsPage = () => setPage(1)
 
@@ -1678,9 +1691,9 @@ export function NotificationsPage() {
     document.addEventListener('pointerup', handlePointerUp)
   }
 
-  const refreshData = () => {
-    void Promise.all([eventsQuery.refetch(), templatesQuery.refetch()])
-  }
+  const refreshData = useCallback(() => {
+    void Promise.all([refetchNotificationEvents(), refetchNotificationTemplates()])
+  }, [refetchNotificationEvents, refetchNotificationTemplates])
 
   const openEventDetail = (event: NotificationEvent) => {
     navigate(`${routePaths.notifications}/${event.eventId}`)
@@ -1734,10 +1747,68 @@ export function NotificationsPage() {
     navigate(buildNotificationComposerPath(event))
   }
 
+  const headerActionNode = useMemo(
+    () => (
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          className="h-9 min-w-9 px-2.5 sm:min-w-[6rem] sm:px-3"
+          isLoading={isRefreshing}
+          size="sm"
+          type="button"
+          variant="secondary"
+          onClick={refreshData}
+        >
+          <RefreshCcw className="size-4 sm:mr-2" />
+          <span className="hidden sm:inline">Refresh</span>
+        </Button>
+        <Button
+          aria-expanded={templatesPanelOpen}
+          className="h-9 px-2.5 sm:px-3"
+          size="sm"
+          type="button"
+          variant="secondary"
+          onClick={() => setTemplatesPanelOpen(true)}
+        >
+          <ListFilter className="size-4 sm:mr-2" />
+          <span className="hidden sm:inline">Templates</span>
+          {templateSummary ? (
+            <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
+              {templateSummary.total}
+            </span>
+          ) : null}
+        </Button>
+        {canSendNotifications ? (
+          <Link to={`${routePaths.notifications}/new`}>
+            <Button className="h-9 px-2.5 sm:px-3" size="sm" type="button">
+              <BellPlus className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">New</span>
+            </Button>
+          </Link>
+        ) : null}
+        {canReadAudit ? (
+          <Link to={routePaths.audit}>
+            <Button className="h-9 px-2.5 sm:px-3" size="sm" type="button" variant="secondary">
+              <ClipboardList className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">Audit</span>
+            </Button>
+          </Link>
+        ) : null}
+      </div>
+    ),
+    [
+      canReadAudit,
+      canSendNotifications,
+      isRefreshing,
+      refreshData,
+      templateSummary,
+      templatesPanelOpen,
+    ],
+  )
+
   return (
     <PageContainer className="flex min-h-full flex-col gap-3 !px-3 !py-3 space-y-0 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
-        description="Manage templates, delivery events, retries, and recipient notification history."
+        actionNode={headerActionNode}
         layout="workspace"
         placement="topbar"
         title="Notifications"
@@ -1747,78 +1818,121 @@ export function NotificationsPage() {
         <InlineAlert message="Your role can view notifications but cannot send them." />
       ) : null}
 
-      <section className="grid shrink-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((metric) => (
-          <SummaryCard key={metric.label} metric={metric} />
-        ))}
-      </section>
-
       <section
         className={cn(
           'grid gap-3 xl:min-h-0 xl:flex-1 xl:items-stretch xl:overflow-hidden',
-          previewEvent
-            ? isFilterRailCollapsed
-              ? 'lg:grid-cols-[3rem_minmax(0,1fr)] 2xl:grid-cols-[3rem_minmax(0,1fr)_22rem]'
-              : 'lg:grid-cols-[18rem_minmax(0,1fr)] 2xl:grid-cols-[18rem_minmax(0,1fr)_22rem]'
-            : isFilterRailCollapsed
-              ? 'lg:grid-cols-[3rem_minmax(0,1fr)]'
-              : 'lg:grid-cols-[18rem_minmax(0,1fr)]',
+          previewEvent ? '2xl:grid-cols-[minmax(0,1fr)_22rem]' : 'grid-cols-1',
         )}
       >
-        <aside className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
-          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
-            {!isFilterRailCollapsed ? (
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-foreground">Queue totals</h2>
-                <p className="mt-0.5 text-xs text-muted">Counts match base filters.</p>
-              </div>
-            ) : null}
-            <button
-              aria-label={isFilterRailCollapsed ? 'Expand filters' : 'Collapse filters'}
-              className="inline-flex size-8 items-center justify-center rounded-full text-muted transition hover:bg-surface-muted hover:text-foreground"
-              type="button"
-              onClick={() => setIsFilterRailCollapsed((current) => !current)}
-            >
-              <ChevronLeft
-                className={cn('size-4 transition', isFilterRailCollapsed && 'rotate-180')}
+        <section id="notification-events" className="flex min-w-0 scroll-mt-4 flex-col self-stretch overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface xl:min-h-0">
+          <div className="shrink-0 border-b border-border bg-surface px-3 py-3 sm:px-4">
+            <div className="grid gap-3 xl:grid-cols-[minmax(22rem,1fr)_auto] xl:items-center">
+              <ListHeaderSearch
+                className="w-full min-w-0"
+                placeholder="Search template, recipient, message"
+                value={eventSearch}
+                onChange={(value) => {
+                  clearSeededNotificationParams()
+                  setEventSearch(value)
+                  resetEventsPage()
+                }}
               />
-            </button>
-          </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+                <Button
+                  aria-expanded={showFilters}
+                  className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setFiltersOpen((current) => !current)}
+                >
+                  <ListFilter className="mr-2 size-4" />
+                  Filters
+                  {hasActiveFilters ? (
+                    <span className="ml-1 size-2 rounded-full bg-primary" />
+                  ) : null}
+                </Button>
+                <div className="relative" ref={columnMenuRef}>
+                <Button
+                  aria-expanded={isColumnMenuOpen}
+                  aria-haspopup="menu"
+                  className="border border-border bg-surface px-3 text-foreground shadow-none hover:bg-surface-muted"
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setIsColumnMenuOpen((current) => !current)}
+                >
+                  <SlidersHorizontal className="mr-2 size-4" />
+                  Columns
+                  <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                    {visibleColumns.length}
+                  </span>
+                </Button>
+                {isColumnMenuOpen ? (
+                  <div
+                    className="absolute right-0 top-[calc(100%+0.5rem)] z-[80] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
+                    role="menu"
+                  >
+                    <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
+                      Visible columns
+                    </p>
+                    {notificationDataColumns.map((column) => (
+                      <button
+                        className="flex min-h-9 w-full items-center justify-between rounded-[0.65rem] px-2 text-sm text-foreground transition hover:bg-surface-muted"
+                        key={column.id}
+                        type="button"
+                        onClick={() => toggleColumn(column.id)}
+                      >
+                        <span>{column.label}</span>
+                        <span
+                          className={cn(
+                            'inline-flex size-4 items-center justify-center rounded border border-border',
+                            visibleColumns.includes(column.id) &&
+                              'border-primary bg-primary',
+                          )}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              </div>
+            </div>
 
-          {isFilterRailCollapsed ? null : (
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
-              <div className="space-y-2">
-                {queueItems.map((item) => (
+            <div className="mt-3 flex gap-1 overflow-x-auto rounded-[0.875rem] border border-border bg-surface-muted/40 p-1">
+              {queueItems.map((item) => {
+                const isActive = queueKey === item.key
+
+                return (
                   <button
+                    aria-pressed={isActive}
                     className={cn(
-                      'flex min-h-10 w-full items-center justify-between rounded-[0.75rem] border border-border bg-surface px-3 text-left text-sm transition hover:border-primary/35 hover:bg-surface-muted/60',
-                      queueKey === item.key &&
-                        'border-primary bg-primary/5 text-primary',
+                      'inline-flex h-8 shrink-0 items-center gap-2 rounded-[0.65rem] border px-2.5 text-sm font-medium transition',
+                      isActive
+                        ? 'border-primary/30 bg-surface text-primary shadow-[var(--sg-shadow-surface)]'
+                        : 'border-transparent text-muted hover:bg-surface hover:text-foreground',
                     )}
                     key={item.key}
                     type="button"
                     onClick={() => applyQueue(item.key)}
+                  >
+                    <span>{item.label}</span>
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-xs font-semibold',
+                        isActive ? 'bg-primary/10 text-primary' : 'bg-surface text-muted',
+                      )}
                     >
-                      <span className="font-medium">{item.label}</span>
-                    <span className="text-xs font-semibold">
                       {item.count ?? '...'}
                     </span>
                   </button>
-                ))}
-              </div>
+                )
+              })}
+            </div>
 
-              <div className="border-t border-border pt-4">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-foreground">Filter stack</h3>
-                  <button
-                    className="text-xs font-semibold text-primary hover:text-primary-hover"
-                    type="button"
-                    onClick={clearFilters}
-                  >
-                    Clear
-                  </button>
-                </div>
-                <div className="mt-3 space-y-3">
+            {showFilters ? (
+              <div className="mt-2 rounded-[0.75rem] border border-border bg-surface-muted/45 p-2.5">
+                <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-[minmax(9rem,0.8fr)_minmax(9rem,0.8fr)_minmax(10rem,0.9fr)_minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(9rem,0.8fr)_minmax(9rem,0.8fr)_auto] xl:items-end">
                   <MultiSelectFilter
                     label="Status"
                     options={buildLookupOptions(statuses)}
@@ -1865,7 +1979,7 @@ export function NotificationsPage() {
                       resetEventsPage()
                     }}
                   />
-                  <label className="block space-y-1">
+                  <label className="space-y-1">
                     <span className="text-xs font-semibold text-muted">Recipient user ID</span>
                     <Input
                       placeholder="UUID"
@@ -1877,137 +1991,44 @@ export function NotificationsPage() {
                       }}
                     />
                   </label>
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                    <label className="block space-y-1">
-                      <span className="text-xs font-semibold text-muted">Date from</span>
-                      <Input
-                        type="date"
-                        value={dateFrom}
-                        onChange={(event) => {
-                          clearSeededNotificationParams()
-                          setDateFrom(event.target.value)
-                          resetEventsPage()
-                        }}
-                      />
-                    </label>
-                    <label className="block space-y-1">
-                      <span className="text-xs font-semibold text-muted">Date to</span>
-                      <Input
-                        type="date"
-                        value={dateTo}
-                        onChange={(event) => {
-                          clearSeededNotificationParams()
-                          setDateTo(event.target.value)
-                          resetEventsPage()
-                        }}
-                      />
-                    </label>
-                  </div>
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted">Date from</span>
+                    <Input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(event) => {
+                        clearSeededNotificationParams()
+                        setDateFrom(event.target.value)
+                        resetEventsPage()
+                      }}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs font-semibold text-muted">Date to</span>
+                    <Input
+                      type="date"
+                      value={dateTo}
+                      onChange={(event) => {
+                        clearSeededNotificationParams()
+                        setDateTo(event.target.value)
+                        resetEventsPage()
+                      }}
+                    />
+                  </label>
+                  <Button
+                    className="w-full xl:w-auto"
+                    disabled={!hasActiveFilters}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={clearFilters}
+                  >
+                    Reset
+                  </Button>
                 </div>
               </div>
+            ) : null}
             </div>
-          )}
-        </aside>
-
-        <section id="notification-events" className="flex min-w-0 scroll-mt-4 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
-          <div className="flex flex-col gap-3 border-b border-border px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <h2 className="text-base font-semibold text-foreground">Delivery events</h2>
-              <p className="mt-1 text-sm text-muted">
-                {pagination
-                  ? `${pagination.totalItems} events matching current filters`
-                  : `${events.length} events in the current window`}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <ListHeaderSearch
-                className="w-full min-w-[16rem] sm:w-72"
-                placeholder="Search template, recipient, message"
-                value={eventSearch}
-                onChange={(value) => {
-                  clearSeededNotificationParams()
-                  setEventSearch(value)
-                  resetEventsPage()
-                }}
-              />
-              <div className="relative" ref={columnMenuRef}>
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setIsColumnMenuOpen((current) => !current)}
-                >
-                  <SlidersHorizontal className="mr-2 size-4" />
-                  Columns
-                  <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                    {visibleColumns.length}
-                  </span>
-                </Button>
-                {isColumnMenuOpen ? (
-                  <div className="absolute right-0 top-[calc(100%+0.35rem)] z-[70] w-64 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface">
-                    {notificationDataColumns.map((column) => (
-                      <button
-                        className="flex min-h-9 w-full items-center justify-between rounded-[0.65rem] px-2 text-sm text-foreground transition hover:bg-surface-muted"
-                        key={column.id}
-                        type="button"
-                        onClick={() => toggleColumn(column.id)}
-                      >
-                        <span>{column.label}</span>
-                        <span
-                          className={cn(
-                            'inline-flex size-4 items-center justify-center rounded border border-border',
-                            visibleColumns.includes(column.id) &&
-                              'border-primary bg-primary',
-                          )}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              <Button
-                isLoading={isRefreshing}
-                size="sm"
-                type="button"
-                variant="secondary"
-                onClick={refreshData}
-              >
-                <RefreshCcw className="mr-2 size-4" />
-                Refresh
-              </Button>
-              <Button
-                aria-expanded={templatesPanelOpen}
-                size="sm"
-                type="button"
-                variant="secondary"
-                onClick={() => setTemplatesPanelOpen(true)}
-              >
-                <ListFilter className="mr-2 size-4" />
-                Templates
-                {templateSummary ? (
-                  <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
-                    {templateSummary.total}
-                  </span>
-                ) : null}
-              </Button>
-              {canSendNotifications ? (
-                <Link to={`${routePaths.notifications}/new`}>
-                  <Button size="sm" type="button">
-                    <BellPlus className="mr-2 size-4" />
-                    New
-                  </Button>
-                </Link>
-              ) : null}
-              {canReadAudit ? (
-                <Link to={routePaths.audit}>
-                  <Button size="sm" type="button" variant="secondary">
-                    <ClipboardList className="mr-2 size-4" />
-                    Audit
-                  </Button>
-                </Link>
-              ) : null}
-            </div>
-          </div>
 
           {eventsQuery.isError ? (
             <div className="p-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">

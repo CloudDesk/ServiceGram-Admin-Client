@@ -57,6 +57,34 @@ export interface DashboardReviewQueuesData {
   scope: DashboardScope
 }
 
+export interface DashboardApprovalGroup {
+  code: string
+  label: string
+  description: string
+  moduleCode: string
+  count: number
+  path: string | null
+  routeFilter: Record<string, string>
+  permissionCode: string
+  reviewPermissionCode: string
+  permitted: boolean
+  canReview: boolean
+  severity: 'NORMAL' | 'ATTENTION'
+  sortOrder: number
+  actionCode: string
+  availableActions: string[]
+  disabledReason: string | null
+}
+
+export interface DashboardApprovalCenterData {
+  totalPending: number
+  groups: DashboardApprovalGroup[]
+  nextRecommendedAction: string | null
+  availableActions: string[]
+  scope: DashboardScope
+  loadedAt: string
+}
+
 export interface DashboardOrderDistributionRow {
   orderStatus: string
   paymentStatus: string
@@ -146,6 +174,8 @@ export interface DashboardTrendsData {
 export type DashboardSummaryResponse = DashboardApiResponse<DashboardSummaryData>
 export type DashboardOverviewResponse =
   DashboardApiResponse<DashboardOverviewData>
+export type DashboardApprovalCenterResponse =
+  DashboardApiResponse<DashboardApprovalCenterData>
 export type DashboardOrdersResponse = DashboardApiResponse<DashboardOrdersData>
 export type DashboardReviewQueuesResponse =
   DashboardApiResponse<DashboardReviewQueuesData>

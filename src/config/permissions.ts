@@ -2,6 +2,7 @@ import type { PermissionKey } from '../types/common.types'
 
 export const permissions: Record<string, PermissionKey> = {
   dashboard: 'dashboard:read',
+  approvals: 'approvals:read',
   customers: 'customers:read',
   vendors: 'vendors:read',
   vendorOnboarding: 'vendors:approve',
@@ -17,6 +18,8 @@ export const permissions: Record<string, PermissionKey> = {
   marketingCampaigns: 'marketing_campaigns:read',
   reports: 'reports:read',
   settings: 'settings:read',
+  featureFlags: 'feature-flags:read',
+  release2Settings: 'settings:read',
   adminUsers: 'admin_users:read',
   roles: 'roles:read',
   permissions: 'permissions:read',

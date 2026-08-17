@@ -1,7 +1,6 @@
 import {
   Bell,
   ChevronDown,
-  Clock3,
   LogOut,
   Menu,
   Moon,
@@ -10,6 +9,7 @@ import {
   User,
   UserCircle2,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../ui/Button";
@@ -20,126 +20,69 @@ import { usePageChrome } from "../../providers/pageChromeContext";
 import { useTheme } from "../../providers/themeContext";
 import { GlobalSearch } from "../../features/search/components/GlobalSearch";
 import { authService } from "../../features/auth/services/auth.service";
-import { buildPathWithQueryParams } from "../../utils/buildQueryParams";
+import { dashboardApiService } from "../../features/dashboard/services/dashboard.api";
 
-function remainingSecondsUntil(value?: string | null, now = Date.now()) {
-  if (!value) {
-    return null;
-  }
+const BANK_ACCOUNT_APPROVAL_QUEUE = "BANK_ACCOUNT_APPROVALS";
 
-  const expiresAt = Date.parse(value);
-
-  if (Number.isNaN(expiresAt)) {
-    return null;
-  }
-
-  return Math.max(0, Math.floor((expiresAt - now) / 1000));
+function bankAccountApprovalPath() {
+  return `${routePaths.vendors}?approvalQueue=${BANK_ACCOUNT_APPROVAL_QUEUE}`;
 }
 
-function formatRemainingTime(seconds: number | null) {
-  if (seconds === null) {
-    return "Unavailable";
+function normalizeApprovalPath(path: string, groupCode?: string) {
+  if (groupCode === BANK_ACCOUNT_APPROVAL_QUEUE) {
+    return bankAccountApprovalPath();
   }
 
-  if (seconds <= 0) {
-    return "Expired";
+  const [pathname, queryString = ""] = path.split("?");
+
+  if (pathname !== routePaths.vendorOnboarding) {
+    return path;
   }
 
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
+  const searchParams = new URLSearchParams(queryString);
 
-  if (days > 0) {
-    return `${days}d ${hours}h`;
+  if (!searchParams.has("bankAccountStatus")) {
+    return path;
   }
 
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  }
-
-  if (minutes > 0) {
-    return `${minutes}m`;
-  }
-
-  return "<1m";
-}
-
-function sessionTimeTone(seconds: number | null) {
-  if (seconds === null) {
-    return "text-adaptive-muted";
-  }
-
-  if (seconds <= 0 || seconds <= 15 * 60) {
-    return "text-[color:var(--adaptive-danger-text)]";
-  }
-
-  if (seconds <= 60 * 60) {
-    return "text-[color:var(--adaptive-warning-text)]";
-  }
-
-  return "text-[color:var(--adaptive-success-text)]";
-}
-
-function accessTokenTimeTone(seconds: number | null) {
-  if (seconds === null) {
-    return "text-adaptive-muted";
-  }
-
-  if (seconds <= 0 || seconds <= 60) {
-    return "text-[color:var(--adaptive-danger-text)]";
-  }
-
-  if (seconds <= 5 * 60) {
-    return "text-[color:var(--adaptive-warning-text)]";
-  }
-
-  return "text-[color:var(--adaptive-success-text)]";
+  return bankAccountApprovalPath();
 }
 
 export function Topbar() {
   const navigate = useNavigate();
   const clearSession = useAuthStore((state) => state.clearSession);
-  const canOpenNotifications = useAuthStore((state) =>
-    state.can("notifications:read"),
+  const canOpenApprovalCenter = useAuthStore((state) =>
+    state.can("dashboard:read"),
   );
   const canOpenSettings = useAuthStore((state) => state.can("settings:read"));
-  const session = useAuthStore((state) => state.session);
   const user = useAuthStore((state) => state.user);
   const openMobileSidebar = useUiStore((state) => state.openMobileSidebar);
   const { resolvedMode, toggleResolvedMode } = useTheme();
   const { pageChrome } = usePageChrome();
+  const [approvalOpen, setApprovalOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const approvalRef = useRef<HTMLDivElement | null>(null);
   const profileRef = useRef<HTMLDivElement | null>(null);
   const title = pageChrome.title ?? "ServiceGram Admin";
   const description =
     pageChrome.description ?? (pageChrome.title ? undefined : "Admin operations console");
-  const accessTokenRemainingSeconds = remainingSecondsUntil(
-    session?.accessTokenExpiresAt,
-    now,
-  );
-  const accessTokenRemainingLabel = formatRemainingTime(
-    accessTokenRemainingSeconds,
-  );
-  const accessTokenRemainingTone = accessTokenTimeTone(
-    accessTokenRemainingSeconds,
-  );
-  const sessionRemainingSeconds = remainingSecondsUntil(
-    session?.refreshTokenExpiresAt,
-    now,
-  );
-  const sessionRemainingLabel = formatRemainingTime(sessionRemainingSeconds);
-  const sessionRemainingTone = sessionTimeTone(sessionRemainingSeconds);
   const isDarkTheme = resolvedMode === "dark";
   const themeToggleLabel = isDarkTheme
     ? "Switch to light theme"
     : "Switch to dark theme";
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => setNow(Date.now()), 15_000);
-
-    return () => window.clearInterval(intervalId);
-  }, []);
+  const approvalQuery = useQuery({
+    enabled: canOpenApprovalCenter,
+    queryFn: dashboardApiService.getApprovalCenter,
+    queryKey: ["dashboard", "approval-center"],
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const approvalCenter = approvalQuery.data;
+  const approvalGroups =
+    approvalCenter?.groups.filter((group) => group.count > 0 && group.path) ?? [];
+  const totalPendingApprovals = approvalCenter?.totalPending ?? 0;
+  const approvalCountLabel =
+    totalPendingApprovals > 99 ? "99+" : String(totalPendingApprovals);
 
   useEffect(() => {
     if (!profileOpen) {
@@ -167,6 +110,32 @@ export function Topbar() {
     };
   }, [profileOpen]);
 
+  useEffect(() => {
+    if (!approvalOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!approvalRef.current?.contains(event.target as Node)) {
+        setApprovalOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setApprovalOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [approvalOpen]);
+
   const handleLogout = () => {
     setProfileOpen(false);
     void authService.logout().finally(() => {
@@ -175,13 +144,14 @@ export function Topbar() {
     });
   };
 
-  const handleNavigate = (path: string) => {
+  const handleNavigate = (path: string, groupCode?: string) => {
+    setApprovalOpen(false);
     setProfileOpen(false);
-    navigate(path);
+    navigate(normalizeApprovalPath(path, groupCode));
   };
 
   return (
-    <header className="premium-appbar grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 sm:px-6 md:grid-cols-[minmax(12rem,0.9fr)_minmax(16rem,42rem)_auto] lg:px-8 xl:grid-cols-[minmax(16rem,0.9fr)_minmax(26rem,58rem)_minmax(16rem,0.9fr)]">
+    <header className="premium-appbar grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-4 px-4 sm:px-6 lg:px-8">
       <div className="flex min-w-0 items-center justify-start gap-3">
         <Button
           className="lg:hidden"
@@ -193,7 +163,7 @@ export function Topbar() {
           <Menu className="size-4" />
         </Button>
         <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold leading-5 text-adaptive-main sm:text-base">
+          <h1 className="truncate text-lg font-bold leading-6 text-adaptive-main sm:text-xl">
             {title}
           </h1>
           {description ? (
@@ -204,13 +174,10 @@ export function Topbar() {
         </div>
       </div>
 
-      <div className="hidden min-w-0 justify-center md:flex">
-        <GlobalSearch />
-      </div>
-
-      <div className="flex items-center justify-end gap-3">
+      <div className="flex min-w-max items-center justify-end gap-2 sm:gap-3">
         <Button
           aria-label={themeToggleLabel}
+          className="topbar-icon-button"
           size="sm"
           title={themeToggleLabel}
           type="button"
@@ -224,23 +191,108 @@ export function Topbar() {
           )}
         </Button>
 
-        {canOpenNotifications ? (
-          <Button
-            aria-label="Alerts"
-            size="sm"
-            type="button"
-            variant="ghost"
-            onClick={() =>
-              navigate(
-                `${buildPathWithQueryParams(routePaths.notifications, {
-                  status: "FAILED",
-                })}#notification-events`,
-              )
-            }
-          >
-            <Bell className="size-4 sm:mr-2" />
-            <span className="hidden sm:inline">Alerts</span>
-          </Button>
+        <GlobalSearch triggerVariant="icon" />
+
+        {pageChrome.actionNode ? (
+          <div className="flex shrink-0 items-center">{pageChrome.actionNode}</div>
+        ) : null}
+
+        {canOpenApprovalCenter ? (
+          <div className="relative" ref={approvalRef}>
+            <Button
+              aria-expanded={approvalOpen}
+              aria-haspopup="menu"
+              aria-label="Approval alerts"
+              className="relative"
+              size="sm"
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setProfileOpen(false);
+                setApprovalOpen((current) => !current);
+              }}
+            >
+              <Bell className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">Approvals</span>
+              {totalPendingApprovals > 0 ? (
+                <span className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-[color:var(--adaptive-primary)] px-1.5 text-[0.68rem] font-bold leading-5 text-white shadow-sm">
+                  {approvalCountLabel}
+                </span>
+              ) : null}
+            </Button>
+
+            {approvalOpen ? (
+              <div className="premium-common-surface absolute right-0 top-[calc(100%+0.625rem)] z-[70] w-[min(23rem,calc(100vw-2rem))] overflow-hidden">
+                <div className="border-b border-adaptive bg-adaptive-surface px-4 py-3">
+                  <p className="text-sm font-semibold text-adaptive-main">
+                    Pending approvals
+                  </p>
+                  <p className="text-xs text-adaptive-muted">
+                    {totalPendingApprovals > 0
+                      ? `${totalPendingApprovals} approval${totalPendingApprovals === 1 ? "" : "s"} need attention`
+                      : "No approval queues need attention"}
+                  </p>
+                </div>
+
+                <div className="max-h-[min(28rem,calc(100vh-7rem))] overflow-y-auto p-2">
+                  {approvalQuery.isLoading ? (
+                    <p className="px-3 py-3 text-sm text-adaptive-muted">
+                      Loading approvals...
+                    </p>
+                  ) : null}
+
+                  {approvalQuery.isError ? (
+                    <div className="space-y-2 px-3 py-3">
+                      <p className="text-sm text-adaptive-muted">
+                        Unable to load approval queues.
+                      </p>
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void approvalQuery.refetch()}
+                      >
+                        Retry
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  {!approvalQuery.isLoading &&
+                  !approvalQuery.isError &&
+                  approvalGroups.length === 0 ? (
+                    <p className="px-3 py-3 text-sm text-adaptive-muted">
+                      Everything is clear.
+                    </p>
+                  ) : null}
+
+                  {approvalGroups.map((group) => (
+                    <button
+                      className="flex w-full items-center justify-between gap-3 rounded-[0.95rem] px-3 py-2.5 text-left transition hover:bg-[color:var(--adaptive-search-bg)]"
+                      key={group.code}
+                      type="button"
+                      onClick={() => {
+                        if (group.path) {
+                          handleNavigate(group.path, group.code);
+                        }
+                      }}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-adaptive-main">
+                          {group.label}
+                        </span>
+                        <span className="block truncate text-xs text-adaptive-muted">
+                          {group.description}
+                        </span>
+                      </span>
+                      <span className="inline-flex min-w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--adaptive-primary-soft)] px-2 py-1 text-xs font-bold text-[color:var(--adaptive-primary)]">
+                        {group.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         <div className="relative" ref={profileRef}>
@@ -283,30 +335,6 @@ export function Topbar() {
                     <p className="truncate text-xs text-adaptive-muted">
                       {user?.email ?? "No email available"}
                     </p>
-                  </div>
-                </div>
-                <div className="mt-3 grid gap-2 rounded-[0.75rem] border border-adaptive bg-[color:var(--adaptive-search-bg)] px-3 py-2">
-                  <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="flex min-w-0 items-center gap-2 text-adaptive-muted">
-                      <Clock3 className="size-3.5 shrink-0" />
-                      <span className="truncate">Access token</span>
-                    </span>
-                    <span
-                      className={`shrink-0 font-semibold ${accessTokenRemainingTone}`}
-                    >
-                      {accessTokenRemainingLabel}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="flex min-w-0 items-center gap-2 text-adaptive-muted">
-                      <Clock3 className="size-3.5 shrink-0" />
-                      <span className="truncate">Login session</span>
-                    </span>
-                    <span
-                      className={`shrink-0 font-semibold ${sessionRemainingTone}`}
-                    >
-                      {sessionRemainingLabel}
-                    </span>
                   </div>
                 </div>
               </div>

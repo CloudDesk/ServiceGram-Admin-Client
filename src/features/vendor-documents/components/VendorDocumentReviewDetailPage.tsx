@@ -98,6 +98,14 @@ function documentTone(status: string): StatusTone {
   return 'warning'
 }
 
+function canVerifyVendorDocument(document: VendorDocument) {
+  return ['PENDING', 'REJECTED'].includes(document.status)
+}
+
+function canRejectVendorDocument(document: VendorDocument) {
+  return ['PENDING', 'VERIFIED'].includes(document.status)
+}
+
 function onboardingTone(status: string): StatusTone {
   if (status === 'APPROVED') return 'success'
   if (status === 'REJECTED') return 'danger'
@@ -351,7 +359,6 @@ function DocumentCard({
   isSubmitting,
   onPreview,
   onSelectAction,
-  vendor,
 }: {
   canApproveVendors: boolean
   document: VendorDocument
@@ -359,14 +366,11 @@ function DocumentCard({
   isSubmitting: boolean
   onPreview: (document: VendorDocument) => void
   onSelectAction: (action: DocumentReviewActionSelection) => void
-  vendor: VendorDetail
 }) {
-  const canReviewDocument =
-    canApproveVendors && vendor.onboardingStatus !== 'APPROVED'
-  const canApproveDocument = canReviewDocument && document.status !== 'VERIFIED'
+  const canApproveDocument =
+    canApproveVendors && canVerifyVendorDocument(document)
   const canRejectDocument =
-    canReviewDocument &&
-    (document.status === 'PENDING' || document.status === 'VERIFIED')
+    canApproveVendors && canRejectVendorDocument(document)
   const mediaLabel = document.mediaAssetId
     ? document.mimeType
       ? `${document.mimeType} / ${formatFileSize(document.sizeBytes)}`
@@ -430,7 +434,7 @@ function DocumentCard({
               onClick={() => onSelectAction({ kind: 'VERIFY_DOCUMENT', document })}
             >
               <CheckCircle2 className="mr-1.5 size-3.5" />
-              Approve
+              Verify
             </Button>
           ) : null}
           {canRejectDocument ? (
@@ -672,7 +676,7 @@ export function VendorDocumentReviewDetailPage() {
 
   const isSubmitting = actionMutation.isPending
   const canReviewDocuments =
-    canApproveVendors && vendor.onboardingStatus !== 'APPROVED'
+    canApproveVendors && vendor.documents.some(canVerifyVendorDocument)
 
   return (
     <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
@@ -729,7 +733,13 @@ export function VendorDocumentReviewDetailPage() {
         <SummaryCard
           icon={<FileCheck2 className="size-4" />}
           label="Review"
-          meta={canReviewDocuments ? 'Ready for document decisions' : 'Review locked'}
+          meta={
+            canApproveVendors
+              ? canReviewDocuments
+                ? 'Ready for document decisions'
+                : 'No pending document decisions'
+              : 'Review locked'
+          }
           tone={state.tone}
           value={state.label}
         />
@@ -762,9 +772,9 @@ export function VendorDocumentReviewDetailPage() {
         </div>
       ) : null}
 
-      {vendor.onboardingStatus === 'APPROVED' ? (
-        <div className="rounded-[0.875rem] border border-border bg-surface-muted/50 p-3 text-sm text-muted">
-          This vendor is already approved, so document review actions are locked.
+      {vendor.onboardingStatus === 'APPROVED' && summary.pending > 0 ? (
+        <div className="rounded-[0.875rem] border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
+          This vendor is already approved, but pending document updates still need review.
         </div>
       ) : null}
 
@@ -790,7 +800,6 @@ export function VendorDocumentReviewDetailPage() {
                   isPreviewPending={previewMutation.isPending}
                   isSubmitting={isSubmitting}
                   key={document.documentId}
-                  vendor={vendor}
                   onPreview={(nextDocument) => previewMutation.mutate(nextDocument)}
                   onSelectAction={setSelectedAction}
                 />

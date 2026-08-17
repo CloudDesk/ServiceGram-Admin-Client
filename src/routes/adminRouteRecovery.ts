@@ -37,6 +37,10 @@ function canOpenNavigationItem(
   item: NavigationItem,
   can: (permission: string) => boolean,
 ) {
+  if (item.anyPermission?.length) {
+    return item.anyPermission.some((permission) => can(permission))
+  }
+
   return item.alwaysVisible || !item.permission || can(item.permission)
 }
 

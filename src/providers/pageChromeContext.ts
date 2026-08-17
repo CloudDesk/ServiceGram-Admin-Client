@@ -1,10 +1,11 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
 
 export type PageChromeLayout = 'document' | 'workspace'
 
 export interface PageChromeState {
   title?: string
   description?: string
+  actionNode?: ReactNode
   layout?: PageChromeLayout
 }
 

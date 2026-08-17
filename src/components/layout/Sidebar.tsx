@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, LogOut } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { navigationItems } from "../../config/navigation";
+import {
+  isNavigationItemVisible,
+  navigationGroupLabels,
+  navigationItems,
+  type NavigationGroup,
+  type NavigationItem,
+} from "../../config/navigation";
 import { routePaths } from "../../config/routes";
 import { useAuthStore } from "../../store/authStore";
 import { useUiStore } from "../../store/uiStore";
@@ -46,10 +52,7 @@ function SidebarPanel({
   const [labelPopover, setLabelPopover] =
     useState<SidebarLabelPopoverState | null>(null);
 
-  const showCollapsedLabel = (
-    item: (typeof navigationItems)[number],
-    target: HTMLElement,
-  ) => {
+  const showCollapsedLabel = (item: NavigationItem, target: HTMLElement) => {
     if (!isCollapsed || isMobile) return;
 
     const rect = target.getBoundingClientRect();
@@ -96,6 +99,78 @@ function SidebarPanel({
     !isMobile &&
     labelPopover &&
     typeof document !== "undefined";
+
+  const visibleItems = useMemo(
+    () => navigationItems.filter((item) => isNavigationItemVisible(item, can)),
+    [can],
+  );
+
+  /**
+   * Ungrouped items keep their original flat order; grouped items collect into
+   * labelled sections underneath so Release 2 rollout screens read as one set.
+   */
+  const groupedItems = useMemo(() => {
+    const groups = new Map<NavigationGroup, NavigationItem[]>();
+
+    visibleItems.forEach((item) => {
+      if (!item.group) return;
+
+      const existing = groups.get(item.group) ?? [];
+      existing.push(item);
+      groups.set(item.group, existing);
+    });
+
+    return [...groups.entries()];
+  }, [visibleItems]);
+
+  const renderNavItem = (item: NavigationItem) => {
+    const Icon = item.icon;
+    const isPopoverActive = labelPopover?.href === item.href;
+
+    return (
+      <li key={item.href}>
+        <NavLink
+          aria-describedby={
+            isCollapsed && !isMobile && isPopoverActive
+              ? SIDEBAR_LABEL_POPOVER_ID
+              : undefined
+          }
+          aria-label={isCollapsed && !isMobile ? item.label : undefined}
+          className={({ isActive }) =>
+            cn(
+              "premium-sidebar-link group flex items-center text-sm font-medium",
+              isCollapsed && !isMobile
+                ? "justify-center px-2.5 py-3"
+                : "gap-3 px-3.5 py-3",
+              isActive
+                ? "premium-sidebar-link-active text-[color:var(--sg-sidebar-text-main)]"
+                : "text-[color:var(--sg-sidebar-text-muted)] hover:text-[color:var(--sg-sidebar-text-main)]",
+            )
+          }
+          end={item.exactMatch ?? false}
+          to={item.href}
+          onBlur={hideCollapsedLabel}
+          onClick={() => {
+            hideCollapsedLabel();
+
+            if (isMobile) {
+              onClose?.();
+            }
+          }}
+          onFocus={(event) => showCollapsedLabel(item, event.currentTarget)}
+          onMouseEnter={(event) => showCollapsedLabel(item, event.currentTarget)}
+          onMouseLeave={hideCollapsedLabel}
+        >
+          <span className="premium-sidebar-icon shrink-0">
+            <Icon className="size-4" />
+          </span>
+          {isCollapsed && !isMobile ? null : (
+            <span className="truncate">{item.label}</span>
+          )}
+        </NavLink>
+      </li>
+    );
+  };
 
   return (
     <div
@@ -148,60 +223,24 @@ function SidebarPanel({
 
       <nav className="premium-sidebar-scroll flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
-          {navigationItems
-            .filter((item) => item.alwaysVisible || (item.permission && can(item.permission)))
-            .map((item) => {
-              const Icon = item.icon;
-              const isPopoverActive = labelPopover?.href === item.href;
-
-              return (
-                <li key={item.href}>
-                  <NavLink
-                    aria-describedby={
-                      isCollapsed && !isMobile && isPopoverActive
-                        ? SIDEBAR_LABEL_POPOVER_ID
-                        : undefined
-                    }
-                    aria-label={isCollapsed && !isMobile ? item.label : undefined}
-                    className={({ isActive }) =>
-                      cn(
-                        "premium-sidebar-link group flex items-center text-sm font-medium",
-                        isCollapsed && !isMobile
-                          ? "justify-center px-2.5 py-3"
-                          : "gap-3 px-3.5 py-3",
-                        isActive
-                          ? "premium-sidebar-link-active text-[color:var(--sg-sidebar-text-main)]"
-                          : "text-[color:var(--sg-sidebar-text-muted)] hover:text-[color:var(--sg-sidebar-text-main)]",
-                      )
-                    }
-                    to={item.href}
-                    onBlur={hideCollapsedLabel}
-                    onClick={() => {
-                      hideCollapsedLabel();
-
-                      if (isMobile) {
-                        onClose?.();
-                      }
-                    }}
-                    onFocus={(event) =>
-                      showCollapsedLabel(item, event.currentTarget)
-                    }
-                    onMouseEnter={(event) =>
-                      showCollapsedLabel(item, event.currentTarget)
-                    }
-                    onMouseLeave={hideCollapsedLabel}
-                  >
-                    <span className="premium-sidebar-icon shrink-0">
-                      <Icon className="size-4" />
-                    </span>
-                    {isCollapsed && !isMobile ? null : (
-                      <span className="truncate">{item.label}</span>
-                    )}
-                  </NavLink>
-                </li>
-              );
-            })}
+          {visibleItems.filter((item) => !item.group).map(renderNavItem)}
         </ul>
+
+        {groupedItems.map(([group, items]) => (
+          <div className="mt-5" key={group}>
+            {isCollapsed && !isMobile ? (
+              <div
+                aria-hidden="true"
+                className="mx-auto mb-2 h-px w-6 bg-[color:var(--sg-sidebar-border)]"
+              />
+            ) : (
+              <p className="premium-sidebar-section-label mb-2 px-3.5">
+                {navigationGroupLabels[group]}
+              </p>
+            )}
+            <ul className="space-y-1">{items.map(renderNavItem)}</ul>
+          </div>
+        ))}
       </nav>
 
       {shouldRenderLabelPopover

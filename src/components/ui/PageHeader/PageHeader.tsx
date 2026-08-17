@@ -41,10 +41,18 @@ export function PageContextHeader({
       return undefined
     }
 
-    setPageChrome({ description, layout, title })
+    setPageChrome({ actionNode, description, layout, title })
 
     return () => resetPageChrome()
-  }, [description, layout, placement, resetPageChrome, setPageChrome, title])
+  }, [
+    actionNode,
+    description,
+    layout,
+    placement,
+    resetPageChrome,
+    setPageChrome,
+    title,
+  ])
 
   if (!renderBody) {
     return null

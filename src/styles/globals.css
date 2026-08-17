@@ -669,6 +669,20 @@
     box-shadow: var(--sg-shadow-appbar);
   }
 
+  .topbar-icon-button {
+    min-width: 2.25rem;
+    padding-inline: 0.625rem;
+    border: 1px solid var(--adaptive-border) !important;
+    background: var(--adaptive-surface) !important;
+    color: var(--adaptive-text-main) !important;
+    box-shadow: var(--sg-shadow-surface);
+  }
+
+  .topbar-icon-button:hover {
+    background: var(--adaptive-search-bg) !important;
+    color: var(--adaptive-text-main) !important;
+  }
+
   .app-bar-actions {
     @apply flex items-center gap-3;
   }

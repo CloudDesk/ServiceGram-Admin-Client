@@ -186,7 +186,11 @@ function normalizeSearchRoute(result: AdminSearchResult) {
   return pathWithUrlParams(url)
 }
 
-export function GlobalSearch() {
+interface GlobalSearchProps {
+  triggerVariant?: 'chip' | 'icon'
+}
+
+export function GlobalSearch({ triggerVariant = 'chip' }: GlobalSearchProps) {
   const navigate = useNavigate()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -243,6 +247,7 @@ export function GlobalSearch() {
   const isLoading = searchQuery.isFetching && hasSearchText
   const effectiveActiveIndex =
     flatResults.length === 0 ? 0 : Math.min(activeIndex, flatResults.length - 1)
+  const isIconTrigger = triggerVariant === 'icon'
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -327,20 +332,43 @@ export function GlobalSearch() {
   let rowIndex = -1
 
   return (
-    <div ref={rootRef} className="relative min-w-0 w-full max-w-[58rem]">
+    <div
+      ref={rootRef}
+      className={cn(
+        'relative',
+        isIconTrigger ? 'shrink-0' : 'min-w-0 w-full max-w-[58rem]',
+      )}
+    >
       <button
-        className="premium-search-chip flex w-full min-w-0 items-center gap-2 text-left text-adaptive-muted"
+        aria-label="Search records"
+        className={cn(
+          isIconTrigger
+            ? 'btn-icon size-9 min-h-9'
+            : 'premium-search-chip flex w-full min-w-0 items-center gap-2 text-left text-adaptive-muted',
+        )}
+        title="Search records (Cmd/Ctrl+K)"
         type="button"
         onClick={open}
       >
         <Search className="size-4 shrink-0" />
-        <span className="flex min-h-5 min-w-0 flex-1 items-center truncate leading-none">
-          {searchPromptText}
-        </span>
+        {isIconTrigger ? (
+          <span className="sr-only">Search records</span>
+        ) : (
+          <span className="flex min-h-5 min-w-0 flex-1 items-center truncate leading-none">
+            {searchPromptText}
+          </span>
+        )}
       </button>
 
       {isOpen ? (
-        <div className="premium-common-surface fixed inset-x-3 top-20 z-[70] max-h-[calc(100vh-6rem)] overflow-hidden md:absolute md:inset-x-auto md:left-1/2 md:top-[calc(100%+0.75rem)] md:w-[min(58rem,calc(100vw-8rem))] md:-translate-x-1/2 lg:w-[min(64rem,calc(100vw-24rem))]">
+        <div
+          className={cn(
+            'premium-common-surface fixed top-20 z-[70] max-h-[calc(100vh-6rem)] overflow-hidden',
+            isIconTrigger
+              ? 'left-1/2 w-[min(58rem,calc(100vw-2rem))] -translate-x-1/2 lg:w-[min(64rem,calc(100vw-12rem))]'
+              : 'inset-x-3 md:absolute md:inset-x-auto md:left-1/2 md:top-[calc(100%+0.75rem)] md:w-[min(58rem,calc(100vw-8rem))] md:-translate-x-1/2 lg:w-[min(64rem,calc(100vw-24rem))]',
+          )}
+        >
           <div className="border-b border-adaptive p-3">
             <div className="flex items-center gap-2 rounded-[0.75rem] border border-adaptive bg-adaptive-surface px-3">
               <Search className="size-4 shrink-0 text-adaptive-muted" />

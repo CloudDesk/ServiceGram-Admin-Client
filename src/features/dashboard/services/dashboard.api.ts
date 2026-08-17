@@ -1,7 +1,12 @@
 import { buildApiUrl } from '../../../config/api'
-import { DASHBOARD_OVERVIEW_PATH } from '../../../config/dashboardApiPaths'
+import {
+  DASHBOARD_APPROVAL_CENTER_PATH,
+  DASHBOARD_OVERVIEW_PATH,
+} from '../../../config/dashboardApiPaths'
 import { apiClient } from '../../../services/apiClient'
 import type {
+  DashboardApprovalCenterData,
+  DashboardApprovalCenterResponse,
   DashboardApiResponse,
   DashboardData,
   DashboardOverviewResponse,
@@ -66,5 +71,12 @@ export const dashboardApiService = {
           updatedAt,
         })),
     }
+  },
+  async getApprovalCenter(): Promise<DashboardApprovalCenterData> {
+    const response = await get<DashboardApprovalCenterResponse>(
+      DASHBOARD_APPROVAL_CENTER_PATH,
+    )
+
+    return response.data
   },
 }

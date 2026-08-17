@@ -47,6 +47,11 @@ import { ReportExportDetailPage } from '../features/reports/components/ReportExp
 import { ReportsPage } from '../features/reports/components/ReportsPage'
 import { SettingsDetailPage } from '../features/settings/components/SettingsDetailPage'
 import { SettingsPage } from '../features/settings/components/SettingsPage'
+import { FeatureFlagDetailPage } from '../features/release2/components/FeatureFlagDetailPage'
+import { FeatureFlagsPage } from '../features/release2/components/FeatureFlagsPage'
+import { Release2OverviewPage } from '../features/release2/components/Release2OverviewPage'
+import { Release2SettingDetailPage } from '../features/release2/components/Release2SettingDetailPage'
+import { Release2SettingsPage } from '../features/release2/components/Release2SettingsPage'
 import { VendorOnboardingPage } from '../features/vendors/components/VendorOnboardingPage'
 import { VendorsPage } from '../features/vendors/components/VendorsPage'
 import { VendorDetailPage } from '../features/vendors/components/VendorDetailPage'
@@ -367,6 +372,47 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: `${routePaths.settings}/:type/:recordId`,
                     element: <SettingsDetailPage />,
+                  },
+                ],
+              },
+              {
+                // The overview asks the backend for both halves and renders the
+                // permitted one, so it is guarded by login only.
+                element: <PermissionGuard />,
+                children: [
+                  {
+                    path: routePaths.release2Overview,
+                    element: <Release2OverviewPage />,
+                  },
+                ],
+              },
+              {
+                element: (
+                  <PermissionGuard permission={routePermissions.featureFlags} />
+                ),
+                children: [
+                  {
+                    path: routePaths.featureFlags,
+                    element: <FeatureFlagsPage />,
+                  },
+                  {
+                    path: routePaths.featureFlagDetail,
+                    element: <FeatureFlagDetailPage />,
+                  },
+                ],
+              },
+              {
+                element: (
+                  <PermissionGuard permission={routePermissions.release2Settings} />
+                ),
+                children: [
+                  {
+                    path: routePaths.release2Settings,
+                    element: <Release2SettingsPage />,
+                  },
+                  {
+                    path: routePaths.release2SettingDetail,
+                    element: <Release2SettingDetailPage />,
                   },
                 ],
               },
