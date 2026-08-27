@@ -206,20 +206,27 @@ export function canRunOrderAction(
 /** Short enough to sit inside a table row without wrapping. */
 export function compactOrderRowActionLabel(action: OrderActionSelection) {
   if (action.kind === 'UPDATE_STATUS') {
-    if (action.targetStatus === 'PICKUP_SCHEDULED') return 'Schedule pickup'
+    if (action.targetStatus === 'PICKUP_SCHEDULED') return 'Pickup'
+    if (action.targetStatus === 'PICKED_UP_FROM_CUSTOMER') return 'Picked up'
+    if (action.targetStatus === 'HANDED_OVER_TO_VENDOR') return 'Handover'
+    if (action.targetStatus === 'ITEM_RECEIVED_BY_VENDOR') return 'Received'
+    if (action.targetStatus === 'SERVICE_IN_PROGRESS') return 'In progress'
+    if (action.targetStatus === 'SERVICE_COMPLETED') return 'Completed'
     if (action.targetStatus === 'COLLECTED_FROM_VENDOR') return 'Collect'
-    if (action.targetStatus === 'OUT_FOR_DELIVERY') return 'Out for delivery'
-    if (action.targetStatus === 'DELIVERED') return 'Mark delivered'
+    if (action.targetStatus === 'OUT_FOR_DELIVERY') return 'Dispatch'
+    if (action.targetStatus === 'DELIVERED') return 'Deliver'
+    if (action.targetStatus === 'PRICE_REVISION_PENDING_CUSTOMER') return 'Revision'
+    if (action.targetStatus === 'VENDOR_ACCEPTANCE_PENDING') return 'Accept'
 
     return humanizeCode(action.targetStatus)
   }
 
-  if (action.kind === 'CREATE_PROOF_UPLOAD_INTENT') return 'Request proof'
-  if (action.kind === 'INITIATE_REFUND') return 'Start refund'
-  if (action.kind === 'GENERATE_DELIVERY_OTP') return 'Generate OTP'
-  if (action.kind === 'CONFIRM_DELIVERY_OTP') return 'Confirm OTP'
-  if (action.kind === 'ADD_NOTE') return 'Add note'
-  if (action.kind === 'CANCEL') return 'Cancel order'
+  if (action.kind === 'CREATE_PROOF_UPLOAD_INTENT') return 'Proof'
+  if (action.kind === 'INITIATE_REFUND') return 'Refund'
+  if (action.kind === 'GENERATE_DELIVERY_OTP') return 'Get OTP'
+  if (action.kind === 'CONFIRM_DELIVERY_OTP') return 'Verify OTP'
+  if (action.kind === 'ADD_NOTE') return 'Note'
+  if (action.kind === 'CANCEL') return 'Cancel'
 
   return 'Review'
 }

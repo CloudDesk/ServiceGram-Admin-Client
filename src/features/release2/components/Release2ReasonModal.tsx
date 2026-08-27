@@ -57,6 +57,9 @@ interface Release2ReasonModalProps {
   reasonError?: string | null
   /** Extra controls rendered above the reason field. */
   children?: ReactNode
+  /** Offered when the backend reports a stale version, so the admin can
+   *  refresh the record and retry without retyping the reason. */
+  onReload?: () => void
   onClose: () => void
   onSubmit: (reason: string) => void
 }
@@ -69,6 +72,7 @@ export function Release2ReasonModal({
   isDestructive = false,
   isSubmitting,
   onClose,
+  onReload,
   onSubmit,
   reasonError,
   subtitle,
@@ -122,7 +126,7 @@ export function Release2ReasonModal({
             value={reason}
             onChange={setReason}
           />
-          <Release2ErrorNotice error={error} />
+          <Release2ErrorNotice error={error} onReload={onReload} />
 
           <div className="flex justify-end gap-2 border-t border-border pt-3">
             <Button

@@ -126,8 +126,8 @@ function RowActions({
     <div ref={containerRef} className="relative flex items-center justify-end gap-1">
       {primaryAction ? (
         <Button
-          className="h-7 whitespace-nowrap px-2 text-xs"
-          size="sm"
+          className="h-6.5 min-h-0 whitespace-nowrap px-2 text-xs font-medium"
+          size="xs"
           type="button"
           variant={isHighRiskOrderAction(primaryAction) ? 'danger' : 'primary'}
           onClick={() => onAction(order, primaryAction)}
@@ -142,11 +142,11 @@ function RowActions({
             aria-expanded={open}
             aria-haspopup="menu"
             aria-label={`More actions for ${order.publicOrderId}`}
-            className="inline-flex size-7 shrink-0 items-center justify-center rounded-[0.5rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-[0.4rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             type="button"
             onClick={() => setOpen((value) => !value)}
           >
-            <MoreHorizontal className="size-4" />
+            <MoreHorizontal className="size-3.5" />
           </button>
 
           {open ? (
@@ -680,7 +680,7 @@ export function OrdersPage() {
             onAction={openAction}
           />
         )}
-        rowActionsWidth={150}
+        rowActionsWidth={130}
         rows={orders}
         search={search}
         searchPlaceholder="Search order, customer, vendor…"

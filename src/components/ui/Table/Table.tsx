@@ -513,7 +513,8 @@ function DynamicRowActionMenu<T>({
           aria-expanded={open}
           aria-haspopup="menu"
           aria-label="More actions"
-          size="sm"
+          className="size-6.5 min-h-0 p-0"
+          size="xs"
           type="button"
           variant="ghost"
           onClick={(event) => {
@@ -528,7 +529,7 @@ function DynamicRowActionMenu<T>({
             setOpen(true)
           }}
         >
-          <MoreHorizontal className="size-4" />
+          <MoreHorizontal className="size-3.5" />
         </Button>
       </span>
       {menu}
@@ -814,10 +815,10 @@ export function DynamicTable<T>({
                 >
                   {inlineActions.map((action) => (
                     <Button
-                      className="gap-2 whitespace-nowrap"
+                      className="h-6.5 min-h-0 gap-1.5 whitespace-nowrap px-2 text-xs font-medium"
                       disabled={isActionDisabled(action, row)}
                       key={action.key}
-                      size="sm"
+                      size="xs"
                       type="button"
                       variant={action.variant ?? 'ghost'}
                       onClick={(event: MouseEvent<HTMLButtonElement>) => {
@@ -983,8 +984,8 @@ export function DynamicTable<T>({
                             <Button
                               disabled={isActionDisabled(action, row)}
                               key={action.key}
-                              className="gap-2 whitespace-nowrap"
-                              size="sm"
+                              className="h-6.5 min-h-0 gap-1.5 whitespace-nowrap px-2 text-xs font-medium"
+                              size="xs"
                               type="button"
                               variant={action.variant ?? 'ghost'}
                               onClick={(event: MouseEvent<HTMLButtonElement>) => {

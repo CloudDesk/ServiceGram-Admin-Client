@@ -463,6 +463,10 @@ export function FeatureFlagDetailPage() {
             'Archiving is permanent. The flag becomes read-only and stops evaluating.',
           ]}
           onClose={() => setArchiveOpen(false)}
+          onReload={() => {
+            archiveMutation.reset()
+            void flagQuery.refetch()
+          }}
           onSubmit={(reason) => archiveMutation.mutate(reason)}
         />
       ) : null}

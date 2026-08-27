@@ -1416,6 +1416,23 @@ export function OrderDetailPage({
   }
 
   const openSection = (sectionId: OrderSectionId) => {
+    const tabBySectionId: Partial<Record<OrderSectionId, OrderDetailTab>> = {
+      [orderSectionIds.overview]: 'overview',
+      [orderSectionIds.logistics]: 'logistics',
+      [orderSectionIds.finance]: 'finance',
+      [orderSectionIds.history]: 'history',
+      [orderSectionIds.proofMedia]: 'proofs',
+      [orderSectionIds.items]: 'items',
+      [orderSectionIds.notes]: 'notes',
+    }
+
+    const targetTab = tabBySectionId[sectionId]
+
+    if (targetTab && targetTab !== activeTab) {
+      navigate(`${routePaths.orders}/${orderId}/tab/${targetTab}`)
+      return
+    }
+
     const section = document.getElementById(sectionId)
 
     section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1515,8 +1532,8 @@ export function OrderDetailPage({
       </div>
       ) : null}
 
-      <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="min-w-0 space-y-3">
+      <section className="grid w-full items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <div className="w-full min-w-0 space-y-4">
           {activeTab === 'overview' ? (
           <DetailPanel
             description="Core booking, schedule, customer, vendor, and pricing fields."
@@ -1770,7 +1787,7 @@ export function OrderDetailPage({
         </div>
 
         {activeTab === 'overview' ? (
-        <aside className="space-y-3 xl:sticky xl:top-[5.5rem]">
+        <aside className="w-full min-w-0 space-y-4 xl:sticky xl:top-[5.5rem]">
           <RelatedRecordsPanel
             canReadAudit={canReadAudit}
             canReadCustomers={canReadCustomers}

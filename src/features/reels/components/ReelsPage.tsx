@@ -33,6 +33,7 @@ import {
   type ReelActionKind,
   type ReelActionSelection,
 } from './ReelActionModal'
+import { ReelCommentsModerationQueue } from './ReelCommentsModerationQueue'
 
 const REEL_LIST_STORAGE_KEY = 'servicegram.reels.list.v1'
 const DEFAULT_PAGE_SIZE = 50
@@ -121,8 +122,8 @@ function RowActions({
     <div ref={containerRef} className="relative flex items-center justify-end gap-1">
       {primaryAction ? (
         <Button
-          className="h-7 whitespace-nowrap px-2 text-xs"
-          size="sm"
+          className="h-6.5 min-h-0 whitespace-nowrap px-2 text-xs font-medium"
+          size="xs"
           type="button"
           variant="primary"
           onClick={() => onAction(primaryAction, reel)}
@@ -137,11 +138,11 @@ function RowActions({
             aria-expanded={open}
             aria-haspopup="menu"
             aria-label={`More actions for ${reel.publicReelId}`}
-            className="inline-flex size-7 shrink-0 items-center justify-center rounded-[0.5rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-[0.4rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             type="button"
             onClick={() => setOpen((value) => !value)}
           >
-            <MoreHorizontal className="size-4" />
+            <MoreHorizontal className="size-3.5" />
           </button>
 
           {open ? (
@@ -474,7 +475,9 @@ export function ReelsPage() {
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         actionNode={
-          <Button
+          <div className="flex items-center gap-2">
+            <ReelCommentsModerationQueue canModerate={canModerateReels} />
+            <Button
             aria-label="Refresh reels"
             className="h-9"
             disabled={reelsQuery.isLoading}
@@ -490,7 +493,8 @@ export function ReelsPage() {
               )}
             />
             <span className="hidden sm:inline">Refresh</span>
-          </Button>
+            </Button>
+          </div>
         }
         layout="workspace"
         placement="topbar"

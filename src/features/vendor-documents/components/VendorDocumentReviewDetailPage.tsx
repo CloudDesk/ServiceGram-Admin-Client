@@ -215,11 +215,16 @@ function DocumentMeta({
   value: ReactNode
 }) {
   return (
-    <div className="min-w-0 text-xs leading-5">
-      <span className="font-semibold uppercase tracking-normal text-muted">
+    <div className="flex min-w-0 flex-col gap-0.5 text-xs">
+      <span className="text-[0.6875rem] font-semibold uppercase tracking-wider text-muted">
         {label}
       </span>
-      <span className="ml-1 font-medium text-foreground">{value}</span>
+      <span
+        className="truncate font-medium text-foreground"
+        title={typeof value === 'string' ? value : undefined}
+      >
+        {value}
+      </span>
     </div>
   )
 }
@@ -396,7 +401,7 @@ function DocumentCard({
             <p className="mt-0.5 truncate text-xs text-muted">
               {document.fileName ?? document.mediaAssetId ?? 'Media not linked'}
             </p>
-            <div className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-2 xl:grid-cols-4">
               <DocumentMeta label="Media" value={mediaLabel} />
               <DocumentMeta
                 label="Updated"

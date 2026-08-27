@@ -14,3 +14,6 @@ export const REEL_PAUSE_PATH = (reelId: string) =>
 export const REEL_REMOVE_PATH = (reelId: string) =>
   `/admin/reels/${reelId}/remove`
 export const REEL_DELETE_PATH = (reelId: string) => `/admin/reels/${reelId}`
+export const REEL_COMMENTS_PATH = '/admin/reel-comments'
+export const REEL_COMMENT_MODERATION_PATH = (commentId: string) =>
+  `/admin/reel-comments/${encodeURIComponent(commentId)}/moderation`

@@ -38,7 +38,9 @@ function SettingRow({ setting }: { setting: Release2Setting }) {
         to={`${routePaths.release2Settings}/${encodeURIComponent(setting.settingKey)}`}
       >
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
+          {/* min-w-0 on the inner row too, or the badges hold the row open
+              past the viewport and the value gets clipped on small screens. */}
+          <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-medium text-foreground">
               {setting.displayName}
             </span>
@@ -54,7 +56,7 @@ function SettingRow({ setting }: { setting: Release2Setting }) {
 
         <span
           className={cn(
-            'shrink-0 text-sm font-semibold tabular-nums text-foreground',
+            'max-w-[45%] truncate text-sm font-semibold tabular-nums text-foreground',
             setting.isValueMasked && 'text-muted',
           )}
         >
@@ -227,7 +229,9 @@ export function Release2SettingsPage() {
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
           {filteredGroups.map((group) => (
-            <div id={group.uiGroup} key={group.uiGroup}>
+            // Grid items default to min-width:auto and would otherwise be
+            // sized by the longest setting key, pushing rows past the viewport.
+            <div className="min-w-0" id={group.uiGroup} key={group.uiGroup}>
               <Card className="!p-0">
                 <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
                   <h2 className="text-sm font-semibold text-foreground">

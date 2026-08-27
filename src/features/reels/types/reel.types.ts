@@ -2,6 +2,7 @@ import type { ApiErrorDetails } from '../../../types/api.types'
 
 export type ReelContentType = 'BEFORE_AFTER' | 'SERVICE_DEMO' | 'NEW_OFFER' | 'INTRODUCTION'
 export type ReelUploaderType = 'VENDOR' | 'INFLUENCER'
+export type ReelRelationType = 'ORIGINAL' | 'DUET' | 'STITCH'
 export type ReelUploadStatus =
   | 'UPLOAD_REQUESTED'
   | 'UPLOADING'
@@ -114,6 +115,12 @@ export interface AdminReel {
   reelId: string
   publicReelId: string
   uploaderType?: ReelUploaderType
+  relation?: {
+    type: ReelRelationType
+    parentReelId: string | null
+    originalVendorId: string | null
+    attributedInfluencerCustomerId: string | null
+  }
   influencer?: AdminReelInfluencer | null
   contentType: ReelContentType
   caption: string | null
@@ -206,6 +213,84 @@ export interface AdminReelsListResponse extends AdminReelApiResponse<AdminReel[]
 export type AdminReelDetailResponse = AdminReelApiResponse<AdminReel>
 export type AdminReelActionResponse = AdminReelApiResponse<AdminReel>
 export type AdminReelDeleteResponse = AdminReelApiResponse<AdminReelDeleteResult>
+
+export type AdminReelCommentStatus =
+  | 'VISIBLE'
+  | 'KEYWORD_FILTERED'
+  | 'REPORTED'
+  | 'HIDDEN'
+  | 'REMOVED'
+
+export interface AdminReelComment {
+  commentId: string
+  reelId: string
+  parentCommentId: string | null
+  depth: 0 | 1
+  body: string
+  status: AdminReelCommentStatus
+  isPinned: boolean
+  isOwnerReply: boolean
+  reportCount: number
+  version: number
+  author: {
+    type: 'CUSTOMER' | 'VENDOR'
+    displayName: string
+    isCurrentActor: boolean
+  }
+  createdAt: string
+  updatedAt: string
+  availableActions: string[]
+  replies: AdminReelComment[]
+  reel: {
+    reelId: string
+    publicReelId: string
+    caption: string | null
+    thumbnailUrl: string | null
+    vendorId: string | null
+    vendorName: string | null
+  }
+  moderation: {
+    matchedKeywords: string[]
+    reportCount: number
+    reason: string | null
+    moderatedAt: string | null
+  }
+}
+
+export interface AdminReelCommentsSummary {
+  totalItems: number
+  keywordFiltered: number
+  reported: number
+  hidden: number
+  removed: number
+}
+
+export interface AdminReelCommentsQueryParams {
+  page?: number
+  limit?: number
+  search?: string
+  status?: AdminReelCommentStatus
+  reelId?: string
+  vendorId?: string
+}
+
+export interface AdminReelCommentsListResponse
+  extends AdminReelApiResponse<AdminReelComment[]> {
+  data: AdminReelComment[]
+  pagination: AdminReelsPagination
+  summary: AdminReelCommentsSummary
+}
+
+export type AdminReelCommentModerationAction = 'HIDE' | 'REMOVE' | 'RESTORE'
+
+export interface AdminReelCommentModerationPayload {
+  action: AdminReelCommentModerationAction
+  expectedVersion: number
+  reason: string
+}
+
+export type AdminReelCommentActionResponse =
+  AdminReelApiResponse<AdminReelComment>
 
 export interface AdminReelApiErrorDetails extends ApiErrorDetails {
   fieldErrors?: {

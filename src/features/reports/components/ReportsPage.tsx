@@ -1643,7 +1643,7 @@ export function ReportsPage({
 
         <section
           className={cn(
-            'grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[18rem_minmax(0,1fr)] xl:items-stretch xl:overflow-hidden',
+            'grid min-h-[28rem] gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[18rem_minmax(0,1fr)] xl:items-stretch xl:overflow-hidden',
             filtersCollapsed && 'xl:grid-cols-[4.25rem_minmax(0,1fr)]',
           )}
         >
@@ -1910,7 +1910,7 @@ export function ReportsPage({
             )}
           </aside>
 
-          <main id="report-rows" className="scroll-mt-4 flex min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
+          <main id="report-rows" className="scroll-mt-4 flex min-h-[26rem] min-w-0 flex-col self-stretch overflow-hidden rounded-[0.875rem] border border-border bg-surface shadow-surface xl:min-h-0">
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3">
               <div>
                 <h2 className="text-base font-semibold text-foreground">
@@ -2089,8 +2089,8 @@ export function ReportsPage({
                 <EmptyState description="No visible rows match the table search." title="No matching rows" />
               </div>
             ) : (
-              <div className="flex flex-col xl:min-h-0 xl:flex-1">
-                <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="min-h-[20rem] overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
                   <div
                     className="min-w-0 xl:min-w-[var(--report-grid-min-width)]"
                     style={reportGridStyle}

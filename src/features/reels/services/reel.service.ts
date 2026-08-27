@@ -2,6 +2,8 @@ import { buildApiUrl } from '../../../config/api'
 import {
   REEL_APPROVE_PATH,
   REEL_DELETE_PATH,
+  REEL_COMMENTS_PATH,
+  REEL_COMMENT_MODERATION_PATH,
   REEL_DETAIL_PATH,
   REEL_LIVE_LIST_PATH,
   REEL_PAUSE_PATH,
@@ -19,6 +21,10 @@ import type {
   AdminReelDetailResponse,
   AdminReelsListResponse,
   AdminReelsQueryParams,
+  AdminReelCommentsListResponse,
+  AdminReelCommentsQueryParams,
+  AdminReelCommentActionResponse,
+  AdminReelCommentModerationPayload,
   ReelDeletePayload,
   ReelOptionalReasonPayload,
   ReelRequiredReasonPayload,
@@ -56,6 +62,16 @@ function postJson<TPayload>(payload: TPayload) {
 function deleteJson<TPayload>(payload: TPayload) {
   return {
     method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  }
+}
+
+function patchJson<TPayload>(payload: TPayload) {
+  return {
+    method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
     },
@@ -115,6 +131,29 @@ async function getReelById(reelId: string): Promise<AdminReelDetailResponse> {
   )
 
   return parseJsonResponse<AdminReelDetailResponse>(response)
+}
+
+async function getReelComments(
+  query: AdminReelCommentsQueryParams = {},
+): Promise<AdminReelCommentsListResponse> {
+  const queryString = buildQueryParams(query)
+  const response = await apiClient.request(
+    buildApiUrl(queryString ? `${REEL_COMMENTS_PATH}?${queryString}` : REEL_COMMENTS_PATH),
+  )
+
+  return parseJsonResponse<AdminReelCommentsListResponse>(response)
+}
+
+async function moderateReelComment(
+  commentId: string,
+  payload: AdminReelCommentModerationPayload,
+): Promise<AdminReelCommentActionResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(REEL_COMMENT_MODERATION_PATH(commentId)),
+    patchJson(payload),
+  )
+
+  return parseJsonResponse<AdminReelCommentActionResponse>(response)
 }
 
 async function approveReel(
@@ -194,6 +233,8 @@ export const reelService = {
   getLiveReels,
   getVendorReels,
   getReelById,
+  getReelComments,
+  moderateReelComment,
   approveReel,
   rejectReel,
   requestReelEdit,

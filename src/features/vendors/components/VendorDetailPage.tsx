@@ -100,6 +100,7 @@ import {
   type VendorActionSelection,
 } from "./VendorActionModal";
 import { VendorProfileEditModal } from "./VendorProfileEditModal";
+import { VendorAnalyticsPanel } from "./VendorAnalyticsPanel";
 import {
   VendorServiceActionModal,
   type VendorServiceActionFormValues,
@@ -1254,6 +1255,7 @@ function VendorReviewJumpPanel({
 
 export type VendorDetailTab =
   | 'overview'
+  | 'analytics'
   | 'documents'
   | 'payout-account'
   | 'payouts'
@@ -1264,6 +1266,7 @@ export type VendorDetailTab =
 
 const VENDOR_DETAIL_TABS: VendorDetailTab[] = [
   'overview',
+  'analytics',
   'documents',
   'payout-account',
   'payouts',
@@ -1300,6 +1303,7 @@ function VendorDetailSectionNav({
 }) {
   const items = [
     { key: "overview", label: "Overview" },
+    { key: "analytics", label: "Analytics" },
     { key: "documents", label: "Documents", count: documentCount },
     { key: "payout-account", label: "Payout account", count: bankAccountCount },
     canReadPayouts
@@ -3109,6 +3113,10 @@ export function VendorDetailPage({
           vendor={vendor}
         />
       </section>
+      ) : null}
+
+      {activeTab === 'analytics' ? (
+        <VendorAnalyticsPanel vendorId={vendorId as string} />
       ) : null}
 
       {activeTab === 'documents' ? (

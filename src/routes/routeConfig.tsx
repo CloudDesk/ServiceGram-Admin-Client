@@ -1,73 +1,74 @@
-import type { RouteObject } from 'react-router-dom'
-import { routePaths } from '../config/routes'
-import { routePermissions } from '../config/routePermissions'
-import { AccessDeniedPage } from './AccessDeniedPage'
-import { NotFoundPage } from './NotFoundPage'
-import { AdminUserDetailPage } from '../features/admin-users/components/AdminUserDetailPage'
-import { AdminUsersPage } from '../features/admin-users/components/AdminUsersPage'
-import { CreateAdminUserPage } from '../features/admin-users/components/CreateAdminUserPage'
-import { ProfilePage } from '../features/admin-users/components/ProfilePage'
-import { CreateRolePage } from '../features/rbac/components/CreateRolePage'
-import { RoleDetailPage } from '../features/rbac/components/RoleDetailPage'
-import { RolesPage } from '../features/rbac/components/RolesPage'
-import { LoginPage } from '../features/auth/pages/LoginPage'
-import { ForgotPasswordPage } from '../features/auth/pages/ForgotPasswordPage'
-import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
-import { AuditLogsPage } from '../features/audit/components/AuditLogsPage'
-import { ApprovalsPage } from '../features/approvals/components/ApprovalsPage'
-import { ContentDetailPage } from '../features/content/components/ContentDetailPage'
-import { ContentPage } from '../features/content/components/ContentPage'
-import { CreateContentPage } from '../features/content/components/CreateContentPage'
-import { CustomerAppHomePage } from '../features/content/components/CustomerAppHomePage'
-import { CustomerAppHomeSlideDetailPage } from '../features/content/components/CustomerAppHomeSlideDetailPage'
-import { DashboardPage } from '../features/dashboard/pages/DashboardPage'
-import { CreateMarketingCampaignPage } from '../features/marketing-campaigns/components/CreateMarketingCampaignPage'
-import { MarketingCampaignDetailPage } from '../features/marketing-campaigns/components/MarketingCampaignDetailPage'
-import { MarketingCampaignsPage } from '../features/marketing-campaigns/components/MarketingCampaignsPage'
-import { InfluencerDetailPage } from '../features/influencers/components/InfluencerDetailPage'
-import { InfluencersPage } from '../features/influencers/components/InfluencersPage'
-import { CustomerDetailPage } from '../features/customers/components/CustomerDetailPage'
-import { CustomersPage } from '../features/customers/components/CustomersPage'
-import { ManualLogisticsPage } from '../features/orders/components/ManualLogisticsPage'
-import { OrderDetailPage } from '../features/orders/components/OrderDetailPage'
-import { OrdersPage } from '../features/orders/components/OrdersPage'
-import { NotificationComposerPage } from '../features/notifications/components/NotificationComposerPage'
-import { NotificationDetailPage } from '../features/notifications/components/NotificationDetailPage'
-import { NotificationsPage } from '../features/notifications/components/NotificationsPage'
-import { PaymentDetailPage } from '../features/payments/components/PaymentDetailPage'
-import { PaymentsPage } from '../features/payments/components/PaymentsPage'
-import { RefundDetailPage } from '../features/payments/components/RefundDetailPage'
-import { RefundsPage } from '../features/payments/components/RefundsPage'
-import { PayoutDetailPage } from '../features/payouts/components/PayoutDetailPage'
-import { PayoutsPage } from '../features/payouts/components/PayoutsPage'
-import { ReelDetailPage } from '../features/reels/components/ReelDetailPage'
-import { ReelsPage } from '../features/reels/components/ReelsPage'
-import { ReportDetailPage } from '../features/reports/components/ReportDetailPage'
-import { ReportExportDetailPage } from '../features/reports/components/ReportExportDetailPage'
-import { ReportsPage } from '../features/reports/components/ReportsPage'
-import { SettingsDetailPage } from '../features/settings/components/SettingsDetailPage'
-import { SettingsPage } from '../features/settings/components/SettingsPage'
-import { FeatureFlagDetailPage } from '../features/release2/components/FeatureFlagDetailPage'
-import { FeatureFlagsPage } from '../features/release2/components/FeatureFlagsPage'
-import { Release2OverviewPage } from '../features/release2/components/Release2OverviewPage'
-import { Release2SettingDetailPage } from '../features/release2/components/Release2SettingDetailPage'
-import { Release2SettingsPage } from '../features/release2/components/Release2SettingsPage'
-import { VendorOnboardingPage } from '../features/vendors/components/VendorOnboardingPage'
-import { VendorsPage } from '../features/vendors/components/VendorsPage'
-import { VendorDetailPage } from '../features/vendors/components/VendorDetailPage'
-import { VendorDocumentReviewDetailPage } from '../features/vendor-documents/components/VendorDocumentReviewDetailPage'
-import { VendorDocumentsPage } from '../features/vendor-documents/components/VendorDocumentsPage'
-import { AdminLayout } from '../layouts/AdminLayout'
-import { ModuleLayout } from '../layouts/ModuleLayout'
-import { ProtectedRoute } from './ProtectedRoute'
-import { PublicRoute } from './PublicRoute'
-import { PermissionGuard } from '../components/ui/PermissionGuard'
+import type { RouteObject } from "react-router-dom";
+import { routePaths } from "../config/routes";
+import { routePermissions } from "../config/routePermissions";
+import { AccessDeniedPage } from "./AccessDeniedPage";
+import { NotFoundPage } from "./NotFoundPage";
+import { AdminUserDetailPage } from "../features/admin-users/components/AdminUserDetailPage";
+import { AdminUsersPage } from "../features/admin-users/components/AdminUsersPage";
+import { CreateAdminUserPage } from "../features/admin-users/components/CreateAdminUserPage";
+import { ProfilePage } from "../features/admin-users/components/ProfilePage";
+import { CreateRolePage } from "../features/rbac/components/CreateRolePage";
+import { RoleDetailPage } from "../features/rbac/components/RoleDetailPage";
+import { RolesPage } from "../features/rbac/components/RolesPage";
+import { LoginPage } from "../features/auth/pages/LoginPage";
+import { ForgotPasswordPage } from "../features/auth/pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "../features/auth/pages/ResetPasswordPage";
+import { AuditLogsPage } from "../features/audit/components/AuditLogsPage";
+import { ApprovalsPage } from "../features/approvals/components/ApprovalsPage";
+import { ContentDetailPage } from "../features/content/components/ContentDetailPage";
+import { ContentPage } from "../features/content/components/ContentPage";
+import { CreateContentPage } from "../features/content/components/CreateContentPage";
+import { CustomerAppHomePage } from "../features/content/components/CustomerAppHomePage";
+import { CustomerAppHomeSlideDetailPage } from "../features/content/components/CustomerAppHomeSlideDetailPage";
+import { DashboardPage } from "../features/dashboard/pages/DashboardPage";
+import { CreateMarketingCampaignPage } from "../features/marketing-campaigns/components/CreateMarketingCampaignPage";
+import { MarketingCampaignDetailPage } from "../features/marketing-campaigns/components/MarketingCampaignDetailPage";
+import { MarketingCampaignsPage } from "../features/marketing-campaigns/components/MarketingCampaignsPage";
+import { InfluencerDetailPage } from "../features/influencers/components/InfluencerDetailPage";
+import { InfluencersPage } from "../features/influencers/components/InfluencersPage";
+import { CustomerDetailPage } from "../features/customers/components/CustomerDetailPage";
+import { CustomersPage } from "../features/customers/components/CustomersPage";
+import { ManualLogisticsPage } from "../features/orders/components/ManualLogisticsPage";
+import { OrderDetailPage } from "../features/orders/components/OrderDetailPage";
+import { OrdersPage } from "../features/orders/components/OrdersPage";
+import { NotificationComposerPage } from "../features/notifications/components/NotificationComposerPage";
+import { NotificationDetailPage } from "../features/notifications/components/NotificationDetailPage";
+import { NotificationsPage } from "../features/notifications/components/NotificationsPage";
+import { PaymentDetailPage } from "../features/payments/components/PaymentDetailPage";
+import { PaymentsPage } from "../features/payments/components/PaymentsPage";
+import { RefundDetailPage } from "../features/payments/components/RefundDetailPage";
+import { RefundsPage } from "../features/payments/components/RefundsPage";
+import { PayoutDetailPage } from "../features/payouts/components/PayoutDetailPage";
+import { PayoutsPage } from "../features/payouts/components/PayoutsPage";
+import { ReelDetailPage } from "../features/reels/components/ReelDetailPage";
+import { ReelsPage } from "../features/reels/components/ReelsPage";
+import { ReportDetailPage } from "../features/reports/components/ReportDetailPage";
+import { ReportExportDetailPage } from "../features/reports/components/ReportExportDetailPage";
+import { ReportsPage } from "../features/reports/components/ReportsPage";
+import { SettingsDetailPage } from "../features/settings/components/SettingsDetailPage";
+import { SettingsPage } from "../features/settings/components/SettingsPage";
+import { FeatureFlagDetailPage } from "../features/release2/components/FeatureFlagDetailPage";
+import { FeatureFlagsPage } from "../features/release2/components/FeatureFlagsPage";
+import { Release2OverviewPage } from "../features/release2/components/Release2OverviewPage";
+import { Release2SettingDetailPage } from "../features/release2/components/Release2SettingDetailPage";
+import { Release2SettingsPage } from "../features/release2/components/Release2SettingsPage";
+import { CustomerRetentionPage } from "../features/customer-retention/components/CustomerRetentionPage";
+import { VendorOnboardingPage } from "../features/vendors/components/VendorOnboardingPage";
+import { VendorsPage } from "../features/vendors/components/VendorsPage";
+import { VendorDetailPage } from "../features/vendors/components/VendorDetailPage";
+import { VendorDocumentReviewDetailPage } from "../features/vendor-documents/components/VendorDocumentReviewDetailPage";
+import { VendorDocumentsPage } from "../features/vendor-documents/components/VendorDocumentsPage";
+import { AdminLayout } from "../layouts/AdminLayout";
+import { ModuleLayout } from "../layouts/ModuleLayout";
+import { ProtectedRoute } from "./ProtectedRoute";
+import { PublicRoute } from "./PublicRoute";
+import { PermissionGuard } from "../components/ui/PermissionGuard";
 
 export const appRoutes: RouteObject[] = [
   {
     element: <PublicRoute />,
     children: [
-      { path: '/', element: <LoginPage /> },
+      { path: "/", element: <LoginPage /> },
       { path: routePaths.login, element: <LoginPage /> },
       { path: routePaths.forgotPassword, element: <ForgotPasswordPage /> },
       { path: routePaths.resetPassword, element: <ResetPasswordPage /> },
@@ -83,15 +84,25 @@ export const appRoutes: RouteObject[] = [
             element: <ModuleLayout />,
             children: [
               {
-                element: <PermissionGuard permission={routePermissions.dashboard} />,
-                children: [{ path: routePaths.dashboard, element: <DashboardPage /> }],
+                element: (
+                  <PermissionGuard permission={routePermissions.dashboard} />
+                ),
+                children: [
+                  { path: routePaths.dashboard, element: <DashboardPage /> },
+                ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.approvals} />,
-                children: [{ path: routePaths.approvals, element: <ApprovalsPage /> }],
+                element: (
+                  <PermissionGuard permission={routePermissions.approvals} />
+                ),
+                children: [
+                  { path: routePaths.approvals, element: <ApprovalsPage /> },
+                ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.adminUsers} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.adminUsers} />
+                ),
                 children: [
                   {
                     path: routePaths.adminUsers,
@@ -108,7 +119,9 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.roles} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.roles} />
+                ),
                 children: [
                   {
                     path: routePaths.roles,
@@ -126,10 +139,14 @@ export const appRoutes: RouteObject[] = [
               },
               {
                 element: <PermissionGuard />,
-                children: [{ path: routePaths.profile, element: <ProfilePage /> }],
+                children: [
+                  { path: routePaths.profile, element: <ProfilePage /> },
+                ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.customers} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.customers} />
+                ),
                 children: [
                   {
                     path: routePaths.customers,
@@ -146,7 +163,9 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.vendors} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.vendors} />
+                ),
                 children: [
                   {
                     path: routePaths.vendors,
@@ -184,7 +203,9 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.orders} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.orders} />
+                ),
                 children: [
                   {
                     path: routePaths.orders,
@@ -214,7 +235,9 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.payments} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.payments} />
+                ),
                 children: [
                   {
                     path: routePaths.payments,
@@ -227,7 +250,9 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.refunds} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.refunds} />
+                ),
                 children: [
                   {
                     path: routePaths.refunds,
@@ -240,7 +265,9 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.payouts} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.payouts} />
+                ),
                 children: [
                   {
                     path: routePaths.payouts,
@@ -253,7 +280,9 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.reels} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.reels} />
+                ),
                 children: [
                   {
                     path: routePaths.reels,
@@ -270,7 +299,9 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.influencers} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.influencers} />
+                ),
                 children: [
                   {
                     path: routePaths.influencers,
@@ -287,7 +318,11 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.notifications} />,
+                element: (
+                  <PermissionGuard
+                    permission={routePermissions.notifications}
+                  />
+                ),
                 children: [
                   {
                     path: routePaths.notifications,
@@ -304,7 +339,9 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.content} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.content} />
+                ),
                 children: [
                   {
                     path: routePaths.content,
@@ -329,7 +366,11 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.marketingCampaigns} />,
+                element: (
+                  <PermissionGuard
+                    permission={routePermissions.marketingCampaigns}
+                  />
+                ),
                 children: [
                   {
                     path: routePaths.marketingCampaigns,
@@ -346,7 +387,9 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.reports} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.reports} />
+                ),
                 children: [
                   {
                     path: routePaths.reports,
@@ -363,7 +406,9 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.settings} />,
+                element: (
+                  <PermissionGuard permission={routePermissions.settings} />
+                ),
                 children: [
                   {
                     path: routePaths.settings,
@@ -403,7 +448,9 @@ export const appRoutes: RouteObject[] = [
               },
               {
                 element: (
-                  <PermissionGuard permission={routePermissions.release2Settings} />
+                  <PermissionGuard
+                    permission={routePermissions.release2Settings}
+                  />
                 ),
                 children: [
                   {
@@ -417,7 +464,18 @@ export const appRoutes: RouteObject[] = [
                 ],
               },
               {
-                element: <PermissionGuard permission={routePermissions.audit} />,
+                element: <PermissionGuard />,
+                children: [
+                  {
+                    path: routePaths.customerRetention,
+                    element: <CustomerRetentionPage />,
+                  },
+                ],
+              },
+              {
+                element: (
+                  <PermissionGuard permission={routePermissions.audit} />
+                ),
                 children: [
                   {
                     path: routePaths.audit,
@@ -433,5 +491,5 @@ export const appRoutes: RouteObject[] = [
       { path: routePaths.notFound, element: <NotFoundPage /> },
     ],
   },
-  { path: '*', element: <NotFoundPage /> },
-]
+  { path: "*", element: <NotFoundPage /> },
+];

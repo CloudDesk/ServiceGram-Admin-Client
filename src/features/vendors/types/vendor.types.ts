@@ -601,6 +601,126 @@ export interface VendorOverview {
 
 export type VendorOverviewResponse = VendorApiResponse<VendorOverview>
 
+export type VendorAnalyticsPeriod = '7D' | '30D' | '90D' | 'THIS_MONTH'
+
+export interface VendorAnalyticsOverview {
+  vendor: {
+    vendorId: string
+    publicVendorId: string
+    shopName: string
+    vendorStatus: string
+    onboardingStatus: string
+    city: string
+    zoneId?: string | null
+  }
+  window: {
+    period: VendorAnalyticsPeriod | 'CUSTOM'
+    timezone: string
+    dateFrom: string
+    dateTo: string
+    previousDateFrom: string
+    previousDateTo: string
+    dayCount: number
+  }
+  orders: {
+    total: number
+    completed: number
+    cancelled: number
+    completionRatePercent: number
+    cancellationRatePercent: number
+    averageFulfilmentHours: number
+    daily: {
+      date: string
+      orders: number
+      completed: number
+      cancelled: number
+    }[]
+    weekly: { weekStart: string; orders: number }[]
+    monthly: { month: string; orders: number }[]
+    peakBookingHours: { hour: number; orders: number }[]
+    peakBookingDays: {
+      dayOfWeek: string
+      dayIndex: number
+      orders: number
+    }[]
+  }
+  revenue: {
+    currency: string
+    grossRevenuePaise: number
+    commissionPaise: number
+    logisticsDeductionPaise: number
+    adjustmentPaise: number
+    netRevenuePaise: number
+    averageOrderValuePaise: number
+    daily: {
+      date: string
+      grossRevenuePaise: number
+      netRevenuePaise: number
+    }[]
+    byCategory: {
+      categoryId?: string | null
+      categoryName: string
+      grossRevenuePaise: number
+      netRevenuePaise: number
+      orderCount: number
+    }[]
+  }
+  customers: {
+    unique: number
+    new: number
+    returning: number
+    repeatCustomerRatePercent: number
+    topCustomers: {
+      customerId: string
+      fullName?: string | null
+      bookingCount: number
+      lifetimeBookingValuePaise: number
+      lastBookedAt?: string | null
+    }[]
+  }
+  content: {
+    views: number
+    bookings: number
+    conversionRatePercent: number
+    averageWatchTimeMs: number
+    topReels: {
+      reelId: string
+      publicReelId: string
+      caption?: string | null
+      views: number
+      bookings: number
+      conversionRatePercent: number
+      averageWatchTimeMs: number
+    }[]
+  }
+  comparison: {
+    orderChangePercent?: number | null
+    grossRevenueChangePercent?: number | null
+    monthOverMonth: {
+      currentDateFrom: string
+      currentDateTo: string
+      previousDateFrom: string
+      previousDateTo: string
+      currentOrders: number
+      previousOrders: number
+      orderChangePercent?: number | null
+      currentGrossRevenuePaise: number
+      previousGrossRevenuePaise: number
+      grossRevenueChangePercent?: number | null
+    }
+  }
+  snapshot: {
+    cacheStatus: 'HIT' | 'MISS' | 'REFRESHED'
+    generatedAt: string
+    expiresAt: string
+    refreshAvailable: boolean
+  }
+  warnings?: string[]
+}
+
+export type VendorAnalyticsOverviewResponse =
+  VendorApiResponse<VendorAnalyticsOverview>
+
 export type VendorServiceActionResponse = VendorApiResponse<VendorServiceRecord>
 
 export interface VendorApiErrorDetails extends ApiErrorDetails {

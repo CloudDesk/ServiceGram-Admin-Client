@@ -15,9 +15,10 @@ const buttonVariants = cva(
         ghost: 'bg-transparent text-foreground hover:bg-secondary',
       },
       size: {
-        sm: 'min-h-9 px-3 text-sm',
-        md: 'min-h-11 px-4',
-        lg: 'min-h-12 px-5 text-base',
+        xs: 'h-6.5 min-h-0 px-2 text-xs rounded-[0.4rem]',
+        sm: 'h-7.5 min-h-0 px-2.5 text-xs',
+        md: 'min-h-10 px-4 text-sm',
+        lg: 'min-h-11 px-5 text-base',
       },
     },
     defaultVariants: {

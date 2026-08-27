@@ -1120,6 +1120,37 @@ export function ReelDetailPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <DetailField label="Reel ID" value={reel.reelId} />
             <DetailField label="Public Reel ID" value={reel.publicReelId} />
+            <DetailField
+              label="Creation Type"
+              value={humanizeCode(reel.relation?.type ?? 'ORIGINAL')}
+            />
+            {reel.relation?.parentReelId ? (
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase text-muted">
+                  Parent Reel
+                </p>
+                <button
+                  className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-border px-3 py-2 text-left text-sm font-semibold text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  onClick={() =>
+                    navigate(`${routePaths.reels}/${reel.relation?.parentReelId}`)
+                  }
+                  type="button"
+                >
+                  {reel.relation.parentReelId}
+                  <ArrowUpRight className="size-4 shrink-0" />
+                </button>
+              </div>
+            ) : (
+              <DetailField label="Parent Reel" value="Not applicable" />
+            )}
+            <DetailField
+              label="Original Vendor ID"
+              value={reel.relation?.originalVendorId}
+            />
+            <DetailField
+              label="Attributed Influencer Customer ID"
+              value={reel.relation?.attributedInfluencerCustomerId}
+            />
             <DetailField label="Content Type" value={humanizeCode(reel.contentType)} />
             <DetailField label="Caption" value={reel.caption} />
             <DetailField label="Price Indicator" value={reel.priceIndicator} />

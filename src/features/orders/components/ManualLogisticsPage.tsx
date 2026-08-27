@@ -40,6 +40,7 @@ import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
 import { orderService } from '../services/order.service'
+import { compactOrderRowActionLabel } from '../orderPresenters'
 import {
   OrderActionModal,
   type OrderActionFormValues,
@@ -334,9 +335,8 @@ function mapRecommendedAction(order: AdminOrderSummary): OrderActionSelection | 
 }
 
 function actionLabel(action: OrderActionSelection | null) {
-  if (!action) return 'Open logistics'
-  if (action.kind === 'UPDATE_STATUS') return `Mark ${humanizeCode(action.targetStatus)}`
-  return humanizeCode(action.kind)
+  if (!action) return 'Logistics'
+  return compactOrderRowActionLabel(action)
 }
 
 function canRunAction(

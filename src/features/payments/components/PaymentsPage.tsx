@@ -457,8 +457,8 @@ export function PaymentsPage() {
         rowActions={(payment) =>
           canReconcile && canReconcilePayment(payment) ? (
             <Button
-              className="h-7 whitespace-nowrap px-2 text-xs"
-              size="sm"
+              className="h-6.5 min-h-0 whitespace-nowrap px-2 text-xs font-medium"
+              size="xs"
               type="button"
               variant="primary"
               onClick={() => {

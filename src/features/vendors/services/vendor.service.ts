@@ -11,6 +11,7 @@ import {
   VENDOR_LIST_PATH,
   VENDOR_ONBOARDING_QUEUE_PATH,
   VENDOR_OVERVIEW_PATH,
+  VENDOR_ANALYTICS_OVERVIEW_PATH,
   VENDOR_REACTIVATE_PATH,
   VENDOR_REJECT_BANK_ACCOUNT_PATH,
   VENDOR_REJECT_DOCUMENT_PATH,
@@ -44,6 +45,8 @@ import type {
   VendorOnboardingQueueResponse,
   VendorOptionalReasonPayload,
   VendorOverviewResponse,
+  VendorAnalyticsOverviewResponse,
+  VendorAnalyticsPeriod,
   VendorProfileUpdatePayload,
   VendorRequiredReasonPayload,
   VendorRequestDocumentsPayload,
@@ -167,6 +170,24 @@ async function getVendorOverview(
     buildApiUrl(VENDOR_OVERVIEW_PATH(vendorId)),
   )
   return parseJsonResponse<VendorOverviewResponse>(response)
+}
+
+async function getVendorAnalytics(
+  vendorId: string,
+  period: VendorAnalyticsPeriod = '30D',
+  refresh = false,
+): Promise<VendorAnalyticsOverviewResponse> {
+  const queryString = buildQueryParams({
+    period,
+    refresh: refresh ? 'true' : undefined,
+    timezone: 'Asia/Kolkata',
+    topLimit: 5,
+  })
+  const response = await apiClient.request(
+    buildApiUrl(`${VENDOR_ANALYTICS_OVERVIEW_PATH(vendorId)}?${queryString}`),
+  )
+
+  return parseJsonResponse<VendorAnalyticsOverviewResponse>(response)
 }
 
 async function updateVendorProfile(
@@ -492,6 +513,7 @@ export const vendorService = {
   getVendorById,
   getVendorDocumentDownloadTarget,
   getVendorOverview,
+  getVendorAnalytics,
   updateVendorProfile,
   createVendorBrandLogoUploadIntent,
   confirmVendorBrandLogoUpload,

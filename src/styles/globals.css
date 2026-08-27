@@ -1402,25 +1402,25 @@
 @media (max-width: 1600px) and (min-width: 1024px) {
   .auth-compact-shell {
     max-width: 92.5rem;
-    grid-template-columns: minmax(45rem, 1fr) 31.25rem;
-    column-gap: 3rem;
+    grid-template-columns: minmax(0, 1fr) minmax(24rem, 30rem);
+    column-gap: clamp(2rem, 3vw, 3rem);
   }
 
   .auth-login-hero {
-    max-width: 55rem;
+    max-width: 52rem;
   }
 
   .auth-hero-title {
-    font-size: clamp(3.125rem, 4.4vw, 4.375rem);
+    font-size: clamp(2.5rem, 3.8vw, 4rem);
   }
 
   .auth-hero-visual-card {
-    width: min(100%, 53.125rem);
-    height: clamp(28rem, 52vh, 32rem);
+    width: min(100%, 50rem);
+    height: clamp(22rem, 46vh, 30rem);
   }
 
   .auth-compact-form {
-    max-width: 31.25rem;
+    max-width: 30rem;
   }
 }
 

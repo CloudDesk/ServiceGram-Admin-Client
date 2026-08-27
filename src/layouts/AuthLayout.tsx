@@ -8,7 +8,7 @@ export function AuthLayout({ children }: PropsWithChildren) {
       <div className="auth-soft-shape auth-soft-shape-primary absolute left-[8%] top-[10%] hidden h-[21.25rem] w-[21.25rem] rounded-full blur-[28px] lg:block" />
       <div className="auth-soft-shape auth-soft-shape-secondary auth-soft-shape-delayed absolute bottom-[12%] right-[8%] hidden h-[17.5rem] w-[17.5rem] rounded-full blur-[28px] lg:block" />
 
-      <div className="auth-compact-shell relative z-10 grid w-full max-w-[102.5rem] items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(30rem,32rem)] lg:gap-12 xl:gap-14">
+      <div className="auth-compact-shell relative z-10 grid w-full max-w-[100rem] items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,30rem)] lg:gap-10 xl:gap-12">
         <section className="auth-login-hero flex min-w-0 flex-col justify-center">
           <h1 className="auth-hero-title max-w-[61.25rem] font-semibold leading-[0.92] tracking-normal text-[color:var(--sg-color-auth-title)]">
             One command center to run your{" "}
@@ -29,7 +29,7 @@ export function AuthLayout({ children }: PropsWithChildren) {
         </section>
 
         <section className="relative flex items-center justify-start">
-          <div className="auth-compact-form auth-login-card relative w-full max-w-[32rem] overflow-hidden rounded-[2.25rem] p-6 backdrop-blur-[36px] sm:p-8">
+          <div className="auth-compact-form auth-login-card relative w-full max-w-[30rem] overflow-hidden rounded-[2.25rem] p-6 backdrop-blur-[36px] sm:p-8">
             {children}
           </div>
         </section>
