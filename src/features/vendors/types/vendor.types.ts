@@ -730,3 +730,75 @@ export interface VendorApiErrorDetails extends ApiErrorDetails {
     message: string
   }[]
 }
+
+
+export type VendorBadgeCode = 'COMMUNITY_ELITE' | 'TOP_RATED' | 'RISING_STAR'
+
+export type VendorReputationEventType =
+  | 'SCORE_RECOMPUTED'
+  | 'ADMIN_PENALTY_APPLIED'
+  | 'ADMIN_PENALTY_CLEARED'
+  | 'BADGE_AWARDED'
+  | 'BADGE_REVOKED'
+  | 'REVIEW_FLAGGED'
+
+export interface VendorReputationScore {
+  vendorId: string
+  score: number
+  ratingComponent: number
+  completionComponent: number
+  responseComponent: number
+  complaintComponent: number
+  cancellationComponent: number
+  penaltyPoints: number
+  sampleSize: number
+  ratedOrderCount: number
+  /** Null until the first scoring run, which is not the same as a score of zero. */
+  computedAt: string | null
+}
+
+export interface VendorReputationBadge {
+  id: string
+  badgeCode: VendorBadgeCode
+  awardedAt: string
+  /** Set when the badge was taken away. The row is kept so support can explain it. */
+  revokedAt: string | null
+  awardedScore: number
+  reason: string | null
+}
+
+export interface VendorReputationEvent {
+  id: string
+  eventType: VendorReputationEventType
+  adminId: string | null
+  scoreBefore: number | null
+  scoreAfter: number | null
+  penaltyDelta: number
+  badgeCode: VendorBadgeCode | null
+  reason: string | null
+  createdAt: string
+}
+
+export interface VendorReputationDetail {
+  score: VendorReputationScore | null
+  badges: VendorReputationBadge[]
+  events: VendorReputationEvent[]
+}
+
+export interface VendorReputationDetailResponse {
+  code: string
+  message: string
+  data: VendorReputationDetail
+}
+
+export interface VendorReputationPenaltyPayload {
+  /** Positive applies points, negative clears them. */
+  delta: number
+  reason: string
+}
+
+export interface VendorReputationPenaltyResponse {
+  code: string
+  message: string
+  data: { penaltyPoints: number; score: number }
+}

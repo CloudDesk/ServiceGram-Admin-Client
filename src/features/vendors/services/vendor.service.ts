@@ -12,6 +12,8 @@ import {
   VENDOR_ONBOARDING_QUEUE_PATH,
   VENDOR_OVERVIEW_PATH,
   VENDOR_ANALYTICS_OVERVIEW_PATH,
+  VENDOR_REPUTATION_PATH,
+  VENDOR_REPUTATION_PENALTY_PATH,
   VENDOR_REACTIVATE_PATH,
   VENDOR_REJECT_BANK_ACCOUNT_PATH,
   VENDOR_REJECT_DOCUMENT_PATH,
@@ -54,6 +56,9 @@ import type {
   VendorServiceCatalogPayload,
   VendorServicePayload,
   VendorServicesResponse,
+  VendorReputationDetailResponse,
+  VendorReputationPenaltyPayload,
+  VendorReputationPenaltyResponse,
 } from '../types/vendor.types'
 
 interface VendorErrorEnvelope {
@@ -188,6 +193,28 @@ async function getVendorAnalytics(
   )
 
   return parseJsonResponse<VendorAnalyticsOverviewResponse>(response)
+}
+
+async function getVendorReputation(
+  vendorId: string,
+): Promise<VendorReputationDetailResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(VENDOR_REPUTATION_PATH(vendorId)),
+  )
+
+  return parseJsonResponse<VendorReputationDetailResponse>(response)
+}
+
+async function applyVendorReputationPenalty(
+  vendorId: string,
+  payload: VendorReputationPenaltyPayload,
+): Promise<VendorReputationPenaltyResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(VENDOR_REPUTATION_PENALTY_PATH(vendorId)),
+    jsonRequest('POST', payload),
+  )
+
+  return parseJsonResponse<VendorReputationPenaltyResponse>(response)
 }
 
 async function updateVendorProfile(
@@ -514,6 +541,8 @@ export const vendorService = {
   getVendorDocumentDownloadTarget,
   getVendorOverview,
   getVendorAnalytics,
+  getVendorReputation,
+  applyVendorReputationPenalty,
   updateVendorProfile,
   createVendorBrandLogoUploadIntent,
   confirmVendorBrandLogoUpload,

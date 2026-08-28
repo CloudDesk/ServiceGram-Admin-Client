@@ -7,6 +7,10 @@ export const VENDOR_OVERVIEW_PATH = (vendorId: string) =>
   `/admin/vendors/${vendorId}/overview`
 export const VENDOR_ANALYTICS_OVERVIEW_PATH = (vendorId: string) =>
   `/admin/vendors/${vendorId}/analytics/overview`
+export const VENDOR_REPUTATION_PATH = (vendorId: string) =>
+  `/admin/vendor-reputation/${vendorId}`
+export const VENDOR_REPUTATION_PENALTY_PATH = (vendorId: string) =>
+  `/admin/vendor-reputation/${vendorId}/penalty`
 export const VENDOR_UPDATE_PROFILE_PATH = (vendorId: string) =>
   `/admin/vendors/${vendorId}/profile`
 export const VENDOR_BRAND_LOGO_UPLOAD_INTENT_PATH = (vendorId: string) =>
