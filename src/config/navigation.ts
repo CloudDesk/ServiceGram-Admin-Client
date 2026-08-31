@@ -24,6 +24,7 @@ import {
   Wrench,
   GitBranch,
   HeartHandshake,
+  Trophy,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { permissions } from "./permissions";
@@ -189,6 +190,13 @@ export const navigationItems: NavigationItem[] = [
       "loyalty:read",
       "promotions:read",
     ],
+    group: "release2",
+  },
+  {
+    label: "Influencer Campaigns",
+    href: routePaths.influencerCampaigns,
+    icon: Trophy,
+    permission: permissions.influencerCampaigns,
     group: "release2",
   },
   {

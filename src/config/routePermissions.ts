@@ -13,6 +13,7 @@ export const routePermissions = {
   reels: "reels:read",
   creatorMusic: "creator_music:read",
   influencers: "influencers:read",
+  influencerCampaigns: "campaigns:read",
   notifications: "notifications:read",
   content: "content:read",
   marketingCampaigns: "marketing_campaigns:read",
