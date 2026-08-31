@@ -3,6 +3,7 @@ import {
   FileBarChart2,
   FileCheck2,
   Film,
+  Music2,
   BadgeCheck,
   Bell,
   ClipboardList,
@@ -109,6 +110,12 @@ export const navigationItems: NavigationItem[] = [
     href: routePaths.reels,
     icon: Film,
     permission: permissions.reels,
+  },
+  {
+    label: "Creator Music",
+    href: routePaths.creatorMusic,
+    icon: Music2,
+    permission: permissions.creatorMusic,
   },
   {
     label: "Influencers",

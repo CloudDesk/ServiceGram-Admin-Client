@@ -42,6 +42,7 @@ import { PayoutDetailPage } from "../features/payouts/components/PayoutDetailPag
 import { PayoutsPage } from "../features/payouts/components/PayoutsPage";
 import { ReelDetailPage } from "../features/reels/components/ReelDetailPage";
 import { ReelsPage } from "../features/reels/components/ReelsPage";
+import { CreatorMusicPage } from "../features/creator-music/components/CreatorMusicPage";
 import { ReportDetailPage } from "../features/reports/components/ReportDetailPage";
 import { ReportExportDetailPage } from "../features/reports/components/ReportExportDetailPage";
 import { ReportsPage } from "../features/reports/components/ReportsPage";
@@ -295,6 +296,17 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: `${routePaths.reels}/:reelId/tab/:tab`,
                     element: <ReelDetailPage />,
+                  },
+                ],
+              },
+              {
+                element: (
+                  <PermissionGuard permission={routePermissions.creatorMusic} />
+                ),
+                children: [
+                  {
+                    path: routePaths.creatorMusic,
+                    element: <CreatorMusicPage />,
                   },
                 ],
               },
