@@ -299,3 +299,59 @@ export interface AdminReelApiErrorDetails extends ApiErrorDetails {
     message: string
   }[]
 }
+
+export type AdminHashtagStatus = 'ACTIVE' | 'SUSPICIOUS' | 'BLOCKED'
+
+export type AdminHashtagAction = 'MARK_SUSPICIOUS' | 'ALLOW' | 'BLOCK'
+
+export interface AdminHashtag {
+  hashtagId: string
+  tag: string
+  displayTag: string
+  status: AdminHashtagStatus
+  moderationReason: string | null
+  version: number
+  visibleReelCount: number
+  usageCount7d: number
+  usageCount30d: number
+  lastUsedAt: string | null
+  aggregateRefreshedAt: string | null
+  availableActions: AdminHashtagAction[]
+}
+
+export interface AdminHashtagsQueryParams {
+  page?: number
+  limit?: number
+  search?: string
+  status?: AdminHashtagStatus
+}
+
+export interface AdminHashtagsListResponse {
+  data: AdminHashtag[]
+  pagination: {
+    page: number
+    limit: number
+    totalItems: number
+    totalPages: number
+    hasNextPage: boolean
+    hasPreviousPage: boolean
+  }
+  summary: {
+    totalItems: number
+    active: number
+    suspicious: number
+    blocked: number
+  }
+}
+
+export interface AdminHashtagModerationPayload {
+  action: AdminHashtagAction
+  expectedVersion: number
+  reason: string
+}
+
+export interface AdminHashtagActionResponse {
+  code: string
+  message: string
+  data: AdminHashtag
+}

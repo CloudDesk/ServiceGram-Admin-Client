@@ -34,6 +34,7 @@ import {
   type ReelActionSelection,
 } from './ReelActionModal'
 import { ReelCommentsModerationQueue } from './ReelCommentsModerationQueue'
+import { HashtagModerationQueue } from './HashtagModerationQueue'
 
 const REEL_LIST_STORAGE_KEY = 'servicegram.reels.list.v1'
 const DEFAULT_PAGE_SIZE = 50
@@ -180,6 +181,9 @@ export function ReelsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const canModerateReels = usePermission('reels:moderate')
+  // Hashtags are gated on social-moderation, a different family from reels:*.
+  const canReadSocialModeration = usePermission('social-moderation:read')
+  const canModerateHashtags = usePermission('social-moderation:update')
   const canDeleteReels = usePermission('reels:delete')
 
   const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
@@ -477,6 +481,9 @@ export function ReelsPage() {
         actionNode={
           <div className="flex items-center gap-2">
             <ReelCommentsModerationQueue canModerate={canModerateReels} />
+            {canReadSocialModeration ? (
+              <HashtagModerationQueue canModerate={canModerateHashtags} />
+            ) : null}
             <Button
             aria-label="Refresh reels"
             className="h-9"

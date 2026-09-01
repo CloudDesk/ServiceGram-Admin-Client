@@ -4,6 +4,8 @@ import {
   REEL_DELETE_PATH,
   REEL_COMMENTS_PATH,
   REEL_COMMENT_MODERATION_PATH,
+  HASHTAG_MODERATION_ACTION_PATH,
+  HASHTAG_MODERATION_LIST_PATH,
   REEL_DETAIL_PATH,
   REEL_LIVE_LIST_PATH,
   REEL_PAUSE_PATH,
@@ -25,6 +27,11 @@ import type {
   AdminReelCommentsQueryParams,
   AdminReelCommentActionResponse,
   AdminReelCommentModerationPayload,
+  AdminHashtag,
+  AdminHashtagActionResponse,
+  AdminHashtagModerationPayload,
+  AdminHashtagsListResponse,
+  AdminHashtagsQueryParams,
   ReelDeletePayload,
   ReelOptionalReasonPayload,
   ReelRequiredReasonPayload,
@@ -36,6 +43,25 @@ interface ErrorEnvelope {
   code?: string
 }
 
+/**
+ * Thrown with the backend's own error code attached.
+ *
+ * The message alone cannot tell a stale session from a version conflict, and
+ * those are the two failures a moderation action actually hits. Callers that
+ * only read `.message` are unaffected.
+ */
+export class ReelServiceError extends Error {
+  readonly code: string | null
+  readonly status: number
+
+  constructor(message: string, code: string | null, status: number) {
+    super(message)
+    this.name = 'ReelServiceError'
+    this.code = code
+    this.status = status
+  }
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json()) as T | ErrorEnvelope
 
@@ -43,7 +69,11 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
     const errorPayload =
       payload && typeof payload === 'object' ? (payload as ErrorEnvelope) : null
 
-    throw new Error(errorPayload?.message ?? 'Request failed.')
+    throw new ReelServiceError(
+      errorPayload?.message ?? 'Request failed.',
+      errorPayload?.code ?? null,
+      response.status,
+    )
   }
 
   return payload as T
@@ -228,6 +258,35 @@ async function deleteReel(
   return parseJsonResponse<AdminReelDeleteResponse>(response)
 }
 
+async function getHashtags(
+  query: AdminHashtagsQueryParams = {},
+): Promise<AdminHashtagsListResponse> {
+  const queryString = buildQueryParams(query)
+  const response = await apiClient.request(
+    buildApiUrl(
+      queryString
+        ? `${HASHTAG_MODERATION_LIST_PATH}?${queryString}`
+        : HASHTAG_MODERATION_LIST_PATH,
+    ),
+  )
+
+  return parseJsonResponse<AdminHashtagsListResponse>(response)
+}
+
+async function moderateHashtag(
+  hashtagId: string,
+  payload: AdminHashtagModerationPayload,
+): Promise<AdminHashtag> {
+  const response = await apiClient.request(
+    buildApiUrl(HASHTAG_MODERATION_ACTION_PATH(hashtagId)),
+    patchJson(payload),
+  )
+
+  const body = await parseJsonResponse<AdminHashtagActionResponse>(response)
+
+  return body.data
+}
+
 export const reelService = {
   getPendingReels,
   getLiveReels,
@@ -235,6 +294,8 @@ export const reelService = {
   getReelById,
   getReelComments,
   moderateReelComment,
+  getHashtags,
+  moderateHashtag,
   approveReel,
   rejectReel,
   requestReelEdit,
