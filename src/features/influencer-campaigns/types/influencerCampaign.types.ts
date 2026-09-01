@@ -122,6 +122,39 @@ export type InfluencerCampaignSubmissionStatus =
   | "REJECTED"
   | "WITHDRAWN";
 
+export type InfluencerCampaignParticipantStatus =
+  | "JOINED"
+  | "WITHDRAWN"
+  | "DISQUALIFIED";
+
+export interface InfluencerCampaignParticipant {
+  participationId: string;
+  campaignId: string;
+  influencerProfileId: string;
+  status: InfluencerCampaignParticipantStatus;
+  joinedAt: string | null;
+  withdrawnAt: string | null;
+  withdrawalReason: string | null;
+  campaign: {
+    campaignId: string;
+    publicCampaignId: string;
+    campaignCode: string;
+    title: string;
+    status: InfluencerCampaignStatus;
+  };
+  influencer: {
+    influencerProfileId: string;
+    publicInfluencerId: string;
+    displayName: string;
+    socialHandle: string | null;
+    status: string;
+  };
+  availableActions: {
+    viewSubmissions: boolean;
+  };
+  metadata: Record<string, unknown>;
+}
+
 export interface InfluencerCampaignSubmission {
   submissionId: string;
   campaignId: string;
@@ -165,6 +198,13 @@ export interface InfluencerCampaignSubmissionSummary {
   withdrawn: number;
 }
 
+export interface InfluencerCampaignParticipantSummary {
+  total: number;
+  joined: number;
+  withdrawn: number;
+  disqualified: number;
+}
+
 export interface CampaignPagination {
   page: number;
   limit: number;
@@ -184,6 +224,12 @@ export interface InfluencerCampaignSubmissionsResponse {
   data: InfluencerCampaignSubmission[];
   pagination: CampaignPagination;
   summary: InfluencerCampaignSubmissionSummary;
+}
+
+export interface InfluencerCampaignParticipantsResponse {
+  data: InfluencerCampaignParticipant[];
+  pagination: CampaignPagination;
+  summary: InfluencerCampaignParticipantSummary;
 }
 
 export interface InfluencerCampaignResponse {

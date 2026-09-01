@@ -19,6 +19,8 @@ import { influencerCampaignService } from "../services/influencerCampaign.servic
 import type {
   InfluencerCampaign,
   InfluencerCampaignObjective,
+  InfluencerCampaignParticipant,
+  InfluencerCampaignParticipantStatus,
   InfluencerCampaignPayload,
   InfluencerCampaignSubmission,
   InfluencerCampaignSubmissionStatus,
@@ -48,6 +50,13 @@ const submissionStatuses: ("ALL" | InfluencerCampaignSubmissionStatus)[] = [
   "APPROVED",
   "REJECTED",
   "WITHDRAWN",
+];
+
+const participantStatuses: ("ALL" | InfluencerCampaignParticipantStatus)[] = [
+  "ALL",
+  "JOINED",
+  "WITHDRAWN",
+  "DISQUALIFIED",
 ];
 
 const objectives: InfluencerCampaignObjective[] = [
@@ -173,6 +182,10 @@ export function InfluencerCampaignsPage() {
   const [submissionStatus, setSubmissionStatus] = useState<
     "ALL" | InfluencerCampaignSubmissionStatus
   >("PENDING_REVIEW");
+  const [participantStatus, setParticipantStatus] = useState<
+    "ALL" | InfluencerCampaignParticipantStatus
+  >("JOINED");
+  const [participantCampaignId, setParticipantCampaignId] = useState("");
   const [editing, setEditing] = useState<InfluencerCampaign | null>(null);
   const [form, setForm] = useState<InfluencerCampaignPayload>(emptyForm);
   const [contentJson, setContentJson] = useState(
@@ -192,6 +205,18 @@ export function InfluencerCampaignsPage() {
     queryFn: () =>
       influencerCampaignService.listSubmissions({ status: submissionStatus }),
     enabled: canReview,
+  });
+  const participantsQuery = useQuery({
+    queryKey: [
+      "influencer-campaign-participants",
+      participantCampaignId,
+      participantStatus,
+    ],
+    queryFn: () =>
+      influencerCampaignService.listParticipants(participantCampaignId, {
+        status: participantStatus,
+      }),
+    enabled: canReview && Boolean(participantCampaignId),
   });
 
   const campaigns = useMemo(
@@ -305,6 +330,8 @@ export function InfluencerCampaignsPage() {
   const summary = campaignsQuery.data?.summary;
   const submissionSummary = submissionsQuery.data?.summary;
   const submissions = submissionsQuery.data?.data ?? [];
+  const participantSummary = participantsQuery.data?.summary;
+  const participants = participantsQuery.data?.data ?? [];
 
   return (
     <PageContainer className="space-y-5">
@@ -555,6 +582,9 @@ export function InfluencerCampaignsPage() {
                 onApprove={() => runLifecycle(campaign, "approve")}
                 onCancel={() => runLifecycle(campaign, "cancel")}
                 onEdit={() => void startEdit(campaign)}
+                onParticipants={() =>
+                  setParticipantCampaignId(campaign.campaignId)
+                }
                 onSubmit={() => runLifecycle(campaign, "submit")}
               />
             ))
@@ -634,6 +664,99 @@ export function InfluencerCampaignsPage() {
           </div>
         </section>
       ) : null}
+
+      {canReview ? (
+        <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Campaign participants</h2>
+              <p className="text-sm text-muted">
+                Joined creators for the selected campaign, with exact status rails.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-4">
+              <MiniMetric label="Total" value={participantSummary?.total ?? 0} />
+              <MiniMetric label="Joined" value={participantSummary?.joined ?? 0} />
+              <MiniMetric
+                label="Withdrawn"
+                value={participantSummary?.withdrawn ?? 0}
+              />
+              <MiniMetric
+                label="Disqualified"
+                value={participantSummary?.disqualified ?? 0}
+              />
+            </div>
+          </div>
+
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <select
+              className={inputClass + " max-w-sm"}
+              value={participantCampaignId}
+              onChange={(event) => setParticipantCampaignId(event.target.value)}
+            >
+              <option value="">Choose a campaign</option>
+              {campaigns.map((campaign) => (
+                <option key={campaign.campaignId} value={campaign.campaignId}>
+                  {campaign.title}
+                </option>
+              ))}
+            </select>
+            <select
+              className={inputClass + " max-w-56"}
+              value={participantStatus}
+              onChange={(event) =>
+                setParticipantStatus(
+                  event.target.value as
+                    | "ALL"
+                    | InfluencerCampaignParticipantStatus,
+                )
+              }
+            >
+              {participantStatuses.map((item) => (
+                <option key={item} value={item}>
+                  {item === "ALL" ? "All participants" : humanize(item)}
+                </option>
+              ))}
+            </select>
+            <Button
+              disabled={!participantCampaignId}
+              variant="secondary"
+              onClick={() => void participantsQuery.refetch()}
+            >
+              <RefreshCcw className="mr-2 size-4" /> Refresh participants
+            </Button>
+          </div>
+
+          <div className="grid gap-3">
+            {!participantCampaignId ? (
+              <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                <Trophy className="mx-auto mb-2 size-6 text-muted" />
+                <p className="font-medium">Choose a campaign to view participants</p>
+                <p className="text-sm text-muted">
+                  Use a campaign card's participants button or the selector above.
+                </p>
+              </div>
+            ) : participantsQuery.isLoading ? (
+              <p className="text-sm text-muted">Loading participants…</p>
+            ) : participants.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                <Trophy className="mx-auto mb-2 size-6 text-muted" />
+                <p className="font-medium">No participants found</p>
+                <p className="text-sm text-muted">
+                  Joined creators will appear here after the customer app join flow runs.
+                </p>
+              </div>
+            ) : (
+              participants.map((participant) => (
+                <ParticipantCard
+                  key={participant.participationId}
+                  participant={participant}
+                />
+              ))
+            )}
+          </div>
+        </section>
+      ) : null}
     </PageContainer>
   );
 }
@@ -678,6 +801,7 @@ function CampaignCard({
   onApprove,
   onCancel,
   onEdit,
+  onParticipants,
   onSubmit,
 }: {
   campaign: InfluencerCampaign;
@@ -686,6 +810,7 @@ function CampaignCard({
   onApprove: () => void;
   onCancel: () => void;
   onEdit: () => void;
+  onParticipants: () => void;
   onSubmit: () => void;
 }) {
   return (
@@ -750,6 +875,11 @@ function CampaignCard({
         {canUpdate && campaign.availableActions.edit ? (
           <Button variant="secondary" onClick={onEdit}>
             Edit
+          </Button>
+        ) : null}
+        {canReview && campaign.availableActions.viewSubmissions ? (
+          <Button variant="secondary" onClick={onParticipants}>
+            View participants
           </Button>
         ) : null}
         {canUpdate && campaign.availableActions.submitForReview ? (
@@ -858,9 +988,84 @@ function SubmissionCard({
   );
 }
 
+function ParticipantCard({
+  participant,
+}: {
+  participant: InfluencerCampaignParticipant;
+}) {
+  return (
+    <article className="rounded-xl border border-border bg-background p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <Badge tone={participantTone(participant.status)}>
+              {humanize(participant.status)}
+            </Badge>
+            <span className="text-xs font-medium text-muted">
+              {participant.influencer.publicInfluencerId}
+            </span>
+          </div>
+          <h3 className="text-lg font-semibold">
+            {participant.influencer.displayName}
+          </h3>
+          <p className="mt-1 text-sm text-muted">
+            {participant.influencer.socialHandle ?? "No social handle"}
+          </p>
+        </div>
+        <div className="text-right text-sm">
+          <p className="font-semibold">{participant.campaign.title}</p>
+          <p className="text-muted">{participant.campaign.publicCampaignId}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
+        <Fact
+          icon={<Trophy className="size-4" />}
+          label="Joined"
+          value={
+            participant.joinedAt
+              ? formatDate(participant.joinedAt, true)
+              : "Not joined"
+          }
+        />
+        <Fact
+          icon={<XCircle className="size-4" />}
+          label="Withdrawn"
+          value={
+            participant.withdrawnAt
+              ? formatDate(participant.withdrawnAt, true)
+              : "Not withdrawn"
+          }
+        />
+        <Fact
+          icon={<Send className="size-4" />}
+          label="Next"
+          value={
+            participant.availableActions.viewSubmissions
+              ? "Review submitted reels in the queue above"
+              : "No action required"
+          }
+        />
+      </div>
+
+      {participant.withdrawalReason ? (
+        <div className="mt-3 rounded-lg border border-border bg-surface p-3 text-sm text-muted">
+          {participant.withdrawalReason}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 function submissionTone(status: InfluencerCampaignSubmissionStatus) {
   if (status === "APPROVED") return "success";
   if (status === "REJECTED" || status === "WITHDRAWN") return "danger";
+  return "warning";
+}
+
+function participantTone(status: InfluencerCampaignParticipantStatus) {
+  if (status === "JOINED") return "success";
+  if (status === "DISQUALIFIED") return "danger";
   return "warning";
 }
 

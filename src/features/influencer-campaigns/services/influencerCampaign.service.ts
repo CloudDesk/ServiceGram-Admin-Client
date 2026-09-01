@@ -3,6 +3,8 @@ import { apiClient } from "../../../services/apiClient";
 import { buildQueryParams } from "../../../utils/buildQueryParams";
 import type {
   InfluencerCampaignApiErrorDetails,
+  InfluencerCampaignParticipantStatus,
+  InfluencerCampaignParticipantsResponse,
   InfluencerCampaignPayload,
   InfluencerCampaignResponse,
   InfluencerCampaignSubmissionStatus,
@@ -132,6 +134,30 @@ async function listSubmissions(filters: {
   );
 }
 
+async function listParticipants(
+  campaignId: string,
+  filters: { status?: InfluencerCampaignParticipantStatus | "ALL" } = {},
+) {
+  const params = buildQueryParams({
+    page: 1,
+    limit: 50,
+    status:
+      filters.status && filters.status !== "ALL"
+        ? [filters.status]
+        : undefined,
+  });
+
+  return parse<InfluencerCampaignParticipantsResponse>(
+    await apiClient.request(
+      buildApiUrl(
+        params
+          ? `${ROOT}/${campaignId}/participants?${params}`
+          : `${ROOT}/${campaignId}/participants`,
+      ),
+    ),
+  );
+}
+
 async function reviewSubmission(
   submissionId: string,
   body: {
@@ -153,6 +179,7 @@ export const influencerCampaignService = {
   create,
   detail,
   list,
+  listParticipants,
   listSubmissions,
   reviewSubmission,
   submitForReview,
