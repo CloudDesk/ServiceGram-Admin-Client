@@ -20,6 +20,8 @@ import type {
   InfluencerCampaign,
   InfluencerCampaignObjective,
   InfluencerCampaignPayload,
+  InfluencerCampaignSubmission,
+  InfluencerCampaignSubmissionStatus,
   InfluencerCampaignStatus,
 } from "../types/influencerCampaign.types";
 
@@ -38,6 +40,14 @@ const statuses: ("ALL" | InfluencerCampaignStatus)[] = [
   "REWARD_PROCESSING",
   "COMPLETED",
   "CANCELLED",
+];
+
+const submissionStatuses: ("ALL" | InfluencerCampaignSubmissionStatus)[] = [
+  "ALL",
+  "PENDING_REVIEW",
+  "APPROVED",
+  "REJECTED",
+  "WITHDRAWN",
 ];
 
 const objectives: InfluencerCampaignObjective[] = [
@@ -160,6 +170,9 @@ export function InfluencerCampaignsPage() {
   const canReview = usePermission("campaigns:review");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"ALL" | InfluencerCampaignStatus>("ALL");
+  const [submissionStatus, setSubmissionStatus] = useState<
+    "ALL" | InfluencerCampaignSubmissionStatus
+  >("PENDING_REVIEW");
   const [editing, setEditing] = useState<InfluencerCampaign | null>(null);
   const [form, setForm] = useState<InfluencerCampaignPayload>(emptyForm);
   const [contentJson, setContentJson] = useState(
@@ -173,6 +186,12 @@ export function InfluencerCampaignsPage() {
   const campaignsQuery = useQuery({
     queryKey: ["influencer-campaigns", search, status],
     queryFn: () => influencerCampaignService.list({ search, status }),
+  });
+  const submissionsQuery = useQuery({
+    queryKey: ["influencer-campaign-submissions", submissionStatus],
+    queryFn: () =>
+      influencerCampaignService.listSubmissions({ status: submissionStatus }),
+    enabled: canReview,
   });
 
   const campaigns = useMemo(
@@ -228,6 +247,34 @@ export function InfluencerCampaignsPage() {
       setError(cause instanceof Error ? cause.message : "Action failed."),
   });
 
+  const submissionReviewMutation = useMutation({
+    mutationFn: ({
+      decision,
+      reason,
+      submission,
+    }: {
+      decision: "APPROVED" | "REJECTED";
+      reason: string;
+      submission: InfluencerCampaignSubmission;
+    }) =>
+      influencerCampaignService.reviewSubmission(submission.submissionId, {
+        decision,
+        reason,
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["influencer-campaign-submissions"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["influencer-campaigns"] }),
+      ]);
+    },
+    onError: (cause) =>
+      setError(
+        cause instanceof Error ? cause.message : "Submission review failed.",
+      ),
+  });
+
   const startEdit = async (campaign: InfluencerCampaign) => {
     setError(null);
     const detail = (await influencerCampaignService.detail(campaign.campaignId))
@@ -246,7 +293,18 @@ export function InfluencerCampaignsPage() {
     if (reason) lifecycleMutation.mutate({ action, campaign, reason });
   };
 
+  const runSubmissionReview = (
+    submission: InfluencerCampaignSubmission,
+    decision: "APPROVED" | "REJECTED",
+  ) => {
+    const verb = decision === "APPROVED" ? "approve" : "reject";
+    const reason = window.prompt(`Reason to ${verb} this submission:`)?.trim();
+    if (reason) submissionReviewMutation.mutate({ decision, reason, submission });
+  };
+
   const summary = campaignsQuery.data?.summary;
+  const submissionSummary = submissionsQuery.data?.summary;
+  const submissions = submissionsQuery.data?.data ?? [];
 
   return (
     <PageContainer className="space-y-5">
@@ -503,6 +561,79 @@ export function InfluencerCampaignsPage() {
           )}
         </div>
       </section>
+
+      {canReview ? (
+        <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Campaign submission review</h2>
+              <p className="text-sm text-muted">
+                Phase 4 creator reel submissions awaiting admin moderation.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-5">
+              <MiniMetric label="Total" value={submissionSummary?.total ?? 0} />
+              <MiniMetric
+                label="Pending"
+                value={submissionSummary?.pendingReview ?? 0}
+              />
+              <MiniMetric label="Approved" value={submissionSummary?.approved ?? 0} />
+              <MiniMetric label="Rejected" value={submissionSummary?.rejected ?? 0} />
+              <MiniMetric label="Withdrawn" value={submissionSummary?.withdrawn ?? 0} />
+            </div>
+          </div>
+
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <select
+              className={inputClass + " max-w-56"}
+              value={submissionStatus}
+              onChange={(event) =>
+                setSubmissionStatus(
+                  event.target.value as
+                    | "ALL"
+                    | InfluencerCampaignSubmissionStatus,
+                )
+              }
+            >
+              {submissionStatuses.map((item) => (
+                <option key={item} value={item}>
+                  {item === "ALL" ? "All submissions" : humanize(item)}
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="secondary"
+              onClick={() => void submissionsQuery.refetch()}
+            >
+              <RefreshCcw className="mr-2 size-4" /> Refresh submissions
+            </Button>
+          </div>
+
+          <div className="grid gap-3">
+            {submissionsQuery.isLoading ? (
+              <p className="text-sm text-muted">Loading submissions…</p>
+            ) : submissions.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                <Send className="mx-auto mb-2 size-6 text-muted" />
+                <p className="font-medium">No campaign submissions found</p>
+                <p className="text-sm text-muted">
+                  Creator submissions will appear here after joined creators submit reels.
+                </p>
+              </div>
+            ) : (
+              submissions.map((submission) => (
+                <SubmissionCard
+                  isReviewing={submissionReviewMutation.isPending}
+                  key={submission.submissionId}
+                  onApprove={() => runSubmissionReview(submission, "APPROVED")}
+                  onReject={() => runSubmissionReview(submission, "REJECTED")}
+                  submission={submission}
+                />
+              ))
+            )}
+          </div>
+        </section>
+      ) : null}
     </PageContainer>
   );
 }
@@ -512,6 +643,15 @@ function Metric({ label, value }: { label: string; value: number }) {
     <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
       <p className="text-sm text-muted">{label}</p>
       <p className="mt-1 text-2xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-border bg-background px-3 py-2">
+      <p className="text-muted">{label}</p>
+      <p className="text-base font-semibold text-foreground">{value}</p>
     </div>
   );
 }
@@ -630,6 +770,98 @@ function CampaignCard({
       </div>
     </article>
   );
+}
+
+function SubmissionCard({
+  isReviewing,
+  onApprove,
+  onReject,
+  submission,
+}: {
+  isReviewing: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+  submission: InfluencerCampaignSubmission;
+}) {
+  return (
+    <article className="rounded-xl border border-border bg-background p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <Badge tone={submissionTone(submission.status)}>
+              {humanize(submission.status)}
+            </Badge>
+            <span className="text-xs font-medium text-muted">
+              {submission.campaign.publicCampaignId}
+            </span>
+          </div>
+          <h3 className="text-lg font-semibold">{submission.campaign.title}</h3>
+          <p className="mt-1 text-sm text-muted">
+            {submission.influencer.displayName}
+            {submission.influencer.socialHandle
+              ? ` · ${submission.influencer.socialHandle}`
+              : ""}
+          </p>
+        </div>
+        <div className="text-right text-sm">
+          <p className="font-semibold">Reel</p>
+          <p className="text-muted">{submission.reelId}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
+        <Fact
+          icon={<Send className="size-4" />}
+          label="Submitted"
+          value={
+            submission.submittedAt
+              ? formatDate(submission.submittedAt, true)
+              : "Not submitted"
+          }
+        />
+        <Fact
+          icon={<Trophy className="size-4" />}
+          label="Campaign"
+          value={humanize(submission.campaign.status)}
+        />
+        <Fact
+          icon={<CheckCircle2 className="size-4" />}
+          label="Review"
+          value={submission.review.reason ?? "Pending review"}
+        />
+      </div>
+
+      {submission.creatorNotes ? (
+        <div className="mt-3 rounded-lg border border-border bg-surface p-3 text-sm text-muted">
+          {submission.creatorNotes}
+        </div>
+      ) : null}
+
+      {submission.availableActions.review ? (
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Button
+            isLoading={isReviewing}
+            onClick={onApprove}
+          >
+            <CheckCircle2 className="mr-2 size-4" /> Approve submission
+          </Button>
+          <Button
+            isLoading={isReviewing}
+            variant="danger"
+            onClick={onReject}
+          >
+            <XCircle className="mr-2 size-4" /> Reject
+          </Button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function submissionTone(status: InfluencerCampaignSubmissionStatus) {
+  if (status === "APPROVED") return "success";
+  if (status === "REJECTED" || status === "WITHDRAWN") return "danger";
+  return "warning";
 }
 
 function Fact({

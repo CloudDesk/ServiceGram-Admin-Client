@@ -5,11 +5,14 @@ import type {
   InfluencerCampaignApiErrorDetails,
   InfluencerCampaignPayload,
   InfluencerCampaignResponse,
+  InfluencerCampaignSubmissionStatus,
+  InfluencerCampaignSubmissionsResponse,
   InfluencerCampaignsResponse,
   InfluencerCampaignStatus,
 } from "../types/influencerCampaign.types";
 
 const ROOT = "/admin/influencer-campaigns";
+const SUBMISSIONS_ROOT = "/admin/influencer-campaign-submissions";
 
 interface ErrorEnvelope {
   message?: string;
@@ -108,12 +111,50 @@ async function cancel(campaignId: string, reason: string) {
   );
 }
 
+async function listSubmissions(filters: {
+  campaignId?: string;
+  status?: InfluencerCampaignSubmissionStatus | "ALL";
+}) {
+  const params = buildQueryParams({
+    page: 1,
+    limit: 50,
+    campaignId: filters.campaignId || undefined,
+    status:
+      filters.status && filters.status !== "ALL"
+        ? [filters.status]
+        : undefined,
+  });
+
+  return parse<InfluencerCampaignSubmissionsResponse>(
+    await apiClient.request(
+      buildApiUrl(params ? `${SUBMISSIONS_ROOT}?${params}` : SUBMISSIONS_ROOT),
+    ),
+  );
+}
+
+async function reviewSubmission(
+  submissionId: string,
+  body: {
+    decision: "APPROVED" | "REJECTED";
+    reason: string;
+  },
+) {
+  return parse(
+    await apiClient.request(
+      buildApiUrl(`${SUBMISSIONS_ROOT}/${submissionId}/review`),
+      json("POST", body),
+    ),
+  );
+}
+
 export const influencerCampaignService = {
   approve,
   cancel,
   create,
   detail,
   list,
+  listSubmissions,
+  reviewSubmission,
   submitForReview,
   update,
 };

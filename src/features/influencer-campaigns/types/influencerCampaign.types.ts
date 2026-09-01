@@ -116,6 +116,55 @@ export interface InfluencerCampaignSummary {
   cancelled: number;
 }
 
+export type InfluencerCampaignSubmissionStatus =
+  | "PENDING_REVIEW"
+  | "APPROVED"
+  | "REJECTED"
+  | "WITHDRAWN";
+
+export interface InfluencerCampaignSubmission {
+  submissionId: string;
+  campaignId: string;
+  participantId: string;
+  influencerProfileId: string;
+  reelId: string;
+  status: InfluencerCampaignSubmissionStatus;
+  creatorNotes: string | null;
+  submittedAt: string | null;
+  review: {
+    reviewedByAdminId: string | null;
+    reviewedAt: string | null;
+    reason: string | null;
+    notes: string | null;
+  };
+  campaign: {
+    campaignId: string;
+    publicCampaignId: string;
+    campaignCode: string;
+    title: string;
+    status: InfluencerCampaignStatus;
+  };
+  influencer: {
+    influencerProfileId: string;
+    publicInfluencerId: string;
+    displayName: string;
+    socialHandle: string | null;
+  };
+  version: number;
+  metadata: Record<string, unknown>;
+  availableActions: {
+    review: boolean;
+  };
+}
+
+export interface InfluencerCampaignSubmissionSummary {
+  total: number;
+  pendingReview: number;
+  approved: number;
+  rejected: number;
+  withdrawn: number;
+}
+
 export interface CampaignPagination {
   page: number;
   limit: number;
@@ -129,6 +178,12 @@ export interface InfluencerCampaignsResponse {
   data: InfluencerCampaign[];
   pagination: CampaignPagination;
   summary: InfluencerCampaignSummary;
+}
+
+export interface InfluencerCampaignSubmissionsResponse {
+  data: InfluencerCampaignSubmission[];
+  pagination: CampaignPagination;
+  summary: InfluencerCampaignSubmissionSummary;
 }
 
 export interface InfluencerCampaignResponse {
