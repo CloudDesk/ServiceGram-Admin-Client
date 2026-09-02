@@ -1,12 +1,16 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BarChart3,
   CalendarClock,
   CheckCircle2,
+  Eye,
   Megaphone,
   RefreshCcw,
   Send,
+  ShieldCheck,
   Trophy,
+  UsersRound,
   XCircle,
 } from "lucide-react";
 import { Badge } from "../../../components/ui/Badge";
@@ -18,6 +22,7 @@ import { formatDate } from "../../../utils/formatDate";
 import { influencerCampaignService } from "../services/influencerCampaign.service";
 import type {
   InfluencerCampaign,
+  InfluencerCampaignAnalyticsPeriod,
   InfluencerCampaignObjective,
   InfluencerCampaignParticipant,
   InfluencerCampaignParticipantStatus,
@@ -71,6 +76,16 @@ const sponsorshipStatuses: ("ALL" | InfluencerCampaignSponsorshipStatus)[] = [
   "REJECTED",
   "CANCELLED",
   "ADMIN_RESTRICTED",
+];
+
+const analyticsPeriods: {
+  label: string;
+  value: InfluencerCampaignAnalyticsPeriod;
+}[] = [
+  { label: "7 days", value: "7D" },
+  { label: "30 days", value: "30D" },
+  { label: "90 days", value: "90D" },
+  { label: "This month", value: "THIS_MONTH" },
 ];
 
 const objectives: InfluencerCampaignObjective[] = [
@@ -162,12 +177,31 @@ function fromDateInput(value: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function currency(value: number, code = "INR") {
+function numberValue(value: unknown) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function currency(value: number | string | null | undefined, code = "INR") {
   return new Intl.NumberFormat("en-IN", {
     currency: code,
     maximumFractionDigits: 0,
     style: "currency",
-  }).format(value / 100);
+  }).format(numberValue(value) / 100);
+}
+
+function integer(value: unknown) {
+  return new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 0,
+  }).format(numberValue(value));
+}
+
+function percent(value: unknown) {
+  return `${numberValue(value).toFixed(1)}%`;
+}
+
+function watchTime(value: unknown) {
+  return `${(numberValue(value) / 1000).toFixed(1)}s`;
 }
 
 function campaignToForm(campaign: InfluencerCampaign): InfluencerCampaignPayload {
@@ -212,6 +246,7 @@ export function InfluencerCampaignsPage() {
     "ALL" | InfluencerCampaignParticipantStatus
   >("JOINED");
   const [participantCampaignId, setParticipantCampaignId] = useState("");
+  const [performanceCampaignId, setPerformanceCampaignId] = useState("");
   const [editing, setEditing] = useState<InfluencerCampaign | null>(null);
   const [form, setForm] = useState<InfluencerCampaignPayload>(emptyForm);
   const [contentJson, setContentJson] = useState(
@@ -456,6 +491,9 @@ export function InfluencerCampaignsPage() {
   const sponsorships = sponsorshipsQuery.data?.data ?? [];
   const participantSummary = participantsQuery.data?.summary;
   const participants = participantsQuery.data?.data ?? [];
+  const performanceCampaign = campaigns.find(
+    (campaign) => campaign.campaignId === performanceCampaignId,
+  );
 
   return (
     <PageContainer className="space-y-5">
@@ -796,12 +834,23 @@ export function InfluencerCampaignsPage() {
                 onParticipants={() =>
                   setParticipantCampaignId(campaign.campaignId)
                 }
+                onPerformance={() =>
+                  setPerformanceCampaignId(campaign.campaignId)
+                }
                 onSubmit={() => runLifecycle(campaign, "submit")}
               />
             ))
           )}
         </div>
       </section>
+
+      {canReview && performanceCampaignId ? (
+        <CampaignPerformancePanel
+          campaign={performanceCampaign}
+          campaignId={performanceCampaignId}
+          onClose={() => setPerformanceCampaignId("")}
+        />
+      ) : null}
 
       {canReview ? (
         <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
@@ -1013,6 +1062,7 @@ function CampaignCard({
   onCancel,
   onEdit,
   onParticipants,
+  onPerformance,
   onSubmit,
 }: {
   campaign: InfluencerCampaign;
@@ -1022,6 +1072,7 @@ function CampaignCard({
   onCancel: () => void;
   onEdit: () => void;
   onParticipants: () => void;
+  onPerformance: () => void;
   onSubmit: () => void;
 }) {
   return (
@@ -1093,6 +1144,11 @@ function CampaignCard({
             View participants
           </Button>
         ) : null}
+        {canReview ? (
+          <Button variant="secondary" onClick={onPerformance}>
+            <BarChart3 className="mr-2 size-4" /> Performance
+          </Button>
+        ) : null}
         {canUpdate && campaign.availableActions.submitForReview ? (
           <Button variant="secondary" onClick={onSubmit}>
             <Send className="mr-2 size-4" /> Submit
@@ -1110,6 +1166,250 @@ function CampaignCard({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function CampaignPerformancePanel({
+  campaign,
+  campaignId,
+  onClose,
+}: {
+  campaign?: InfluencerCampaign;
+  campaignId: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [period, setPeriod] =
+    useState<InfluencerCampaignAnalyticsPeriod>("30D");
+  const performanceQuery = useQuery({
+    queryKey: ["influencer-campaign-performance", campaignId, period],
+    queryFn: () => influencerCampaignService.performance(campaignId, period),
+    staleTime: 60_000,
+  });
+  const refreshMutation = useMutation({
+    mutationFn: () => influencerCampaignService.performance(campaignId, period, true),
+    onSuccess: (result) => {
+      queryClient.setQueryData(
+        ["influencer-campaign-performance", campaignId, period],
+        result,
+      );
+    },
+  });
+  const analytics = performanceQuery.data?.data;
+
+  return (
+    <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">Campaign performance</h2>
+          <p className="mt-1 text-sm text-muted">
+            {campaign?.title ?? campaignId} · backend-counted participant,
+            submission, and reel engagement metrics.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            disabled={performanceQuery.isFetching || refreshMutation.isPending}
+            variant="secondary"
+            onClick={() => refreshMutation.mutate()}
+          >
+            <RefreshCcw className="mr-2 size-4" />
+            {refreshMutation.isPending ? "Refreshing…" : "Refresh snapshot"}
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+
+      {refreshMutation.isError ? (
+        <p className="mt-3 text-sm text-danger" role="alert">
+          Snapshot refresh failed. Existing analytics remain available.
+        </p>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap gap-2" aria-label="Performance period">
+        {analyticsPeriods.map((option) => (
+          <Button
+            aria-pressed={period === option.value}
+            key={option.value}
+            size="sm"
+            type="button"
+            variant={period === option.value ? "primary" : "secondary"}
+            onClick={() => {
+              refreshMutation.reset();
+              setPeriod(option.value);
+            }}
+          >
+            {option.label}
+          </Button>
+        ))}
+      </div>
+
+      {performanceQuery.isLoading ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div
+              className="h-28 animate-pulse rounded-xl border border-border bg-background"
+              key={index}
+            />
+          ))}
+        </div>
+      ) : performanceQuery.isError ? (
+        <div className="mt-4 rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+          Campaign performance could not be loaded.
+        </div>
+      ) : analytics ? (
+        <div className="mt-4 space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              icon={<UsersRound className="size-5" />}
+              label="Participants"
+              value={integer(analytics.participants.total)}
+              helper={`${integer(analytics.participants.joined)} joined`}
+            />
+            <MetricCard
+              icon={<Send className="size-5" />}
+              label="Submissions"
+              value={integer(analytics.submissions.total)}
+              helper={`${percent(
+                analytics.submissions.approvalRatePercent,
+              )} approved`}
+            />
+            <MetricCard
+              icon={<Eye className="size-5" />}
+              label="Views"
+              value={integer(analytics.engagement.views)}
+              helper={`${integer(analytics.engagement.uniqueViewers)} viewers`}
+            />
+            <MetricCard
+              icon={<BarChart3 className="size-5" />}
+              label="Avg watch"
+              value={watchTime(analytics.engagement.averageWatchTimeMs)}
+              helper={`${integer(analytics.engagement.likes)} likes`}
+            />
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
+            <section className="rounded-xl border border-border bg-background p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-semibold text-foreground">Top submissions</h3>
+                  <p className="text-sm text-muted">
+                    Ranked by backend engagement for submitted campaign reels.
+                  </p>
+                </div>
+                <Badge tone="info">
+                  {analytics.window.dateFrom} – {analytics.window.dateTo}
+                </Badge>
+              </div>
+              {analytics.submissions.topSubmissions.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted">
+                  No submitted reel engagement in this period.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {analytics.submissions.topSubmissions.map((submission, index) => (
+                    <div
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"
+                      key={submission.submissionId}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone={submissionTone(
+                            submission.status as InfluencerCampaignSubmissionStatus,
+                          )}>
+                            {humanize(submission.status)}
+                          </Badge>
+                          <span className="text-xs font-medium text-muted">
+                            #{index + 1} · {submission.publicReelId}
+                          </span>
+                        </div>
+                        <p className="mt-1 truncate text-sm text-muted">
+                          Influencer {submission.influencerProfileId}
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-right text-sm">
+                        <MiniMetric label="Views" value={submission.views} />
+                        <MiniMetric label="Likes" value={submission.likes} />
+                        <MiniMetric label="Shares" value={submission.shares} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-xl border border-border bg-background p-4">
+              <h3 className="font-semibold text-foreground">Operational readout</h3>
+              <div className="mt-3">
+                <DetailRow label="Campaign status" value={humanize(analytics.campaign.status)} />
+                <DetailRow
+                  label="Budget"
+                  value={currency(
+                    analytics.campaign.budgetPaise,
+                    analytics.campaign.currency,
+                  )}
+                />
+                <DetailRow label="Pending review" value={integer(analytics.submissions.pendingReview)} />
+                <DetailRow label="Rejected" value={integer(analytics.submissions.rejected)} />
+                <DetailRow label="Withdrawn creators" value={integer(analytics.participants.withdrawn)} />
+                <DetailRow label="Shares" value={integer(analytics.engagement.shares)} />
+              </div>
+              <div className="mt-4 flex gap-2 rounded-lg border border-border bg-surface p-3 text-sm text-muted">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
+                <p>
+                  {analytics.privacy.thresholdApplied
+                    ? `Audience is below ${analytics.privacy.minimumAudienceSize}; treat conversion reads as directional.`
+                    : "Viewer and booking identities stay hidden; this dashboard uses aggregate backend counts."}
+                </p>
+              </div>
+              <p className="mt-3 text-center text-xs text-muted">
+                Snapshot {analytics.snapshot.cacheStatus.toLowerCase()} ·
+                generated{" "}
+                {new Date(analytics.snapshot.generatedAt).toLocaleString("en-IN")}
+              </p>
+            </section>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function MetricCard({
+  helper,
+  icon,
+  label,
+  value,
+}: {
+  helper: string;
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-4">
+      <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        {icon}
+      </div>
+      <p className="mt-4 truncate text-2xl font-semibold text-foreground">
+        {value}
+      </p>
+      <p className="mt-1 text-sm text-muted">{label}</p>
+      <p className="mt-1 text-xs text-muted">{helper}</p>
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-h-10 items-center justify-between gap-4 border-b border-border/70 py-2 last:border-b-0">
+      <span className="text-sm text-muted">{label}</span>
+      <span className="text-right text-sm font-medium text-foreground">
+        {value}
+      </span>
+    </div>
   );
 }
 

@@ -3,9 +3,11 @@ import { apiClient } from "../../../services/apiClient";
 import { buildQueryParams } from "../../../utils/buildQueryParams";
 import type {
   InfluencerCampaignApiErrorDetails,
+  InfluencerCampaignAnalyticsPeriod,
   InfluencerCampaignParticipantStatus,
   InfluencerCampaignParticipantsResponse,
   InfluencerCampaignPayload,
+  InfluencerCampaignPerformanceResponse,
   InfluencerCampaignResponse,
   InfluencerCampaignSponsorshipReviewDecision,
   InfluencerCampaignSponsorshipsResponse,
@@ -162,6 +164,25 @@ async function listParticipants(
   );
 }
 
+async function performance(
+  campaignId: string,
+  period: InfluencerCampaignAnalyticsPeriod = "30D",
+  refresh = false,
+) {
+  const params = buildQueryParams({
+    period,
+    refresh: refresh || undefined,
+    timezone: "Asia/Kolkata",
+    topLimit: 5,
+  });
+
+  return parse<InfluencerCampaignPerformanceResponse>(
+    await apiClient.request(
+      buildApiUrl(`${ROOT}/${campaignId}/performance?${params}`),
+    ),
+  );
+}
+
 async function listSponsorships(filters: {
   search?: string;
   status?: InfluencerCampaignSponsorshipStatus | "ALL";
@@ -241,6 +262,7 @@ export const influencerCampaignService = {
   listParticipants,
   listSponsorships,
   listSubmissions,
+  performance,
   reviewSponsorship,
   reviewSubmission,
   submitForReview,

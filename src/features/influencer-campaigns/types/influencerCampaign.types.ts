@@ -344,6 +344,73 @@ export interface InfluencerCampaignSponsorshipsResponse {
   summary: InfluencerCampaignSponsorshipSummary;
 }
 
+export type InfluencerCampaignAnalyticsPeriod =
+  | "7D"
+  | "30D"
+  | "90D"
+  | "THIS_MONTH"
+  | "CUSTOM";
+
+export interface InfluencerCampaignPerformanceResponse {
+  data: {
+    window: {
+      period: InfluencerCampaignAnalyticsPeriod | string;
+      timezone: string;
+      dateFrom: string;
+      dateTo: string;
+    };
+    campaign: {
+      campaignId: string;
+      publicCampaignId: string;
+      campaignCode: string;
+      title: string;
+      status: InfluencerCampaignStatus | string;
+      budgetPaise: number | string | null;
+      currency: string;
+    };
+    participants: {
+      total: number;
+      joined: number;
+      withdrawn: number;
+      disqualified: number;
+    };
+    submissions: {
+      total: number;
+      pendingReview: number;
+      approved: number;
+      rejected: number;
+      withdrawn: number;
+      approvalRatePercent: number | string;
+      topSubmissions: {
+        submissionId: string;
+        reelId: string;
+        publicReelId: string;
+        influencerProfileId: string;
+        status: InfluencerCampaignSubmissionStatus | string;
+        views: number;
+        likes: number;
+        shares: number;
+      }[];
+    };
+    engagement: {
+      views: number;
+      uniqueViewers: number;
+      likes: number;
+      shares: number;
+      averageWatchTimeMs: number | string;
+    };
+    privacy: {
+      thresholdApplied: boolean;
+      minimumAudienceSize: number;
+    };
+    snapshot: {
+      cacheStatus: "HIT" | "MISS" | "REFRESHED" | string;
+      generatedAt: string;
+      expiresAt: string;
+    };
+  };
+}
+
 export interface InfluencerCampaignResponse {
   data: InfluencerCampaign;
 }
