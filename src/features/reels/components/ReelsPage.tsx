@@ -37,7 +37,6 @@ import {
   type ReelActionSelection,
 } from "./ReelActionModal";
 import { ReelCommentsModerationQueue } from "./ReelCommentsModerationQueue";
-import { ReelHashtagsModerationQueue } from "./ReelHashtagsModerationQueue";
 import { HashtagModerationQueue } from "./HashtagModerationQueue";
 
 const REEL_LIST_STORAGE_KEY = "servicegram.reels.list.v1";
@@ -196,7 +195,6 @@ export function ReelsPage() {
   const canReadSocialModeration = usePermission("social-moderation:read");
   const canModerateHashtags = usePermission("social-moderation:update");
   const canDeleteReels = usePermission("reels:delete");
-  const canModerateHashtags = usePermission("social-moderation:update");
 
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [viewMode, setViewMode] = useState<ReelViewMode>("pending");
@@ -542,7 +540,6 @@ export function ReelsPage() {
         actionNode={
           <div className="flex items-center gap-2">
             <ReelCommentsModerationQueue canModerate={canModerateReels} />
-            <ReelHashtagsModerationQueue canModerate={canModerateHashtags} />
             {canReadSocialModeration ? (
               <HashtagModerationQueue canModerate={canModerateHashtags} />
             ) : null}

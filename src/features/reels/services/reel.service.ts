@@ -4,8 +4,6 @@ import {
   REEL_DELETE_PATH,
   REEL_COMMENTS_PATH,
   REEL_COMMENT_MODERATION_PATH,
-  HASHTAG_MODERATION_ACTION_PATH,
-  HASHTAG_MODERATION_LIST_PATH,
   REEL_DETAIL_PATH,
   REEL_LIVE_LIST_PATH,
   REEL_PAUSE_PATH,
@@ -37,9 +35,6 @@ import type {
   ReelDeletePayload,
   ReelOptionalReasonPayload,
   ReelRequiredReasonPayload,
-  AdminHashtagsListResponse,
-  AdminHashtagsQueryParams,
-  AdminHashtagModerationPayload,
 } from '../types/reel.types'
 
 interface ErrorEnvelope {
@@ -191,24 +186,6 @@ async function moderateReelComment(
   return parseJsonResponse<AdminReelCommentActionResponse>(response)
 }
 
-async function getHashtags(
-  query: AdminHashtagsQueryParams = {},
-): Promise<AdminHashtagsListResponse> {
-  const queryString = buildQueryParams(query)
-  const response = await apiClient.request(buildApiUrl(
-    queryString ? `${REEL_HASHTAGS_MODERATION_PATH}?${queryString}` : REEL_HASHTAGS_MODERATION_PATH,
-  ))
-  return parseJsonResponse<AdminHashtagsListResponse>(response)
-}
-
-async function moderateHashtag(hashtagId: string, payload: AdminHashtagModerationPayload) {
-  const response = await apiClient.request(
-    buildApiUrl(REEL_HASHTAG_MODERATION_PATH(hashtagId)),
-    patchJson(payload),
-  )
-  return parseJsonResponse(response)
-}
-
 async function approveReel(
   reelId: string,
   payload: ReelOptionalReasonPayload = {},
@@ -288,8 +265,8 @@ async function getHashtags(
   const response = await apiClient.request(
     buildApiUrl(
       queryString
-        ? `${HASHTAG_MODERATION_LIST_PATH}?${queryString}`
-        : HASHTAG_MODERATION_LIST_PATH,
+        ? `${REEL_HASHTAGS_MODERATION_PATH}?${queryString}`
+        : REEL_HASHTAGS_MODERATION_PATH,
     ),
   )
 
@@ -301,7 +278,7 @@ async function moderateHashtag(
   payload: AdminHashtagModerationPayload,
 ): Promise<AdminHashtag> {
   const response = await apiClient.request(
-    buildApiUrl(HASHTAG_MODERATION_ACTION_PATH(hashtagId)),
+    buildApiUrl(REEL_HASHTAG_MODERATION_PATH(hashtagId)),
     patchJson(payload),
   )
 
