@@ -61,6 +61,8 @@ export type PermissionKey =
   | "reels:read"
   | "reels:moderate"
   | "reels:delete"
+  | "social-moderation:read"
+  | "social-moderation:update"
   | "creator_music:read"
   | "creator_music:update"
   | "creator_music:publish"

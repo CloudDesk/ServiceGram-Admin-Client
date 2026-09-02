@@ -17,3 +17,6 @@ export const REEL_DELETE_PATH = (reelId: string) => `/admin/reels/${reelId}`
 export const REEL_COMMENTS_PATH = '/admin/reel-comments'
 export const REEL_COMMENT_MODERATION_PATH = (commentId: string) =>
   `/admin/reel-comments/${encodeURIComponent(commentId)}/moderation`
+export const REEL_HASHTAGS_MODERATION_PATH = '/admin/social-moderation/hashtags'
+export const REEL_HASHTAG_MODERATION_PATH = (hashtagId: string) =>
+  `/admin/social-moderation/hashtags/${encodeURIComponent(hashtagId)}/moderation`

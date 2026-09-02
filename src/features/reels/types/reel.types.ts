@@ -292,6 +292,43 @@ export interface AdminReelCommentModerationPayload {
 export type AdminReelCommentActionResponse =
   AdminReelApiResponse<AdminReelComment>
 
+export type AdminHashtagStatus = 'ACTIVE' | 'SUSPICIOUS' | 'BLOCKED'
+
+export interface AdminHashtag {
+  hashtagId: string
+  tag: string
+  displayTag: string
+  status: AdminHashtagStatus
+  moderationReason: string | null
+  version: number
+  visibleReelCount: number
+  usageCount7d: number
+  usageCount30d: number
+  lastUsedAt: string | null
+  aggregateRefreshedAt: string | null
+  availableActions: string[]
+}
+
+export interface AdminHashtagsListResponse extends AdminReelApiResponse<AdminHashtag[]> {
+  data: AdminHashtag[]
+  pagination: AdminReelsPagination
+  summary: { totalItems: number; active: number; suspicious: number; blocked: number }
+}
+
+export interface AdminHashtagsQueryParams {
+  page?: number
+  limit?: number
+  search?: string
+  status?: AdminHashtagStatus
+}
+
+export type AdminHashtagModerationAction = 'MARK_SUSPICIOUS' | 'ALLOW' | 'BLOCK'
+export interface AdminHashtagModerationPayload {
+  action: AdminHashtagModerationAction
+  expectedVersion: number
+  reason: string
+}
+
 export interface AdminReelApiErrorDetails extends ApiErrorDetails {
   fieldErrors?: {
     field: string

@@ -12,6 +12,8 @@ import {
   REEL_REMOVE_PATH,
   REEL_REQUEST_EDIT_PATH,
   REEL_VENDOR_LIST_PATH,
+  REEL_HASHTAGS_MODERATION_PATH,
+  REEL_HASHTAG_MODERATION_PATH,
 } from '../../../config/reelApiPaths'
 import { apiClient } from '../../../services/apiClient'
 import { buildQueryParams } from '../../../utils/buildQueryParams'
@@ -28,6 +30,9 @@ import type {
   ReelDeletePayload,
   ReelOptionalReasonPayload,
   ReelRequiredReasonPayload,
+  AdminHashtagsListResponse,
+  AdminHashtagsQueryParams,
+  AdminHashtagModerationPayload,
 } from '../types/reel.types'
 
 interface ErrorEnvelope {
@@ -156,6 +161,24 @@ async function moderateReelComment(
   return parseJsonResponse<AdminReelCommentActionResponse>(response)
 }
 
+async function getHashtags(
+  query: AdminHashtagsQueryParams = {},
+): Promise<AdminHashtagsListResponse> {
+  const queryString = buildQueryParams(query)
+  const response = await apiClient.request(buildApiUrl(
+    queryString ? `${REEL_HASHTAGS_MODERATION_PATH}?${queryString}` : REEL_HASHTAGS_MODERATION_PATH,
+  ))
+  return parseJsonResponse<AdminHashtagsListResponse>(response)
+}
+
+async function moderateHashtag(hashtagId: string, payload: AdminHashtagModerationPayload) {
+  const response = await apiClient.request(
+    buildApiUrl(REEL_HASHTAG_MODERATION_PATH(hashtagId)),
+    patchJson(payload),
+  )
+  return parseJsonResponse(response)
+}
+
 async function approveReel(
   reelId: string,
   payload: ReelOptionalReasonPayload = {},
@@ -235,6 +258,8 @@ export const reelService = {
   getReelById,
   getReelComments,
   moderateReelComment,
+  getHashtags,
+  moderateHashtag,
   approveReel,
   rejectReel,
   requestReelEdit,
