@@ -7,6 +7,9 @@ import type {
   InfluencerCampaignParticipantsResponse,
   InfluencerCampaignPayload,
   InfluencerCampaignResponse,
+  InfluencerCampaignSponsorshipReviewDecision,
+  InfluencerCampaignSponsorshipsResponse,
+  InfluencerCampaignSponsorshipStatus,
   InfluencerCampaignSubmissionStatus,
   InfluencerCampaignSubmissionsResponse,
   InfluencerCampaignsResponse,
@@ -15,6 +18,7 @@ import type {
 
 const ROOT = "/admin/influencer-campaigns";
 const SUBMISSIONS_ROOT = "/admin/influencer-campaign-submissions";
+const SPONSORSHIPS_ROOT = "/admin/influencer-campaign-sponsorships";
 
 interface ErrorEnvelope {
   message?: string;
@@ -158,6 +162,60 @@ async function listParticipants(
   );
 }
 
+async function listSponsorships(filters: {
+  search?: string;
+  status?: InfluencerCampaignSponsorshipStatus | "ALL";
+}) {
+  const params = buildQueryParams({
+    page: 1,
+    limit: 50,
+    search: filters.search || undefined,
+    status:
+      filters.status && filters.status !== "ALL"
+        ? [filters.status]
+        : undefined,
+  });
+
+  return parse<InfluencerCampaignSponsorshipsResponse>(
+    await apiClient.request(
+      buildApiUrl(params ? `${SPONSORSHIPS_ROOT}?${params}` : SPONSORSHIPS_ROOT),
+    ),
+  );
+}
+
+async function reviewSponsorship(
+  sponsorshipRequestId: string,
+  body: {
+    decision: InfluencerCampaignSponsorshipReviewDecision;
+    expectedVersion: number;
+    reason: string;
+    notes?: string;
+  },
+) {
+  return parse(
+    await apiClient.request(
+      buildApiUrl(`${SPONSORSHIPS_ROOT}/${sponsorshipRequestId}/review`),
+      json("POST", body),
+    ),
+  );
+}
+
+async function actionSponsorship(
+  sponsorshipRequestId: string,
+  body: {
+    action: "CANCEL" | "RESTRICT";
+    expectedVersion: number;
+    reason: string;
+  },
+) {
+  return parse(
+    await apiClient.request(
+      buildApiUrl(`${SPONSORSHIPS_ROOT}/${sponsorshipRequestId}/action`),
+      json("POST", body),
+    ),
+  );
+}
+
 async function reviewSubmission(
   submissionId: string,
   body: {
@@ -174,13 +232,16 @@ async function reviewSubmission(
 }
 
 export const influencerCampaignService = {
+  actionSponsorship,
   approve,
   cancel,
   create,
   detail,
   list,
   listParticipants,
+  listSponsorships,
   listSubmissions,
+  reviewSponsorship,
   reviewSubmission,
   submitForReview,
   update,

@@ -205,6 +205,112 @@ export interface InfluencerCampaignParticipantSummary {
   disqualified: number;
 }
 
+export type InfluencerCampaignSponsorshipStatus =
+  | "DRAFT"
+  | "PENDING_REVIEW"
+  | "CHANGES_REQUESTED"
+  | "APPROVED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "ADMIN_RESTRICTED";
+
+export type InfluencerCampaignSponsorshipReviewDecision =
+  | "APPROVED"
+  | "REJECTED"
+  | "CHANGES_REQUESTED";
+
+export interface InfluencerCampaignSponsorship {
+  sponsorshipRequestId: string;
+  publicSponsorshipId: string;
+  vendorId: string;
+  campaignId: string | null;
+  proposalCode: string;
+  title: string;
+  summary: string;
+  brief: string;
+  objective: InfluencerCampaignObjective;
+  status: InfluencerCampaignSponsorshipStatus;
+  schedule: {
+    startsAt: string | null;
+    endsAt: string | null;
+    submissionDeadlineAt: string | null;
+  };
+  budget: {
+    amountPaise: number;
+    currency: string;
+    minimumBudgetPaise: number;
+  };
+  maxParticipants: number | null;
+  rewardSummary: string;
+  rewards: InfluencerCampaignReward[];
+  deliverables: Record<string, unknown>;
+  contentRequirements: Record<string, unknown>;
+  eligibilitySummary: string;
+  eligibilityRules: InfluencerCampaignEligibilityRule[];
+  thresholds: {
+    minFollowerCount: number | null;
+    minEngagementRateBps: number | null;
+  };
+  paymentTerms: string;
+  review: {
+    submittedAt: string | null;
+    reviewedByAdminId: string | null;
+    reviewedAt: string | null;
+    reason: string | null;
+    notes: string | null;
+  };
+  cancellation: {
+    cancelledByAdminId: string | null;
+    cancelledByUserId: string | null;
+    cancelledAt: string | null;
+    reason: string | null;
+  };
+  vendor: {
+    vendorId: string;
+    publicVendorId: string;
+    shopName: string;
+    city: string | null;
+    vendorStatus: string;
+    onboardingStatus: string;
+  } | null;
+  linkedCampaign: {
+    campaignId: string;
+    publicCampaignId: string;
+    campaignCode: string;
+    status: InfluencerCampaignStatus;
+  } | null;
+  lifecycle: {
+    version: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+  availableActions: {
+    edit: boolean;
+    submitForReview: boolean;
+    cancel: boolean;
+    approve: boolean;
+    reject: boolean;
+    requestChanges: boolean;
+    restrict: boolean;
+    viewPerformance: boolean;
+  };
+  blockingReasons: string[];
+  warnings: string[];
+  nextRecommendedAction: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface InfluencerCampaignSponsorshipSummary {
+  total: number;
+  draft: number;
+  pendingReview: number;
+  changesRequested: number;
+  approved: number;
+  rejected: number;
+  cancelled: number;
+  adminRestricted: number;
+}
+
 export interface CampaignPagination {
   page: number;
   limit: number;
@@ -230,6 +336,12 @@ export interface InfluencerCampaignParticipantsResponse {
   data: InfluencerCampaignParticipant[];
   pagination: CampaignPagination;
   summary: InfluencerCampaignParticipantSummary;
+}
+
+export interface InfluencerCampaignSponsorshipsResponse {
+  data: InfluencerCampaignSponsorship[];
+  pagination: CampaignPagination;
+  summary: InfluencerCampaignSponsorshipSummary;
 }
 
 export interface InfluencerCampaignResponse {

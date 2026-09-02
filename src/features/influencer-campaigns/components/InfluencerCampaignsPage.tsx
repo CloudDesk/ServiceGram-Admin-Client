@@ -22,6 +22,9 @@ import type {
   InfluencerCampaignParticipant,
   InfluencerCampaignParticipantStatus,
   InfluencerCampaignPayload,
+  InfluencerCampaignSponsorship,
+  InfluencerCampaignSponsorshipReviewDecision,
+  InfluencerCampaignSponsorshipStatus,
   InfluencerCampaignSubmission,
   InfluencerCampaignSubmissionStatus,
   InfluencerCampaignStatus,
@@ -57,6 +60,17 @@ const participantStatuses: ("ALL" | InfluencerCampaignParticipantStatus)[] = [
   "JOINED",
   "WITHDRAWN",
   "DISQUALIFIED",
+];
+
+const sponsorshipStatuses: ("ALL" | InfluencerCampaignSponsorshipStatus)[] = [
+  "ALL",
+  "DRAFT",
+  "PENDING_REVIEW",
+  "CHANGES_REQUESTED",
+  "APPROVED",
+  "REJECTED",
+  "CANCELLED",
+  "ADMIN_RESTRICTED",
 ];
 
 const objectives: InfluencerCampaignObjective[] = [
@@ -124,6 +138,15 @@ function statusTone(status: InfluencerCampaignStatus) {
   return "neutral" as const;
 }
 
+function sponsorshipTone(status: InfluencerCampaignSponsorshipStatus) {
+  if (status === "APPROVED") return "success" as const;
+  if (status === "PENDING_REVIEW" || status === "CHANGES_REQUESTED")
+    return "warning" as const;
+  if (["REJECTED", "CANCELLED", "ADMIN_RESTRICTED"].includes(status))
+    return "danger" as const;
+  return "neutral" as const;
+}
+
 function dateInput(value?: string | null) {
   if (!value) return "";
   const date = new Date(value);
@@ -182,6 +205,9 @@ export function InfluencerCampaignsPage() {
   const [submissionStatus, setSubmissionStatus] = useState<
     "ALL" | InfluencerCampaignSubmissionStatus
   >("PENDING_REVIEW");
+  const [sponsorshipStatus, setSponsorshipStatus] = useState<
+    "ALL" | InfluencerCampaignSponsorshipStatus
+  >("PENDING_REVIEW");
   const [participantStatus, setParticipantStatus] = useState<
     "ALL" | InfluencerCampaignParticipantStatus
   >("JOINED");
@@ -204,6 +230,15 @@ export function InfluencerCampaignsPage() {
     queryKey: ["influencer-campaign-submissions", submissionStatus],
     queryFn: () =>
       influencerCampaignService.listSubmissions({ status: submissionStatus }),
+    enabled: canReview,
+  });
+  const sponsorshipsQuery = useQuery({
+    queryKey: ["influencer-campaign-sponsorships", search, sponsorshipStatus],
+    queryFn: () =>
+      influencerCampaignService.listSponsorships({
+        search,
+        status: sponsorshipStatus,
+      }),
     enabled: canReview,
   });
   const participantsQuery = useQuery({
@@ -300,6 +335,70 @@ export function InfluencerCampaignsPage() {
       ),
   });
 
+  const sponsorshipReviewMutation = useMutation({
+    mutationFn: ({
+      decision,
+      reason,
+      sponsorship,
+    }: {
+      decision: InfluencerCampaignSponsorshipReviewDecision;
+      reason: string;
+      sponsorship: InfluencerCampaignSponsorship;
+    }) =>
+      influencerCampaignService.reviewSponsorship(
+        sponsorship.sponsorshipRequestId,
+        {
+          decision,
+          expectedVersion: sponsorship.lifecycle.version,
+          reason,
+        },
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["influencer-campaign-sponsorships"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["influencer-campaigns"] }),
+      ]);
+    },
+    onError: (cause) =>
+      setError(
+        cause instanceof Error ? cause.message : "Sponsorship review failed.",
+      ),
+  });
+
+  const sponsorshipActionMutation = useMutation({
+    mutationFn: ({
+      action,
+      reason,
+      sponsorship,
+    }: {
+      action: "CANCEL" | "RESTRICT";
+      reason: string;
+      sponsorship: InfluencerCampaignSponsorship;
+    }) =>
+      influencerCampaignService.actionSponsorship(
+        sponsorship.sponsorshipRequestId,
+        {
+          action,
+          expectedVersion: sponsorship.lifecycle.version,
+          reason,
+        },
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["influencer-campaign-sponsorships"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["influencer-campaigns"] }),
+      ]);
+    },
+    onError: (cause) =>
+      setError(
+        cause instanceof Error ? cause.message : "Sponsorship action failed.",
+      ),
+  });
+
   const startEdit = async (campaign: InfluencerCampaign) => {
     setError(null);
     const detail = (await influencerCampaignService.detail(campaign.campaignId))
@@ -327,9 +426,34 @@ export function InfluencerCampaignsPage() {
     if (reason) submissionReviewMutation.mutate({ decision, reason, submission });
   };
 
+  const runSponsorshipReview = (
+    sponsorship: InfluencerCampaignSponsorship,
+    decision: InfluencerCampaignSponsorshipReviewDecision,
+  ) => {
+    const verb =
+      decision === "APPROVED"
+        ? "approve"
+        : decision === "REJECTED"
+          ? "reject"
+          : "request changes for";
+    const reason = window.prompt(`Reason to ${verb} this sponsorship:`)?.trim();
+    if (reason) sponsorshipReviewMutation.mutate({ decision, reason, sponsorship });
+  };
+
+  const runSponsorshipAction = (
+    sponsorship: InfluencerCampaignSponsorship,
+    action: "CANCEL" | "RESTRICT",
+  ) => {
+    const verb = action === "RESTRICT" ? "restrict" : "cancel";
+    const reason = window.prompt(`Reason to ${verb} this sponsorship:`)?.trim();
+    if (reason) sponsorshipActionMutation.mutate({ action, reason, sponsorship });
+  };
+
   const summary = campaignsQuery.data?.summary;
   const submissionSummary = submissionsQuery.data?.summary;
   const submissions = submissionsQuery.data?.data ?? [];
+  const sponsorshipSummary = sponsorshipsQuery.data?.summary;
+  const sponsorships = sponsorshipsQuery.data?.data ?? [];
   const participantSummary = participantsQuery.data?.summary;
   const participants = participantsQuery.data?.data ?? [];
 
@@ -357,6 +481,93 @@ export function InfluencerCampaignsPage() {
         <Metric label="Pending review" value={summary?.pendingReview ?? 0} />
         <Metric label="Active/upcoming" value={(summary?.active ?? 0) + (summary?.upcoming ?? 0)} />
       </section>
+
+      {canReview ? (
+        <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Vendor-sponsored campaign proposals</h2>
+              <p className="text-sm text-muted">
+                Review vendor-funded campaign drafts before they become public creator campaigns.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-4">
+              <MiniMetric label="Total" value={sponsorshipSummary?.total ?? 0} />
+              <MiniMetric
+                label="Pending"
+                value={sponsorshipSummary?.pendingReview ?? 0}
+              />
+              <MiniMetric
+                label="Changes"
+                value={sponsorshipSummary?.changesRequested ?? 0}
+              />
+              <MiniMetric label="Approved" value={sponsorshipSummary?.approved ?? 0} />
+            </div>
+          </div>
+
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <select
+              className={inputClass + " max-w-56"}
+              value={sponsorshipStatus}
+              onChange={(event) =>
+                setSponsorshipStatus(
+                  event.target.value as
+                    | "ALL"
+                    | InfluencerCampaignSponsorshipStatus,
+                )
+              }
+            >
+              {sponsorshipStatuses.map((item) => (
+                <option key={item} value={item}>
+                  {item === "ALL" ? "All sponsorships" : humanize(item)}
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="secondary"
+              onClick={() => void sponsorshipsQuery.refetch()}
+            >
+              <RefreshCcw className="mr-2 size-4" /> Refresh sponsorships
+            </Button>
+          </div>
+
+          <div className="grid gap-3">
+            {sponsorshipsQuery.isLoading ? (
+              <p className="text-sm text-muted">Loading sponsorship proposals…</p>
+            ) : sponsorships.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                <Megaphone className="mx-auto mb-2 size-6 text-muted" />
+                <p className="font-medium">No sponsorship proposals found</p>
+                <p className="text-sm text-muted">
+                  Vendor-submitted proposals will appear here for approval, change requests, or restriction.
+                </p>
+              </div>
+            ) : (
+              sponsorships.map((sponsorship) => (
+                <SponsorshipCard
+                  isActing={
+                    sponsorshipReviewMutation.isPending ||
+                    sponsorshipActionMutation.isPending
+                  }
+                  key={sponsorship.sponsorshipRequestId}
+                  onApprove={() =>
+                    runSponsorshipReview(sponsorship, "APPROVED")
+                  }
+                  onCancel={() => runSponsorshipAction(sponsorship, "CANCEL")}
+                  onReject={() =>
+                    runSponsorshipReview(sponsorship, "REJECTED")
+                  }
+                  onRequestChanges={() =>
+                    runSponsorshipReview(sponsorship, "CHANGES_REQUESTED")
+                  }
+                  onRestrict={() => runSponsorshipAction(sponsorship, "RESTRICT")}
+                  sponsorship={sponsorship}
+                />
+              ))
+            )}
+          </div>
+        </section>
+      ) : null}
 
       {canUpdate ? (
         <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
@@ -895,6 +1106,144 @@ function CampaignCard({
         {canReview && campaign.availableActions.cancel ? (
           <Button variant="danger" onClick={onCancel}>
             <XCircle className="mr-2 size-4" /> Cancel
+          </Button>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function SponsorshipCard({
+  isActing,
+  onApprove,
+  onCancel,
+  onReject,
+  onRequestChanges,
+  onRestrict,
+  sponsorship,
+}: {
+  isActing: boolean;
+  onApprove: () => void;
+  onCancel: () => void;
+  onReject: () => void;
+  onRequestChanges: () => void;
+  onRestrict: () => void;
+  sponsorship: InfluencerCampaignSponsorship;
+}) {
+  return (
+    <article className="rounded-xl border border-border bg-background p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <Badge tone={sponsorshipTone(sponsorship.status)}>
+              {humanize(sponsorship.status)}
+            </Badge>
+            <span className="text-xs font-medium text-muted">
+              {sponsorship.publicSponsorshipId}
+            </span>
+            {sponsorship.linkedCampaign ? (
+              <span className="text-xs font-medium text-muted">
+                Linked: {sponsorship.linkedCampaign.publicCampaignId}
+              </span>
+            ) : null}
+          </div>
+          <h3 className="text-lg font-semibold">{sponsorship.title}</h3>
+          <p className="mt-1 max-w-3xl text-sm text-muted">
+            {sponsorship.summary}
+          </p>
+          <p className="mt-2 text-sm">
+            <span className="font-medium">
+              {sponsorship.vendor?.shopName ?? "Unknown vendor"}
+            </span>
+            <span className="text-muted">
+              {sponsorship.vendor?.city ? ` · ${sponsorship.vendor.city}` : ""}
+            </span>
+          </p>
+        </div>
+        <div className="text-right text-sm">
+          <p className="font-semibold">
+            {currency(
+              sponsorship.budget.amountPaise,
+              sponsorship.budget.currency,
+            )}
+          </p>
+          <p className="text-muted">
+            Min {currency(sponsorship.budget.minimumBudgetPaise)}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
+        <Fact
+          icon={<CalendarClock className="size-4" />}
+          label="Window"
+          value={`${sponsorship.schedule.startsAt ? formatDate(sponsorship.schedule.startsAt, true) : "No start"} → ${
+            sponsorship.schedule.endsAt
+              ? formatDate(sponsorship.schedule.endsAt, true)
+              : "No end"
+          }`}
+        />
+        <Fact
+          icon={<Trophy className="size-4" />}
+          label="Eligibility"
+          value={sponsorship.eligibilitySummary}
+        />
+        <Fact
+          icon={<Send className="size-4" />}
+          label="Next"
+          value={sponsorship.nextRecommendedAction ?? "No action required"}
+        />
+      </div>
+
+      {sponsorship.blockingReasons.length || sponsorship.warnings.length ? (
+        <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
+          {sponsorship.blockingReasons.length ? (
+            <div className="rounded-lg border border-danger/25 bg-danger/10 p-3 text-danger">
+              {sponsorship.blockingReasons.join(" ")}
+            </div>
+          ) : null}
+          {sponsorship.warnings.length ? (
+            <div className="rounded-lg border border-warning/25 bg-warning/10 p-3 text-warning">
+              {sponsorship.warnings.join(" ")}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {sponsorship.paymentTerms ? (
+        <div className="mt-3 rounded-lg border border-border bg-surface p-3 text-sm text-muted">
+          {sponsorship.paymentTerms}
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        {sponsorship.availableActions.requestChanges ? (
+          <Button
+            disabled={isActing}
+            variant="secondary"
+            onClick={onRequestChanges}
+          >
+            Request changes
+          </Button>
+        ) : null}
+        {sponsorship.availableActions.reject ? (
+          <Button disabled={isActing} variant="danger" onClick={onReject}>
+            <XCircle className="mr-2 size-4" /> Reject
+          </Button>
+        ) : null}
+        {sponsorship.availableActions.cancel ? (
+          <Button disabled={isActing} variant="secondary" onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : null}
+        {sponsorship.availableActions.restrict ? (
+          <Button disabled={isActing} variant="danger" onClick={onRestrict}>
+            Restrict
+          </Button>
+        ) : null}
+        {sponsorship.availableActions.approve ? (
+          <Button disabled={isActing} onClick={onApprove}>
+            <CheckCircle2 className="mr-2 size-4" /> Approve & create campaign
           </Button>
         ) : null}
       </div>
