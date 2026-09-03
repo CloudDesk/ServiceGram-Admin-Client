@@ -1112,7 +1112,7 @@ export function InfluencerPayoutsPage() {
             isError={payoutQuery.isError}
             isLoading={payoutQuery.isLoading}
             pagination={commonPagination}
-            queueTabs={queueTabs(payoutQueues)}
+            queueTabs={queueTabs(payoutQueues, payoutSummary)}
             rowActions={(row) =>
               canApprovePayouts ? (
                 <div className="flex flex-wrap justify-end gap-1">

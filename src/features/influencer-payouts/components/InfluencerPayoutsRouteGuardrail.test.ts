@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const root = resolve(__dirname, "../../..");
+const root = resolve(import.meta.dirname, "../../..");
 
 function source(path: string) {
   return readFileSync(resolve(root, path), "utf8");
@@ -46,8 +46,10 @@ describe("Influencer payouts admin route guardrail", () => {
     expect(page).toContain("influencerPayoutService.listPayouts");
     expect(page).toContain("bankQuery.data?.summary");
     expect(page).toContain("kycQuery.data?.summary");
+    expect(page).toContain("payoutQuery.data?.summary");
     expect(page).toContain("queueTabs(bankQueues, bankSummary)");
     expect(page).toContain("queueTabs(kycQueues, kycSummary)");
+    expect(page).toContain("queueTabs(payoutQueues, payoutSummary)");
     expect(page).toContain("expectedVersion");
     expect(page).toContain("reason: values.reason");
   });
