@@ -17,15 +17,16 @@ import { apiClient } from "../../../services/apiClient";
 import { buildQueryParams } from "../../../utils/buildQueryParams";
 import type {
   CreatePayoutBatchPayload,
+  InfluencerBankAccountListResponse,
   InfluencerBankAccountQueryParams,
   InfluencerBankAccountReviewRow,
+  InfluencerKycListResponse,
   InfluencerKycQueryParams,
   InfluencerKycReviewRow,
   InfluencerPayoutApiErrorDetails,
   InfluencerPayoutApiResponse,
   InfluencerPayoutBatchResult,
   InfluencerPayoutListQueryParams,
-  InfluencerPayoutListResponse,
   InfluencerPayoutRow,
   InfluencerPayoutsListResponse,
   MarkPayoutFailedPayload,
@@ -77,7 +78,7 @@ function listPath(path: string, query: object) {
 }
 
 async function listBankAccounts(query: InfluencerBankAccountQueryParams = {}) {
-  return parse<InfluencerPayoutListResponse<InfluencerBankAccountReviewRow>>(
+  return parse<InfluencerBankAccountListResponse>(
     await apiClient.request(listPath(INFLUENCER_BANK_ACCOUNT_LIST_PATH, query)),
   );
 }
@@ -95,7 +96,7 @@ async function reviewBankAccount(
 }
 
 async function listKycChecks(query: InfluencerKycQueryParams = {}) {
-  return parse<InfluencerPayoutListResponse<InfluencerKycReviewRow>>(
+  return parse<InfluencerKycListResponse>(
     await apiClient.request(listPath(INFLUENCER_KYC_CHECK_LIST_PATH, query)),
   );
 }

@@ -156,6 +156,22 @@ export interface InfluencerPayoutSummary {
   pendingAmountPaise: number;
 }
 
+export interface InfluencerBankAccountSummary {
+  total: number;
+  PENDING_VERIFICATION: number;
+  VERIFIED: number;
+  REJECTED: number;
+  DISABLED: number;
+}
+
+export interface InfluencerKycSummary {
+  total: number;
+  PENDING_REVIEW: number;
+  APPROVED: number;
+  REJECTED: number;
+  EXPIRED: number;
+}
+
 export interface InfluencerPayoutBatchCandidate {
   influencerProfileId: string;
   bankAccountId: string | null;
@@ -214,6 +230,14 @@ export interface InfluencerPayoutListResponse<
   TData,
 > extends InfluencerPayoutApiResponse<TData[]> {
   pagination: InfluencerPayoutPagination;
+}
+
+export interface InfluencerBankAccountListResponse extends InfluencerPayoutListResponse<InfluencerBankAccountReviewRow> {
+  summary?: InfluencerBankAccountSummary;
+}
+
+export interface InfluencerKycListResponse extends InfluencerPayoutListResponse<InfluencerKycReviewRow> {
+  summary?: InfluencerKycSummary;
 }
 
 export interface InfluencerPayoutsListResponse extends InfluencerPayoutListResponse<InfluencerPayoutRow> {

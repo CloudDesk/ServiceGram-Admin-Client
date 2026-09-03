@@ -36,6 +36,11 @@ import type {
 } from "../types/influencerPayout.types";
 
 type WorkspaceTab = "banks" | "kyc" | "payouts";
+interface QueueConfig<TStatus extends string> {
+  label: string;
+  status?: TStatus[];
+  tone?: "warning" | "danger";
+}
 type ActionTarget =
   | {
       kind: "VERIFY_BANK" | "REJECT_BANK";
@@ -61,34 +66,21 @@ const STORAGE_KEYS: Record<WorkspaceTab, string> = {
   payouts: "servicegram.influencer-payouts.payouts.v1",
 };
 
-const bankQueues: Record<
-  string,
-  { label: string; status?: InfluencerBankAccountStatus[] }
-> = {
+const bankQueues: Record<string, QueueConfig<InfluencerBankAccountStatus>> = {
   all: { label: "All" },
   pending: { label: "Pending verification", status: ["PENDING_VERIFICATION"] },
   verified: { label: "Verified", status: ["VERIFIED"] },
   rejected: { label: "Rejected", status: ["REJECTED"] },
 };
 
-const kycQueues: Record<
-  string,
-  { label: string; status?: InfluencerKycCheckStatus[] }
-> = {
+const kycQueues: Record<string, QueueConfig<InfluencerKycCheckStatus>> = {
   all: { label: "All" },
   pending: { label: "Pending review", status: ["PENDING_REVIEW"] },
   approved: { label: "Approved", status: ["APPROVED"] },
   rejected: { label: "Rejected", status: ["REJECTED"] },
 };
 
-const payoutQueues: Record<
-  string,
-  {
-    label: string;
-    status?: InfluencerPayoutStatus[];
-    tone?: "warning" | "danger";
-  }
-> = {
+const payoutQueues: Record<string, QueueConfig<InfluencerPayoutStatus>> = {
   all: { label: "All" },
   review: {
     label: "Needs review",
@@ -175,12 +167,23 @@ function influencerLink(influencer: { id: string; displayName: string }) {
   );
 }
 
-function queueTabs(
-  queues: Record<string, { label: string; tone?: "warning" | "danger" }>,
+function queueTabs<
+  TStatus extends string,
+  TSummary extends { total?: number } & Partial<Record<TStatus, number>>,
+>(
+  queues: Record<string, QueueConfig<TStatus>>,
+  summary?: TSummary,
 ): DataListQueueTab[] {
   return Object.entries(queues).map(([key, queue]) => ({
     key,
     label: queue.label,
+    count:
+      key === "all"
+        ? summary?.total
+        : queue.status?.reduce(
+            (total, status) => total + (summary?.[status] ?? 0),
+            0,
+          ),
     tone: queue.tone,
   }));
 }
@@ -600,6 +603,8 @@ export function InfluencerPayoutsPage() {
   const bankRows = bankQuery.data?.data ?? [];
   const kycRows = kycQuery.data?.data ?? [];
   const payoutRows = payoutQuery.data?.data ?? [];
+  const bankSummary = bankQuery.data?.summary;
+  const kycSummary = kycQuery.data?.summary;
   const payoutSummary = payoutQuery.data?.summary;
   const activeRows =
     activeTab === "banks"
@@ -979,7 +984,7 @@ export function InfluencerPayoutsPage() {
             isError={bankQuery.isError}
             isLoading={bankQuery.isLoading}
             pagination={commonPagination}
-            queueTabs={queueTabs(bankQueues)}
+            queueTabs={queueTabs(bankQueues, bankSummary)}
             rowActions={(row) =>
               canReviewInfluencers && hasAction(row, "VERIFY") ? (
                 <div className="flex justify-end gap-1">
@@ -1056,7 +1061,7 @@ export function InfluencerPayoutsPage() {
             isError={kycQuery.isError}
             isLoading={kycQuery.isLoading}
             pagination={commonPagination}
-            queueTabs={queueTabs(kycQueues)}
+            queueTabs={queueTabs(kycQueues, kycSummary)}
             rowActions={(row) =>
               canReviewInfluencers && hasAction(row, "APPROVE") ? (
                 <div className="flex justify-end gap-1">
