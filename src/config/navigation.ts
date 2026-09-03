@@ -200,6 +200,13 @@ export const navigationItems: NavigationItem[] = [
     group: "release2",
   },
   {
+    label: "Influencer Payouts",
+    href: routePaths.influencerPayouts,
+    icon: HandCoins,
+    permission: permissions.influencerPayouts,
+    group: "release2",
+  },
+  {
     label: "Feature Flags",
     href: routePaths.featureFlags,
     icon: ToggleLeft,
