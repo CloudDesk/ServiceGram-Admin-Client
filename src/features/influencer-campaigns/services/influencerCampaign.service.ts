@@ -9,6 +9,10 @@ import type {
   InfluencerCampaignPayload,
   InfluencerCampaignPerformanceResponse,
   InfluencerCampaignResponse,
+  InfluencerCampaignRewardAwardReviewDecision,
+  InfluencerCampaignRewardAwardsResponse,
+  InfluencerCampaignRewardAwardStatus,
+  InfluencerCampaignRewardType,
   InfluencerCampaignSponsorshipReviewDecision,
   InfluencerCampaignSponsorshipsResponse,
   InfluencerCampaignSponsorshipStatus,
@@ -19,6 +23,7 @@ import type {
 } from "../types/influencerCampaign.types";
 
 const ROOT = "/admin/influencer-campaigns";
+const REWARD_AWARDS_ROOT = "/admin/influencer-campaign-reward-awards";
 const SUBMISSIONS_ROOT = "/admin/influencer-campaign-submissions";
 const SPONSORSHIPS_ROOT = "/admin/influencer-campaign-sponsorships";
 
@@ -140,6 +145,34 @@ async function listSubmissions(filters: {
   );
 }
 
+async function listRewardAwards(filters: {
+  campaignId?: string;
+  influencerProfileId?: string;
+  status?: InfluencerCampaignRewardAwardStatus | "ALL";
+  rewardType?: InfluencerCampaignRewardType | "ALL";
+}) {
+  const params = buildQueryParams({
+    page: 1,
+    limit: 50,
+    campaignId: filters.campaignId || undefined,
+    influencerProfileId: filters.influencerProfileId || undefined,
+    status:
+      filters.status && filters.status !== "ALL" ? [filters.status] : undefined,
+    rewardType:
+      filters.rewardType && filters.rewardType !== "ALL"
+        ? [filters.rewardType]
+        : undefined,
+  });
+
+  return parse<InfluencerCampaignRewardAwardsResponse>(
+    await apiClient.request(
+      buildApiUrl(
+        params ? `${REWARD_AWARDS_ROOT}?${params}` : REWARD_AWARDS_ROOT,
+      ),
+    ),
+  );
+}
+
 async function listParticipants(
   campaignId: string,
   filters: { status?: InfluencerCampaignParticipantStatus | "ALL" } = {},
@@ -252,6 +285,22 @@ async function reviewSubmission(
   );
 }
 
+async function reviewRewardAward(
+  awardId: string,
+  body: {
+    decision: InfluencerCampaignRewardAwardReviewDecision;
+    expectedVersion: number;
+    reason: string;
+  },
+) {
+  return parse(
+    await apiClient.request(
+      buildApiUrl(`${REWARD_AWARDS_ROOT}/${awardId}/review`),
+      json("POST", body),
+    ),
+  );
+}
+
 export const influencerCampaignService = {
   actionSponsorship,
   approve,
@@ -260,10 +309,12 @@ export const influencerCampaignService = {
   detail,
   list,
   listParticipants,
+  listRewardAwards,
   listSponsorships,
   listSubmissions,
   performance,
   reviewSponsorship,
+  reviewRewardAward,
   reviewSubmission,
   submitForReview,
   update,

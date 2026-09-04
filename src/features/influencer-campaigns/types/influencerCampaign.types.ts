@@ -122,6 +122,17 @@ export type InfluencerCampaignSubmissionStatus =
   | "REJECTED"
   | "WITHDRAWN";
 
+export type InfluencerCampaignRewardAwardStatus =
+  | "PENDING_REVIEW"
+  | "APPROVED"
+  | "REJECTED"
+  | "HELD"
+  | "PAID";
+
+export type InfluencerCampaignRewardAwardReviewDecision =
+  | "APPROVED"
+  | "REJECTED";
+
 export type InfluencerCampaignParticipantStatus =
   | "JOINED"
   | "WITHDRAWN"
@@ -196,6 +207,75 @@ export interface InfluencerCampaignSubmissionSummary {
   approved: number;
   rejected: number;
   withdrawn: number;
+}
+
+export interface InfluencerCampaignRewardAward {
+  awardId: string;
+  publicAwardId: string;
+  campaignId: string;
+  rewardId: string;
+  submissionId: string;
+  participantId: string;
+  influencerProfileId: string;
+  reelId: string;
+  rewardType: InfluencerCampaignRewardType;
+  rank: number;
+  metricValue: number;
+  amountPaise: number;
+  currency: string;
+  commissionBoostBps: number | null;
+  status: InfluencerCampaignRewardAwardStatus;
+  rewardSnapshot: Record<string, unknown>;
+  calculationSnapshot: Record<string, unknown>;
+  review: {
+    reviewedByAdminId: string | null;
+    reviewedAt: string | null;
+    reason: string | null;
+    notes: string | null;
+  };
+  lifecycle: {
+    approvedAt: string | null;
+    rejectedAt: string | null;
+    heldAt: string | null;
+    paidAt: string | null;
+    version: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+  campaign: {
+    campaignId: string;
+    publicCampaignId: string;
+    campaignCode: string;
+    title: string;
+    status: InfluencerCampaignStatus;
+  };
+  reward: InfluencerCampaignReward;
+  submission: {
+    submissionId: string;
+    status: InfluencerCampaignSubmissionStatus;
+    submittedAt: string | null;
+    reviewedAt: string | null;
+  };
+  influencer: {
+    influencerProfileId: string;
+    publicInfluencerId: string;
+    displayName: string;
+    socialHandle: string | null;
+  };
+  availableActions: {
+    approve: boolean;
+    reject: boolean;
+  };
+  metadata: Record<string, unknown>;
+}
+
+export interface InfluencerCampaignRewardAwardSummary {
+  total: number;
+  pendingReview: number;
+  approved: number;
+  rejected: number;
+  held: number;
+  paid: number;
 }
 
 export interface InfluencerCampaignParticipantSummary {
@@ -330,6 +410,13 @@ export interface InfluencerCampaignSubmissionsResponse {
   data: InfluencerCampaignSubmission[];
   pagination: CampaignPagination;
   summary: InfluencerCampaignSubmissionSummary;
+}
+
+export interface InfluencerCampaignRewardAwardsResponse {
+  data: InfluencerCampaignRewardAward[];
+  pagination: CampaignPagination;
+  summary: InfluencerCampaignRewardAwardSummary;
+  warnings?: string[];
 }
 
 export interface InfluencerCampaignParticipantsResponse {

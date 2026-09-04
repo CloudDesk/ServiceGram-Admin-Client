@@ -27,6 +27,9 @@ import type {
   InfluencerCampaignParticipant,
   InfluencerCampaignParticipantStatus,
   InfluencerCampaignPayload,
+  InfluencerCampaignRewardAward,
+  InfluencerCampaignRewardAwardStatus,
+  InfluencerCampaignRewardType,
   InfluencerCampaignSponsorship,
   InfluencerCampaignSponsorshipReviewDecision,
   InfluencerCampaignSponsorshipStatus,
@@ -58,6 +61,23 @@ const submissionStatuses: ("ALL" | InfluencerCampaignSubmissionStatus)[] = [
   "APPROVED",
   "REJECTED",
   "WITHDRAWN",
+];
+
+const rewardAwardStatuses: ("ALL" | InfluencerCampaignRewardAwardStatus)[] = [
+  "ALL",
+  "PENDING_REVIEW",
+  "APPROVED",
+  "REJECTED",
+  "HELD",
+  "PAID",
+];
+
+const rewardTypes: ("ALL" | InfluencerCampaignRewardType)[] = [
+  "ALL",
+  "CASH",
+  "COMMISSION_BOOST",
+  "BADGE",
+  "FEATURED_PLACEMENT",
 ];
 
 const participantStatuses: ("ALL" | InfluencerCampaignParticipantStatus)[] = [
@@ -239,6 +259,12 @@ export function InfluencerCampaignsPage() {
   const [submissionStatus, setSubmissionStatus] = useState<
     "ALL" | InfluencerCampaignSubmissionStatus
   >("PENDING_REVIEW");
+  const [rewardAwardStatus, setRewardAwardStatus] = useState<
+    "ALL" | InfluencerCampaignRewardAwardStatus
+  >("PENDING_REVIEW");
+  const [rewardType, setRewardType] = useState<
+    "ALL" | InfluencerCampaignRewardType
+  >("ALL");
   const [sponsorshipStatus, setSponsorshipStatus] = useState<
     "ALL" | InfluencerCampaignSponsorshipStatus
   >("PENDING_REVIEW");
@@ -265,6 +291,19 @@ export function InfluencerCampaignsPage() {
     queryKey: ["influencer-campaign-submissions", submissionStatus],
     queryFn: () =>
       influencerCampaignService.listSubmissions({ status: submissionStatus }),
+    enabled: canReview,
+  });
+  const rewardAwardsQuery = useQuery({
+    queryKey: [
+      "influencer-campaign-reward-awards",
+      rewardAwardStatus,
+      rewardType,
+    ],
+    queryFn: () =>
+      influencerCampaignService.listRewardAwards({
+        rewardType,
+        status: rewardAwardStatus,
+      }),
     enabled: canReview,
   });
   const sponsorshipsQuery = useQuery({
@@ -370,6 +409,35 @@ export function InfluencerCampaignsPage() {
       ),
   });
 
+  const rewardAwardReviewMutation = useMutation({
+    mutationFn: ({
+      award,
+      decision,
+      reason,
+    }: {
+      award: InfluencerCampaignRewardAward;
+      decision: "APPROVED" | "REJECTED";
+      reason: string;
+    }) =>
+      influencerCampaignService.reviewRewardAward(award.awardId, {
+        decision,
+        expectedVersion: award.lifecycle.version,
+        reason,
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["influencer-campaign-reward-awards"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["influencer-campaigns"] }),
+      ]);
+    },
+    onError: (cause) =>
+      setError(
+        cause instanceof Error ? cause.message : "Reward award review failed.",
+      ),
+  });
+
   const sponsorshipReviewMutation = useMutation({
     mutationFn: ({
       decision,
@@ -461,6 +529,17 @@ export function InfluencerCampaignsPage() {
     if (reason) submissionReviewMutation.mutate({ decision, reason, submission });
   };
 
+  const runRewardAwardReview = (
+    award: InfluencerCampaignRewardAward,
+    decision: "APPROVED" | "REJECTED",
+  ) => {
+    const verb = decision === "APPROVED" ? "approve" : "reject";
+    const reason = window
+      .prompt(`Reason to ${verb} this campaign reward award:`)
+      ?.trim();
+    if (reason) rewardAwardReviewMutation.mutate({ award, decision, reason });
+  };
+
   const runSponsorshipReview = (
     sponsorship: InfluencerCampaignSponsorship,
     decision: InfluencerCampaignSponsorshipReviewDecision,
@@ -487,6 +566,9 @@ export function InfluencerCampaignsPage() {
   const summary = campaignsQuery.data?.summary;
   const submissionSummary = submissionsQuery.data?.summary;
   const submissions = submissionsQuery.data?.data ?? [];
+  const rewardAwardSummary = rewardAwardsQuery.data?.summary;
+  const rewardAwards = rewardAwardsQuery.data?.data ?? [];
+  const rewardAwardWarnings = rewardAwardsQuery.data?.warnings ?? [];
   const sponsorshipSummary = sponsorshipsQuery.data?.summary;
   const sponsorships = sponsorshipsQuery.data?.data ?? [];
   const participantSummary = participantsQuery.data?.summary;
@@ -918,6 +1000,113 @@ export function InfluencerCampaignsPage() {
                   onApprove={() => runSubmissionReview(submission, "APPROVED")}
                   onReject={() => runSubmissionReview(submission, "REJECTED")}
                   submission={submission}
+                />
+              ))
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {canReview ? (
+        <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Campaign reward awards</h2>
+              <p className="text-sm text-muted">
+                Calculated campaign rewards awaiting admin review before any
+                payout workflow.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-5">
+              <MiniMetric label="Total" value={rewardAwardSummary?.total ?? 0} />
+              <MiniMetric
+                label="Pending"
+                value={rewardAwardSummary?.pendingReview ?? 0}
+              />
+              <MiniMetric
+                label="Approved"
+                value={rewardAwardSummary?.approved ?? 0}
+              />
+              <MiniMetric
+                label="Rejected"
+                value={rewardAwardSummary?.rejected ?? 0}
+              />
+              <MiniMetric label="Held" value={rewardAwardSummary?.held ?? 0} />
+            </div>
+          </div>
+
+          {rewardAwardWarnings.length ? (
+            <div className="mb-4 rounded-lg border border-warning/25 bg-warning/10 p-3 text-sm text-warning">
+              {rewardAwardWarnings.join(" ")}
+            </div>
+          ) : (
+            <div className="mb-4 rounded-lg border border-warning/25 bg-warning/10 p-3 text-sm text-warning">
+              Payout settlement and provider handoff are not triggered from this
+              queue.
+            </div>
+          )}
+
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <select
+              className={inputClass + " max-w-56"}
+              value={rewardAwardStatus}
+              onChange={(event) =>
+                setRewardAwardStatus(
+                  event.target.value as
+                    | "ALL"
+                    | InfluencerCampaignRewardAwardStatus,
+                )
+              }
+            >
+              {rewardAwardStatuses.map((item) => (
+                <option key={item} value={item}>
+                  {item === "ALL" ? "All reward awards" : humanize(item)}
+                </option>
+              ))}
+            </select>
+            <select
+              className={inputClass + " max-w-56"}
+              value={rewardType}
+              onChange={(event) =>
+                setRewardType(
+                  event.target.value as "ALL" | InfluencerCampaignRewardType,
+                )
+              }
+            >
+              {rewardTypes.map((item) => (
+                <option key={item} value={item}>
+                  {item === "ALL" ? "All reward types" : humanize(item)}
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="secondary"
+              onClick={() => void rewardAwardsQuery.refetch()}
+            >
+              <RefreshCcw className="mr-2 size-4" /> Refresh rewards
+            </Button>
+          </div>
+
+          <div className="grid gap-3">
+            {rewardAwardsQuery.isLoading ? (
+              <p className="text-sm text-muted">Loading reward awards…</p>
+            ) : rewardAwards.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                <Trophy className="mx-auto mb-2 size-6 text-muted" />
+                <p className="font-medium">No campaign reward awards found</p>
+                <p className="text-sm text-muted">
+                  Run the backend reward calculation task after submissions are
+                  approved; generated awards will appear here.
+                </p>
+              </div>
+            ) : (
+              rewardAwards.map((award) => (
+                <RewardAwardCard
+                  award={award}
+                  isReviewing={rewardAwardReviewMutation.isPending}
+                  key={award.awardId}
+                  onApprove={() => runRewardAwardReview(award, "APPROVED")}
+                  onReject={() => runRewardAwardReview(award, "REJECTED")}
                 />
               ))
             )}
@@ -1637,6 +1826,123 @@ function SubmissionCard({
   );
 }
 
+function RewardAwardCard({
+  award,
+  isReviewing,
+  onApprove,
+  onReject,
+}: {
+  award: InfluencerCampaignRewardAward;
+  isReviewing: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const views =
+    typeof award.calculationSnapshot.views === "number"
+      ? award.calculationSnapshot.views
+      : award.metricValue;
+  const likes =
+    typeof award.calculationSnapshot.likes === "number"
+      ? award.calculationSnapshot.likes
+      : 0;
+  const shares =
+    typeof award.calculationSnapshot.shares === "number"
+      ? award.calculationSnapshot.shares
+      : 0;
+
+  return (
+    <article className="rounded-xl border border-border bg-background p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <Badge tone={rewardAwardTone(award.status)}>
+              {humanize(award.status)}
+            </Badge>
+            {award.status === "PENDING_REVIEW" ? (
+              <Badge tone="warning">
+                <ShieldCheck className="mr-1 size-3" />
+                Needs reward review
+              </Badge>
+            ) : null}
+            <span className="text-xs font-medium text-muted">
+              {award.publicAwardId}
+            </span>
+          </div>
+          <h3 className="text-lg font-semibold">{award.campaign.title}</h3>
+          <p className="mt-1 text-sm text-muted">
+            {award.influencer.displayName}
+            {award.influencer.socialHandle
+              ? ` · ${award.influencer.socialHandle}`
+              : ""}
+          </p>
+        </div>
+        <div className="text-right text-sm">
+          <p className="font-semibold">
+            {currency(award.amountPaise, award.currency)}
+          </p>
+          <p className="text-muted">{humanize(award.rewardType)}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
+        <Fact
+          icon={<Trophy className="size-4" />}
+          label="Rank"
+          value={`#${integer(award.rank)}`}
+        />
+        <Fact
+          icon={<Eye className="size-4" />}
+          label="Views"
+          value={integer(views)}
+        />
+        <Fact
+          icon={<CheckCircle2 className="size-4" />}
+          label="Likes / shares"
+          value={`${integer(likes)} / ${integer(shares)}`}
+        />
+        <Fact
+          icon={<CalendarClock className="size-4" />}
+          label="Created"
+          value={formatDate(award.lifecycle.createdAt, true)}
+        />
+      </div>
+
+      <div className="mt-3 rounded-lg border border-border bg-surface p-3 text-sm text-muted">
+        Reward rule: {award.reward.title}
+        {award.reward.rankFrom || award.reward.rankTo
+          ? ` · Rank ${award.reward.rankFrom ?? "?"}–${award.reward.rankTo ?? "?"}`
+          : ""}
+        . Submission status: {humanize(award.submission.status)}.
+      </div>
+
+      {award.review.reason ? (
+        <div className="mt-3 rounded-lg border border-border bg-surface p-3 text-sm text-muted">
+          Review note: {award.review.reason}
+        </div>
+      ) : null}
+
+      {award.availableActions.approve || award.availableActions.reject ? (
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          {award.availableActions.approve ? (
+            <Button isLoading={isReviewing} onClick={onApprove}>
+              <CheckCircle2 className="mr-2 size-4" /> Approve reward
+            </Button>
+          ) : null}
+          {award.availableActions.reject ? (
+            <Button isLoading={isReviewing} variant="danger" onClick={onReject}>
+              <XCircle className="mr-2 size-4" /> Reject
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-4 text-right text-xs text-muted">
+          No reward review action available.
+        </p>
+      )}
+    </article>
+  );
+}
+
 function ParticipantCard({
   participant,
 }: {
@@ -1710,6 +2016,13 @@ function submissionTone(status: InfluencerCampaignSubmissionStatus) {
   if (status === "APPROVED") return "success";
   if (status === "REJECTED" || status === "WITHDRAWN") return "danger";
   return "warning";
+}
+
+function rewardAwardTone(status: InfluencerCampaignRewardAwardStatus) {
+  if (status === "APPROVED" || status === "PAID") return "success";
+  if (status === "REJECTED") return "danger";
+  if (status === "HELD" || status === "PENDING_REVIEW") return "warning";
+  return "neutral";
 }
 
 function participantTone(status: InfluencerCampaignParticipantStatus) {

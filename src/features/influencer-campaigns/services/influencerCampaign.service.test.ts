@@ -33,3 +33,39 @@ describe("influencerCampaignService performance request mapping", () => {
     );
   });
 });
+
+describe("influencerCampaignService reward award request mapping", () => {
+  it("maps reward award queue filters to the admin endpoint", async () => {
+    await influencerCampaignService.listRewardAwards({
+      campaignId: "campaign-1",
+      influencerProfileId: "influencer-1",
+      rewardType: "CASH",
+      status: "PENDING_REVIEW",
+    });
+
+    expect(requestSpy).toHaveBeenCalledWith(
+      "http://localhost:4000/api/v1/admin/influencer-campaign-reward-awards?page=1&limit=50&campaignId=campaign-1&influencerProfileId=influencer-1&status=PENDING_REVIEW&rewardType=CASH",
+    );
+  });
+
+  it("maps reward award review actions with expected version", async () => {
+    await influencerCampaignService.reviewRewardAward("award-1", {
+      decision: "APPROVED",
+      expectedVersion: 2,
+      reason: "Winner validated.",
+    });
+
+    expect(requestSpy).toHaveBeenCalledWith(
+      "http://localhost:4000/api/v1/admin/influencer-campaign-reward-awards/award-1/review",
+      {
+        body: JSON.stringify({
+          decision: "APPROVED",
+          expectedVersion: 2,
+          reason: "Winner validated.",
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      },
+    );
+  });
+});
