@@ -14,6 +14,7 @@ export const routePermissions = {
   creatorMusic: "creator_music:read",
   influencers: "influencers:read",
   influencerCampaigns: "campaigns:read",
+  influencerBonuses: "campaigns:read",
   influencerPayouts: "payouts:read",
   influencerLeaderboards: "leaderboards:read",
   notifications: "notifications:read",

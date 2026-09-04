@@ -25,6 +25,7 @@ import { CreateMarketingCampaignPage } from "../features/marketing-campaigns/com
 import { MarketingCampaignDetailPage } from "../features/marketing-campaigns/components/MarketingCampaignDetailPage";
 import { MarketingCampaignsPage } from "../features/marketing-campaigns/components/MarketingCampaignsPage";
 import { InfluencerCampaignsPage } from "../features/influencer-campaigns/components/InfluencerCampaignsPage";
+import { InfluencerBonusesPage } from "../features/influencer-bonuses/components/InfluencerBonusesPage";
 import { InfluencerLeaderboardsPage } from "../features/influencer-leaderboards/components/InfluencerLeaderboardsPage";
 import { InfluencerPayoutsPage } from "../features/influencer-payouts/components/InfluencerPayoutsPage";
 import { InfluencerDetailPage } from "../features/influencers/components/InfluencerDetailPage";
@@ -456,6 +457,19 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: routePaths.influencerCampaigns,
                     element: <InfluencerCampaignsPage />,
+                  },
+                ],
+              },
+              {
+                element: (
+                  <PermissionGuard
+                    permission={routePermissions.influencerBonuses}
+                  />
+                ),
+                children: [
+                  {
+                    path: routePaths.influencerBonuses,
+                    element: <InfluencerBonusesPage />,
                   },
                 ],
               },

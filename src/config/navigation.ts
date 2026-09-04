@@ -1,4 +1,5 @@
 import {
+  Coins,
   CreditCard,
   FileBarChart2,
   FileCheck2,
@@ -198,6 +199,13 @@ export const navigationItems: NavigationItem[] = [
     href: routePaths.influencerCampaigns,
     icon: Trophy,
     permission: permissions.influencerCampaigns,
+    group: "release2",
+  },
+  {
+    label: "Influencer Bonuses",
+    href: routePaths.influencerBonuses,
+    icon: Coins,
+    permission: permissions.influencerBonuses,
     group: "release2",
   },
   {
