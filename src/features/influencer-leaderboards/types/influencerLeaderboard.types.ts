@@ -11,6 +11,12 @@ export type InfluencerReputationGrade =
   | "ELITE"
   | "UNDER_REVIEW";
 
+export type InfluencerFraudReviewStatus =
+  | "CLEAR"
+  | "REVIEW_REQUIRED"
+  | "SUSPICIOUS"
+  | "RESTRICTED";
+
 export interface InfluencerLeaderboardPagination {
   page: number;
   limit: number;
@@ -36,8 +42,25 @@ export interface InfluencerBadgeSummary {
   title: string;
   description: string | null;
   iconName: string | null;
+  status?: string;
   awardedAt: string;
   expiresAt: string | null;
+  version?: number;
+}
+
+export interface InfluencerBadgeDefinition {
+  id: string;
+  publicBadgeId: string;
+  badgeCode: string;
+  title: string;
+  description: string | null;
+  status: string;
+  iconName: string | null;
+  displayPriority: number;
+  criteriaSummary: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface InfluencerReputationSummary {
@@ -53,7 +76,7 @@ export interface InfluencerReputationSummary {
     audienceEngagementBps: number;
     vendorFeedbackScore: number;
   };
-  fraudReviewStatus?: string;
+  fraudReviewStatus?: InfluencerFraudReviewStatus | string;
   version?: number;
   reviewReason?: string | null;
 }
@@ -137,4 +160,29 @@ export interface InfluencerReputationListResponse
   extends InfluencerLeaderboardApiResponse<InfluencerReputationRow[]> {
   pagination: InfluencerLeaderboardPagination;
   summary: InfluencerReputationGradeSummary;
+}
+
+export type InfluencerBadgeListResponse =
+  InfluencerLeaderboardApiResponse<InfluencerBadgeDefinition[]>;
+
+export interface UpdateLeaderboardVisibilityPayload {
+  visible: boolean;
+  reason: string;
+}
+
+export interface ReviewInfluencerReputationPayload {
+  fraudReviewStatus: InfluencerFraudReviewStatus;
+  expectedVersion: number;
+  reason: string;
+}
+
+export interface AwardInfluencerBadgePayload {
+  badgeId: string;
+  expiresAt?: string | null;
+  reason: string;
+}
+
+export interface RevokeInfluencerBadgePayload {
+  expectedVersion: number;
+  reason: string;
 }
