@@ -80,6 +80,8 @@ export type PermissionKey =
   | "campaigns:read"
   | "campaigns:update"
   | "campaigns:review"
+  | "leaderboards:read"
+  | "leaderboards:update"
   | "reports:read"
   | "reports:export"
   | "settings:read"

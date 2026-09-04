@@ -15,6 +15,7 @@ export const routePermissions = {
   influencers: "influencers:read",
   influencerCampaigns: "campaigns:read",
   influencerPayouts: "payouts:read",
+  influencerLeaderboards: "leaderboards:read",
   notifications: "notifications:read",
   content: "content:read",
   marketingCampaigns: "marketing_campaigns:read",

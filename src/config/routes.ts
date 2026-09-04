@@ -23,6 +23,7 @@ export const routePaths = {
   influencers: "/app/influencers",
   influencerCampaigns: "/app/release-2/influencer-campaigns",
   influencerPayouts: "/app/release-2/influencer-payouts",
+  influencerLeaderboards: "/app/release-2/influencer-leaderboards",
   notifications: "/app/notifications",
   content: "/app/content",
   customerAppHome: "/app/content/customer-app-home",

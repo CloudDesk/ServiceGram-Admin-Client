@@ -24,6 +24,7 @@ import {
   Wrench,
   GitBranch,
   HeartHandshake,
+  Medal,
   Trophy,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -204,6 +205,13 @@ export const navigationItems: NavigationItem[] = [
     href: routePaths.influencerPayouts,
     icon: HandCoins,
     permission: permissions.influencerPayouts,
+    group: "release2",
+  },
+  {
+    label: "Influencer Leaderboards",
+    href: routePaths.influencerLeaderboards,
+    icon: Medal,
+    permission: permissions.influencerLeaderboards,
     group: "release2",
   },
   {
