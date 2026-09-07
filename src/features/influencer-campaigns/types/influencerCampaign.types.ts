@@ -299,6 +299,19 @@ export type InfluencerCampaignSponsorshipReviewDecision =
   | "REJECTED"
   | "CHANGES_REQUESTED";
 
+export type InfluencerCampaignBudgetReservationStatus =
+  | "NOT_LOCKED"
+  | "LOCKED"
+  | "RELEASED";
+
+export interface InfluencerCampaignBudgetReservation {
+  status: InfluencerCampaignBudgetReservationStatus;
+  reservedAmountPaise: number;
+  lockedAt: string | null;
+  releasedAt: string | null;
+  releaseReason: string | null;
+}
+
 export interface InfluencerCampaignSponsorship {
   sponsorshipRequestId: string;
   publicSponsorshipId: string;
@@ -319,6 +332,7 @@ export interface InfluencerCampaignSponsorship {
     amountPaise: number;
     currency: string;
     minimumBudgetPaise: number;
+    reservation?: InfluencerCampaignBudgetReservation;
   };
   maxParticipants: number | null;
   rewardSummary: string;

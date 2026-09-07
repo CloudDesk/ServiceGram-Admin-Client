@@ -182,6 +182,16 @@ function sponsorshipTone(status: InfluencerCampaignSponsorshipStatus) {
   return "neutral" as const;
 }
 
+function reservationTone(
+  status: NonNullable<
+    InfluencerCampaignSponsorship["budget"]["reservation"]
+  >["status"],
+) {
+  if (status === "LOCKED") return "success" as const;
+  if (status === "RELEASED") return "info" as const;
+  return "neutral" as const;
+}
+
 function dateInput(value?: string | null) {
   if (!value) return "";
   const date = new Date(value);
@@ -208,6 +218,29 @@ function currency(value: number | string | null | undefined, code = "INR") {
     maximumFractionDigits: 0,
     style: "currency",
   }).format(numberValue(value) / 100);
+}
+
+function budgetReservationLabel(
+  reservation: InfluencerCampaignSponsorship["budget"]["reservation"],
+  currencyCode: string,
+) {
+  if (!reservation) return null;
+
+  if (reservation.status === "LOCKED") {
+    return `Locked ${currency(reservation.reservedAmountPaise, currencyCode)}${
+      reservation.lockedAt ? ` · ${formatDate(reservation.lockedAt, true)}` : ""
+    }`;
+  }
+
+  if (reservation.status === "RELEASED") {
+    return `Released${
+      reservation.releasedAt
+        ? ` · ${formatDate(reservation.releasedAt, true)}`
+        : ""
+    }${reservation.releaseReason ? ` · ${reservation.releaseReason}` : ""}`;
+  }
+
+  return "Not locked";
 }
 
 function integer(value: unknown) {
@@ -1619,6 +1652,12 @@ function SponsorshipCard({
   onRestrict: () => void;
   sponsorship: InfluencerCampaignSponsorship;
 }) {
+  const reservation = sponsorship.budget.reservation;
+  const reservationLabel = budgetReservationLabel(
+    reservation,
+    sponsorship.budget.currency,
+  );
+
   return (
     <article className="rounded-xl border border-border bg-background p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1634,6 +1673,11 @@ function SponsorshipCard({
               <span className="text-xs font-medium text-muted">
                 Linked: {sponsorship.linkedCampaign.publicCampaignId}
               </span>
+            ) : null}
+            {reservation ? (
+              <Badge tone={reservationTone(reservation.status)}>
+                Budget {humanize(reservation.status).toLowerCase()}
+              </Badge>
             ) : null}
           </div>
           <h3 className="text-lg font-semibold">{sponsorship.title}</h3>
@@ -1659,6 +1703,11 @@ function SponsorshipCard({
           <p className="text-muted">
             Min {currency(sponsorship.budget.minimumBudgetPaise)}
           </p>
+          {reservationLabel ? (
+            <p className="mt-1 max-w-xs text-xs text-muted">
+              {reservationLabel}
+            </p>
+          ) : null}
         </div>
       </div>
 
