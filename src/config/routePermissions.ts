@@ -22,6 +22,7 @@ export const routePermissions = {
   marketingCampaigns: "marketing_campaigns:read",
   reports: "reports:read",
   settings: "settings:read",
+  geo: "geo:read",
   featureFlags: "feature-flags:read",
   release2Settings: "settings:read",
   audit: "audit:read",

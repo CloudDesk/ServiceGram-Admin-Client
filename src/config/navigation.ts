@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   PackageSearch,
   FileText,
+  Globe2,
   KeyRound,
   Megaphone,
   Rocket,
@@ -161,6 +162,12 @@ export const navigationItems: NavigationItem[] = [
     href: routePaths.settings,
     icon: Settings,
     permission: permissions.settings,
+  },
+  {
+    label: "Geo",
+    href: routePaths.geo,
+    icon: Globe2,
+    permission: permissions.geo,
   },
   {
     label: "Roles",

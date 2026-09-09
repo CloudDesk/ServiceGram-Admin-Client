@@ -52,6 +52,7 @@ import { ReportExportDetailPage } from "../features/reports/components/ReportExp
 import { ReportsPage } from "../features/reports/components/ReportsPage";
 import { SettingsDetailPage } from "../features/settings/components/SettingsDetailPage";
 import { SettingsPage } from "../features/settings/components/SettingsPage";
+import { GeoPage } from "../features/geo/components/GeoPage";
 import { FeatureFlagDetailPage } from "../features/release2/components/FeatureFlagDetailPage";
 import { FeatureFlagsPage } from "../features/release2/components/FeatureFlagsPage";
 import { Release2OverviewPage } from "../features/release2/components/Release2OverviewPage";
@@ -433,6 +434,15 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: `${routePaths.settings}/:type/:recordId`,
                     element: <SettingsDetailPage />,
+                  },
+                ],
+              },
+              {
+                element: <PermissionGuard permission={routePermissions.geo} />,
+                children: [
+                  {
+                    path: routePaths.geo,
+                    element: <GeoPage />,
                   },
                 ],
               },

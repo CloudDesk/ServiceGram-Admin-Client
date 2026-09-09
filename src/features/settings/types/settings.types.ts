@@ -62,11 +62,19 @@ export interface UpdateSettingPayload {
   reason?: string;
 }
 
+export interface CategoryTranslations {
+  ta?: {
+    name?: string;
+    description?: string | null;
+  };
+}
+
 export interface UpdateCategoryPayload {
   name?: string;
   description?: string | null;
   iconAssetId?: string | null;
   bookingTemplate?: CategoryBookingTemplate;
+  translations?: CategoryTranslations;
   isActive?: boolean;
   displayOrder?: number;
   reason?: string;
@@ -78,6 +86,7 @@ export interface CreateCategoryPayload {
   description?: string | null;
   iconAssetId?: string | null;
   bookingTemplate?: CategoryBookingTemplate;
+  translations?: CategoryTranslations;
   isActive?: boolean;
   displayOrder?: number;
   reason: string;
@@ -239,6 +248,7 @@ export interface ServiceCategory {
   iconUrl: string | null;
   icon: ServiceCategoryIcon | null;
   bookingTemplate: CategoryBookingTemplate;
+  translations?: CategoryTranslations;
   isActive: boolean;
   displayOrder: number;
   warnings: string[];

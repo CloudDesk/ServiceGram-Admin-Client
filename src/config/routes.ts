@@ -35,6 +35,7 @@ export const routePaths = {
   marketingCampaignDetail: "/app/marketing-campaigns/:campaignId",
   reports: "/app/reports",
   settings: "/app/settings",
+  geo: "/app/geo",
   release2Overview: "/app/release-2",
   featureFlags: "/app/release-2/feature-flags",
   featureFlagDetail: "/app/release-2/feature-flags/:featureKey",

@@ -86,6 +86,8 @@ export type PermissionKey =
   | "reports:export"
   | "settings:read"
   | "settings:update"
+  | "geo:read"
+  | "geo:update"
   | "feature-flags:read"
   | "feature-flags:update"
   | "release2-finance-settings:update"

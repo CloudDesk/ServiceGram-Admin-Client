@@ -11,6 +11,7 @@ import {
 import { Button } from "../../../components/ui/Button";
 import type {
   CategoryBookingTemplate,
+  CategoryTranslations,
   PlatformSetting,
   ServiceCategory,
   ServiceType,
@@ -47,6 +48,7 @@ export interface SettingsActionFormValues {
   description?: string | null;
   iconAssetId?: string | null;
   bookingTemplate?: CategoryBookingTemplate;
+  translations?: CategoryTranslations;
   displayOrder?: number;
   city?: string;
   zoneName?: string;
@@ -1359,6 +1361,11 @@ function SettingsActionModalContent({
         ? action.record.name
         : "",
   );
+  const [nameTa, setNameTa] = useState(categoryRecord?.translations?.ta?.name ?? "");
+  const [descriptionTa, setDescriptionTa] = useState(
+    categoryRecord?.translations?.ta?.description ?? "",
+  );
+  const [activeLocaleTab, setActiveLocaleTab] = useState<"en" | "ta">("en");
   const [serviceTypeCode, setServiceTypeCode] = useState("");
   const [serviceTypeDescription, setServiceTypeDescription] = useState(
     action.type === "serviceTypes" && action.action !== "CREATE"
@@ -1643,6 +1650,15 @@ function SettingsActionModalContent({
               : undefined,
           name: name.trim() || undefined,
           description: description.trim() || null,
+          translations:
+            nameTa.trim() || descriptionTa.trim()
+              ? {
+                  ta: {
+                    name: nameTa.trim() || undefined,
+                    description: descriptionTa.trim() || null,
+                  },
+                }
+              : undefined,
           categoryImageFile,
           bookingTemplate,
           displayOrder: displayOrder ? Number(displayOrder) : undefined,
@@ -1753,41 +1769,100 @@ function SettingsActionModalContent({
               {action.type === "categories" ? (
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
                   <div className="space-y-4">
-                    <div className="grid gap-3 rounded-[0.75rem] border border-border bg-surface-muted/35 p-3 sm:grid-cols-2">
-                      <label className="block space-y-1.5">
-                        <span className="text-sm font-semibold text-foreground">
-                          Category name
-                        </span>
-                        <input
-                          className="form-input"
-                          placeholder="Laundry"
-                          value={name}
-                          onChange={(event) => setName(event.target.value)}
-                        />
-                      </label>
-                      <label className="block space-y-1.5">
-                        <span className="text-sm font-semibold text-foreground">
-                          Home screen order
-                        </span>
-                        <input
-                          className="form-input"
-                          min={0}
-                          type="number"
-                          value={displayOrder}
-                          onChange={(event) => setDisplayOrder(event.target.value)}
-                        />
-                      </label>
-                      <label className="block space-y-1.5 sm:col-span-2">
-                        <span className="text-sm font-semibold text-foreground">
-                          Short description
-                        </span>
-                        <textarea
-                          className="form-input min-h-20 resize-y"
-                          placeholder="Laundry, ironing, and dry cleaning"
-                          value={description}
-                          onChange={(event) => setDescription(event.target.value)}
-                        />
-                      </label>
+                    <div className="rounded-[0.75rem] border border-border bg-surface-muted/35 p-3">
+                      <div className="mb-3 inline-flex rounded-full border border-border bg-surface p-0.5">
+                        <button
+                          className={`min-h-8 rounded-full px-3 text-sm font-semibold transition ${
+                            activeLocaleTab === "en"
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted hover:text-foreground"
+                          }`}
+                          type="button"
+                          onClick={() => setActiveLocaleTab("en")}
+                        >
+                          English
+                        </button>
+                        <button
+                          className={`min-h-8 rounded-full px-3 text-sm font-semibold transition ${
+                            activeLocaleTab === "ta"
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted hover:text-foreground"
+                          }`}
+                          type="button"
+                          onClick={() => setActiveLocaleTab("ta")}
+                        >
+                          தமிழ்
+                        </button>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {activeLocaleTab === "en" ? (
+                          <>
+                            <label className="block space-y-1.5">
+                              <span className="text-sm font-semibold text-foreground">
+                                Category name
+                              </span>
+                              <input
+                                className="form-input"
+                                placeholder="Laundry"
+                                value={name}
+                                onChange={(event) => setName(event.target.value)}
+                              />
+                            </label>
+                            <label className="block space-y-1.5">
+                              <span className="text-sm font-semibold text-foreground">
+                                Home screen order
+                              </span>
+                              <input
+                                className="form-input"
+                                min={0}
+                                type="number"
+                                value={displayOrder}
+                                onChange={(event) => setDisplayOrder(event.target.value)}
+                              />
+                            </label>
+                            <label className="block space-y-1.5 sm:col-span-2">
+                              <span className="text-sm font-semibold text-foreground">
+                                Short description
+                              </span>
+                              <textarea
+                                className="form-input min-h-20 resize-y"
+                                placeholder="Laundry, ironing, and dry cleaning"
+                                value={description}
+                                onChange={(event) => setDescription(event.target.value)}
+                              />
+                            </label>
+                          </>
+                        ) : (
+                          <>
+                            <label className="block space-y-1.5 sm:col-span-2">
+                              <span className="text-sm font-semibold text-foreground">
+                                Category name (Tamil)
+                              </span>
+                              <input
+                                className="form-input"
+                                placeholder="சலவை"
+                                value={nameTa}
+                                onChange={(event) => setNameTa(event.target.value)}
+                              />
+                            </label>
+                            <label className="block space-y-1.5 sm:col-span-2">
+                              <span className="text-sm font-semibold text-foreground">
+                                Short description (Tamil)
+                              </span>
+                              <textarea
+                                className="form-input min-h-20 resize-y"
+                                placeholder="சலவை, திருத்தும் மற்றும் உலர் சலவை"
+                                value={descriptionTa}
+                                onChange={(event) => setDescriptionTa(event.target.value)}
+                              />
+                            </label>
+                            <p className="text-xs text-muted sm:col-span-2">
+                              Leave blank to keep showing the English name/description for
+                              Tamil-language app users.
+                            </p>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     <div className="rounded-[0.75rem] border border-border bg-surface-muted/35 p-3">

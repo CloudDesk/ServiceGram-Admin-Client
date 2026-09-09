@@ -23,6 +23,7 @@ export const permissions: Record<string, PermissionKey> = {
   marketingCampaigns: "marketing_campaigns:read",
   reports: "reports:read",
   settings: "settings:read",
+  geo: "geo:read",
   featureFlags: "feature-flags:read",
   release2Settings: "settings:read",
   adminUsers: "admin_users:read",

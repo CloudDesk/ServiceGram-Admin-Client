@@ -36,6 +36,14 @@ function buildAuthHeaders(headers?: HeadersInit) {
     merged.set('Authorization', `Bearer ${accessToken}`)
   }
 
+  // Always English: the admin UI's own chrome is not translated, and staff
+  // editing content need to see the canonical/source English values in list
+  // views. Tamil visibility comes from the raw `translations` field the
+  // admin API returns on content records, not from response localization.
+  if (!merged.has('Accept-Language')) {
+    merged.set('Accept-Language', 'en')
+  }
+
   return merged
 }
 
