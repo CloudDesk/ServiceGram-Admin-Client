@@ -30,8 +30,10 @@ import {
 import { Skeleton } from '../../../components/ui/Skeleton'
 import {
   DynamicTable,
+  usePriorityColumns,
   type DynamicTableColumn,
   type DynamicTableRowAction,
+  type ColumnPriority,
 } from '../../../components/ui/Table'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
@@ -504,12 +506,25 @@ function QueueRail({
   )
 }
 
-function buildColumns(): DynamicTableColumn<AdminOrderSummary>[] {
+type PriorityDynamicTableColumn = DynamicTableColumn<AdminOrderSummary> & {
+  priority: ColumnPriority
+}
+
+/**
+ * The table on this page renders rich, multi-line cells (customer AND vendor
+ * with icons, three lines of schedule, wrapped warning badges) — a plain
+ * viewport breakpoint can't shrink that, so at laptop widths this used to
+ * scroll sideways every time. `priority` lets `usePriorityColumns` drop the
+ * least essential columns first instead, the same way DataList-based list
+ * pages already do.
+ */
+function buildColumns(): PriorityDynamicTableColumn[] {
   return [
     {
       key: 'order',
       label: 'Order',
       minWidth: 230,
+      priority: 1,
       renderCell: (order) => (
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -531,6 +546,7 @@ function buildColumns(): DynamicTableColumn<AdminOrderSummary>[] {
       key: 'parties',
       label: 'Customer / Vendor',
       minWidth: 250,
+      priority: 1,
       renderCell: (order) => (
         <div className="space-y-2">
           <div className="flex min-w-0 items-start gap-2">
@@ -562,6 +578,7 @@ function buildColumns(): DynamicTableColumn<AdminOrderSummary>[] {
       key: 'movement',
       label: 'Movement',
       minWidth: 220,
+      priority: 3,
       renderCell: (order) => (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-foreground">
@@ -588,6 +605,7 @@ function buildColumns(): DynamicTableColumn<AdminOrderSummary>[] {
       key: 'schedule',
       label: 'Schedule',
       minWidth: 210,
+      priority: 2,
       renderCell: (order) => (
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm text-foreground">
@@ -607,6 +625,10 @@ function buildColumns(): DynamicTableColumn<AdminOrderSummary>[] {
       key: 'signals',
       label: 'Signals',
       minWidth: 240,
+      // Not priority 1: the recommended action already renders as the inline
+      // button in the Actions column, so this can drop before the table
+      // resorts to a horizontal scrollbar.
+      priority: 2,
       renderCell: (order) => {
         const recommended = mapRecommendedAction(order)
 
@@ -640,6 +662,7 @@ function buildColumns(): DynamicTableColumn<AdminOrderSummary>[] {
       key: 'value',
       label: 'Value',
       minWidth: 170,
+      priority: 4,
       renderCell: (order) => {
         const value = orderValue(order)
 
@@ -772,6 +795,14 @@ export function ManualLogisticsPage() {
   const pagination = ordersQuery.data?.pagination
   const summary = summaryResultQuery.data?.summary
   const columns = useMemo(() => buildColumns(), [])
+  const { containerRef: resultsPanelRef, visibleColumns } = usePriorityColumns({
+    columns,
+    // 240 for the action column (its actual rendered floor is
+    // actionColumnMinWidth, not the wider actionColumnWidth) plus ~90 for the
+    // `.list-results-panel` and Card padding/border sitting between this ref
+    // and the table's own content box.
+    reservedWidth: 330,
+  })
   const isLoading = ordersQuery.isLoading || ordersQuery.isFetching
 
   const refreshAll = async () => {
@@ -1364,12 +1395,12 @@ export function ManualLogisticsPage() {
           }
         />
 
-        <section className="list-results-panel">
+        <section className="list-results-panel" ref={resultsPanelRef}>
           <DynamicTable
             actionColumnMinWidth={240}
             actionColumnWidth={280}
             bodyMaxHeight={620}
-            columns={columns}
+            columns={visibleColumns}
             data={orders}
             emptyDescription="No orders matched the selected logistics queue and filters."
             emptyTitle="No logistics orders"

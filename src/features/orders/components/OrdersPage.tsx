@@ -1,13 +1,15 @@
-import { Download, MessageSquarePlus, MoreHorizontal, RefreshCcw } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Download, MessageSquarePlus, RefreshCcw } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { DataList } from '../../../components/ui/DataList'
 import type { DataListColumn, DataListQueueTab } from '../../../components/ui/DataList'
+import { filterInputClass } from '../../../components/ui/Input'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import { RowActionMenu, type RowActionMenuItem } from '../../../components/ui/RowActionMenu'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
@@ -74,7 +76,7 @@ interface RowActionsProps {
 /**
  * The recommended action renders as a filled button in the row — this is the
  * pattern Orders already had and the reason an admin can clear a queue without
- * opening records. Everything else is behind the overflow.
+ * opening records. Everything else is behind the shared overflow menu.
  */
 function RowActions({
   canRefundPayments,
@@ -82,28 +84,6 @@ function RowActions({
   onAction,
   order,
 }: RowActionsProps) {
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return undefined
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [open])
-
   const recommended = mapRecommendedAction(order)
   const primaryAction =
     recommended && canRunOrderAction(recommended, canRefundPayments, canUpdateOrders)
@@ -122,8 +102,16 @@ function RowActions({
     menuActions.push({ kind: 'CANCEL' })
   }
 
+  const menuItems: RowActionMenuItem[] = menuActions.map((action) => ({
+    icon: action.kind === 'ADD_NOTE' ? <MessageSquarePlus className="size-3.5" /> : undefined,
+    key: orderActionKey(action),
+    label: compactOrderRowActionLabel(action),
+    tone: isHighRiskOrderAction(action) ? 'danger' : 'default',
+    onClick: () => onAction(order, action),
+  }))
+
   return (
-    <div ref={containerRef} className="relative flex items-center justify-end gap-1">
+    <div className="flex items-center justify-end gap-1">
       {primaryAction ? (
         <Button
           className="h-6.5 min-h-0 whitespace-nowrap px-2 text-xs font-medium"
@@ -136,48 +124,7 @@ function RowActions({
         </Button>
       ) : null}
 
-      {menuActions.length ? (
-        <>
-          <button
-            aria-expanded={open}
-            aria-haspopup="menu"
-            aria-label={`More actions for ${order.publicOrderId}`}
-            className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-[0.4rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-          >
-            <MoreHorizontal className="size-3.5" />
-          </button>
-
-          {open ? (
-            <div
-              className="absolute right-0 top-8 z-40 min-w-[11rem] rounded-[0.6rem] border border-border bg-surface p-1 shadow-lg"
-              role="menu"
-            >
-              {menuActions.map((action) => (
-                <button
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-[0.45rem] px-2 py-1.5 text-left text-sm transition hover:bg-surface-muted',
-                    isHighRiskOrderAction(action) && 'text-danger',
-                  )}
-                  key={orderActionKey(action)}
-                  role="menuitem"
-                  type="button"
-                  onClick={() => {
-                    setOpen(false)
-                    onAction(order, action)
-                  }}
-                >
-                  {action.kind === 'ADD_NOTE' ? (
-                    <MessageSquarePlus className="size-3.5" />
-                  ) : null}
-                  {compactOrderRowActionLabel(action)}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </>
-      ) : null}
+      <RowActionMenu ariaLabel={`More actions for ${order.publicOrderId}`} items={menuItems} />
     </div>
   )
 }
@@ -578,9 +525,6 @@ export function OrdersPage() {
     ])
   }
 
-  const filterControlClass =
-    'h-9 w-full rounded-[0.55rem] border border-border bg-surface px-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30'
-
   return (
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
@@ -620,7 +564,7 @@ export function OrdersPage() {
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-muted">City</span>
               <input
-                className={filterControlClass}
+                className={filterInputClass}
                 placeholder="Any city"
                 value={city}
                 onChange={(event) => {
@@ -633,7 +577,7 @@ export function OrdersPage() {
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-muted">Created from</span>
                 <input
-                  className={filterControlClass}
+                  className={filterInputClass}
                   type="date"
                   value={dateFrom}
                   onChange={(event) => {
@@ -645,7 +589,7 @@ export function OrdersPage() {
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-muted">Created to</span>
                 <input
-                  className={filterControlClass}
+                  className={filterInputClass}
                   type="date"
                   value={dateTo}
                   onChange={(event) => {

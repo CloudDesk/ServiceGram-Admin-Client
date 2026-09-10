@@ -50,6 +50,11 @@ import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
 import { orderService } from '../services/order.service'
 import {
+  canRunOrderAction as canRunOrderActionShared,
+  getPaymentStatusTone,
+  hasOrderAction,
+} from '../orderPresenters'
+import {
   OrderActionModal,
   type OrderActionFormValues,
   type OrderActionKind,
@@ -689,13 +694,6 @@ function statusTone(status: string) {
   return 'info' as const
 }
 
-function paymentTone(status: string) {
-  if (status === 'PAID' || status === 'REFUNDED') return 'success' as const
-  if (status === 'FAILED') return 'danger' as const
-  if (status === 'PARTIALLY_REFUNDED') return 'info' as const
-  return 'warning' as const
-}
-
 function financePaymentTone(status: string) {
   if (['SUCCESS', 'PAID', 'REFUNDED'].includes(status)) return 'success' as const
   if (['FAILED', 'CANCELLED'].includes(status)) return 'danger' as const
@@ -712,10 +710,6 @@ function refundTone(status: string) {
 
 function actionTargetStatus(action: string) {
   return action.replace(/^MARK_/, '') as AdminOrderStatus
-}
-
-function hasOrderAction(order: AdminOrderDetail, action: string) {
-  return order.availableActions.includes(action)
 }
 
 function hasActiveDeliveryOtp(order: AdminOrderDetail) {
@@ -742,15 +736,6 @@ function buildOrderAuditPath(order: AdminOrderDetail) {
   })
 
   return `${routePaths.audit}?${params.toString()}`
-}
-
-function canRunOrderAction(
-  kind: OrderActionKind,
-  canUpdateOrders: boolean,
-  canRefundPayments: boolean,
-) {
-  if (kind === 'INITIATE_REFUND') return canRefundPayments
-  return canUpdateOrders
 }
 
 function OrderHeaderStatus({ order }: { order: AdminOrderDetail }) {
@@ -1196,7 +1181,7 @@ function FinanceLockedPanel({ order }: { order: AdminOrderDetail }) {
           <p className="mt-2 text-xs font-semibold uppercase text-muted">
             Current payment status
           </p>
-          <Badge tone={paymentTone(order.paymentStatus)}>
+          <Badge tone={getPaymentStatusTone(order.paymentStatus)}>
             {formatStatusLabel(order.paymentStatus)}
           </Badge>
         </div>
@@ -1407,7 +1392,7 @@ export function OrderDetailPage({
   })
 
   const openAction = (kind: OrderActionKind, targetStatus?: AdminOrderStatus) => {
-    if (!canRunOrderAction(kind, canUpdateOrders, canRefundPayments)) {
+    if (!canRunOrderActionShared({ kind }, canRefundPayments, canUpdateOrders)) {
       return
     }
 
@@ -1562,7 +1547,16 @@ export function OrderDetailPage({
           ) : null}
 
         {activeTab === 'finance' && canReadPayments ? (
-          <div id={orderSectionIds.finance} className="grid scroll-mt-24 gap-3 2xl:grid-cols-2">
+          // A fixed viewport breakpoint isn't enough here: the refund table's
+          // own columns need ~870px, so `2xl:grid-cols-2` could pair two
+          // tables into a space narrower than either needs (it happens right
+          // at 1536px). `auto-fit` + a minmax floor sized to the wider
+          // table means this only ever goes two-up when there's genuinely
+          // room for both without either scrolling internally.
+          <div
+            className="grid scroll-mt-24 grid-cols-[repeat(auto-fit,minmax(54.5rem,1fr))] gap-3"
+            id={orderSectionIds.finance}
+          >
             <DynamicTable
               actionColumnLabel="Payment Actions"
               actionColumnMinWidth={180}
@@ -1643,7 +1637,13 @@ export function OrderDetailPage({
         ) : null}
 
         {activeTab === 'history' ? (
-        <div id={orderSectionIds.history} className="grid scroll-mt-24 gap-3 2xl:grid-cols-2">
+        // Same reasoning as the Finance tab above: the logistics table's
+        // columns need ~930px, so the pairing is sized to fit, not to a
+        // viewport step.
+        <div
+          className="grid scroll-mt-24 grid-cols-[repeat(auto-fit,minmax(58.5rem,1fr))] gap-3"
+          id={orderSectionIds.history}
+        >
           <DynamicTable
             bodyMaxHeight={340}
             columns={statusColumns}

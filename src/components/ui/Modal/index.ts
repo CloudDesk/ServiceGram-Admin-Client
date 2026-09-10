@@ -1,1 +1,2 @@
-export { ModalRoot } from './Modal'
+export { Modal, ModalRoot } from './Modal'
+export type { ModalProps } from './Modal'

@@ -10,3 +10,5 @@ export type {
   DynamicTableRowAction,
   DynamicTableSortState,
 } from './Table'
+export { usePriorityColumns } from './usePriorityColumns'
+export type { ColumnPriority, PriorityColumnLike } from './usePriorityColumns'
