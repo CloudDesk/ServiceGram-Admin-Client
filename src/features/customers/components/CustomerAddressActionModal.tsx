@@ -1,6 +1,7 @@
-import { type FormEvent, useMemo, useState } from 'react'
-import { MapPin, Save, Trash2, X } from 'lucide-react'
+import { type FormEvent, type ReactNode, useState } from 'react'
+import { Save, Trash2 } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
+import { Modal } from '../../../components/ui/Modal'
 import { LookupSelect } from '../../../components/ui/LookupSelect'
 import { searchZoneLookupOptions } from '../../lookups/adminLookups'
 import type {
@@ -33,12 +34,9 @@ interface CustomerAddressActionModalProps {
 function addressSummary(address?: AdminCustomerAddress) {
   if (!address) return 'New address'
 
-  return [
-    address.label,
-    address.addressLine1,
-    address.city,
-    address.pincode,
-  ].filter(Boolean).join(' · ')
+  return [address.label, address.addressLine1, address.city, address.pincode]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 function optionalText(value: string) {
@@ -57,16 +55,72 @@ function optionalNumber(value: string) {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
-export function CustomerAddressActionModal({
-  action,
+function FormError({ message }: { message: string | null }) {
+  if (!message) return null
+
+  return (
+    <div className="rounded-[0.75rem] border border-danger/25 bg-danger/10 p-3 text-sm text-danger">
+      {message}
+    </div>
+  )
+}
+
+/** The footer buttons must be inside this `<form>`, not a sibling of it. */
+function ModalForm({
+  children,
+  footer,
+  onSubmit,
+}: {
+  children: ReactNode
+  footer: ReactNode
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+}) {
+  return (
+    <form className="mt-5 space-y-4" onSubmit={onSubmit}>
+      {children}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">{footer}</div>
+    </form>
+  )
+}
+
+function ActionFooter({
+  isDelete,
+  isSubmitting,
+  onClose,
+}: {
+  isDelete: boolean
+  isSubmitting: boolean
+  onClose: () => void
+}) {
+  return (
+    <>
+      <Button disabled={isSubmitting} type="button" variant="secondary" onClick={onClose}>
+        Cancel
+      </Button>
+      <Button isLoading={isSubmitting} type="submit" variant={isDelete ? 'danger' : 'primary'}>
+        {isDelete ? <Trash2 className="mr-2 size-4" /> : <Save className="mr-2 size-4" />}
+        {isDelete ? 'Delete address' : 'Save address'}
+      </Button>
+    </>
+  )
+}
+
+/** The 12-field create/edit form — CREATE starts blank, EDIT prefills from `address`. */
+function AddressFormFields({
+  address,
   customer,
   error,
   isSubmitting,
   onClose,
   onSubmit,
-}: CustomerAddressActionModalProps) {
-  const address = action?.address
-  const isFormAction = action?.kind === 'CREATE' || action?.kind === 'EDIT'
+}: {
+  address?: AdminCustomerAddress
+  customer: AdminCustomerDetail
+  error?: string | null
+  isSubmitting: boolean
+  onClose: () => void
+  onSubmit: (values: CustomerAddressPayload) => void
+}) {
   const [addressLine1, setAddressLine1] = useState(address?.addressLine1 ?? '')
   const [addressLine2, setAddressLine2] = useState(address?.addressLine2 ?? '')
   const [city, setCity] = useState(address?.city ?? customer.city ?? '')
@@ -90,37 +144,18 @@ export function CustomerAddressActionModal({
         : '',
   )
 
-  const title = useMemo(() => {
-    if (action?.kind === 'CREATE') return 'Add address'
-    if (action?.kind === 'EDIT') return 'Edit address'
-    if (action?.kind === 'SET_DEFAULT') return 'Set default address'
-    return 'Delete address'
-  }, [action?.kind])
-
-  if (!action) {
-    return null
-  }
-
-  const visibleError = formError ?? error
-
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setFormError(null)
 
     const trimmedReason = reason.trim()
+    const trimmedAddressLine1 = addressLine1.trim()
+    const trimmedCity = city.trim()
 
     if (!trimmedReason) {
       setFormError('Reason is required.')
       return
     }
-
-    if (!isFormAction) {
-      onSubmit({ reason: trimmedReason })
-      return
-    }
-
-    const trimmedAddressLine1 = addressLine1.trim()
-    const trimmedCity = city.trim()
 
     if (!trimmedAddressLine1) {
       setFormError('Address line 1 is required.')
@@ -132,7 +167,7 @@ export function CustomerAddressActionModal({
       return
     }
 
-    const payload: CustomerAddressPayload = {
+    onSubmit({
       addressLine1: trimmedAddressLine1,
       addressLine2: optionalText(addressLine2),
       city: trimmedCity,
@@ -147,156 +182,227 @@ export function CustomerAddressActionModal({
       reason: trimmedReason,
       state: optionalText(state),
       zoneId: zoneId || undefined,
-    }
-
-    onSubmit(payload)
+    })
   }
 
   return (
-    <div className="premium-overlay flex items-center justify-center p-4">
-      <div className="w-full max-w-3xl rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-overlay)]">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <MapPin className="size-4 text-primary" />
-              <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-            </div>
-            <p className="text-sm leading-6 text-muted">
-              {addressSummary(address)}
-            </p>
-          </div>
-          <button
-            aria-label="Close address action"
-            className="rounded-full p-2 text-muted transition-colors hover:bg-surface-muted hover:text-foreground"
-            disabled={isSubmitting}
-            onClick={onClose}
-            type="button"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
+    <Modal
+      className="max-w-3xl"
+      description={addressSummary(address)}
+      size="xl"
+      title={address ? 'Edit address' : 'Add address'}
+      closeDisabled={isSubmitting}
+      onClose={onClose}
+    >
+      <ModalForm
+        footer={<ActionFooter isDelete={false} isSubmitting={isSubmitting} onClose={onClose} />}
+        onSubmit={handleSubmit}
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-foreground">Label</span>
+            <input className="form-input" maxLength={80} value={label} onChange={(event) => setLabel(event.target.value)} />
+          </label>
 
-        <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
-          {isFormAction ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Label</span>
-                <input className="form-input" maxLength={80} value={label} onChange={(event) => setLabel(event.target.value)} />
-              </label>
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-foreground">Contact name</span>
+            <input className="form-input" maxLength={160} value={contactName} onChange={(event) => setContactName(event.target.value)} />
+          </label>
 
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Contact name</span>
-                <input className="form-input" maxLength={160} value={contactName} onChange={(event) => setContactName(event.target.value)} />
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Contact mobile</span>
-                <input className="form-input" maxLength={20} value={contactMobile} onChange={(event) => setContactMobile(event.target.value)} />
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">
-                  Address line 1 <span className="text-danger">*</span>
-                </span>
-                <input className="form-input" maxLength={500} value={addressLine1} onChange={(event) => setAddressLine1(event.target.value)} />
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Address line 2</span>
-                <input className="form-input" maxLength={500} value={addressLine2} onChange={(event) => setAddressLine2(event.target.value)} />
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Landmark</span>
-                <input className="form-input" maxLength={500} value={landmark} onChange={(event) => setLandmark(event.target.value)} />
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">
-                  City <span className="text-danger">*</span>
-                </span>
-                <input className="form-input" maxLength={120} value={city} onChange={(event) => setCity(event.target.value)} />
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">State</span>
-                <input className="form-input" maxLength={120} value={state} onChange={(event) => setState(event.target.value)} />
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Pincode</span>
-                <input className="form-input" maxLength={12} value={pincode} onChange={(event) => setPincode(event.target.value)} />
-              </label>
-
-              <LookupSelect
-                fetchOptions={searchZoneLookupOptions}
-                label="Zone"
-                placeholder="Select zone"
-                queryKey={['lookup', 'zones']}
-                selectedLabel={zoneLabel}
-                value={zoneId}
-                onChange={(value, option) => {
-                  setZoneId(value)
-                  setZoneLabel(
-                    option ? `${option.label}${option.meta ? ` · ${option.meta}` : ''}` : '',
-                  )
-                }}
-              />
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Latitude</span>
-                <input className="form-input" inputMode="decimal" value={latitude} onChange={(event) => setLatitude(event.target.value)} />
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-foreground">Longitude</span>
-                <input className="form-input" inputMode="decimal" value={longitude} onChange={(event) => setLongitude(event.target.value)} />
-              </label>
-
-              <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <input checked={isDefault} type="checkbox" onChange={(event) => setIsDefault(event.target.checked)} />
-                Default address
-              </label>
-            </div>
-          ) : null}
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-foreground">Contact mobile</span>
+            <input className="form-input" maxLength={20} value={contactMobile} onChange={(event) => setContactMobile(event.target.value)} />
+          </label>
 
           <label className="block space-y-2">
             <span className="text-sm font-semibold text-foreground">
-              Reason <span className="text-danger">*</span>
+              Address line 1 <span className="text-danger">*</span>
             </span>
-            <textarea
-              className="form-input min-h-28 resize-y"
-              maxLength={500}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-            />
+            <input className="form-input" maxLength={500} value={addressLine1} onChange={(event) => setAddressLine1(event.target.value)} />
           </label>
 
-          {visibleError ? (
-            <div className="rounded-[0.75rem] border border-danger/25 bg-danger/10 p-3 text-sm text-danger">
-              {visibleError}
-            </div>
-          ) : null}
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-foreground">Address line 2</span>
+            <input className="form-input" maxLength={500} value={addressLine2} onChange={(event) => setAddressLine2(event.target.value)} />
+          </label>
 
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button disabled={isSubmitting} type="button" variant="secondary" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              isLoading={isSubmitting}
-              type="submit"
-              variant={action.kind === 'DELETE' ? 'danger' : 'primary'}
-            >
-              {action.kind === 'DELETE' ? (
-                <Trash2 className="mr-2 size-4" />
-              ) : (
-                <Save className="mr-2 size-4" />
-              )}
-              {action.kind === 'DELETE' ? 'Delete address' : 'Save address'}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-foreground">Landmark</span>
+            <input className="form-input" maxLength={500} value={landmark} onChange={(event) => setLandmark(event.target.value)} />
+          </label>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-foreground">
+              City <span className="text-danger">*</span>
+            </span>
+            <input className="form-input" maxLength={120} value={city} onChange={(event) => setCity(event.target.value)} />
+          </label>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-foreground">State</span>
+            <input className="form-input" maxLength={120} value={state} onChange={(event) => setState(event.target.value)} />
+          </label>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-foreground">Pincode</span>
+            <input className="form-input" maxLength={12} value={pincode} onChange={(event) => setPincode(event.target.value)} />
+          </label>
+
+          <LookupSelect
+            fetchOptions={searchZoneLookupOptions}
+            label="Zone"
+            placeholder="Select zone"
+            queryKey={['lookup', 'zones']}
+            selectedLabel={zoneLabel}
+            value={zoneId}
+            onChange={(value, option) => {
+              setZoneId(value)
+              setZoneLabel(
+                option ? `${option.label}${option.meta ? ` · ${option.meta}` : ''}` : '',
+              )
+            }}
+          />
+
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-foreground">Latitude</span>
+            <input className="form-input" inputMode="decimal" value={latitude} onChange={(event) => setLatitude(event.target.value)} />
+          </label>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-foreground">Longitude</span>
+            <input className="form-input" inputMode="decimal" value={longitude} onChange={(event) => setLongitude(event.target.value)} />
+          </label>
+
+          <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <input checked={isDefault} type="checkbox" onChange={(event) => setIsDefault(event.target.checked)} />
+            Default address
+          </label>
+        </div>
+
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-foreground">
+            Reason <span className="text-danger">*</span>
+          </span>
+          <textarea
+            className="form-input min-h-28 resize-y"
+            maxLength={500}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </label>
+
+        <FormError message={formError ?? error ?? null} />
+      </ModalForm>
+    </Modal>
+  )
+}
+
+/** DELETE and SET_DEFAULT only ever need a reason — no address fields to show. */
+function AddressReasonFields({
+  address,
+  error,
+  isDelete,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}: {
+  address?: AdminCustomerAddress
+  error?: string | null
+  isDelete: boolean
+  isSubmitting: boolean
+  onClose: () => void
+  onSubmit: (values: CustomerAddressReasonPayload) => void
+}) {
+  /**
+   * Setting a default is a one-click toggle everywhere else in the app — the
+   * backend still requires a reason on every address mutation, so this
+   * prefills one instead of making the admin type a justification for what
+   * should be a trivial action. Delete gets no such shortcut: it's
+   * consequential enough to want a deliberate answer.
+   */
+  const [reason, setReason] = useState(isDelete ? '' : 'Set as default address')
+  const [formError, setFormError] = useState<string | null>(null)
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setFormError(null)
+
+    const trimmedReason = reason.trim()
+
+    if (!trimmedReason) {
+      setFormError('Reason is required.')
+      return
+    }
+
+    onSubmit({ reason: trimmedReason })
+  }
+
+  return (
+    <Modal
+      description={addressSummary(address)}
+      title={isDelete ? 'Delete address' : 'Set default address'}
+      closeDisabled={isSubmitting}
+      onClose={onClose}
+    >
+      <ModalForm
+        footer={<ActionFooter isDelete={isDelete} isSubmitting={isSubmitting} onClose={onClose} />}
+        onSubmit={handleSubmit}
+      >
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-foreground">
+            Reason <span className="text-danger">*</span>
+          </span>
+          <textarea
+            className="form-input min-h-28 resize-y"
+            maxLength={500}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </label>
+        <FormError message={formError ?? error ?? null} />
+      </ModalForm>
+    </Modal>
+  )
+}
+
+/**
+ * Dispatches to a full address-form field set for CREATE/EDIT, or a
+ * reason-only field set for DELETE/SET_DEFAULT, both on the shared Modal
+ * shell. External contract is unchanged.
+ */
+export function CustomerAddressActionModal({
+  action,
+  customer,
+  error,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}: CustomerAddressActionModalProps) {
+  if (!action) {
+    return null
+  }
+
+  if (action.kind === 'CREATE' || action.kind === 'EDIT') {
+    return (
+      <AddressFormFields
+        address={action.address}
+        customer={customer}
+        error={error}
+        isSubmitting={isSubmitting}
+        onClose={onClose}
+        onSubmit={onSubmit}
+      />
+    )
+  }
+
+  return (
+    <AddressReasonFields
+      address={action.address}
+      error={error}
+      isDelete={action.kind === 'DELETE'}
+      isSubmitting={isSubmitting}
+      onClose={onClose}
+      onSubmit={onSubmit}
+    />
   )
 }

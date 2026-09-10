@@ -3,20 +3,21 @@ import {
   Download,
   Eye,
   MessageSquarePlus,
-  MoreHorizontal,
   RefreshCcw,
   UserCheck,
   Wallet,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { DataList } from '../../../components/ui/DataList'
 import type { DataListColumn, DataListQueueTab } from '../../../components/ui/DataList'
+import { filterInputClass } from '../../../components/ui/Input'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import { RowActionMenu, type RowActionMenuItem } from '../../../components/ui/RowActionMenu'
 import { featureFlags } from '../../../config/featureFlags'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
@@ -116,7 +117,7 @@ interface RowActionsProps {
 
 /**
  * Note stays inline because support agents use it constantly. Everything else
- * lives behind the overflow so the row keeps a fixed width.
+ * lives behind the shared overflow menu so the row keeps a fixed width.
  */
 function RowActions({
   canCreditWallet,
@@ -125,37 +126,16 @@ function RowActions({
   onAction,
   onPreview,
 }: RowActionsProps) {
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return undefined
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [open])
-
   const isBlocked = customer.status === 'BLOCKED'
   const canCredit =
     featureFlags.customerWallet &&
     canRunCustomerAction({ action: 'WALLET_CREDIT', canCreditWallet, canUpdateCustomer })
 
-  const menuItems: { key: string; label: string; onClick: () => void; danger?: boolean }[] = []
+  const menuItems: RowActionMenuItem[] = []
 
   if (canCredit) {
     menuItems.push({
+      icon: <Wallet className="size-3.5" />,
       key: 'credit',
       label: 'Wallet credit',
       onClick: () => onAction(customer, 'WALLET_CREDIT'),
@@ -166,21 +146,23 @@ function RowActions({
     menuItems.push(
       isBlocked
         ? {
+            icon: <UserCheck className="size-3.5" />,
             key: 'unblock',
             label: 'Unblock customer',
             onClick: () => onAction(customer, 'UNBLOCK'),
           }
         : {
+            icon: <Ban className="size-3.5" />,
             key: 'block',
             label: 'Block customer',
-            danger: true,
+            tone: 'danger',
             onClick: () => onAction(customer, 'BLOCK'),
           },
     )
   }
 
   return (
-    <div ref={containerRef} className="relative flex items-center gap-0.5">
+    <div className="flex items-center gap-0.5">
       <button
         aria-label={`Quick look at ${customer.fullName}`}
         className="inline-flex size-7 items-center justify-center rounded-[0.5rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -203,48 +185,7 @@ function RowActions({
         </button>
       ) : null}
 
-      {menuItems.length ? (
-        <>
-          <button
-            aria-expanded={open}
-            aria-haspopup="menu"
-            aria-label={`More actions for ${customer.fullName}`}
-            className="inline-flex size-7 items-center justify-center rounded-[0.5rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-          >
-            <MoreHorizontal className="size-4" />
-          </button>
-
-          {open ? (
-            <div
-              className="absolute right-0 top-8 z-40 min-w-[11rem] rounded-[0.6rem] border border-border bg-surface p-1 shadow-lg"
-              role="menu"
-            >
-              {menuItems.map((item) => (
-                <button
-                  key={item.key}
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-[0.45rem] px-2 py-1.5 text-left text-sm transition hover:bg-surface-muted',
-                    item.danger && 'text-danger',
-                  )}
-                  role="menuitem"
-                  type="button"
-                  onClick={() => {
-                    setOpen(false)
-                    item.onClick()
-                  }}
-                >
-                  {item.key === 'credit' ? <Wallet className="size-3.5" /> : null}
-                  {item.key === 'block' ? <Ban className="size-3.5" /> : null}
-                  {item.key === 'unblock' ? <UserCheck className="size-3.5" /> : null}
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </>
-      ) : null}
+      <RowActionMenu ariaLabel={`More actions for ${customer.fullName}`} items={menuItems} />
     </div>
   )
 }
@@ -605,9 +546,6 @@ export function CustomersPage() {
     ])
   }
 
-  const filterControlClass =
-    'h-9 w-full rounded-[0.55rem] border border-border bg-surface px-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30'
-
   return (
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
@@ -647,7 +585,7 @@ export function CustomersPage() {
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-muted">City</span>
               <input
-                className={filterControlClass}
+                className={filterInputClass}
                 placeholder="Any city"
                 value={city}
                 onChange={(event) => {
@@ -659,7 +597,7 @@ export function CustomersPage() {
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-muted">Has orders</span>
               <select
-                className={filterControlClass}
+                className={filterInputClass}
                 value={hasOrders}
                 onChange={(event) => {
                   setHasOrders(event.target.value)
@@ -675,7 +613,7 @@ export function CustomersPage() {
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-muted">Created from</span>
                 <input
-                  className={filterControlClass}
+                  className={filterInputClass}
                   type="date"
                   value={dateFrom}
                   onChange={(event) => {
@@ -687,7 +625,7 @@ export function CustomersPage() {
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-muted">Created to</span>
                 <input
-                  className={filterControlClass}
+                  className={filterInputClass}
                   type="date"
                   value={dateTo}
                   onChange={(event) => {

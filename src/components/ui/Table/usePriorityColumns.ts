@@ -1,12 +1,25 @@
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
-/** Tracks an element's content width, e.g. to decide how many columns fit. */
-function useElementWidth(ref: RefObject<HTMLElement | null>) {
+/**
+ * Tracks an element's content width via a callback ref, not `useRef` +
+ * `useEffect(..., [ref])` — a ref object never changes identity, so that
+ * effect only ever fires once, at the first commit. If the element this is
+ * attached to mounts later (behind a loading gate, a tab switch — exactly
+ * how DynamicTable's own callers tend to be structured), that first fire
+ * finds nothing and the width is stuck at 0 forever. A callback ref runs
+ * again every time React actually attaches or detaches the node.
+ */
+function useElementWidth() {
   const [width, setWidth] = useState(0)
+  const observerRef = useRef<ResizeObserver | null>(null)
 
-  useEffect(() => {
-    const element = ref.current
-    if (!element) return undefined
+  const ref = useCallback((element: HTMLElement | null) => {
+    observerRef.current?.disconnect()
+    observerRef.current = null
+
+    if (!element) {
+      return
+    }
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0]
@@ -14,12 +27,11 @@ function useElementWidth(ref: RefObject<HTMLElement | null>) {
     })
 
     observer.observe(element)
+    observerRef.current = observer
     setWidth(element.getBoundingClientRect().width)
+  }, [])
 
-    return () => observer.disconnect()
-  }, [ref])
-
-  return width
+  return [width, ref] as const
 }
 
 export type ColumnPriority = 1 | 2 | 3 | 4
@@ -42,17 +54,17 @@ interface UsePriorityColumnsOptions<TColumn extends PriorityColumnLike> {
  * `DynamicTable` renders rich, multi-line cells — the reason it isn't just
  * swapped for `DataList`, which only draws a single truncated line per cell.
  * This gives it the same "drop lowest priority first until it fits" behavior
- * `DataList` has, without changing how a cell renders. Wrap the table's
- * scroll container in a ref and pass it here; render only the columns this
- * returns.
+ * `DataList` has, without changing how a cell renders. Pass the returned
+ * `containerRef` to the element wrapping the table (it accepts a callback
+ * ref, so this is a normal `ref={containerRef}` on any element); render only
+ * the columns `visibleColumns` returns.
  */
 export function usePriorityColumns<TColumn extends PriorityColumnLike>({
   columns,
   gap = 16,
   reservedWidth = 0,
 }: UsePriorityColumnsOptions<TColumn>) {
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const availableWidth = useElementWidth(containerRef)
+  const [availableWidth, containerRef] = useElementWidth()
 
   if (availableWidth <= 0) {
     return { containerRef, visibleColumns: columns }

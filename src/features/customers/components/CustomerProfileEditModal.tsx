@@ -1,6 +1,7 @@
 import { type FormEvent, useMemo, useState } from 'react'
-import { Save, UserRound, X } from 'lucide-react'
+import { Save } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
+import { Modal } from '../../../components/ui/Modal'
 import { LookupSelect } from '../../../components/ui/LookupSelect'
 import { searchZoneLookupOptions } from '../../lookups/adminLookups'
 import type {
@@ -94,32 +95,14 @@ export function CustomerProfileEditModal({
   }
 
   return (
-    <div className="premium-overlay flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-overlay)]">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <UserRound className="size-4 text-primary" />
-              <h2 className="text-lg font-semibold text-foreground">
-                Edit customer profile
-              </h2>
-            </div>
-            <p className="text-sm leading-6 text-muted">
-              {customer.customerId}
-            </p>
-          </div>
-          <button
-            aria-label="Close profile editor"
-            className="rounded-full p-2 text-muted transition-colors hover:bg-surface-muted hover:text-foreground"
-            disabled={isSubmitting}
-            onClick={onClose}
-            type="button"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-
-        <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
+    <Modal
+      description={customer.customerId}
+      size="xl"
+      title="Edit customer profile"
+      closeDisabled={isSubmitting}
+      onClose={onClose}
+    >
+        <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block space-y-2">
               <span className="text-sm font-semibold text-foreground">
@@ -209,7 +192,6 @@ export function CustomerProfileEditModal({
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -36,6 +36,8 @@ import { ErrorState } from "../../../components/ui/ErrorState";
 import { Skeleton } from "../../../components/ui/Skeleton";
 import {
   DynamicTable,
+  usePriorityColumns,
+  type ColumnPriority,
   type DynamicTableColumn,
 } from "../../../components/ui/Table";
 import {
@@ -217,11 +219,23 @@ const addressColumns: DynamicTableColumn<AdminCustomerAddress>[] = [
   },
 ];
 
-const orderColumns: DynamicTableColumn<AdminOrderSummary>[] = [
+/**
+ * These four tables render rich, multi-line cells, so — same reasoning as
+ * Orders' Manual Logistics — a viewport breakpoint can't shrink them; each
+ * one's own minWidth sum already exceeds a 1366-1536px laptop's available
+ * width. `priority` lets `usePriorityColumns` drop the least essential
+ * columns first instead of forcing a horizontal scrollbar.
+ */
+type PriorityDynamicTableColumn<T> = DynamicTableColumn<T> & {
+  priority: ColumnPriority;
+};
+
+const orderColumns: PriorityDynamicTableColumn<AdminOrderSummary>[] = [
   {
     key: "order",
     label: "Order",
     minWidth: 260,
+    priority: 1,
     renderCell: (order) => (
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
@@ -243,6 +257,7 @@ const orderColumns: DynamicTableColumn<AdminOrderSummary>[] = [
     key: "vendor",
     label: "Vendor",
     minWidth: 220,
+    priority: 1,
     renderCell: (order) => (
       <div>
         <p className="font-medium text-foreground">{order.vendor.shopName}</p>
@@ -257,6 +272,7 @@ const orderColumns: DynamicTableColumn<AdminOrderSummary>[] = [
     key: "payment",
     label: "Payment",
     minWidth: 210,
+    priority: 2,
     renderCell: (order) => {
       const value = orderDisplayValue(order);
 
@@ -277,6 +293,7 @@ const orderColumns: DynamicTableColumn<AdminOrderSummary>[] = [
     key: "pickup",
     label: "Pickup",
     minWidth: 210,
+    priority: 2,
     renderCell: (order) => (
       <div>
         <div className="flex items-center gap-2 text-sm text-foreground">
@@ -296,6 +313,7 @@ const orderColumns: DynamicTableColumn<AdminOrderSummary>[] = [
     key: "activity",
     label: "Activity",
     minWidth: 210,
+    priority: 3,
     renderCell: (order) => (
       <div>
         <div className="flex items-center gap-2 text-sm text-foreground">
@@ -318,6 +336,7 @@ const orderColumns: DynamicTableColumn<AdminOrderSummary>[] = [
     key: "updatedAt",
     label: "Updated",
     minWidth: 180,
+    priority: 4,
     renderCell: (order) => (
       <div>
         <p className="font-semibold text-foreground">
@@ -333,11 +352,12 @@ const orderColumns: DynamicTableColumn<AdminOrderSummary>[] = [
   },
 ];
 
-const relatedVendorColumns: DynamicTableColumn<AdminCustomerRelatedVendor>[] = [
+const relatedVendorColumns: PriorityDynamicTableColumn<AdminCustomerRelatedVendor>[] = [
   {
     key: "vendor",
     label: "Vendor",
     minWidth: 260,
+    priority: 1,
     renderCell: (row) => (
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
@@ -361,6 +381,7 @@ const relatedVendorColumns: DynamicTableColumn<AdminCustomerRelatedVendor>[] = [
     key: "relationship",
     label: "Relationship",
     minWidth: 230,
+    priority: 2,
     renderCell: (row) => (
       <div>
         <Badge tone={getRelatedVendorRelationshipTone(row.relationship.type)}>
@@ -379,6 +400,7 @@ const relatedVendorColumns: DynamicTableColumn<AdminCustomerRelatedVendor>[] = [
     key: "orders",
     label: "Orders",
     minWidth: 230,
+    priority: 2,
     renderCell: (row) => (
       <div>
         <p className="font-semibold text-foreground">
@@ -403,6 +425,7 @@ const relatedVendorColumns: DynamicTableColumn<AdminCustomerRelatedVendor>[] = [
     key: "coverage",
     label: "Coverage",
     minWidth: 230,
+    priority: 3,
     renderCell: (row) => (
       <div>
         <p className="font-medium text-foreground">
@@ -421,6 +444,7 @@ const relatedVendorColumns: DynamicTableColumn<AdminCustomerRelatedVendor>[] = [
     key: "signals",
     label: "Signals",
     minWidth: 250,
+    priority: 1,
     renderCell: (row) => (
       <div className="space-y-2">
         {row.warnings.length ? (
@@ -447,11 +471,12 @@ const relatedVendorColumns: DynamicTableColumn<AdminCustomerRelatedVendor>[] = [
   },
 ];
 
-const paymentColumns: DynamicTableColumn<AdminPaymentSummary>[] = [
+const paymentColumns: PriorityDynamicTableColumn<AdminPaymentSummary>[] = [
   {
     key: "payment",
     label: "Payment",
     minWidth: 240,
+    priority: 1,
     renderCell: (payment) => (
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
@@ -475,6 +500,7 @@ const paymentColumns: DynamicTableColumn<AdminPaymentSummary>[] = [
     key: "order",
     label: "Order / Vendor",
     minWidth: 240,
+    priority: 1,
     renderCell: (payment) => (
       <div className="min-w-0">
         <p className="font-medium text-foreground">
@@ -493,6 +519,7 @@ const paymentColumns: DynamicTableColumn<AdminPaymentSummary>[] = [
     key: "amount",
     label: "Amount",
     minWidth: 190,
+    priority: 2,
     renderCell: (payment) => (
       <div>
         <p className="font-semibold text-foreground">
@@ -512,6 +539,7 @@ const paymentColumns: DynamicTableColumn<AdminPaymentSummary>[] = [
     key: "refunds",
     label: "Refunds",
     minWidth: 180,
+    priority: 3,
     renderCell: (payment) => (
       <div>
         <p className="font-semibold text-foreground">
@@ -534,6 +562,7 @@ const paymentColumns: DynamicTableColumn<AdminPaymentSummary>[] = [
     key: "updatedAt",
     label: "Updated",
     minWidth: 170,
+    priority: 4,
     renderCell: (payment) => (
       <div>
         <p className="font-semibold text-foreground">
@@ -549,11 +578,12 @@ const paymentColumns: DynamicTableColumn<AdminPaymentSummary>[] = [
   },
 ];
 
-const refundColumns: DynamicTableColumn<AdminRefundSummary>[] = [
+const refundColumns: PriorityDynamicTableColumn<AdminRefundSummary>[] = [
   {
     key: "refund",
     label: "Refund",
     minWidth: 240,
+    priority: 1,
     renderCell: (refund) => (
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
@@ -575,6 +605,7 @@ const refundColumns: DynamicTableColumn<AdminRefundSummary>[] = [
     key: "amount",
     label: "Amount",
     minWidth: 180,
+    priority: 2,
     renderCell: (refund) => (
       <div>
         <p className="font-semibold text-foreground">
@@ -590,6 +621,7 @@ const refundColumns: DynamicTableColumn<AdminRefundSummary>[] = [
     key: "order",
     label: "Order / Vendor",
     minWidth: 230,
+    priority: 1,
     renderCell: (refund) => (
       <div className="min-w-0">
         <p className="font-medium text-foreground">
@@ -608,6 +640,7 @@ const refundColumns: DynamicTableColumn<AdminRefundSummary>[] = [
     key: "review",
     label: "Review",
     minWidth: 190,
+    priority: 2,
     renderCell: (refund) => (
       <div>
         <p className="font-semibold text-foreground">
@@ -627,6 +660,7 @@ const refundColumns: DynamicTableColumn<AdminRefundSummary>[] = [
     key: "updatedAt",
     label: "Updated",
     minWidth: 170,
+    priority: 4,
     renderCell: (refund) => (
       <div>
         <p className="font-semibold text-foreground">
@@ -1680,6 +1714,20 @@ export function CustomerDetailPage() {
   const paymentsQuery = overviewSectionQueryState;
   const refundsQuery = overviewSectionQueryState;
 
+  // Each table's own action column plus ~90 for this tab's card/wrapper
+  // padding sitting between the ref and the table's actual content box
+  // (measured the same way for Orders' Manual Logistics table).
+  const { containerRef: ordersTableRef, visibleColumns: visibleOrderColumns } =
+    usePriorityColumns({ columns: orderColumns, reservedWidth: 360 + 90 });
+  const {
+    containerRef: relatedVendorsTableRef,
+    visibleColumns: visibleRelatedVendorColumns,
+  } = usePriorityColumns({ columns: relatedVendorColumns, reservedWidth: 260 + 90 });
+  const { containerRef: paymentTableRef, visibleColumns: visiblePaymentColumns } =
+    usePriorityColumns({ columns: paymentColumns, reservedWidth: 280 + 90 });
+  const { containerRef: refundTableRef, visibleColumns: visibleRefundColumns } =
+    usePriorityColumns({ columns: refundColumns, reservedWidth: 300 + 90 });
+
   const refreshCustomer = async () => {
     await Promise.all([
       queryClient.invalidateQueries({
@@ -2294,12 +2342,12 @@ export function CustomerDetailPage() {
           ) : null}
 
           {canReadOrders && activeTab === "orders" ? (
-            <div id="orders" className="scroll-mt-24 space-y-3">
+            <div id="orders" className="scroll-mt-24 space-y-3" ref={ordersTableRef}>
               <DynamicTable
                 actionColumnLabel="Order Actions"
                 actionColumnMinWidth={360}
                 bodyMaxHeight={390}
-                columns={orderColumns}
+                columns={visibleOrderColumns}
                 data={orderRows}
                 emptyDescription={
                   omittedSectionCopy(omittedSections.get("orders"), "Orders")
@@ -2483,12 +2531,12 @@ export function CustomerDetailPage() {
           ) : null}
 
           {activeTab === "vendors" ? (
-          <div id="related-vendors" className="scroll-mt-24 space-y-3">
+          <div id="related-vendors" className="scroll-mt-24 space-y-3" ref={relatedVendorsTableRef}>
             <DynamicTable
               actionColumnLabel="Vendor Actions"
               actionColumnMinWidth={260}
               bodyMaxHeight={360}
-              columns={relatedVendorColumns}
+              columns={visibleRelatedVendorColumns}
               data={relatedVendorRows}
               emptyDescription={
                 omittedSectionCopy(
@@ -2577,12 +2625,18 @@ export function CustomerDetailPage() {
 
           {canReadPayments && activeTab === "finance" ? (
             <div id="finance" className="scroll-mt-24 space-y-3">
-              <div className="grid gap-3 2xl:grid-cols-2">
+              {/* A fixed viewport breakpoint isn't enough here: each table's
+                  own columns need ~1,010-1,020px, so `2xl:grid-cols-2` could
+                  pair them into a space narrower than either needs. `auto-fit`
+                  + a minmax floor means this only goes two-up when there's
+                  genuinely room for both at full width. */}
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(64rem,1fr))] gap-3">
+                <div ref={paymentTableRef}>
                 <DynamicTable
                 actionColumnLabel="Payment Actions"
                 actionColumnMinWidth={280}
                 bodyMaxHeight={340}
-                columns={paymentColumns}
+                columns={visiblePaymentColumns}
                 data={paymentRows}
                 emptyDescription={
                   omittedSectionCopy(omittedSections.get("payments"), "Payments")
@@ -2654,12 +2708,14 @@ export function CustomerDetailPage() {
                   navigate(`${routePaths.payments}/${row.paymentId}`)
                 }
                 />
+                </div>
 
+                <div ref={refundTableRef}>
                 <DynamicTable
                 actionColumnLabel="Refund Actions"
                 actionColumnMinWidth={300}
                 bodyMaxHeight={340}
-                columns={refundColumns}
+                columns={visibleRefundColumns}
                 data={refundRows}
                 emptyDescription={
                   omittedSectionCopy(omittedSections.get("refunds"), "Refunds")
@@ -2744,6 +2800,7 @@ export function CustomerDetailPage() {
                   navigate(`${routePaths.refunds}/${row.refundId}`)
                 }
                 />
+                </div>
               </div>
             </div>
           ) : null}
