@@ -247,18 +247,22 @@ export const auroraFlowLightTheme = {
     insetHighlight: 'inset 0 1px 0 rgb(255 255 255 / 0.75)',
   },
   shadows: {
-    surface: '0 8px 24px rgb(29 32 86 / 0.06)',
+    // These five are the ones an admin actually sees on every screen — cards,
+    // tables, the topbar, search — flattened from a marketing-page-grade blur
+    // to a hairline-adjacent elevation. Everything else below (overlay,
+    // sidebar, premium*, auth*, floatingPopover, focus, stickyAction) is
+    // either the login page or something that genuinely floats above content
+    // and still earns real shadow, so those are unchanged.
+    surface: '0 1px 2px rgb(29 32 86 / 0.05)',
     overlay: '0 20px 40px rgb(29 32 86 / 0.16)',
     premiumSm: '0 1px 2px rgb(29 32 86 / 0.03), 0 4px 12px rgb(29 32 86 / 0.04)',
     premiumMd: '0 8px 24px rgb(29 32 86 / 0.07)',
     premiumLg: '0 20px 40px rgb(29 32 86 / 0.16)',
     sidebar: '10px 0 32px rgb(29 32 86 / 0.14), inset -1px 0 0 rgb(255 255 255 / 0.06)',
-    appbar: '0 10px 30px rgb(29 32 86 / 0.06)',
-    contentCard:
-      '0 18px 45px rgb(29 32 86 / 0.07), inset 0 1px 0 rgb(255 255 255 / 0.75)',
-    tableCard:
-      '0 22px 55px rgb(29 32 86 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.8)',
-    search: 'inset 0 1px 0 rgb(255 255 255 / 0.75), 0 6px 18px rgb(29 32 86 / 0.05)',
+    appbar: '0 1px 0 rgb(29 32 86 / 0.06)',
+    contentCard: '0 1px 2px rgb(29 32 86 / 0.05)',
+    tableCard: '0 1px 2px rgb(29 32 86 / 0.05)',
+    search: '0 1px 2px rgb(29 32 86 / 0.04)',
     authGlow: '0 40px 120px rgb(65 61 125 / 0.16)',
     authVisual:
       '0 20px 60px rgb(65 61 125 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.72)',
@@ -349,18 +353,16 @@ export const auroraFlowDarkTheme = {
     insetHighlight: 'inset 0 1px 0 rgb(255 255 255 / 0.08)',
   },
   shadows: {
-    surface: '0 8px 24px rgb(0 0 0 / 0.24)',
+    surface: '0 1px 2px rgb(0 0 0 / 0.3)',
     overlay: '0 24px 60px rgb(0 0 0 / 0.58)',
     premiumSm: '0 4px 12px rgb(0 0 0 / 0.22)',
     premiumMd: '0 12px 32px rgb(0 0 0 / 0.38)',
     premiumLg: '0 24px 60px rgb(0 0 0 / 0.58)',
     sidebar: '10px 0 34px rgb(0 0 0 / 0.28), inset -1px 0 0 rgb(255 255 255 / 0.055)',
-    appbar: '0 10px 34px rgb(0 0 0 / 0.28)',
-    contentCard:
-      '0 18px 45px rgb(0 0 0 / 0.28), inset 0 1px 0 rgb(255 255 255 / 0.06)',
-    tableCard:
-      '0 22px 55px rgb(0 0 0 / 0.32), inset 0 1px 0 rgb(255 255 255 / 0.06)',
-    search: 'inset 0 1px 0 rgb(255 255 255 / 0.06), 0 6px 18px rgb(0 0 0 / 0.22)',
+    appbar: '0 1px 0 rgb(0 0 0 / 0.4)',
+    contentCard: '0 1px 2px rgb(0 0 0 / 0.32)',
+    tableCard: '0 1px 2px rgb(0 0 0 / 0.32)',
+    search: '0 1px 2px rgb(0 0 0 / 0.28)',
     authGlow: '0 40px 120px rgb(0 0 0 / 0.34)',
     authVisual:
       '0 20px 60px rgb(0 0 0 / 0.36), inset 0 1px 0 rgb(255 255 255 / 0.08)',

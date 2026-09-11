@@ -203,7 +203,7 @@ export function TableSkeleton({
   return (
     <Card className={cn('premium-table-card overflow-hidden', className)}>
       {hasToolbar ? (
-        <div className="premium-table-toolbar flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <div className="premium-table-toolbar flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5">
           <TableSkeletonBlock className="h-5 w-40" />
           <TableSkeletonBlock className="h-9 w-48 rounded-control" />
         </div>
@@ -227,7 +227,7 @@ export function TableSkeleton({
 
                   return (
                     <th
-                      className={cn('px-4 py-3 font-semibold', alignClass)}
+                      className={cn('px-3.5 py-2.5 font-semibold', alignClass)}
                       key={column.key ?? `skeleton-head-${index}`}
                       style={style}
                     >
@@ -247,7 +247,7 @@ export function TableSkeleton({
                   )
                 })}
                 {hasActions ? (
-                  <th className="premium-table-head premium-table-sticky-action sticky right-0 z-10 px-4 py-3 text-right font-semibold">
+                  <th className="premium-table-head premium-table-sticky-action sticky right-0 z-10 px-3.5 py-2.5 text-right font-semibold">
                     <TableSkeletonBlock className="ml-auto h-3 w-16" />
                   </th>
                 ) : null}
@@ -266,7 +266,7 @@ export function TableSkeleton({
                     return (
                       <td
                         className={cn(
-                          'premium-table-cell px-4 py-3.5 align-top text-sm',
+                          'premium-table-cell px-3.5 py-2.5 align-top text-sm',
                           alignClass,
                         )}
                         key={`${column.key ?? columnIndex}-${rowIndex}`}
@@ -285,7 +285,7 @@ export function TableSkeleton({
                     )
                   })}
                   {hasActions ? (
-                    <td className="premium-table-cell premium-table-sticky-action sticky right-0 px-4 py-3.5 text-right align-top">
+                    <td className="premium-table-cell premium-table-sticky-action sticky right-0 px-3.5 py-2.5 text-right align-top">
                       <div className="flex items-center justify-end gap-2">
                         <TableSkeletonBlock className="h-8 w-20 rounded-control" />
                         <TableSkeletonBlock className="h-8 w-9 rounded-control" />
@@ -299,7 +299,7 @@ export function TableSkeleton({
         </div>
       </div>
       {hasFooter ? (
-        <div className="premium-table-footer flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="premium-table-footer flex flex-col gap-3 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <TableSkeletonBlock className="h-4 w-36" />
           <div className="flex items-center gap-2">
             <TableSkeletonBlock className="h-9 w-9 rounded-control" />
@@ -553,7 +553,7 @@ function DefaultPagination({
   return (
     <div
       className={cn(
-        'premium-table-footer flex flex-col gap-3 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between',
+        'premium-table-footer flex flex-col gap-3 px-3.5 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between',
         stickyFooter && 'sticky bottom-0 z-10',
       )}
     >
@@ -747,7 +747,7 @@ export function DynamicTable<T>({
   if (error) {
     return (
       <Card className={cn('premium-table-card overflow-hidden', className)}>
-        {toolbar ? <div className="premium-table-toolbar px-4 py-3">{toolbar}</div> : null}
+        {toolbar ? <div className="premium-table-toolbar px-3.5 py-2.5">{toolbar}</div> : null}
         <ErrorState
           description={errorDescription}
           onRetry={onRetry}
@@ -761,7 +761,7 @@ export function DynamicTable<T>({
   if (computedData.length === 0) {
     return (
       <Card className={cn('premium-table-card overflow-hidden', className)}>
-        {toolbar ? <div className="premium-table-toolbar px-4 py-3">{toolbar}</div> : null}
+        {toolbar ? <div className="premium-table-toolbar px-3.5 py-2.5">{toolbar}</div> : null}
         <EmptyState description={emptyDescription} title={emptyTitle} />
         {footerNode}
       </Card>
@@ -770,7 +770,7 @@ export function DynamicTable<T>({
 
   return (
     <Card className={cn('premium-table-card overflow-hidden', className)}>
-      {toolbar ? <div className="premium-table-toolbar px-4 py-3">{toolbar}</div> : null}
+      {toolbar ? <div className="premium-table-toolbar px-3.5 py-2.5">{toolbar}</div> : null}
 
       {/* Below lg a wide table would scroll sideways inside a page that already
           scrolls down. Each row becomes a stacked label/value card instead, so
@@ -791,7 +791,7 @@ export function DynamicTable<T>({
 
           return (
             <li
-              className={cn('px-4 py-3', onRowClick && 'cursor-pointer')}
+              className={cn('px-3.5 py-2.5', onRowClick && 'cursor-pointer')}
               key={rowId}
               onClick={() => onRowClick?.(row)}
             >
@@ -861,7 +861,7 @@ export function DynamicTable<T>({
                   return (
                     <th
                       className={cn(
-                        'px-4 py-3 font-semibold',
+                        'px-3.5 py-2.5 font-semibold',
                         alignClass,
                         column.headerClassName,
                       )}
@@ -913,7 +913,7 @@ export function DynamicTable<T>({
                 })}
                 {rowActions ? (
                   <th
-                    className="premium-table-head premium-table-sticky-action sticky right-0 z-10 px-4 py-3 text-right font-semibold"
+                    className="premium-table-head premium-table-sticky-action sticky right-0 z-10 px-3.5 py-2.5 text-right font-semibold"
                     style={actionColumnStyle}
                   >
                     {actionColumnLabel}
@@ -958,7 +958,7 @@ export function DynamicTable<T>({
                       return (
                         <td
                           className={cn(
-                            'premium-table-cell px-4 py-3.5 align-top text-sm',
+                            'premium-table-cell px-3.5 py-2.5 align-top text-sm',
                             alignClass,
                             column.className,
                           )}
@@ -973,7 +973,7 @@ export function DynamicTable<T>({
                     })}
                     {rowActions ? (
                       <td
-                        className="premium-table-cell premium-table-sticky-action sticky right-0 px-4 py-3.5 text-right align-top"
+                        className="premium-table-cell premium-table-sticky-action sticky right-0 px-3.5 py-2.5 text-right align-top"
                         style={actionColumnStyle}
                       >
                         <div
@@ -1068,7 +1068,7 @@ export function TableShell<T extends object>({
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <th className="px-4 py-3 font-semibold" key={header.id}>
+                  <th className="px-3.5 py-2.5 font-semibold" key={header.id}>
                     {header.isPlaceholder
                       ? null
                       : flexRender(
@@ -1084,7 +1084,7 @@ export function TableShell<T extends object>({
             {table.getRowModel().rows.map((row) => (
               <tr className="border-t border-border" key={row.id}>
                 {row.getVisibleCells().map((cell) => (
-                  <td className="premium-table-cell px-4 py-3 text-sm" key={cell.id}>
+                  <td className="premium-table-cell px-3.5 py-2.5 text-sm" key={cell.id}>
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}

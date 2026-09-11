@@ -36,8 +36,8 @@
   --spacing-sidebar: 16rem;
   --spacing-topbar: 4.25rem;
 
-  --radius-control: 0.75rem;
-  --radius-surface: 0.875rem;
+  --radius-control: 0.5rem;
+  --radius-surface: 0.75rem;
 
   --shadow-surface: var(--sg-shadow-surface);
   --shadow-overlay: var(--sg-shadow-overlay);
@@ -259,7 +259,7 @@
   }
 
   .page-content {
-    @apply w-full px-4 py-7 sm:px-6 lg:px-10;
+    @apply w-full px-4 py-5 sm:px-6 lg:px-8;
   }
 
   .list-workspace {
@@ -408,14 +408,14 @@
   .premium-content-card,
   .card {
     border: 1px solid var(--adaptive-border);
-    border-radius: 1.25rem;
+    border-radius: var(--radius-surface);
     background: var(--adaptive-surface);
     box-shadow: var(--sg-shadow-content-card);
   }
 
   .premium-content-card,
   .card {
-    @apply p-5 sm:p-6;
+    @apply p-4 sm:p-5;
   }
 
   .card-title {
@@ -911,7 +911,7 @@
   .premium-table-card {
     overflow: hidden;
     border: 1px solid var(--adaptive-border);
-    border-radius: 1.25rem;
+    border-radius: var(--radius-surface);
     background: var(--adaptive-surface);
     box-shadow: var(--sg-shadow-table-card);
   }
@@ -937,8 +937,8 @@
   .premium-table-head th,
   .premium-table th {
     border-bottom: 1px solid var(--adaptive-border);
-    padding: 0.75rem 1rem;
-    font-size: 0.8125rem;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.75rem;
     font-weight: 600;
     white-space: nowrap;
   }
@@ -962,7 +962,7 @@
   .premium-table-cell,
   .premium-table td {
     border-bottom: 1px solid var(--adaptive-border);
-    padding: 0.875rem 1rem;
+    padding: 0.625rem 0.875rem;
     color: var(--adaptive-text-main);
     vertical-align: middle;
   }
