@@ -19,6 +19,7 @@ export const routePaths = {
   refunds: "/app/refunds",
   payouts: "/app/payouts",
   reels: "/app/reels",
+  services: "/app/services",
   creatorMusic: "/app/creator-music",
   influencers: "/app/influencers",
   influencerCampaigns: "/app/release-2/influencer-campaigns",

@@ -11,6 +11,7 @@ export const routePermissions = {
   refunds: "payments:read",
   payouts: "payouts:read",
   reels: "reels:read",
+  services: "vendor_services:read",
   creatorMusic: "creator_music:read",
   influencers: "influencers:read",
   influencerCampaigns: "campaigns:read",

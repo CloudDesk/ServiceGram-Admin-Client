@@ -46,6 +46,7 @@ import { PayoutDetailPage } from "../features/payouts/components/PayoutDetailPag
 import { PayoutsPage } from "../features/payouts/components/PayoutsPage";
 import { ReelDetailPage } from "../features/reels/components/ReelDetailPage";
 import { ReelsPage } from "../features/reels/components/ReelsPage";
+import { ServicesPage } from "../features/services/components/ServicesPage";
 import { CreatorMusicPage } from "../features/creator-music/components/CreatorMusicPage";
 import { ReportDetailPage } from "../features/reports/components/ReportDetailPage";
 import { ReportExportDetailPage } from "../features/reports/components/ReportExportDetailPage";
@@ -305,6 +306,17 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: `${routePaths.reels}/:reelId/tab/:tab`,
                     element: <ReelDetailPage />,
+                  },
+                ],
+              },
+              {
+                element: (
+                  <PermissionGuard permission={routePermissions.services} />
+                ),
+                children: [
+                  {
+                    path: routePaths.services,
+                    element: <ServicesPage />,
                   },
                 ],
               },
