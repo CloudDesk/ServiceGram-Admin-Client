@@ -240,7 +240,9 @@ export function CreateAdminUserPage() {
         </h2>
         <div className="grid gap-3 lg:grid-cols-2">
           <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Email</span>
+            <span className="text-sm font-medium text-foreground">
+              Email<span className="text-danger"> *</span>
+            </span>
             <Input
               className="min-h-11"
               hasError={Boolean(fieldErrors.email)}
@@ -255,7 +257,9 @@ export function CreateAdminUserPage() {
             <FormErrorSummary message={fieldErrors.email} />
           </label>
           <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Full Name</span>
+            <span className="text-sm font-medium text-foreground">
+              Full Name<span className="text-danger"> *</span>
+            </span>
             <Input
               className="min-h-11"
               hasError={Boolean(fieldErrors.fullName)}
@@ -269,7 +273,9 @@ export function CreateAdminUserPage() {
             <FormErrorSummary message={fieldErrors.fullName} />
           </label>
           <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Password</span>
+            <span className="text-sm font-medium text-foreground">
+              Password<span className="text-danger"> *</span>
+            </span>
             <Input
               className="min-h-11"
               hasError={Boolean(fieldErrors.password)}
@@ -281,10 +287,16 @@ export function CreateAdminUserPage() {
                 setPassword(event.target.value)
               }}
             />
-            <FormErrorSummary message={fieldErrors.password} />
+            {fieldErrors.password ? (
+              <FormErrorSummary message={fieldErrors.password} />
+            ) : (
+              <p className="text-xs text-muted">{strongPasswordMessage}</p>
+            )}
           </label>
           <label className="space-y-1">
-            <span className="text-sm font-medium text-foreground">Role</span>
+            <span className="text-sm font-medium text-foreground">
+              Role<span className="text-danger"> *</span>
+            </span>
             <select
               className={cn(
                 'min-h-11 w-full rounded-[0.9rem] border border-border bg-surface px-3 text-sm text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-70',

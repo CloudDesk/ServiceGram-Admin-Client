@@ -122,6 +122,10 @@ export const appRoutes: RouteObject[] = [
                     path: `${routePaths.adminUsers}/:adminUserId`,
                     element: <AdminUserDetailPage />,
                   },
+                  {
+                    path: `${routePaths.adminUsers}/:adminUserId/tab/:tab`,
+                    element: <AdminUserDetailPage />,
+                  },
                 ],
               },
               {
