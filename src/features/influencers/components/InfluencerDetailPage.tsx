@@ -36,8 +36,13 @@ import {
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { routePaths } from '../../../config/routes'
 import {
+  RecordBadgeGroup,
+  RecordField,
+  RecordFieldList,
   RecordHeaderActions,
+  RecordSection,
   RecordTabs,
+  RelatedRecordRow,
   type RecordAction,
   type RecordTabItem,
 } from '../../../components/ui/RecordPage'
@@ -74,16 +79,6 @@ const influencerActionKinds: InfluencerActionKind[] = [
   'SUSPEND',
   'REACTIVATE',
 ]
-
-const influencerDetailSectionIds = {
-  overview: 'influencer-overview',
-  profile: 'influencer-profile',
-  application: 'influencer-application',
-  reels: 'influencer-reels',
-  commission: 'influencer-commission',
-  related: 'influencer-related',
-  signals: 'influencer-signals',
-} as const
 
 function statusTone(status: InfluencerStatus | string): InfluencerTone {
   if (status === 'APPROVED' || status === 'CONFIRMED' || status === 'READY') {
@@ -252,38 +247,6 @@ function canRunInfluencerAction({
   canReviewInfluencers: boolean
 }) {
   return isInfluencerActionKind(action) && canReviewInfluencers
-}
-
-function DetailField({
-  label,
-  value,
-}: {
-  label: string
-  value: string | number | null | undefined
-}) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-semibold uppercase text-muted">{label}</p>
-      <p className="break-words text-sm text-foreground">
-        {value ?? 'Not available'}
-      </p>
-    </div>
-  )
-}
-
-function DetailNodeField({
-  children,
-  label,
-}: {
-  children: ReactNode
-  label: string
-}) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-semibold uppercase text-muted">{label}</p>
-      <div className="break-words text-sm text-foreground">{children}</div>
-    </div>
-  )
 }
 
 function SocialHandleLink({
@@ -695,106 +658,16 @@ function InfluencerDetailSectionNav({
     />
   )
 }
-function SectionShell({
-  actionNode,
-  children,
-  description,
-  id,
-  icon,
-  title,
-}: {
-  actionNode?: ReactNode
-  children: ReactNode
-  description?: string
-  id?: string
-  icon?: ReactNode
-  title: string
-}) {
-  return (
-    <section
-      className="scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4 shadow-surface"
-      id={id}
-    >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            {icon ? <span className="text-primary">{icon}</span> : null}
-            <h2 className="text-base font-semibold tracking-normal text-foreground">
-              {title}
-            </h2>
-          </div>
-          {description ? (
-            <p className="mt-1 text-sm text-muted">{description}</p>
-          ) : null}
-        </div>
-        {actionNode ? <div className="shrink-0">{actionNode}</div> : null}
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function RelatedRecordRow({
-  actionLabel = 'Open',
-  canOpen,
-  icon,
-  label,
-  meta,
-  onOpen,
-  value,
-}: {
-  actionLabel?: string
-  canOpen: boolean
-  icon: ReactNode
-  label: string
-  meta: string
-  onOpen?: () => void
-  value: string
-}) {
-  return (
-    <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="mt-0.5 text-primary">{icon}</span>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-            {label}
-          </p>
-          <OverflowText
-            as="p"
-            className="mt-1 text-sm font-semibold text-foreground"
-            title={value}
-          >
-            {value}
-          </OverflowText>
-          <OverflowText as="p" className="mt-1 text-xs text-muted" title={meta}>
-            {meta}
-          </OverflowText>
-        </div>
-      </div>
-      {canOpen && onOpen ? (
-        <Button className="shrink-0" size="sm" variant="secondary" onClick={onOpen}>
-          <ArrowUpRight className="mr-2 size-4" />
-          {actionLabel}
-        </Button>
-      ) : (
-        <Badge tone="neutral">View only</Badge>
-      )}
-    </div>
-  )
-}
-
 function RelatedRecordsPanel({
   canReadCustomers,
   canReadOrders,
   canReadReels,
-  id,
   influencer,
   onNavigate,
 }: {
   canReadCustomers: boolean
   canReadOrders: boolean
   canReadReels: boolean
-  id?: string
   influencer: AdminInfluencer
   onNavigate: (path: string) => void
 }) {
@@ -802,9 +675,8 @@ function RelatedRecordsPanel({
     influencer.summary.pendingReelCount > 0 ? 'pending' : 'live'
 
   return (
-    <SectionShell
+    <RecordSection
       description="Primary records connected to this creator profile."
-      id={id}
       icon={<ArrowUpRight className="size-4" />}
       title="Related records"
     >
@@ -846,41 +718,15 @@ function RelatedRecordsPanel({
           value={`${influencer.summary.attributedBookingCount} bookings`}
         />
       </div>
-    </SectionShell>
-  )
-}
-
-function SignalBadgeGroup({
-  emptyLabel,
-  items,
-  tone,
-}: {
-  emptyLabel: string
-  items: string[]
-  tone: InfluencerTone
-}) {
-  return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      {items.length ? (
-        items.map((item) => (
-          <Badge key={item} tone={tone}>
-            {humanizeCode(item)}
-          </Badge>
-        ))
-      ) : (
-        <Badge tone="success">{emptyLabel}</Badge>
-      )}
-    </div>
+    </RecordSection>
   )
 }
 
 function OperationalSignalsPanel({
   canReviewInfluencers,
-  id,
   influencer,
 }: {
   canReviewInfluencers: boolean
-  id?: string
   influencer: AdminInfluencer
 }) {
   const permittedActions = influencer.availableActions.filter((action) =>
@@ -896,9 +742,8 @@ function OperationalSignalsPanel({
       : null
 
   return (
-    <SectionShell
+    <RecordSection
       description="Backend workflow signals and actions permitted for this admin."
-      id={id}
       icon={<TriangleAlert className="size-4" />}
       title="Signals"
     >
@@ -907,8 +752,9 @@ function OperationalSignalsPanel({
           <p className="text-xs font-semibold uppercase tracking-normal text-muted">
             Warnings
           </p>
-          <SignalBadgeGroup
+          <RecordBadgeGroup
             emptyLabel="No warnings"
+            formatItem={humanizeCode}
             items={influencer.warnings}
             tone="warning"
           />
@@ -917,42 +763,45 @@ function OperationalSignalsPanel({
           <p className="text-xs font-semibold uppercase tracking-normal text-muted">
             Available to you
           </p>
-          <SignalBadgeGroup
+          <RecordBadgeGroup
             emptyLabel="No permitted actions"
+            formatItem={humanizeCode}
             items={permittedActions}
             tone="neutral"
           />
         </div>
-        <DetailField
-          label="Recommended next"
-          value={
-            permittedRecommendedAction
-              ? humanizeCode(permittedRecommendedAction)
-              : null
-          }
-        />
+        <RecordFieldList>
+          <RecordField
+            label="Recommended next"
+            value={
+              permittedRecommendedAction
+                ? humanizeCode(permittedRecommendedAction)
+                : null
+            }
+          />
+        </RecordFieldList>
       </div>
-    </SectionShell>
+    </RecordSection>
   )
 }
 
 function LifecyclePanel({ influencer }: { influencer: AdminInfluencer }) {
   return (
-    <SectionShell
+    <RecordSection
       description="Creator profile lifecycle timestamps and ledger activity."
       icon={<CalendarClock className="size-4" />}
       title="Lifecycle"
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        <DetailField label="Created" value={formatDateSafe(influencer.createdAt)} />
-        <DetailField label="Updated" value={formatDateSafe(influencer.updatedAt)} />
-        <DetailField label="Approved at" value={formatDateSafe(influencer.approvedAt)} />
-        <DetailField
+      <RecordFieldList>
+        <RecordField label="Created" value={formatDateSafe(influencer.createdAt)} />
+        <RecordField label="Updated" value={formatDateSafe(influencer.updatedAt)} />
+        <RecordField label="Approved at" value={formatDateSafe(influencer.approvedAt)} />
+        <RecordField
           label="Last commission"
           value={formatDateSafe(influencer.summary.lastCommissionAt)}
         />
-      </div>
-    </SectionShell>
+      </RecordFieldList>
+    </RecordSection>
   )
 }
 
@@ -1132,10 +981,7 @@ export function InfluencerDetailPage() {
       />
 
       {activeTab === 'overview' ? (
-      <div
-        className="grid scroll-mt-24 gap-2.5 md:grid-cols-2 xl:grid-cols-4"
-        id={influencerDetailSectionIds.overview}
-      >
+      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           icon={<Film className="size-4" />}
           label="Total reels"
@@ -1179,39 +1025,41 @@ export function InfluencerDetailPage() {
 
           <section className="grid gap-3 2xl:grid-cols-[1.15fr_0.85fr]">
             {activeTab === 'profile' ? (
-            <SectionShell
+            <RecordSection
               description="Customer identity stays active while creator capabilities are managed here."
-              id={influencerDetailSectionIds.profile}
               icon={<BadgeCheck className="size-4" />}
               title="Creator profile"
             >
-              <div className="grid gap-4 md:grid-cols-2">
-                <DetailField label="Display name" value={influencer.displayName} />
-                <DetailNodeField label="Social profiles">
-                  <SocialProfilesList
-                    fallbackHandle={influencer.socialHandle}
-                    profiles={influencer.socialProfiles}
-                  />
-                </DetailNodeField>
-                <DetailField
+              <RecordFieldList>
+                <RecordField label="Display name" value={influencer.displayName} />
+                <RecordField
+                  label="Social profiles"
+                  value={
+                    <SocialProfilesList
+                      fallbackHandle={influencer.socialHandle}
+                      profiles={influencer.socialProfiles}
+                    />
+                  }
+                />
+                <RecordField
                   label="Customer status"
                   value={humanizeCode(influencer.customer.status)}
                 />
-                <DetailField
+                <RecordField
                   label="City"
                   value={influencer.customer.zone?.zoneName ?? influencer.customer.city}
                 />
-                <DetailField label="Mobile" value={influencer.customer.mobileNumber} />
-                <DetailField label="Email" value={influencer.customer.email} />
-                <DetailField
+                <RecordField label="Mobile" value={influencer.customer.mobileNumber} />
+                <RecordField label="Email" value={influencer.customer.email} />
+                <RecordField
                   label="Approved at"
                   value={formatDateSafe(influencer.approvedAt)}
                 />
-                <DetailField
+                <RecordField
                   label="Last commission"
                   value={formatDateSafe(influencer.summary.lastCommissionAt)}
                 />
-              </div>
+              </RecordFieldList>
               {influencer.bio ? (
                 <div className="mt-5 rounded-[0.875rem] border border-border bg-surface-muted/45 p-4">
                   <p className="text-xs font-semibold uppercase text-muted">Bio</p>
@@ -1220,45 +1068,52 @@ export function InfluencerDetailPage() {
                   </p>
                 </div>
               ) : null}
-            </SectionShell>
+            </RecordSection>
             ) : null}
 
             {activeTab === 'application' ? (
-            <SectionShell
+            <RecordSection
               description="Submitted creator application and latest review context."
-              id={influencerDetailSectionIds.application}
               icon={<UserRound className="size-4" />}
               title="Application"
             >
               {influencer.application ? (
-                <div className="mt-5 space-y-4">
-                  <DetailField
-                    label="Status"
-                    value={humanizeCode(influencer.application.status)}
-                  />
-                  <DetailField label="City" value={influencer.application.city} />
-                  <DetailField
-                    label="Submitted"
-                    value={formatDateSafe(influencer.application.createdAt)}
-                  />
-                  <DetailField
-                    label="Reviewed"
-                    value={formatDateSafe(influencer.application.reviewedAt)}
-                  />
-                  <DetailNodeField label="Preferred categories">
-                    <PreferredCategoryLinks
-                      canReadSettings={canReadSettings}
-                      categoriesById={preferredCategoriesById}
-                      categoryIds={influencer.application.preferredCategoryIds}
-                      onNavigate={navigate}
+                <div className="space-y-4">
+                  <RecordFieldList>
+                    <RecordField
+                      label="Status"
+                      value={humanizeCode(influencer.application.status)}
                     />
-                  </DetailNodeField>
-                  <DetailNodeField label="Social profiles">
-                    <SocialProfilesList
-                      fallbackHandle={influencer.application.socialHandle}
-                      profiles={influencer.application.socialProfiles}
+                    <RecordField label="City" value={influencer.application.city} />
+                    <RecordField
+                      label="Submitted"
+                      value={formatDateSafe(influencer.application.createdAt)}
                     />
-                  </DetailNodeField>
+                    <RecordField
+                      label="Reviewed"
+                      value={formatDateSafe(influencer.application.reviewedAt)}
+                    />
+                    <RecordField
+                      label="Preferred categories"
+                      value={
+                        <PreferredCategoryLinks
+                          canReadSettings={canReadSettings}
+                          categoriesById={preferredCategoriesById}
+                          categoryIds={influencer.application.preferredCategoryIds}
+                          onNavigate={navigate}
+                        />
+                      }
+                    />
+                    <RecordField
+                      label="Social profiles"
+                      value={
+                        <SocialProfilesList
+                          fallbackHandle={influencer.application.socialHandle}
+                          profiles={influencer.application.socialProfiles}
+                        />
+                      }
+                    />
+                  </RecordFieldList>
                   {influencer.application.motivation ? (
                     <div className="rounded-[0.875rem] border border-border bg-surface-muted/45 p-4">
                       <p className="text-xs font-semibold uppercase text-muted">
@@ -1286,7 +1141,7 @@ export function InfluencerDetailPage() {
                   description="This creator profile does not have an application payload."
                 />
               )}
-            </SectionShell>
+            </RecordSection>
             ) : null}
           </section>
         </div>
@@ -1297,13 +1152,11 @@ export function InfluencerDetailPage() {
             canReadCustomers={canReadCustomers}
             canReadOrders={canReadOrders}
             canReadReels={canReadReels}
-            id={influencerDetailSectionIds.related}
             influencer={influencer}
             onNavigate={navigate}
           />
           <OperationalSignalsPanel
             canReviewInfluencers={canReviewInfluencers}
-            id={influencerDetailSectionIds.signals}
             influencer={influencer}
           />
         </div>
@@ -1311,7 +1164,7 @@ export function InfluencerDetailPage() {
       </section>
 
       {activeTab === 'reels' ? (
-      <SectionShell
+      <RecordSection
         actionNode={
           canReadReels ? (
             <Button
@@ -1326,7 +1179,6 @@ export function InfluencerDetailPage() {
           ) : null
         }
         description="Influencer reels still use the normal admin reel moderation queue."
-        id={influencerDetailSectionIds.reels}
         icon={<Film className="size-4" />}
         title="Recent creator reels"
       >
@@ -1369,13 +1221,12 @@ export function InfluencerDetailPage() {
             }
           />
         )}
-      </SectionShell>
+      </RecordSection>
       ) : null}
 
       {activeTab === 'commission' ? (
-      <SectionShell
+      <RecordSection
         description="Phase 1 records manual commission entries; payout automation is not enabled."
-        id={influencerDetailSectionIds.commission}
         icon={<HandCoins className="size-4" />}
         title="Commission ledger"
       >
@@ -1428,7 +1279,7 @@ export function InfluencerDetailPage() {
             }
           />
         )}
-      </SectionShell>
+      </RecordSection>
       ) : null}
 
       <InfluencerActionModal

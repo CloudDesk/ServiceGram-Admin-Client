@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react'
-import { X } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
+import { Modal } from '../../../components/ui/Modal'
 import type {
   AdminInfluencer,
   InfluencerActionKind,
@@ -87,76 +87,59 @@ export function InfluencerActionModal({
   }
 
   return (
-    <div className="premium-overlay flex items-center justify-center p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-overlay)]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold tracking-normal text-foreground">
-              {actionTitle(action.kind)}
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-muted">
-              {actionDescription(action)}
-            </p>
+    <Modal
+      closeDisabled={isSubmitting}
+      description={actionDescription(action)}
+      title={actionTitle(action.kind)}
+      onClose={onClose}
+    >
+      <form className="space-y-4" onSubmit={handleSubmit}>
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-foreground">
+            Reason{reasonRequired ? ' *' : ''}
+          </span>
+          <textarea
+            className="form-input min-h-28 resize-y"
+            placeholder={
+              reasonRequired
+                ? 'Add a clear operations reason'
+                : 'Optional note for the audit trail'
+            }
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </label>
+
+        {formError || error ? (
+          <div className="rounded-[0.75rem] border border-danger/20 bg-danger/5 p-3 text-sm text-danger">
+            {formError ?? error}
           </div>
-          <button
-            aria-label="Close action modal"
-            className="rounded-full p-2 text-muted transition-colors hover:bg-surface-muted hover:text-foreground"
+        ) : null}
+
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <Button
             disabled={isSubmitting}
-            onClick={onClose}
+            size="sm"
             type="button"
+            variant="ghost"
+            onClick={onClose}
           >
-            <X className="size-4" />
-          </button>
+            Cancel
+          </Button>
+          <Button
+            isLoading={isSubmitting}
+            size="sm"
+            type="submit"
+            variant={
+              action.kind === 'REJECT' || action.kind === 'SUSPEND'
+                ? 'danger'
+                : 'primary'
+            }
+          >
+            {submitLabel(action.kind)}
+          </Button>
         </div>
-
-        <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
-          <label className="block space-y-2">
-            <span className="text-sm font-semibold text-foreground">
-              Reason{reasonRequired ? ' *' : ''}
-            </span>
-            <textarea
-              className="form-input min-h-28 resize-y"
-              placeholder={
-                reasonRequired
-                  ? 'Add a clear operations reason'
-                  : 'Optional note for the audit trail'
-              }
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-            />
-          </label>
-
-          {formError || error ? (
-            <div className="rounded-[0.75rem] border border-danger/20 bg-danger/5 p-3 text-sm text-danger">
-              {formError ?? error}
-            </div>
-          ) : null}
-
-          <div className="flex justify-end gap-2 border-t border-border pt-4">
-            <Button
-              disabled={isSubmitting}
-              size="sm"
-              type="button"
-              variant="ghost"
-              onClick={onClose}
-            >
-              Cancel
-            </Button>
-            <Button
-              isLoading={isSubmitting}
-              size="sm"
-              type="submit"
-              variant={
-                action.kind === 'REJECT' || action.kind === 'SUSPEND'
-                  ? 'danger'
-                  : 'primary'
-              }
-            >
-              {submitLabel(action.kind)}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Modal>
   )
 }
