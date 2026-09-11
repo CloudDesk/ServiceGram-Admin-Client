@@ -74,6 +74,8 @@ interface DataListProps<TRow> {
 
   toolbarActions?: ReactNode
   pagination: DataListPagination
+  /** Selectable "Rows per page" values. Must not exceed what the backing list endpoint allows. */
+  pageSizeOptions?: number[]
 
   isLoading?: boolean
   isError?: boolean
@@ -83,7 +85,11 @@ interface DataListProps<TRow> {
   emptyHint?: string
 }
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100, 200]
+// Every admin list endpoint currently caps its `limit` query param at 100
+// (see each module's list-query DTO), so offering a larger value here just
+// produces a VALIDATION_FAILED response. Pass `pageSizeOptions` to override
+// per page if a specific endpoint ever supports a higher cap.
+const PAGE_SIZE_OPTIONS = [25, 50, 100]
 
 export function DataList<TRow>({
   activeQueue,
@@ -103,6 +109,7 @@ export function DataList<TRow>({
   onSearchChange,
   onSortChange,
   pagination,
+  pageSizeOptions = PAGE_SIZE_OPTIONS,
   queueTabs,
   rowActions,
   rowActionsWidth = 96,
@@ -379,7 +386,7 @@ export function DataList<TRow>({
               value={pageSize}
               onChange={(event) => pagination.onPageSizeChange(Number(event.target.value))}
             >
-              {PAGE_SIZE_OPTIONS.map((option) => (
+              {pageSizeOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
