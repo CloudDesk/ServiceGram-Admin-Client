@@ -45,6 +45,7 @@ import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { reelService } from '../services/reel.service'
+import { reelPartyName } from '../reelPresenters'
 import {
   ReelActionModal,
   type ReelActionFormValues,
@@ -213,7 +214,7 @@ function buildReelMediaViewerItems(reel: AdminReel): MediaViewerItem[] {
       height: reel.media.height ?? null,
       id: `${reel.reelId}-thumbnail`,
       kind: 'image',
-      ownerLabel: reel.vendor.shopName,
+      ownerLabel: reelPartyName(reel),
       sourceLabel: 'Reel thumbnail',
       src: thumbnailUrl,
       title: `${reel.publicReelId} thumbnail`,
@@ -231,7 +232,7 @@ function buildReelMediaViewerItems(reel: AdminReel): MediaViewerItem[] {
       height: reel.media.height ?? null,
       id: `${reel.reelId}-video`,
       kind: reel.media.cloudflareVideoUid ? 'cloudflare-video' : 'video',
-      ownerLabel: reel.vendor.shopName,
+      ownerLabel: reelPartyName(reel),
       posterUrl: thumbnailUrl,
       sourceLabel: 'Reel playback',
       src: playbackUrl,
@@ -251,7 +252,7 @@ function buildReelMediaViewerItems(reel: AdminReel): MediaViewerItem[] {
       height: reel.media.height ?? null,
       id: `${reel.reelId}-media`,
       kind: 'reel',
-      ownerLabel: reel.vendor.shopName,
+      ownerLabel: reelPartyName(reel),
       relatedItems,
       sourceLabel: 'Reel media',
       src: playbackUrl ?? thumbnailUrl,
@@ -638,31 +639,43 @@ function RelatedRecordsPanel({
       title="Related records"
     >
       <div className="divide-y divide-border">
-        <RelatedRecordRow
-          canOpen={canReadVendors}
-          icon={<Store className="size-4" />}
-          label="Vendor"
-          meta={`${reel.vendor.publicVendorId} · ${reel.vendor.zone?.zoneName ?? reel.vendor.city}`}
-          value={reel.vendor.shopName}
-          onOpen={() => onNavigate(`${routePaths.vendors}/${reel.vendor.vendorId}`)}
-        />
-        <RelatedRecordRow
-          actionLabel="Queue"
-          canOpen
-          icon={<Film className="size-4" />}
-          label="Vendor reel queue"
-          meta="Current moderation workspace filtered by this vendor"
-          value={reel.vendor.shopName}
-          onOpen={() =>
-            onNavigate(
-              routeWithFilters(routePaths.reels, {
-                vendorId: reel.vendor.vendorId,
-                vendorLabel: reel.vendor.shopName,
-                view: reelQueueView,
-              }),
-            )
-          }
-        />
+        {reel.vendor ? (
+          <>
+            <RelatedRecordRow
+              canOpen={canReadVendors}
+              icon={<Store className="size-4" />}
+              label="Vendor"
+              meta={`${reel.vendor.publicVendorId} · ${reel.vendor.zone?.zoneName ?? reel.vendor.city}`}
+              value={reel.vendor.shopName}
+              onOpen={() => onNavigate(`${routePaths.vendors}/${reel.vendor!.vendorId}`)}
+            />
+            <RelatedRecordRow
+              actionLabel="Queue"
+              canOpen
+              icon={<Film className="size-4" />}
+              label="Vendor reel queue"
+              meta="Current moderation workspace filtered by this vendor"
+              value={reel.vendor.shopName}
+              onOpen={() =>
+                onNavigate(
+                  routeWithFilters(routePaths.reels, {
+                    vendorId: reel.vendor!.vendorId,
+                    vendorLabel: reel.vendor!.shopName,
+                    view: reelQueueView,
+                  }),
+                )
+              }
+            />
+          </>
+        ) : reel.vendorLead ? (
+          <RelatedRecordRow
+            canOpen={false}
+            icon={<Store className="size-4" />}
+            label="Vendor lead"
+            meta={`${reel.vendorLead.publicLeadId} · ${reel.vendorLead.mobileNumberMasked} · not yet onboarded`}
+            value={reel.vendorLead.businessName}
+          />
+        ) : null}
         {reel.influencer ? (
           <RelatedRecordRow
             actionLabel="Influencer"
@@ -1232,11 +1245,37 @@ export function ReelDetailPage() {
         title="Service context"
       >
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <DetailField label="Shop" value={reel.vendor.shopName} />
-          <DetailField label="Owner" value={reel.vendor.ownerName} />
-          <DetailField label="Mobile" value={reel.vendor.mobileNumber} />
-          <DetailField label="Vendor ID" value={reel.vendor.vendorId} />
-          <DetailField label="Public Vendor ID" value={reel.vendor.publicVendorId} />
+          {reel.vendor ? (
+            <>
+              <DetailField label="Shop" value={reel.vendor.shopName} />
+              <DetailField label="Owner" value={reel.vendor.ownerName} />
+              <DetailField label="Mobile" value={reel.vendor.mobileNumber} />
+              <DetailField label="Vendor ID" value={reel.vendor.vendorId} />
+              <DetailField label="Public Vendor ID" value={reel.vendor.publicVendorId} />
+              <DetailField
+                label="Vendor Status"
+                value={humanizeCode(reel.vendor.vendorStatus)}
+              />
+              <DetailField
+                label="Onboarding Status"
+                value={humanizeCode(reel.vendor.onboardingStatus)}
+              />
+              <DetailField label="City" value={reel.vendor.city} />
+              <DetailField label="Zone" value={reel.vendor.zone?.zoneName} />
+              <DetailField label="Zone City" value={reel.vendor.zone?.city} />
+            </>
+          ) : reel.vendorLead ? (
+            <>
+              <DetailField label="Shop" value={reel.vendorLead.businessName} />
+              <DetailField label="Mobile" value={reel.vendorLead.mobileNumberMasked} />
+              <DetailField label="Lead ID" value={reel.vendorLead.vendorLeadId} />
+              <DetailField label="Public Lead ID" value={reel.vendorLead.publicLeadId} />
+              <DetailField label="Lead Status" value={humanizeCode(reel.vendorLead.status)} />
+              <DetailField label="Onboarding Status" value="Not onboarded" />
+              <DetailField label="City" value={reel.vendorLead.city} />
+              <DetailField label="Area" value={reel.vendorLead.area} />
+            </>
+          ) : null}
           <DetailField
             label="Uploader"
             value={humanizeCode(reel.uploaderType ?? 'VENDOR')}
@@ -1245,17 +1284,6 @@ export function ReelDetailPage() {
             label="Influencer"
             value={reel.influencer?.displayName}
           />
-          <DetailField
-            label="Vendor Status"
-            value={humanizeCode(reel.vendor.vendorStatus)}
-          />
-          <DetailField
-            label="Onboarding Status"
-            value={humanizeCode(reel.vendor.onboardingStatus)}
-          />
-          <DetailField label="City" value={reel.vendor.city} />
-          <DetailField label="Zone" value={reel.vendor.zone?.zoneName} />
-          <DetailField label="Zone City" value={reel.vendor.zone?.city} />
           <DetailField label="Category" value={reel.category?.name} />
           <DetailField label="Category Code" value={reel.category?.categoryCode} />
           <DetailField label="Category Active" value={reel.category?.isActive} />

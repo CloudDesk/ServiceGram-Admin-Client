@@ -26,6 +26,7 @@ import {
   isDangerReelAction,
   reelActionLabel,
   reelDuration,
+  reelPartyName,
   reelSignal,
   type ReelTone,
 } from "../reelPresenters";
@@ -415,9 +416,7 @@ export function ReelsPage() {
         minWidth: 130,
         priority: 2,
         render: (reel) => (
-          <span className="truncate text-muted">
-            {reel.vendor.shopName || "—"}
-          </span>
+          <span className="truncate text-muted">{reelPartyName(reel)}</span>
         ),
       },
       {
@@ -503,7 +502,7 @@ export function ReelsPage() {
       { header: "Reel ID", value: (reel) => reel.publicReelId },
       { header: "Caption", value: (reel) => reel.caption ?? "" },
       { header: "Content type", value: (reel) => reel.contentType },
-      { header: "Vendor", value: (reel) => reel.vendor.shopName },
+      { header: "Vendor", value: (reel) => reelPartyName(reel) },
       { header: "Category", value: (reel) => reel.category?.name ?? "" },
       { header: "Moderation", value: (reel) => reel.moderation.status },
       { header: "Upload status", value: (reel) => reel.media.uploadStatus },

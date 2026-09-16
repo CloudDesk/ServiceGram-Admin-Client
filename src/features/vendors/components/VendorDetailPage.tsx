@@ -75,6 +75,7 @@ import type {
   AdminPayoutSummary,
 } from "../../payouts/types/payout.types";
 import { reelService } from "../../reels/services/reel.service";
+import { reelPartyName } from "../../reels/reelPresenters";
 import {
   ReelActionModal,
   type ReelActionFormValues,
@@ -826,7 +827,7 @@ function buildVendorReelMediaItems(reel: AdminReel): MediaViewerItem[] {
         height: reel.media.height ?? null,
         id: `${reel.reelId}-thumbnail`,
         kind: "image",
-        ownerLabel: reel.vendor.shopName,
+        ownerLabel: reelPartyName(reel),
         sourceLabel: "Vendor reel thumbnail",
         src: thumbnailUrl,
         title: `${reel.publicReelId} thumbnail`,
@@ -844,7 +845,7 @@ function buildVendorReelMediaItems(reel: AdminReel): MediaViewerItem[] {
           height: reel.media.height ?? null,
           id: `${reel.reelId}-video`,
           kind: reel.media.cloudflareVideoUid ? "cloudflare-video" : "video",
-          ownerLabel: reel.vendor.shopName,
+          ownerLabel: reelPartyName(reel),
           posterUrl: thumbnailUrl,
           sourceLabel: "Vendor reel playback",
           src: playbackUrl,
@@ -868,7 +869,7 @@ function buildVendorReelMediaItems(reel: AdminReel): MediaViewerItem[] {
       height: reel.media.height ?? null,
       id: `${reel.reelId}-media`,
       kind: "reel",
-      ownerLabel: reel.vendor.shopName,
+      ownerLabel: reelPartyName(reel),
       posterUrl: thumbnailUrl,
       relatedItems,
       sourceLabel: "Vendor reel media",

@@ -177,6 +177,11 @@ export function reelSignal(reel: AdminReel) {
   return null
 }
 
+/** Vendor is null for reels targeting an unclaimed vendor lead. */
+export function reelPartyName(reel: AdminReel) {
+  return reel.vendor?.shopName ?? reel.vendorLead?.businessName ?? '—'
+}
+
 export function reelDuration(reel: AdminReel) {
   const seconds = reel.media.durationSeconds
 

@@ -65,6 +65,18 @@ export interface AdminReelVendor {
   zone: AdminReelZone | null
 }
 
+export interface AdminReelVendorLead {
+  vendorLeadId: string
+  publicLeadId: string
+  businessName: string
+  mobileNumberMasked: string
+  city: string | null
+  area: string | null
+  status: string
+  interestCount: number
+  reelCount: number
+}
+
 export interface AdminReelCategory {
   categoryId: string
   categoryCode: string
@@ -125,7 +137,9 @@ export interface AdminReel {
   contentType: ReelContentType
   caption: string | null
   priceIndicator: string | null
-  vendor: AdminReelVendor
+  /** Null when the reel targets an unclaimed vendor lead — see `vendorLead`. */
+  vendor: AdminReelVendor | null
+  vendorLead: AdminReelVendorLead | null
   category: AdminReelCategory | null
   media: AdminReelMedia
   moderation: AdminReelModeration

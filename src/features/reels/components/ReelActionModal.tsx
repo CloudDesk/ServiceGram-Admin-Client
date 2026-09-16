@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
+import { reelPartyName } from '../reelPresenters'
 import type { AdminReel } from '../types/reel.types'
 
 export type ReelActionKind =
@@ -95,7 +96,7 @@ export function ReelActionModal({
               {actionTitle(action.kind)}
             </h2>
             <p className="mt-1 text-sm text-muted">
-              {action.reel.publicReelId} · {action.reel.vendor.shopName}
+              {action.reel.publicReelId} · {reelPartyName(action.reel)}
             </p>
           </div>
           <button
