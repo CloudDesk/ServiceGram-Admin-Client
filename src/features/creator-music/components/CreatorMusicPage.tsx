@@ -1,136 +1,403 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Music2, RefreshCcw, Upload } from "lucide-react";
-import { PageContainer } from "../../../components/layout/PageContainer";
-import { PageContextHeader } from "../../../components/ui/PageHeader";
-import { Button } from "../../../components/ui/Button";
-import { Badge } from "../../../components/ui/Badge";
-import { usePermission } from "../../../hooks/usePermission";
-import { creatorMusicService } from "../services/creatorMusic.service";
+import { useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  Archive,
+  Edit3,
+  FileAudio,
+  Image,
+  Pause,
+  Play,
+  Plus,
+  RefreshCcw,
+  ShieldOff,
+} from 'lucide-react'
+import { PageContainer } from '../../../components/layout/PageContainer'
+import { Badge } from '../../../components/ui/Badge'
+import { Button } from '../../../components/ui/Button'
+import { DataList } from '../../../components/ui/DataList'
+import type {
+  DataListColumn,
+  DataListQueueTab,
+} from '../../../components/ui/DataList'
+import { filterInputClass } from '../../../components/ui/Input'
+import { PageContextHeader } from '../../../components/ui/PageHeader'
+import {
+  RowActionMenu,
+  type RowActionMenuItem,
+} from '../../../components/ui/RowActionMenu'
+import { usePermission } from '../../../hooks/usePermission'
+import { cn } from '../../../utils/cn'
+import { formatDate } from '../../../utils/formatDate'
+import { creatorMusicService } from '../services/creatorMusic.service'
 import type {
   AdminMusicTrack,
-  MusicLicenseStatus,
-  MusicSourceType,
-  MusicTrackMutation,
-} from "../types/creatorMusic.types";
+  MusicTrackStatus,
+} from '../types/creatorMusic.types'
+import { CreatorMusicFormModal } from './CreatorMusicFormModal'
 
-const emptyForm: MusicTrackMutation = {
-  title: "",
-  artistName: "",
-  albumName: null,
-  sourceType: "LICENSED",
-  durationMs: 60_000,
-  previewStartMs: 0,
-  previewDurationMs: 30_000,
-  moodTags: [],
-  categoryIds: [],
-  isInstrumental: false,
-  isExplicit: false,
-  licenseStatus: "PENDING",
-  licenseProvider: null,
-  licenseReference: null,
-  licenseValidFrom: null,
-  licenseValidUntil: null,
-  licensedTerritories: ["IN"],
-  attributionText: null,
-  metadata: {},
-};
+const CREATOR_MUSIC_LIST_STORAGE_KEY = 'servicegram.creatorMusic.list.v1'
+const DEFAULT_PAGE_SIZE = 50
 
-const inputClass =
-  "h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-ring/30";
+type QueueKey = 'all' | 'draft' | 'active' | 'paused' | 'retired'
+type LifecycleAction = 'ACTIVATE' | 'PAUSE' | 'RETIRE' | 'REVOKE_LICENSE'
 
-function csv(value: string) {
-  return [
-    ...new Set(
-      value
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean),
-    ),
-  ];
+function statusTone(status: MusicTrackStatus) {
+  if (status === 'ACTIVE') return 'success' as const
+  if (status === 'PAUSED') return 'warning' as const
+  return 'neutral' as const
 }
 
-function dateInput(value?: string | null) {
-  return value ? new Date(value).toISOString().slice(0, 16) : "";
+function licenseTone(status: AdminMusicTrack['licenseStatus']) {
+  if (status === 'CLEARED') return 'success' as const
+  if (status === 'REVOKED') return 'danger' as const
+  return 'warning' as const
+}
+
+function formatDateSafe(value: string) {
+  try {
+    return formatDate(value, true)
+  } catch {
+    return '—'
+  }
+}
+
+function humanize(value: string) {
+  return value
+    .toLowerCase()
+    .replaceAll('_', ' ')
+    .replace(/^./, (character) => character.toUpperCase())
+}
+
+function QuickUpload({
+  accept,
+  ariaLabel,
+  disabled,
+  icon,
+  onFile,
+}: {
+  accept: string
+  ariaLabel: string
+  disabled: boolean
+  icon: React.ReactNode
+  onFile: (file: File) => void
+}) {
+  return (
+    <label
+      aria-label={ariaLabel}
+      className={cn(
+        'inline-flex size-7 items-center justify-center rounded-[0.5rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-within:ring-2 focus-within:ring-ring',
+        disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+      )}
+      title={ariaLabel}
+    >
+      {icon}
+      <input
+        accept={accept}
+        className="sr-only"
+        disabled={disabled}
+        type="file"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) onFile(file)
+          event.target.value = ''
+        }}
+      />
+    </label>
+  )
+}
+
+function TrackRowActions({
+  canPublish,
+  canUpdate,
+  disabled,
+  track,
+  onEdit,
+  onLifecycle,
+  onUpload,
+}: {
+  canPublish: boolean
+  canUpdate: boolean
+  disabled: boolean
+  track: AdminMusicTrack
+  onEdit: () => void
+  onLifecycle: (action: LifecycleAction) => void
+  onUpload: (kind: 'AUDIO' | 'ARTWORK', file: File) => void
+}) {
+  const menuItems: RowActionMenuItem[] = []
+
+  if (canPublish && track.status !== 'ACTIVE') {
+    menuItems.push({
+      icon: <Play className="size-3.5" />,
+      key: 'activate',
+      label: 'Activate',
+      onClick: () => onLifecycle('ACTIVATE'),
+    })
+  }
+  if (canPublish && track.status === 'ACTIVE') {
+    menuItems.push({
+      icon: <Pause className="size-3.5" />,
+      key: 'pause',
+      label: 'Pause',
+      onClick: () => onLifecycle('PAUSE'),
+    })
+  }
+  if (canPublish) {
+    menuItems.push({
+      icon: <Archive className="size-3.5" />,
+      key: 'retire',
+      label: 'Retire',
+      onClick: () => onLifecycle('RETIRE'),
+    })
+  }
+  if (canPublish && track.licenseStatus !== 'REVOKED') {
+    menuItems.push({
+      icon: <ShieldOff className="size-3.5" />,
+      key: 'revoke',
+      label: 'Revoke licence',
+      tone: 'danger',
+      onClick: () => onLifecycle('REVOKE_LICENSE'),
+    })
+  }
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {canUpdate ? (
+        <button
+          aria-label={`Edit ${track.title}`}
+          className="inline-flex size-7 items-center justify-center rounded-[0.5rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          title="Edit"
+          type="button"
+          onClick={onEdit}
+        >
+          <Edit3 className="size-4" />
+        </button>
+      ) : null}
+      {canUpdate ? (
+        <QuickUpload
+          accept="audio/mpeg,audio/mp4,audio/aac,audio/wav"
+          ariaLabel={`Upload audio for ${track.title}`}
+          disabled={disabled}
+          icon={<FileAudio className="size-4" />}
+          onFile={(file) => onUpload('AUDIO', file)}
+        />
+      ) : null}
+      {canUpdate ? (
+        <QuickUpload
+          accept="image/jpeg,image/png,image/webp"
+          ariaLabel={`Upload artwork for ${track.title}`}
+          disabled={disabled}
+          icon={<Image className="size-4" />}
+          onFile={(file) => onUpload('ARTWORK', file)}
+        />
+      ) : null}
+      <RowActionMenu
+        ariaLabel={`More actions for ${track.title}`}
+        items={menuItems}
+      />
+    </div>
+  )
 }
 
 export function CreatorMusicPage() {
-  const queryClient = useQueryClient();
-  const canUpdate = usePermission("creator_music:update");
-  const canPublish = usePermission("creator_music:publish");
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [licenseFilter, setLicenseFilter] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("");
-  const [moodFilter, setMoodFilter] = useState("");
-  const [territoryFilter, setTerritoryFilter] = useState("");
-  const [explicitFilter, setExplicitFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [expiringFilter, setExpiringFilter] = useState("");
-  const [editing, setEditing] = useState<AdminMusicTrack | null>(null);
-  const [form, setForm] = useState<MusicTrackMutation>(emptyForm);
-  const [moods, setMoods] = useState("");
-  const [categories, setCategories] = useState("");
-  const [territories, setTerritories] = useState("IN");
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient()
+  const canUpdate = usePermission('creator_music:update')
+  const canPublish = usePermission('creator_music:publish')
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
+  const [search, setSearch] = useState('')
+  const [queue, setQueue] = useState<QueueKey>('all')
+  const [licenseFilter, setLicenseFilter] = useState('')
+  const [sourceFilter, setSourceFilter] = useState('')
+  const [moodFilter, setMoodFilter] = useState('')
+  const [territoryFilter, setTerritoryFilter] = useState('')
+  const [explicitFilter, setExplicitFilter] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
+  const [expiringFilter, setExpiringFilter] = useState('')
+  const [formTarget, setFormTarget] = useState<AdminMusicTrack | null>()
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const status: '' | MusicTrackStatus =
+    queue === 'draft'
+      ? 'DRAFT'
+      : queue === 'active'
+        ? 'ACTIVE'
+        : queue === 'paused'
+          ? 'PAUSED'
+          : queue === 'retired'
+            ? 'RETIRED'
+            : ''
+
+  const commonFilters = useMemo(
+    () => ({
+      search: search.trim() || undefined,
+      licenseStatus: licenseFilter || undefined,
+      sourceType: sourceFilter || undefined,
+      mood: moodFilter.trim() || undefined,
+      territory: territoryFilter.trim().toUpperCase() || undefined,
+      explicit: explicitFilter || undefined,
+      categoryId: categoryFilter.trim() || undefined,
+      expiringBefore: expiringFilter
+        ? new Date(`${expiringFilter}T23:59:59`).toISOString()
+        : undefined,
+    }),
+    [
+      categoryFilter,
+      explicitFilter,
+      expiringFilter,
+      licenseFilter,
+      moodFilter,
+      search,
+      sourceFilter,
+      territoryFilter,
+    ],
+  )
+
+  const query = useMemo(
+    () => ({
+      ...commonFilters,
+      page,
+      limit,
+      status: status || undefined,
+    }),
+    [commonFilters, limit, page, status],
+  )
 
   const tracksQuery = useQuery({
-    queryKey: [
-      "creator-music",
-      search,
-      statusFilter,
-      licenseFilter,
-      sourceFilter,
-      moodFilter,
-      territoryFilter,
-      explicitFilter,
-      categoryFilter,
-      expiringFilter,
-    ],
-    queryFn: () =>
-      creatorMusicService.list({
-        search,
-        status: statusFilter,
-        licenseStatus: licenseFilter,
-        sourceType: sourceFilter,
-        mood: moodFilter,
-        territory: territoryFilter.toUpperCase(),
-        explicit: explicitFilter,
-        categoryId: categoryFilter,
-        expiringBefore: expiringFilter
-          ? new Date(`${expiringFilter}T23:59:59`).toISOString()
-          : "",
-      }),
-  });
-  const tracks = useMemo(
-    () => tracksQuery.data?.data ?? [],
-    [tracksQuery.data],
-  );
+    queryKey: ['creator-music', query],
+    queryFn: () => creatorMusicService.list(query),
+  })
 
-  const saveMutation = useMutation({
-    mutationFn: () => {
-      const body = {
-        ...form,
-        moodTags: csv(moods),
-        categoryIds: csv(categories),
-        licensedTerritories: csv(territories).map((item) => item.toUpperCase()),
-      };
-      return editing
-        ? creatorMusicService.update(editing.trackId, body, editing.version)
-        : creatorMusicService.create(body);
+  const queueCountsQuery = useQuery({
+    queryKey: ['creator-music', 'queue-counts', commonFilters],
+    queryFn: async () => {
+      const [all, draft, active, paused, retired] = await Promise.all([
+        creatorMusicService.list({ ...commonFilters, page: 1, limit: 1 }),
+        creatorMusicService.list({ ...commonFilters, page: 1, limit: 1, status: 'DRAFT' }),
+        creatorMusicService.list({ ...commonFilters, page: 1, limit: 1, status: 'ACTIVE' }),
+        creatorMusicService.list({ ...commonFilters, page: 1, limit: 1, status: 'PAUSED' }),
+        creatorMusicService.list({ ...commonFilters, page: 1, limit: 1, status: 'RETIRED' }),
+      ])
+
+      return {
+        all: all.pagination?.totalItems ?? all.data.length,
+        draft: draft.pagination?.totalItems ?? draft.data.length,
+        active: active.pagination?.totalItems ?? active.data.length,
+        paused: paused.pagination?.totalItems ?? paused.data.length,
+        retired: retired.pagination?.totalItems ?? retired.data.length,
+      }
     },
-    onSuccess: async () => {
-      setEditing(null);
-      setForm(emptyForm);
-      setMoods("");
-      setCategories("");
-      setTerritories("IN");
-      setError(null);
-      await queryClient.invalidateQueries({ queryKey: ["creator-music"] });
-    },
-    onError: (cause) =>
-      setError(cause instanceof Error ? cause.message : "Save failed."),
-  });
+    placeholderData: (previousData) => previousData,
+  })
+
+  const tracks = useMemo(() => tracksQuery.data?.data ?? [], [tracksQuery.data])
+  const pagination = tracksQuery.data?.pagination
+  const counts = queueCountsQuery.data
+
+  const queueTabs: DataListQueueTab[] = [
+    { key: 'all', label: 'All', count: counts?.all },
+    { key: 'draft', label: 'Draft', count: counts?.draft },
+    { key: 'active', label: 'Active', count: counts?.active },
+    { key: 'paused', label: 'Paused', count: counts?.paused, tone: 'warning' },
+    { key: 'retired', label: 'Retired', count: counts?.retired },
+  ]
+
+  const appliedFilterCount = [
+    licenseFilter,
+    sourceFilter,
+    moodFilter.trim(),
+    territoryFilter.trim(),
+    explicitFilter,
+    categoryFilter.trim(),
+    expiringFilter,
+  ].filter(Boolean).length
+
+  const columns: DataListColumn<AdminMusicTrack>[] = useMemo(
+    () => [
+      {
+        id: 'track',
+        label: 'Track',
+        defaultWidth: 280,
+        minWidth: 220,
+        priority: 1,
+        grow: true,
+        locked: true,
+        render: (track) => (
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="truncate font-medium text-foreground">{track.title}</span>
+            <span className="shrink-0 text-xs text-muted">{track.artistName}</span>
+          </div>
+        ),
+      },
+      {
+        id: 'status',
+        label: 'Status',
+        defaultWidth: 96,
+        minWidth: 88,
+        priority: 1,
+        render: (track) => <Badge tone={statusTone(track.status)}>{track.status}</Badge>,
+      },
+      {
+        id: 'license',
+        label: 'Licence',
+        defaultWidth: 104,
+        minWidth: 96,
+        priority: 1,
+        render: (track) => (
+          <Badge tone={licenseTone(track.licenseStatus)}>{track.licenseStatus}</Badge>
+        ),
+      },
+      {
+        id: 'source',
+        label: 'Source',
+        defaultWidth: 128,
+        minWidth: 112,
+        priority: 2,
+        render: (track) => <span>{humanize(track.sourceType)}</span>,
+      },
+      {
+        id: 'duration',
+        label: 'Duration',
+        defaultWidth: 88,
+        minWidth: 76,
+        priority: 2,
+        align: 'right',
+        render: (track) => <span>{(track.durationMs / 1000).toFixed(1)}s</span>,
+      },
+      {
+        id: 'moods',
+        label: 'Moods',
+        defaultWidth: 150,
+        minWidth: 120,
+        priority: 3,
+        render: (track) => (
+          <span className={track.moodTags.length ? '' : 'text-muted'}>
+            {track.moodTags.join(', ') || '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'trackId',
+        label: 'Track ID',
+        defaultWidth: 132,
+        minWidth: 116,
+        priority: 4,
+        defaultHidden: true,
+        render: (track) => <span className="text-muted">{track.publicTrackId}</span>,
+      },
+      {
+        id: 'updatedAt',
+        label: 'Updated',
+        defaultWidth: 140,
+        minWidth: 120,
+        priority: 4,
+        defaultHidden: true,
+        render: (track) => (
+          <span className="text-muted">{formatDateSafe(track.updatedAt)}</span>
+        ),
+      },
+    ],
+    [],
+  )
 
   const lifecycleMutation = useMutation({
     mutationFn: ({
@@ -138,15 +405,15 @@ export function CreatorMusicPage() {
       reason,
       track,
     }: {
-      action: "ACTIVATE" | "PAUSE" | "RETIRE" | "REVOKE_LICENSE";
-      reason: string;
-      track: AdminMusicTrack;
+      action: LifecycleAction
+      reason: string
+      track: AdminMusicTrack
     }) => creatorMusicService.lifecycle(track, action, reason),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["creator-music"] }),
+    onMutate: () => setActionError(null),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['creator-music'] }),
     onError: (cause) =>
-      setError(cause instanceof Error ? cause.message : "Action failed."),
-  });
+      setActionError(cause instanceof Error ? cause.message : 'Action failed.'),
+  })
 
   const uploadMutation = useMutation({
     mutationFn: ({
@@ -154,583 +421,246 @@ export function CreatorMusicPage() {
       kind,
       trackId,
     }: {
-      file: File;
-      kind: "AUDIO" | "ARTWORK";
-      trackId: string;
+      file: File
+      kind: 'AUDIO' | 'ARTWORK'
+      trackId: string
     }) => creatorMusicService.upload(trackId, kind, file),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["creator-music"] }),
+    onMutate: () => setActionError(null),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['creator-music'] }),
     onError: (cause) =>
-      setError(cause instanceof Error ? cause.message : "Upload failed."),
-  });
+      setActionError(cause instanceof Error ? cause.message : 'Upload failed.'),
+  })
 
-  const activeCount = useMemo(
-    () => tracks.filter((track) => track.status === "ACTIVE").length,
-    [tracks],
-  );
-
-  const editTrack = async (track: AdminMusicTrack) => {
-    setError(null);
-    const detail = (await creatorMusicService.detail(track.trackId)).data;
-    setEditing(detail);
-    setForm({
-      title: detail.title,
-      artistName: detail.artistName,
-      albumName: detail.albumName,
-      sourceType: detail.sourceType,
-      durationMs: detail.durationMs,
-      previewStartMs: detail.previewStartMs,
-      previewDurationMs: detail.previewDurationMs,
-      moodTags: detail.moodTags,
-      categoryIds:
-        detail.categories?.map((category) => category.categoryId) ?? [],
-      isInstrumental: detail.isInstrumental,
-      isExplicit: detail.isExplicit,
-      licenseStatus: detail.license?.status ?? detail.licenseStatus,
-      licenseProvider: detail.license?.provider,
-      licenseReference: detail.license?.reference,
-      licenseValidFrom: detail.license?.validFrom,
-      licenseValidUntil: detail.license?.validUntil,
-      licensedTerritories: detail.license?.territories ?? [],
-      attributionText: detail.license?.attributionText,
-      metadata: {},
-    });
-    setMoods(detail.moodTags.join(", "));
-    setCategories(
-      detail.categories?.map((category) => category.categoryId).join(", ") ??
-        "",
-    );
-    setTerritories(detail.license?.territories.join(", ") ?? "");
-  };
-
-  const runLifecycle = (
-    track: AdminMusicTrack,
-    action: "ACTIVATE" | "PAUSE" | "RETIRE" | "REVOKE_LICENSE",
-  ) => {
+  const runLifecycle = (track: AdminMusicTrack, action: LifecycleAction) => {
     const reason = window
-      .prompt(`Reason for ${action.toLowerCase().replaceAll("_", " ")}:`)
-      ?.trim();
-    if (reason) lifecycleMutation.mutate({ track, action, reason });
-  };
+      .prompt(`Reason for ${action.toLowerCase().replaceAll('_', ' ')}:`)
+      ?.trim()
+    if (reason) lifecycleMutation.mutate({ track, action, reason })
+  }
+
+  const resetFilters = () => {
+    setLicenseFilter('')
+    setSourceFilter('')
+    setMoodFilter('')
+    setTerritoryFilter('')
+    setExplicitFilter('')
+    setCategoryFilter('')
+    setExpiringFilter('')
+    setPage(1)
+  }
+
+  const formSaved = () => {
+    setFormTarget(undefined)
+    setActionError(null)
+    void queryClient.invalidateQueries({ queryKey: ['creator-music'] })
+  }
 
   return (
-    <PageContainer className="space-y-5">
+    <PageContainer className="flex min-h-full flex-col !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
-        title="Creator Music"
-        description={`${tracks.length} loaded · ${activeCount} active. All creator access remains feature-gated.`}
         actionNode={
-          <Button
-            variant="secondary"
-            onClick={() => void tracksQuery.refetch()}
-          >
-            <RefreshCcw className="mr-2 size-4" /> Refresh
-          </Button>
-        }
-      />
-
-      {canUpdate ? (
-        <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold">
-                {editing ? `Edit ${editing.publicTrackId}` : "New track"}
-              </h2>
-              <p className="text-sm text-muted">
-                A track cannot activate until rights and audio are verified.
-              </p>
-            </div>
-            {editing ? (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setEditing(null);
-                  setForm(emptyForm);
-                }}
-              >
-                Cancel
+          <div className="flex items-center gap-2">
+            {canUpdate ? (
+              <Button size="sm" type="button" onClick={() => setFormTarget(null)}>
+                <Plus className="mr-2 size-4" />
+                Track
               </Button>
             ) : null}
+            <Button
+              aria-label="Refresh Creator Music"
+              className="h-9"
+              disabled={tracksQuery.isLoading}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => void tracksQuery.refetch()}
+            >
+              <RefreshCcw
+                className={cn(
+                  'size-4 sm:mr-2',
+                  tracksQuery.isFetching && 'animate-spin motion-reduce:animate-none',
+                )}
+              />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
           </div>
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            <Field label="Title">
-              <input
-                className={inputClass}
-                value={form.title}
-                onChange={(event) =>
-                  setForm({ ...form, title: event.target.value })
-                }
-              />
-            </Field>
-            <Field label="Artist">
-              <input
-                className={inputClass}
-                value={form.artistName}
-                onChange={(event) =>
-                  setForm({ ...form, artistName: event.target.value })
-                }
-              />
-            </Field>
-            <Field label="Album">
-              <input
-                className={inputClass}
-                value={form.albumName ?? ""}
-                onChange={(event) =>
-                  setForm({ ...form, albumName: event.target.value || null })
-                }
-              />
-            </Field>
-            <Field label="Source">
+        }
+        layout="workspace"
+        placement="topbar"
+        title="Creator Music"
+      />
+
+      {actionError ? (
+        <p className="mb-2 rounded-[0.6rem] border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+          {actionError}
+        </p>
+      ) : null}
+
+      <DataList
+        activeQueue={queue}
+        appliedFilterCount={appliedFilterCount}
+        columns={columns}
+        emptyHint="Try a different search term, switch queue, or clear the active filters."
+        emptyMessage="No music tracks match these filters"
+        errorMessage="Could not load Creator Music."
+        filters={
+          <>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">Licence</span>
               <select
-                className={inputClass}
-                value={form.sourceType}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    sourceType: event.target.value as MusicSourceType,
-                  })
-                }
+                className={filterInputClass}
+                value={licenseFilter}
+                onChange={(event) => {
+                  setLicenseFilter(event.target.value)
+                  setPage(1)
+                }}
               >
-                <option value="LICENSED">Licensed</option>
-                <option value="ROYALTY_FREE">Royalty free</option>
-                <option value="PLATFORM_OWNED">Platform owned</option>
-              </select>
-            </Field>
-            <Field label="Duration (ms)">
-              <input
-                className={inputClass}
-                type="number"
-                value={form.durationMs}
-                onChange={(event) =>
-                  setForm({ ...form, durationMs: Number(event.target.value) })
-                }
-              />
-            </Field>
-            <Field label="Preview start / duration (ms)">
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  className={inputClass}
-                  type="number"
-                  value={form.previewStartMs}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      previewStartMs: Number(event.target.value),
-                    })
-                  }
-                />
-                <input
-                  className={inputClass}
-                  type="number"
-                  value={form.previewDurationMs}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      previewDurationMs: Number(event.target.value),
-                    })
-                  }
-                />
-              </div>
-            </Field>
-            <Field label="Mood tags">
-              <input
-                className={inputClass}
-                placeholder="calm, upbeat"
-                value={moods}
-                onChange={(event) => setMoods(event.target.value)}
-              />
-            </Field>
-            <Field label="Service category UUIDs">
-              <input
-                className={inputClass}
-                placeholder="comma separated"
-                value={categories}
-                onChange={(event) => setCategories(event.target.value)}
-              />
-            </Field>
-            <Field label="Territories">
-              <input
-                className={inputClass}
-                placeholder="IN, SG"
-                value={territories}
-                onChange={(event) => setTerritories(event.target.value)}
-              />
-            </Field>
-            <Field label="Licence status">
-              <select
-                className={inputClass}
-                value={form.licenseStatus}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    licenseStatus: event.target.value as MusicLicenseStatus,
-                  })
-                }
-              >
+                <option value="">All licences</option>
                 <option value="PENDING">Pending</option>
                 <option value="CLEARED">Cleared</option>
                 <option value="EXPIRED">Expired</option>
                 <option value="REVOKED">Revoked</option>
               </select>
-            </Field>
-            <Field label="Licence provider">
-              <input
-                className={inputClass}
-                value={form.licenseProvider ?? ""}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    licenseProvider: event.target.value || null,
-                  })
-                }
-              />
-            </Field>
-            <Field label="Licence reference">
-              <input
-                className={inputClass}
-                value={form.licenseReference ?? ""}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    licenseReference: event.target.value || null,
-                  })
-                }
-              />
-            </Field>
-            <Field label="Valid from">
-              <input
-                className={inputClass}
-                type="datetime-local"
-                value={dateInput(form.licenseValidFrom)}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    licenseValidFrom: event.target.value
-                      ? new Date(event.target.value).toISOString()
-                      : null,
-                  })
-                }
-              />
-            </Field>
-            <Field label="Valid until">
-              <input
-                className={inputClass}
-                type="datetime-local"
-                value={dateInput(form.licenseValidUntil)}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    licenseValidUntil: event.target.value
-                      ? new Date(event.target.value).toISOString()
-                      : null,
-                  })
-                }
-              />
-            </Field>
-            <Field label="Attribution">
-              <input
-                className={inputClass}
-                value={form.attributionText ?? ""}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    attributionText: event.target.value || null,
-                  })
-                }
-              />
-            </Field>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-4 text-sm">
-            <label>
-              <input
-                type="checkbox"
-                checked={form.isInstrumental}
-                onChange={(event) =>
-                  setForm({ ...form, isInstrumental: event.target.checked })
-                }
-              />{" "}
-              <span className="ml-1">Instrumental</span>
             </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={form.isExplicit}
-                onChange={(event) =>
-                  setForm({ ...form, isExplicit: event.target.checked })
-                }
-              />{" "}
-              <span className="ml-1">Explicit content</span>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">Source</span>
+              <select
+                className={filterInputClass}
+                value={sourceFilter}
+                onChange={(event) => {
+                  setSourceFilter(event.target.value)
+                  setPage(1)
+                }}
+              >
+                <option value="">All sources</option>
+                <option value="LICENSED">Licensed</option>
+                <option value="ROYALTY_FREE">Royalty free</option>
+                <option value="PLATFORM_OWNED">Platform owned</option>
+              </select>
             </label>
-          </div>
-          {editing?.media?.previewUrl ? (
-            <div className="mt-4 flex items-center gap-3 rounded-lg border border-border bg-surface-muted p-3">
-              {editing.media.artworkUrl ? (
-                <img
-                  alt={`${editing.title} artwork`}
-                  className="size-12 rounded-lg object-cover"
-                  src={editing.media.artworkUrl}
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">Mood</span>
+              <input
+                className={filterInputClass}
+                placeholder="Any mood"
+                value={moodFilter}
+                onChange={(event) => {
+                  setMoodFilter(event.target.value)
+                  setPage(1)
+                }}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">Territory</span>
+              <input
+                className={filterInputClass}
+                maxLength={2}
+                placeholder="Any territory"
+                value={territoryFilter}
+                onChange={(event) => {
+                  setTerritoryFilter(event.target.value)
+                  setPage(1)
+                }}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">Content</span>
+              <select
+                className={filterInputClass}
+                value={explicitFilter}
+                onChange={(event) => {
+                  setExplicitFilter(event.target.value)
+                  setPage(1)
+                }}
+              >
+                <option value="">All content</option>
+                <option value="false">Clean only</option>
+                <option value="true">Explicit only</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">Service category</span>
+              <input
+                className={filterInputClass}
+                placeholder="Category UUID"
+                value={categoryFilter}
+                onChange={(event) => {
+                  setCategoryFilter(event.target.value)
+                  setPage(1)
+                }}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">Expiring before</span>
+              <input
+                className={filterInputClass}
+                type="date"
+                value={expiringFilter}
+                onChange={(event) => {
+                  setExpiringFilter(event.target.value)
+                  setPage(1)
+                }}
+              />
+            </label>
+          </>
+        }
+        getRowId={(track) => track.trackId}
+        isError={tracksQuery.isError}
+        isLoading={tracksQuery.isLoading}
+        pagination={{
+          page,
+          pageSize: limit,
+          totalItems: pagination?.totalItems ?? 0,
+          totalPages: pagination?.totalPages ?? 1,
+          onPageChange: setPage,
+          onPageSizeChange: (nextLimit) => {
+            setLimit(nextLimit)
+            setPage(1)
+          },
+        }}
+        queueTabs={queueTabs}
+        rowActions={
+          canUpdate || canPublish
+            ? (track) => (
+                <TrackRowActions
+                  canPublish={canPublish}
+                  canUpdate={canUpdate}
+                  disabled={uploadMutation.isPending}
+                  track={track}
+                  onEdit={() => setFormTarget(track)}
+                  onLifecycle={(action) => runLifecycle(track, action)}
+                  onUpload={(kind, file) =>
+                    uploadMutation.mutate({ trackId: track.trackId, kind, file })
+                  }
                 />
-              ) : (
-                <Music2 className="size-6 text-muted" />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">Audio preview</p>
-                <audio
-                  className="mt-1 h-8 w-full"
-                  controls
-                  src={editing.media.previewUrl}
-                />
-              </div>
-            </div>
-          ) : null}
-          {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-          <Button
-            className="mt-4"
-            disabled={saveMutation.isPending}
-            onClick={() => saveMutation.mutate()}
-          >
-            {saveMutation.isPending
-              ? "Saving…"
-              : editing
-                ? "Save changes"
-                : "Create draft track"}
-          </Button>
-        </section>
+              )
+            : undefined
+        }
+        rowActionsWidth={112}
+        rows={tracks}
+        search={search}
+        searchPlaceholder="Search title, artist, track ID…"
+        storageKey={CREATOR_MUSIC_LIST_STORAGE_KEY}
+        onQueueChange={(key) => {
+          setQueue(key as QueueKey)
+          setPage(1)
+        }}
+        onResetFilters={resetFilters}
+        onRetry={() => void tracksQuery.refetch()}
+        onSearchChange={(nextSearch) => {
+          setSearch(nextSearch)
+          setPage(1)
+        }}
+      />
+
+      {formTarget !== undefined ? (
+        <CreatorMusicFormModal
+          key={formTarget?.trackId ?? 'new'}
+          track={formTarget}
+          onClose={() => setFormTarget(undefined)}
+          onSaved={formSaved}
+        />
       ) : null}
-
-      <section className="space-y-3">
-        <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-5">
-          <input
-            className={inputClass}
-            placeholder="Search title, artist or track ID"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          <select
-            className={inputClass}
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-          >
-            <option value="">All statuses</option>
-            <option value="DRAFT">Draft</option>
-            <option value="ACTIVE">Active</option>
-            <option value="PAUSED">Paused</option>
-            <option value="RETIRED">Retired</option>
-          </select>
-          <select
-            className={inputClass}
-            value={licenseFilter}
-            onChange={(event) => setLicenseFilter(event.target.value)}
-          >
-            <option value="">All licences</option>
-            <option value="PENDING">Pending</option>
-            <option value="CLEARED">Cleared</option>
-            <option value="EXPIRED">Expired</option>
-            <option value="REVOKED">Revoked</option>
-          </select>
-          <select
-            className={inputClass}
-            value={sourceFilter}
-            onChange={(event) => setSourceFilter(event.target.value)}
-          >
-            <option value="">All sources</option>
-            <option value="LICENSED">Licensed</option>
-            <option value="ROYALTY_FREE">Royalty free</option>
-            <option value="PLATFORM_OWNED">Platform owned</option>
-          </select>
-          <input
-            className={inputClass}
-            placeholder="Mood"
-            value={moodFilter}
-            onChange={(event) => setMoodFilter(event.target.value)}
-          />
-          <input
-            className={inputClass}
-            maxLength={2}
-            placeholder="Territory"
-            value={territoryFilter}
-            onChange={(event) => setTerritoryFilter(event.target.value)}
-          />
-          <select
-            className={inputClass}
-            value={explicitFilter}
-            onChange={(event) => setExplicitFilter(event.target.value)}
-          >
-            <option value="">All content</option>
-            <option value="false">Clean only</option>
-            <option value="true">Explicit only</option>
-          </select>
-          <input
-            className={inputClass}
-            placeholder="Service category UUID"
-            value={categoryFilter}
-            onChange={(event) => setCategoryFilter(event.target.value)}
-          />
-          <input
-            aria-label="Licence expiring before"
-            className={inputClass}
-            type="date"
-            value={expiringFilter}
-            onChange={(event) => setExpiringFilter(event.target.value)}
-          />
-        </div>
-        {tracksQuery.isLoading ? (
-          <p className="text-sm text-muted">Loading Creator Music…</p>
-        ) : null}
-        {tracksQuery.isError ? (
-          <p className="text-sm text-danger">Could not load Creator Music.</p>
-        ) : null}
-        {!tracksQuery.isLoading && tracks.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted">
-            No music tracks yet.
-          </p>
-        ) : null}
-        {tracks.map((track) => (
-          <article
-            className="rounded-xl border border-border bg-surface p-4"
-            key={track.trackId}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex gap-3">
-                <span className="flex size-10 items-center justify-center rounded-lg bg-surface-muted">
-                  <Music2 className="size-5" />
-                </span>
-                <div>
-                  <h3 className="font-semibold">{track.title}</h3>
-                  <p className="text-sm text-muted">
-                    {track.artistName} · {track.publicTrackId} ·{" "}
-                    {(track.durationMs / 1000).toFixed(1)}s
-                  </p>
-                  <div className="mt-2 flex gap-2">
-                    <Badge
-                      tone={
-                        track.status === "ACTIVE"
-                          ? "success"
-                          : track.status === "PAUSED"
-                            ? "warning"
-                            : "neutral"
-                      }
-                    >
-                      {track.status}
-                    </Badge>
-                    <Badge
-                      tone={
-                        track.licenseStatus === "CLEARED"
-                          ? "success"
-                          : track.licenseStatus === "REVOKED"
-                            ? "danger"
-                            : "warning"
-                      }
-                    >
-                      {track.licenseStatus}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {canUpdate ? (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => void editTrack(track)}
-                  >
-                    Edit
-                  </Button>
-                ) : null}
-                {canUpdate ? (
-                  <label className="inline-flex cursor-pointer items-center rounded-lg border border-border px-3 text-sm">
-                    <Upload className="mr-2 size-4" />
-                    Audio
-                    <input
-                      className="sr-only"
-                      type="file"
-                      accept="audio/mpeg,audio/mp4,audio/aac,audio/wav"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file)
-                          uploadMutation.mutate({
-                            trackId: track.trackId,
-                            kind: "AUDIO",
-                            file,
-                          });
-                      }}
-                    />
-                  </label>
-                ) : null}
-                {canUpdate ? (
-                  <label className="inline-flex cursor-pointer items-center rounded-lg border border-border px-3 text-sm">
-                    <Upload className="mr-2 size-4" />
-                    Artwork
-                    <input
-                      className="sr-only"
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file)
-                          uploadMutation.mutate({
-                            trackId: track.trackId,
-                            kind: "ARTWORK",
-                            file,
-                          });
-                      }}
-                    />
-                  </label>
-                ) : null}
-                {canPublish && track.status !== "ACTIVE" ? (
-                  <Button
-                    size="sm"
-                    onClick={() => runLifecycle(track, "ACTIVATE")}
-                  >
-                    Activate
-                  </Button>
-                ) : null}
-                {canPublish && track.status === "ACTIVE" ? (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => runLifecycle(track, "PAUSE")}
-                  >
-                    Pause
-                  </Button>
-                ) : null}
-                {canPublish ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => runLifecycle(track, "RETIRE")}
-                  >
-                    Retire
-                  </Button>
-                ) : null}
-                {canPublish && track.licenseStatus !== "REVOKED" ? (
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => runLifecycle(track, "REVOKE_LICENSE")}
-                  >
-                    Revoke licence
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          </article>
-        ))}
-      </section>
     </PageContainer>
-  );
-}
-
-function Field({
-  children,
-  label,
-}: {
-  children: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-xs font-medium text-muted">{label}</span>
-      {children}
-    </label>
-  );
+  )
 }

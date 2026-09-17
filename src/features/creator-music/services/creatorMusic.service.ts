@@ -27,6 +27,8 @@ function json(method: string, body: unknown): RequestInit {
 
 async function list(
   filters: {
+    page?: number;
+    limit?: number;
     search?: string;
     status?: string;
     licenseStatus?: string;
@@ -38,8 +40,9 @@ async function list(
     expiringBefore?: string;
   } = {},
 ) {
-  const params = new URLSearchParams({ page: "1", limit: "100" });
-  for (const [key, value] of Object.entries(filters)) {
+  const { page = 1, limit = 20, ...queryFilters } = filters;
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  for (const [key, value] of Object.entries(queryFilters)) {
     if (value?.trim()) params.set(key, value.trim());
   }
   return parse<MusicTracksResponse>(
