@@ -391,19 +391,24 @@ function DetailField({ label, value }: { label: string; value: string | number |
 
 function DetailPanel({
   children,
+  className,
   description,
   id,
   icon,
   title,
 }: {
   children: ReactNode
+  className?: string
   description?: string
   id?: string
   icon?: ReactNode
   title: string
 }) {
   return (
-    <section id={id} className="scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4">
+    <section
+      id={id}
+      className={cn('scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4', className)}
+    >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -1517,10 +1522,11 @@ export function OrderDetailPage({
       </div>
       ) : null}
 
-      <section className="grid w-full items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <div className="w-full min-w-0 space-y-4">
+      <section className="grid w-full items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <div className="flex h-full w-full min-w-0 flex-col space-y-4">
           {activeTab === 'overview' ? (
           <DetailPanel
+            className="flex-1"
             description="Core booking, schedule, customer, vendor, and pricing fields."
             id="order-information"
             icon={<ReceiptText className="size-4" />}
