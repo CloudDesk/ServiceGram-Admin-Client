@@ -51,6 +51,8 @@ function actionTone(actionCode: string) {
 function actorLabel(log: AuditLog) {
   return (
     log.actor.adminName ||
+    log.actor.customerName ||
+    log.actor.vendorName ||
     log.actor.email ||
     log.actor.actorAdminId ||
     log.actor.actorUserId ||
@@ -181,7 +183,7 @@ export function AuditLogsPage() {
       },
       {
         id: 'actor',
-        label: 'Actor',
+        label: 'Performed by',
         defaultWidth: 160,
         minWidth: 130,
         priority: 2,
@@ -267,7 +269,7 @@ export function AuditLogsPage() {
       { header: 'Action', value: (log) => log.actionCode },
       { header: 'Entity type', value: (log) => log.entityType },
       { header: 'Entity ID', value: (log) => log.entityId ?? '' },
-      { header: 'Actor', value: (log) => actorLabel(log) },
+      { header: 'Performed by', value: (log) => actorLabel(log) },
       { header: 'Actor type', value: (log) => log.actor.actorType },
       { header: 'Reason', value: (log) => log.reason ?? '' },
       { header: 'Request ID', value: (log) => log.requestId },

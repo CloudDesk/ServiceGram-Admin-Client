@@ -21,6 +21,8 @@ export interface AuditActor {
   actorUserId: string | null
   actorAdminId: string | null
   adminName: string | null
+  customerName: string | null
+  vendorName: string | null
   email: string | null
   userType: string | null
   userStatus: string | null
