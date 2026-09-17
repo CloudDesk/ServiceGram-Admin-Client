@@ -198,7 +198,7 @@ export function Topbar() {
         ) : null}
 
         {canOpenApprovalCenter ? (
-          <div className="relative" ref={approvalRef}>
+          <div className="relative mr-1.5" ref={approvalRef}>
             <Button
               aria-expanded={approvalOpen}
               aria-haspopup="menu"
@@ -213,9 +213,13 @@ export function Topbar() {
               }}
             >
               <Bell className="size-4 sm:mr-2" />
-              <span className="hidden sm:inline">Approvals</span>
+              <span
+                className={`hidden sm:inline${totalPendingApprovals > 0 ? " sm:mr-3" : ""}`}
+              >
+                Approvals
+              </span>
               {totalPendingApprovals > 0 ? (
-                <span className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-[color:var(--adaptive-primary)] px-1.5 text-[0.68rem] font-bold leading-5 text-white shadow-sm">
+                <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[color:var(--adaptive-primary)] px-1 text-[0.65rem] font-bold leading-none tabular-nums text-white shadow-sm ring-2 ring-[color:var(--adaptive-surface)]">
                   {approvalCountLabel}
                 </span>
               ) : null}
