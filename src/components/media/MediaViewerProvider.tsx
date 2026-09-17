@@ -2,10 +2,13 @@ import {
   lazy,
   Suspense,
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
 } from 'react'
+import { useLocation } from 'react-router-dom'
 import type {
   MediaViewerItem,
   OpenMediaViewerInput,
@@ -25,10 +28,23 @@ interface MediaViewerState {
 
 export function MediaViewerProvider({ children }: PropsWithChildren) {
   const [state, setState] = useState<MediaViewerState | null>(null)
+  const location = useLocation()
+  const locationKeyRef = useRef(location.key)
 
   const closeMediaViewer = useCallback(() => {
     setState(null)
   }, [])
+
+  // The dialog is plain component state, decoupled from the router, so the
+  // browser back/forward buttons navigate underneath it without ever
+  // closing it. Closing on every location change (any push, replace, or
+  // pop) keeps the two in sync regardless of which caused the navigation.
+  useEffect(() => {
+    if (location.key !== locationKeyRef.current) {
+      locationKeyRef.current = location.key
+      setState(null)
+    }
+  }, [location.key])
 
   const openMediaViewer = useCallback((input: OpenMediaViewerInput) => {
     if (!input.items.length) return

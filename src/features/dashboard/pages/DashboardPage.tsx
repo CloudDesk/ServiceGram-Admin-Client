@@ -1231,7 +1231,7 @@ function SignalsPanel({
       title="Signals"
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-[0.75rem] border border-border bg-surface-muted/35 p-3">
+        <div className="rounded-[0.75rem] border border-border bg-surface-muted/35 p-3 sm:col-span-2">
           <p className="text-xs font-semibold uppercase tracking-normal text-muted">
             Alerts
           </p>
