@@ -785,9 +785,16 @@ function OperationalSignalsPanel({
   )
 }
 
-function LifecyclePanel({ influencer }: { influencer: AdminInfluencer }) {
+function LifecyclePanel({
+  className,
+  influencer,
+}: {
+  className?: string
+  influencer: AdminInfluencer
+}) {
   return (
     <RecordSection
+      className={className}
       description="Creator profile lifecycle timestamps and ledger activity."
       icon={<CalendarClock className="size-4" />}
       title="Lifecycle"
@@ -1019,9 +1026,11 @@ export function InfluencerDetailPage() {
       </div>
       ) : null}
 
-      <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="space-y-3">
-          {activeTab === 'overview' ? <LifecyclePanel influencer={influencer} /> : null}
+      <section className="grid items-stretch gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="flex h-full flex-col space-y-3">
+          {activeTab === 'overview' ? (
+            <LifecyclePanel className="flex-1" influencer={influencer} />
+          ) : null}
 
           <section className="grid gap-3 2xl:grid-cols-[1.15fr_0.85fr]">
             {activeTab === 'profile' ? (

@@ -529,6 +529,7 @@ function ReelHeaderActions({
 function SectionShell({
   actionNode,
   children,
+  className,
   description,
   id,
   icon,
@@ -536,6 +537,7 @@ function SectionShell({
 }: {
   actionNode?: ReactNode
   children: ReactNode
+  className?: string
   description?: string
   id?: string
   icon?: ReactNode
@@ -543,7 +545,10 @@ function SectionShell({
 }) {
   return (
     <section
-      className="scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4 shadow-surface"
+      className={cn(
+        'scroll-mt-24 rounded-[1rem] border border-border bg-surface p-4 shadow-surface',
+        className,
+      )}
       id={id}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -640,33 +645,38 @@ function RelatedRecordsPanel({
     >
       <div className="divide-y divide-border">
         {reel.vendor ? (
-          <>
-            <RelatedRecordRow
-              canOpen={canReadVendors}
-              icon={<Store className="size-4" />}
-              label="Vendor"
-              meta={`${reel.vendor.publicVendorId} · ${reel.vendor.zone?.zoneName ?? reel.vendor.city}`}
-              value={reel.vendor.shopName}
-              onOpen={() => onNavigate(`${routePaths.vendors}/${reel.vendor!.vendorId}`)}
-            />
-            <RelatedRecordRow
-              actionLabel="Queue"
-              canOpen
-              icon={<Film className="size-4" />}
-              label="Vendor reel queue"
-              meta="Current moderation workspace filtered by this vendor"
-              value={reel.vendor.shopName}
-              onOpen={() =>
-                onNavigate(
-                  routeWithFilters(routePaths.reels, {
-                    vendorId: reel.vendor!.vendorId,
-                    vendorLabel: reel.vendor!.shopName,
-                    view: reelQueueView,
-                  }),
-                )
-              }
-            />
-          </>
+          (() => {
+            const vendor = reel.vendor
+            return (
+              <>
+                <RelatedRecordRow
+                  canOpen={canReadVendors}
+                  icon={<Store className="size-4" />}
+                  label="Vendor"
+                  meta={`${vendor.publicVendorId} · ${vendor.zone?.zoneName ?? vendor.city}`}
+                  value={vendor.shopName}
+                  onOpen={() => onNavigate(`${routePaths.vendors}/${vendor.vendorId}`)}
+                />
+                <RelatedRecordRow
+                  actionLabel="Queue"
+                  canOpen
+                  icon={<Film className="size-4" />}
+                  label="Vendor reel queue"
+                  meta="Current moderation workspace filtered by this vendor"
+                  value={vendor.shopName}
+                  onOpen={() =>
+                    onNavigate(
+                      routeWithFilters(routePaths.reels, {
+                        vendorId: vendor.vendorId,
+                        vendorLabel: vendor.shopName,
+                        view: reelQueueView,
+                      }),
+                    )
+                  }
+                />
+              </>
+            )
+          })()
         ) : reel.vendorLead ? (
           <RelatedRecordRow
             canOpen={false}
@@ -1124,8 +1134,9 @@ export function ReelDetailPage() {
       />
 
       {activeTab === 'overview' ? (
-      <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <section className="grid items-stretch gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <SectionShell
+          className="h-full"
           description="Core content, identity, and lifecycle timestamps."
           icon={<Film className="size-4" />}
           title="Reel information"

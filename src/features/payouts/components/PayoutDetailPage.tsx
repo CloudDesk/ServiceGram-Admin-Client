@@ -145,6 +145,7 @@ function DetailField({
 function SectionShell({
   actionNode,
   children,
+  className,
   description,
   id,
   icon,
@@ -152,13 +153,20 @@ function SectionShell({
 }: {
   actionNode?: ReactNode
   children: ReactNode
+  className?: string
   description?: string
   id?: string
   icon?: ReactNode
   title: string
 }) {
   return (
-    <section id={id} className="scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface">
+    <section
+      id={id}
+      className={cn(
+        'scroll-mt-4 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface',
+        className,
+      )}
+    >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -798,8 +806,9 @@ export function PayoutDetailPage() {
         ]}
       />
 
-      <section className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <section className="grid items-stretch gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <SectionShell
+          className="h-full"
           description="Finance lifecycle, settlement method, and payout identifiers."
           id={payoutSectionIds.information}
           icon={<HandCoins className="size-4" />}
