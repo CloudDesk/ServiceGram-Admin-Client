@@ -25,7 +25,7 @@ export function ReasonField({
 }: ReasonFieldProps) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-xs font-semibold text-foreground">{label} *</span>
+      <span className="block text-xs font-semibold text-foreground">{label} *</span>
       <textarea
         className={cn(
           'form-input min-h-20 resize-y',

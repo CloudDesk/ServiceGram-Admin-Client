@@ -29,6 +29,7 @@ import {
   type FeatureFlagsQueryParams,
 } from '../types/release2.types'
 import { FeatureFlagFormModal } from './FeatureFlagFormModal'
+import { FeatureFlagQuickToggle } from './FeatureFlagQuickToggle'
 import { Release2ErrorNotice, Release2PermissionPanel } from './Release2Feedback'
 
 const FEATURE_FLAG_LIST_STORAGE_KEY = 'servicegram.release2.feature-flags.v1'
@@ -139,14 +140,15 @@ export function FeatureFlagsPage() {
       {
         id: 'status',
         label: 'Status',
-        defaultWidth: 104,
-        minWidth: 92,
+        defaultWidth: 112,
+        minWidth: 100,
         priority: 1,
-        render: (row) => (
-          <Badge tone={row.statusTone}>
-            {row.status === 'ENABLED' ? 'On' : row.status === 'DISABLED' ? 'Off' : 'Archived'}
-          </Badge>
-        ),
+        render: (row) =>
+          row.status === 'ARCHIVED' ? (
+            <Badge tone={row.statusTone}>Archived</Badge>
+          ) : (
+            <FeatureFlagQuickToggle canUpdate={canUpdateFlags} field="status" row={row} />
+          ),
       },
       {
         id: 'rollout',
@@ -169,13 +171,11 @@ export function FeatureFlagsPage() {
       {
         id: 'default',
         label: 'Default',
-        defaultWidth: 90,
-        minWidth: 80,
+        defaultWidth: 98,
+        minWidth: 88,
         priority: 2,
         render: (row) => (
-          <span className={row.defaultEnabled ? 'text-foreground' : 'text-muted'}>
-            {row.defaultEnabled ? 'On' : 'Off'}
-          </span>
+          <FeatureFlagQuickToggle canUpdate={canUpdateFlags} field="defaultEnabled" row={row} />
         ),
       },
       {
@@ -241,7 +241,7 @@ export function FeatureFlagsPage() {
         ),
       },
     ],
-    [],
+    [canUpdateFlags],
   )
 
   const header = (

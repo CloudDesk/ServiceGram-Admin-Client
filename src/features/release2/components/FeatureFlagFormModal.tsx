@@ -28,7 +28,7 @@ interface FieldProps {
 function Field({ children, className, error, hint, label }: FieldProps) {
   return (
     <label className={cn('block space-y-1.5', className)}>
-      <span className="text-xs font-semibold text-foreground">{label}</span>
+      <span className="block text-xs font-semibold text-foreground">{label}</span>
       {children}
       {error ? (
         <span className="block text-xs text-danger">{error}</span>
