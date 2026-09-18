@@ -2,26 +2,53 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import type { PolicyRule } from '../../types/settings.types'
 import { SettingsServiceError } from '../../types/settings.types'
+import { DEFAULT_MEDIA_REEL_CONFIG } from '../types/mediaReelPolicy.types'
 import { MediaReelPolicyModal, type MediaReelPolicyModalProps } from './MediaReelPolicyModal'
+
+function buildRule(overrides: Partial<PolicyRule> = {}): PolicyRule {
+  return {
+    policyRuleId: 'rule-1',
+    family: 'MEDIA_REEL_RULE',
+    ruleKey: 'media.reels.global.global',
+    displayName: 'Default content rules',
+    description: null,
+    status: 'ACTIVE',
+    priority: 100,
+    scope: { scopeType: 'GLOBAL', categoryId: null, city: null, zoneId: null, vendorId: null },
+    config: DEFAULT_MEDIA_REEL_CONFIG as unknown as Record<string, unknown>,
+    metadata: {},
+    version: 3,
+    effectiveFrom: '2026-01-01T00:00:00.000Z',
+    effectiveTo: null,
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    availableActions: ['EDIT', 'ARCHIVE'],
+    ...overrides,
+  }
+}
 
 function renderModal(props: Partial<MediaReelPolicyModalProps> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onSubmit = vi.fn()
+  const onClearError = vi.fn()
+  const onReloadLatest = vi.fn().mockResolvedValue(null)
   const defaultProps: MediaReelPolicyModalProps = {
     action: { action: 'CREATE' },
     canUpdateSettings: true,
     defaultConfigSource: null,
     error: null,
     isSubmitting: false,
-    onClearError: vi.fn(),
+    onClearError,
     onClose: vi.fn(),
-    onReloadLatest: vi.fn().mockResolvedValue(null),
+    onReloadLatest,
     onSubmit,
     ...props,
   }
 
   return {
+    onClearError,
+    onReloadLatest,
     onSubmit,
     ...render(wrap(<MediaReelPolicyModal {...defaultProps} />, queryClient)),
   }

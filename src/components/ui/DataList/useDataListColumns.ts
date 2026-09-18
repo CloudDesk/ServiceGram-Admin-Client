@@ -41,6 +41,8 @@ interface UseDataListColumnsOptions<TRow> {
   leadingWidth?: number
   /** Width of the trailing action column, if any. */
   trailingWidth?: number
+  /** Density before any persisted preference applies. Defaults to 'default'. */
+  defaultDensity?: DataListDensity
 }
 
 /**
@@ -52,6 +54,7 @@ interface UseDataListColumnsOptions<TRow> {
 export function useDataListColumns<TRow>({
   availableWidth,
   columns,
+  defaultDensity = 'default',
   leadingWidth = 0,
   storageKey,
   trailingWidth = 0,
@@ -67,7 +70,7 @@ export function useDataListColumns<TRow>({
     () => stored.widths ?? {},
   )
   const [density, setDensity] = useState<DataListDensity>(
-    () => stored.density ?? 'default',
+    () => stored.density ?? defaultDensity,
   )
 
   useEffect(() => {
@@ -134,16 +137,41 @@ export function useDataListColumns<TRow>({
 
     if (leadingWidth) parts.push(`${leadingWidth}px`)
 
-    visibleColumns.forEach((column) => {
-      // Growing columns floor at 0 rather than their preferred width: cells
-      // truncate, so a narrow column is always better than an overflowing row.
-      parts.push(column.grow ? 'minmax(0, 1fr)' : `${widthOf(column)}px`)
-    })
+    // `fr` can't be capped from inside minmax()/min() — there's no CSS track
+    // syntax for "flexible, but no wider than Npx". So when a grow column
+    // declares maxWidth, its px share is computed here in JS (mirroring the
+    // same budget math the responsive drop logic above uses) and emitted as
+    // a literal px value instead of `1fr`.
+    const growColumn = visibleColumns.find((column) => column.grow)
+
+    if (growColumn?.maxWidth) {
+      const gap = 8
+      const rowPadding = 24
+      const fixedCount = (leadingWidth ? 1 : 0) + (trailingWidth ? 1 : 0)
+      const gapsTotal = Math.max(0, visibleColumns.length + fixedCount - 1) * gap
+      const fixedColumnsTotal = visibleColumns.reduce(
+        (total, column) => total + (column.grow ? 0 : widthOf(column)),
+        0,
+      )
+      const budget = availableWidth - leadingWidth - trailingWidth - rowPadding
+      const remaining = Math.max(0, budget - fixedColumnsTotal - gapsTotal)
+      const growWidth = Math.round(Math.min(growColumn.maxWidth, remaining))
+
+      visibleColumns.forEach((column) => {
+        parts.push(column.grow ? `${growWidth}px` : `${widthOf(column)}px`)
+      })
+    } else {
+      visibleColumns.forEach((column) => {
+        // Growing columns floor at 0 rather than their preferred width: cells
+        // truncate, so a narrow column is always better than an overflowing row.
+        parts.push(column.grow ? 'minmax(0, 1fr)' : `${widthOf(column)}px`)
+      })
+    }
 
     if (trailingWidth) parts.push(`${trailingWidth}px`)
 
     return parts.join(' ')
-  }, [leadingWidth, trailingWidth, visibleColumns, widthOf])
+  }, [availableWidth, leadingWidth, trailingWidth, visibleColumns, widthOf])
 
   const toggleColumn = useCallback(
     (columnId: string) => {

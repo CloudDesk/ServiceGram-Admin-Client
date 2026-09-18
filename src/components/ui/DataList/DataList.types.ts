@@ -34,6 +34,13 @@ export interface DataListColumn<TRow> {
   align?: DataListAlign
   /** Column expands to fill leftover space. At most one column should set this. */
   grow?: boolean
+  /**
+   * Caps how far a `grow` column stretches on wide viewports. Without it, a
+   * grow column with modest content (e.g. a name) fills 100% of whatever
+   * space the other columns don't use, leaving a hollow gap before the next
+   * column on a wide monitor. Ignored when `grow` is not set.
+   */
+  maxWidth?: number
   /** Sort key sent to the API. Omit to make the column unsortable. */
   sortKey?: string
   /** Hidden until the user enables it in the Columns menu. */

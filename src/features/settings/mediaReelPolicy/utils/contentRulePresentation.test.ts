@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest'
 import type { PolicyRule } from '../../types/settings.types'
 import { DEFAULT_MEDIA_REEL_CONFIG } from '../types/mediaReelPolicy.types'
 import {
+  conflictVersion,
   contentRuleStatusTone,
   formatReelDurationSummary,
   formatReelResolutionSummary,
   formatReelSizeSummary,
   isAppliedFirst,
+  isPolicyVersionConflict,
   mapServerFieldToFormPath,
   policyActivationConflictDetail,
+  versionConflictDetail,
 } from './contentRulePresentation'
 import { SettingsServiceError } from '../../types/settings.types'
 
@@ -78,6 +81,55 @@ describe('mapServerFieldToFormPath', () => {
   it('returns null for an unmapped field so callers fall back to a banner', () => {
     expect(mapServerFieldToFormPath('ruleKey')).toBeNull()
     expect(mapServerFieldToFormPath('unknown.field')).toBeNull()
+  })
+})
+
+describe('isPolicyVersionConflict / conflictVersion / versionConflictDetail', () => {
+  it('recognizes a stale-version write and reads the live version', () => {
+    const error = new SettingsServiceError(
+      'This policy was updated by someone else.',
+      409,
+      'POLICY_RULE_VERSION_CONFLICT',
+      {
+        details: {
+          reason: 'The expectedVersion does not match the current policy version.',
+          action: 'Reload the policy, review the latest changes, and try again.',
+          metadata: { currentVersion: 5 },
+        },
+      },
+    )
+
+    expect(isPolicyVersionConflict(error)).toBe(true)
+    expect(conflictVersion(error)).toBe(5)
+    expect(versionConflictDetail(error)).toBe(
+      'The expectedVersion does not match the current policy version. Reload the policy, review the latest changes, and try again. Current version is 5.',
+    )
+  })
+
+  it('recognizes a missing expectedVersion as the same conflict', () => {
+    const error = new SettingsServiceError(
+      'Reload this policy before saving your changes.',
+      409,
+      'POLICY_RULE_VERSION_REQUIRED',
+      { details: { metadata: { currentVersion: 2 } } },
+    )
+
+    expect(isPolicyVersionConflict(error)).toBe(true)
+    expect(conflictVersion(error)).toBe(2)
+  })
+
+  it('falls back to a generic instruction when the backend supplies no live version', () => {
+    const error = new SettingsServiceError('Conflict.', 409, 'POLICY_RULE_VERSION_CONFLICT', null)
+
+    expect(conflictVersion(error)).toBeNull()
+    expect(versionConflictDetail(error)).toBe('Reload the rule and retry.')
+  })
+
+  it('does not treat an unrelated error as a version conflict', () => {
+    const error = new SettingsServiceError('Validation failed.', 422, 'VALIDATION_FAILED', null)
+
+    expect(isPolicyVersionConflict(error)).toBe(false)
+    expect(conflictVersion(error)).toBeNull()
   })
 })
 

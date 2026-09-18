@@ -17,6 +17,7 @@ import {
   DATA_LIST_HEADER_HEIGHT,
   DATA_LIST_ROW_HEIGHT,
   type DataListColumn,
+  type DataListDensity,
   type DataListQueueTab,
   type DataListSort,
 } from './DataList.types'
@@ -50,6 +51,14 @@ interface DataListProps<TRow> {
   getRowId: (row: TRow) => string
   /** Namespaced key for persisted column and density preferences. */
   storageKey: string
+  /**
+   * Row density before the user picks one from the Density menu (still
+   * overridden by whatever's persisted under `storageKey`). Defaults to
+   * `'default'`. Bump to `'comfortable'` for a list whose cells stack two
+   * lines of content — two lines in a 40px row leaves almost no vertical
+   * breathing room.
+   */
+  defaultDensity?: DataListDensity
 
   search: string
   searchPlaceholder: string
@@ -95,6 +104,7 @@ export function DataList<TRow>({
   activeQueue,
   appliedFilterCount = 0,
   columns,
+  defaultDensity,
   emptyHint,
   emptyMessage = 'No records found',
   errorMessage,
@@ -139,6 +149,7 @@ export function DataList<TRow>({
   } = useDataListColumns({
     availableWidth,
     columns,
+    defaultDensity,
     leadingWidth,
     storageKey,
     trailingWidth,

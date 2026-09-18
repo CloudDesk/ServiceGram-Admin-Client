@@ -3,7 +3,6 @@ import {
   CheckCircle2,
   Eye,
   FileCheck2,
-  FileWarning,
   History,
   MessageSquarePlus,
   RefreshCcw,
@@ -24,6 +23,16 @@ import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
+import {
+  RecordField,
+  RecordFieldList,
+  RecordHeaderActions,
+  RecordMetricStrip,
+  RecordSection,
+  RecordTabs,
+  type RecordAction,
+  type RecordTabItem,
+} from '../../../components/ui/RecordPage'
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { useToast } from '../../../hooks/useToast'
@@ -33,17 +42,14 @@ import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { VendorActionModal, type VendorActionFormValues, type VendorActionKind } from '../../vendors/components/VendorActionModal'
 import { vendorService } from '../../vendors/services/vendor.service'
+import { getOnboardingStatusTone, getVendorStatusTone, humanizeCode } from '../../vendors/vendorPresenters'
 import type {
   VendorDetail,
   VendorDocument,
 } from '../../vendors/types/vendor.types'
 
-const documentReviewSectionIds = {
-  overview: 'vendor-document-review-overview',
-  documents: 'vendor-document-review-documents',
-  vendor: 'vendor-document-review-vendor',
-  timeline: 'vendor-document-review-timeline',
-} as const
+const DOCUMENT_REVIEW_TABS = ['documents', 'vendor', 'timeline'] as const
+type DocumentReviewTab = (typeof DOCUMENT_REVIEW_TABS)[number]
 
 type DocumentReviewActionKind = Extract<
   VendorActionKind,
@@ -61,15 +67,6 @@ interface DocumentReviewSummary {
   rejected: number
   total: number
   verified: number
-}
-
-function humanizeCode(value: string | null | undefined) {
-  if (!value) return 'Not available'
-
-  return value
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ')
 }
 
 function formatNullableDate(value: string | null | undefined, withTime = true) {
@@ -104,22 +101,6 @@ function canVerifyVendorDocument(document: VendorDocument) {
 
 function canRejectVendorDocument(document: VendorDocument) {
   return ['PENDING', 'VERIFIED'].includes(document.status)
-}
-
-function onboardingTone(status: string): StatusTone {
-  if (status === 'APPROVED') return 'success'
-  if (status === 'REJECTED') return 'danger'
-  if (status === 'DOCUMENTS_PENDING' || status === 'UNDER_REVIEW') {
-    return 'warning'
-  }
-
-  return 'info'
-}
-
-function vendorStatusTone(status: string): StatusTone {
-  if (status === 'ACTIVE') return 'success'
-  if (status === 'SUSPENDED' || status === 'INACTIVE') return 'danger'
-  return 'warning'
 }
 
 function buildDocumentReviewSummary(documents: VendorDocument[]) {
@@ -188,25 +169,6 @@ function buildVendorDocumentMediaItem(
   }
 }
 
-function DetailField({
-  label,
-  value,
-}: {
-  label: string
-  value: ReactNode
-}) {
-  return (
-    <div className="min-w-0 rounded-[0.75rem] border border-border bg-surface-muted/35 px-3 py-3">
-      <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-        {label}
-      </p>
-      <div className="mt-2 min-w-0 break-words text-sm font-medium text-foreground">
-        {value}
-      </div>
-    </div>
-  )
-}
-
 function DocumentMeta({
   label,
   value,
@@ -229,112 +191,6 @@ function DocumentMeta({
   )
 }
 
-function SummaryCard({
-  icon,
-  label,
-  meta,
-  tone,
-  value,
-}: {
-  icon: ReactNode
-  label: string
-  meta: string
-  tone: StatusTone
-  value: string
-}) {
-  return (
-    <article className="rounded-[0.875rem] border border-border bg-surface px-3 py-3 shadow-surface">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-normal text-muted">
-          {label}
-        </p>
-        <span
-          className={cn(
-            tone === 'success' && 'text-success',
-            tone === 'warning' && 'text-warning',
-            tone === 'danger' && 'text-danger',
-            tone === 'info' && 'text-info',
-            tone === 'neutral' && 'text-muted',
-          )}
-        >
-          {icon}
-        </span>
-      </div>
-      <p className="mt-3 text-2xl font-semibold tracking-normal text-foreground">
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-muted">{meta}</p>
-    </article>
-  )
-}
-
-function SectionShell({
-  actionNode,
-  children,
-  description,
-  icon,
-  id,
-  title,
-}: {
-  actionNode?: ReactNode
-  children: ReactNode
-  description?: string
-  icon?: ReactNode
-  id: string
-  title: string
-}) {
-  return (
-    <section
-      className="scroll-mt-24 rounded-[0.875rem] border border-border bg-surface p-4 shadow-surface"
-      id={id}
-    >
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-2">
-            {icon ? <span className="shrink-0 text-primary">{icon}</span> : null}
-            <h2 className="min-w-0 truncate text-base font-semibold text-foreground">
-              {title}
-            </h2>
-          </div>
-          {description ? (
-            <p className="mt-1 text-sm leading-5 text-muted">{description}</p>
-          ) : null}
-        </div>
-        {actionNode ? <div className="shrink-0">{actionNode}</div> : null}
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function DocumentReviewNav() {
-  const items = [
-    { href: `#${documentReviewSectionIds.overview}`, label: 'Overview' },
-    { href: `#${documentReviewSectionIds.documents}`, label: 'Documents' },
-    { href: `#${documentReviewSectionIds.vendor}`, label: 'Vendor' },
-    { href: `#${documentReviewSectionIds.timeline}`, label: 'Timeline' },
-  ]
-
-  return (
-    <nav
-      aria-label="Document review sections"
-      className="sticky top-[3.2rem] z-10 -mx-1 overflow-x-auto rounded-[0.875rem] border border-border bg-surface/95 p-1 shadow-surface backdrop-blur"
-    >
-      <div className="flex min-w-max gap-1">
-        {items.map((item) => (
-          <a
-            className="inline-flex h-8 items-center rounded-[0.65rem] px-3 text-sm font-semibold text-muted transition hover:bg-surface-muted hover:text-foreground"
-            href={item.href}
-            key={item.href}
-          >
-            {item.label}
-          </a>
-        ))}
-      </div>
-    </nav>
-  )
-}
-
 function HeaderStatus({
   summary,
   vendor,
@@ -347,10 +203,10 @@ function HeaderStatus({
   return (
     <>
       <Badge tone={state.tone}>{state.label}</Badge>
-      <Badge tone={onboardingTone(vendor.onboardingStatus)}>
+      <Badge tone={getOnboardingStatusTone(vendor.onboardingStatus)}>
         {humanizeCode(vendor.onboardingStatus)}
       </Badge>
-      <Badge tone={vendorStatusTone(vendor.vendorStatus)}>
+      <Badge tone={getVendorStatusTone(vendor.vendorStatus)}>
         {humanizeCode(vendor.vendorStatus)}
       </Badge>
     </>
@@ -509,18 +365,19 @@ function DetailSkeleton() {
   return (
     <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeaderSkeleton />
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }, (_, index) => (
-          <Skeleton className="h-28 rounded-[0.875rem]" key={index} />
-        ))}
-      </div>
+      <Skeleton className="h-11 rounded-[0.75rem]" />
       <Skeleton className="h-[28rem] rounded-[0.875rem]" />
     </PageContainer>
   )
 }
 
 export function VendorDocumentReviewDetailPage() {
-  const { vendorId } = useParams()
+  const { vendorId, tab: tabParam } = useParams()
+  const activeTab: DocumentReviewTab = DOCUMENT_REVIEW_TABS.includes(
+    tabParam as DocumentReviewTab,
+  )
+    ? (tabParam as DocumentReviewTab)
+    : 'documents'
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { openMediaViewer } = useMediaViewer()
@@ -680,47 +537,54 @@ export function VendorDocumentReviewDetailPage() {
   }
 
   const isSubmitting = actionMutation.isPending
-  const canReviewDocuments =
-    canApproveVendors && vendor.documents.some(canVerifyVendorDocument)
+
+  const headerActions: RecordAction[] = [
+    {
+      key: 'add-note',
+      label: 'Add note',
+      icon: <MessageSquarePlus className="size-3.5" />,
+      intent: 'secondary',
+      onSelect: () => setSelectedAction({ kind: 'ADD_NOTE' }),
+    },
+    {
+      key: 'open-vendor',
+      label: 'Open vendor',
+      icon: <ArrowUpRight className="size-3.5" />,
+      intent: 'primary',
+      onSelect: () => navigate(`${routePaths.vendors}/${vendor.vendorId}`),
+    },
+  ]
+
+  const tabItems: RecordTabItem[] = [
+    { key: 'documents', label: 'Documents', count: vendor.documents.length },
+    { key: 'vendor', label: 'Vendor' },
+    { key: 'timeline', label: 'Timeline', count: vendor.reviewTimeline.length },
+  ]
 
   return (
     <PageContainer className="!px-3 !py-4 space-y-3 sm:!px-4 lg:!px-6">
       <DetailPageHeader
         actionNode={
-          <>
-            <Button
-              size="sm"
-              type="button"
-              variant="secondary"
-              onClick={() => void vendorOverviewQuery.refetch()}
-            >
-              <RefreshCcw
-                className={cn(
-                  'mr-1.5 size-3.5',
-                  vendorOverviewQuery.isFetching &&
-                    'animate-spin motion-reduce:animate-none',
-                )}
-              />
-              Refresh
-            </Button>
-            <Button
-              size="sm"
-              type="button"
-              variant="secondary"
-              onClick={() => setSelectedAction({ kind: 'ADD_NOTE' })}
-            >
-              <MessageSquarePlus className="mr-1.5 size-3.5" />
-              Add note
-            </Button>
-            <Button
-              size="sm"
-              type="button"
-              onClick={() => navigate(`${routePaths.vendors}/${vendor.vendorId}`)}
-            >
-              <ArrowUpRight className="mr-1.5 size-3.5" />
-              Open vendor
-            </Button>
-          </>
+          <RecordHeaderActions
+            actions={headerActions}
+            utility={
+              <Button
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => void vendorOverviewQuery.refetch()}
+              >
+                <RefreshCcw
+                  className={cn(
+                    'mr-1.5 size-3.5',
+                    vendorOverviewQuery.isFetching &&
+                      'animate-spin motion-reduce:animate-none',
+                  )}
+                />
+                Refresh
+              </Button>
+            }
+          />
         }
         description={vendor.publicVendorId}
         listHref={routePaths.vendorDocuments}
@@ -729,47 +593,30 @@ export function VendorDocumentReviewDetailPage() {
         titleMetaNode={<HeaderStatus summary={summary} vendor={vendor} />}
       />
 
-      <DocumentReviewNav />
-
-      <section
-        className="grid scroll-mt-24 gap-3 md:grid-cols-2 xl:grid-cols-4"
-        id={documentReviewSectionIds.overview}
-      >
-        <SummaryCard
-          icon={<FileCheck2 className="size-4" />}
-          label="Review"
-          meta={
-            canApproveVendors
-              ? canReviewDocuments
-                ? 'Ready for document decisions'
-                : 'No pending document decisions'
-              : 'Review locked'
-          }
-          tone={state.tone}
-          value={state.label}
-        />
-        <SummaryCard
-          icon={<FileWarning className="size-4" />}
-          label="Pending"
-          meta={`${summary.rejected} rejected / ${summary.expired} expired`}
-          tone={summary.pending ? 'warning' : 'neutral'}
-          value={String(summary.pending)}
-        />
-        <SummaryCard
-          icon={<CheckCircle2 className="size-4" />}
-          label="Approved"
-          meta={`${summary.total} submitted document${summary.total === 1 ? '' : 's'}`}
-          tone={summary.verified === summary.total && summary.total ? 'success' : 'info'}
-          value={`${summary.verified}/${summary.total}`}
-        />
-        <SummaryCard
-          icon={<History className="size-4" />}
-          label="Updated"
-          meta={vendor.address.city || 'No city'}
-          tone="info"
-          value={formatNullableDate(vendor.updatedAt, false)}
-        />
-      </section>
+      <RecordMetricStrip
+        ariaLabel="Document review summary"
+        metrics={[
+          {
+            label: 'Review',
+            value: state.label,
+            tone: state.tone === 'neutral' ? undefined : state.tone,
+          },
+          {
+            label: 'Pending',
+            value: String(summary.pending),
+            tone: summary.pending ? 'warning' : undefined,
+          },
+          {
+            label: 'Approved',
+            value: `${summary.verified}/${summary.total}`,
+            tone: summary.total && summary.verified === summary.total ? 'success' : undefined,
+          },
+          {
+            label: 'Updated',
+            value: formatNullableDate(vendor.updatedAt, false),
+          },
+        ]}
+      />
 
       {!canApproveVendors ? (
         <div className="rounded-[0.875rem] border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
@@ -789,11 +636,19 @@ export function VendorDocumentReviewDetailPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_24rem] xl:items-start">
-        <SectionShell
+      <RecordTabs
+        activeTab={activeTab}
+        ariaLabel="Document review sections"
+        basePath={`${routePaths.vendorDocuments}/${vendor.vendorId}`}
+        defaultTab="documents"
+        items={tabItems}
+        tabPrefix="/tab"
+      />
+
+      {activeTab === 'documents' ? (
+        <RecordSection
           description="Preview each submitted file, then approve it or reject it with a clear resubmission reason."
           icon={<FileCheck2 className="size-4" />}
-          id={documentReviewSectionIds.documents}
           title="Submitted documents"
         >
           {vendor.documents.length ? (
@@ -816,41 +671,35 @@ export function VendorDocumentReviewDetailPage() {
               title="No documents"
             />
           )}
-        </SectionShell>
+        </RecordSection>
+      ) : null}
 
-        <div className="space-y-3">
-          <SectionShell
-            description="Business and contact context for the reviewer."
-            icon={<ArrowUpRight className="size-4" />}
-            id={documentReviewSectionIds.vendor}
-            title="Vendor context"
-          >
-            <div className="space-y-2">
-              <DetailField label="Owner" value={vendor.ownerName ?? 'Not available'} />
-              <DetailField label="Mobile" value={vendor.mobileNumber} />
-              <DetailField label="Email" value={vendor.businessEmail ?? 'No email'} />
-              <DetailField
-                label="Category"
-                value={vendor.category?.name ?? 'Unassigned'}
-              />
-              <DetailField label="City" value={vendor.address.city || 'No city'} />
-              <DetailField
-                label="Zone"
-                value={vendor.address.zone?.zoneName ?? 'No zone'}
-              />
-            </div>
-          </SectionShell>
+      {activeTab === 'vendor' ? (
+        <RecordSection
+          description="Business and contact context for the reviewer."
+          icon={<ArrowUpRight className="size-4" />}
+          title="Vendor context"
+        >
+          <RecordFieldList>
+            <RecordField label="Owner" value={vendor.ownerName ?? 'Not available'} />
+            <RecordField label="Mobile" value={vendor.mobileNumber} />
+            <RecordField label="Email" value={vendor.businessEmail ?? 'No email'} />
+            <RecordField label="Category" value={vendor.category?.name ?? 'Unassigned'} />
+            <RecordField label="City" value={vendor.address.city || 'No city'} />
+            <RecordField label="Zone" value={vendor.address.zone?.zoneName ?? 'No zone'} />
+          </RecordFieldList>
+        </RecordSection>
+      ) : null}
 
-          <SectionShell
-            description="Recent vendor review activity."
-            icon={<History className="size-4" />}
-            id={documentReviewSectionIds.timeline}
-            title="Timeline"
-          >
-            <TimelineSection vendor={vendor} />
-          </SectionShell>
-        </div>
-      </div>
+      {activeTab === 'timeline' ? (
+        <RecordSection
+          description="Recent vendor review activity."
+          icon={<History className="size-4" />}
+          title="Timeline"
+        >
+          <TimelineSection vendor={vendor} />
+        </RecordSection>
+      ) : null}
 
       {selectedAction ? (
         <VendorActionModal

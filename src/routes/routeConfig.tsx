@@ -191,6 +191,10 @@ export const appRoutes: RouteObject[] = [
                     element: <VendorDocumentReviewDetailPage />,
                   },
                   {
+                    path: `${routePaths.vendorDocumentReview}/tab/:tab`,
+                    element: <VendorDocumentReviewDetailPage />,
+                  },
+                  {
                     path: `${routePaths.vendors}/:vendorId`,
                     element: <VendorDetailPage />,
                   },
