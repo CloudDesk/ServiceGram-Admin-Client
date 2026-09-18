@@ -202,6 +202,12 @@ export interface UpsertPolicyRulePayload {
   metadata?: Record<string, unknown>;
   effectiveFrom?: string;
   effectiveTo?: string | null;
+  /**
+   * The rule's current `version` when editing, activating, or archiving an
+   * existing rule (backend rejects the write with `POLICY_RULE_VERSION_REQUIRED`
+   * otherwise). Omit when creating a brand-new rule.
+   */
+  expectedVersion?: number;
   reason: string;
 }
 
@@ -211,6 +217,55 @@ export interface PricingPolicyPreviewPayload {
   zoneId?: string;
   vendorId?: string;
   subtotalPaise: number;
+}
+
+export interface MediaPolicyPreviewPayload {
+  categoryId?: string;
+  city?: string;
+  zoneId?: string;
+  vendorId?: string;
+  at?: string;
+}
+
+export interface MediaPolicyEffectivePolicy {
+  ruleId: string | null;
+  ruleKey: string;
+  displayName: string;
+  version: number;
+  source: "POLICY_RULE" | "SYSTEM_DEFAULT";
+  config: Record<string, unknown>;
+}
+
+export interface MediaPolicyPreviewCandidate {
+  policyRuleId: string;
+  ruleKey: string;
+  displayName: string;
+  scope: {
+    scopeType: PolicyScopeType;
+    categoryId: string | null;
+    city: string | null;
+    zoneId: string | null;
+    vendorId: string | null;
+  };
+  priority: number;
+  version: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  selected: boolean;
+}
+
+export interface MediaPolicyPreview {
+  context: {
+    categoryId: string | null;
+    city: string | null;
+    zoneId: string | null;
+    vendorId: string | null;
+  };
+  evaluatedAt: string;
+  effectivePolicy: MediaPolicyEffectivePolicy;
+  candidates: MediaPolicyPreviewCandidate[];
+  selectionReason: string;
+  warnings: string[];
 }
 
 export interface SettingsPagination {
@@ -310,7 +365,31 @@ export interface PolicyRule {
   effectiveFrom: string;
   effectiveTo: string | null;
   updatedAt: string;
+  warnings?: PolicyRuleWarning[];
   availableActions: string[];
+}
+
+export interface PolicyRuleWarning {
+  code: "POLICY_RULE_FULLY_SHADOWED" | string;
+  message: string;
+  relatedPolicyRuleId: string;
+  relatedPolicyName: string;
+}
+
+export interface PolicyRuleConflict {
+  policyRuleId: string;
+  ruleKey: string;
+  displayName: string;
+  priority: number;
+  scope: {
+    scopeType: PolicyScopeType;
+    categoryId: string | null;
+    city: string | null;
+    zoneId: string | null;
+    vendorId: string | null;
+  };
+  effectiveFrom: string;
+  effectiveTo: string | null;
 }
 
 export interface PricingPolicyPreview {
@@ -404,6 +483,7 @@ export type ServiceTypeResponse = SettingsApiResponse<ServiceType>;
 export type PolicyRuleResponse = SettingsApiResponse<PolicyRule>;
 export type PricingPolicyPreviewResponse =
   SettingsApiResponse<PricingPolicyPreview>;
+export type MediaPolicyPreviewResponse = SettingsApiResponse<MediaPolicyPreview>;
 export type UpdateSettingResponse = SettingsApiResponse<PlatformSetting>;
 export type UpdateCategoryResponse = SettingsApiResponse<ServiceCategory>;
 export type CreateCategoryResponse = SettingsApiResponse<ServiceCategory>;
@@ -420,4 +500,45 @@ export interface SettingsApiErrorDetails extends ApiErrorDetails {
     code: string;
     message: string;
   }[];
+  /** Carries the live `currentVersion` on a POLICY_RULE_VERSION_* conflict. */
+  metadata?: {
+    currentVersion?: number;
+    suggestedPriority?: number | null;
+    conflictingRules?: PolicyRuleConflict[];
+    [key: string]: unknown;
+  };
+}
+
+export interface SettingsErrorResponse {
+  success?: boolean;
+  code?: string;
+  message?: string;
+  error?: string;
+  details?: SettingsApiErrorDetails;
+}
+
+/**
+ * Thrown by every `settings.service.ts` call on a non-ok response. Keeps
+ * `.message` identical to the plain `Error` this replaces (so existing
+ * `error.message` call sites are unaffected) while preserving `.code` and the
+ * full `.response.details.fieldErrors` array for callers that want to map
+ * validation errors onto individual form fields.
+ */
+export class SettingsServiceError extends Error {
+  status: number;
+  code: string;
+  response: SettingsErrorResponse | null;
+
+  constructor(
+    message: string,
+    status: number,
+    code: string,
+    response: SettingsErrorResponse | null,
+  ) {
+    super(message);
+    this.name = "SettingsServiceError";
+    this.status = status;
+    this.code = code;
+    this.response = response;
+  }
 }

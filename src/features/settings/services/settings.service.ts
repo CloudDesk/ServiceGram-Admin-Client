@@ -10,6 +10,7 @@ import {
   SETTINGS_DETAIL_PATH,
   SETTINGS_LIST_PATH,
   SETTINGS_POLICIES_PATH,
+  SETTINGS_POLICY_MEDIA_PREVIEW_PATH,
   SETTINGS_POLICY_PRICING_PREVIEW_PATH,
   SETTINGS_SERVICE_TYPE_UPDATE_PATH,
   SETTINGS_UPDATE_PATH,
@@ -29,6 +30,8 @@ import type {
   CreateZonePayload,
   CreateZoneResponse,
   CreateServiceTypePayload,
+  MediaPolicyPreviewPayload,
+  MediaPolicyPreviewResponse,
   PolicyRuleResponse,
   PolicyRulesListResponse,
   PolicyRulesQueryParams,
@@ -43,7 +46,7 @@ import type {
   ServiceZoneResponse,
   ServiceZonesListResponse,
   SettingsCategoriesQueryParams,
-  SettingsApiErrorDetails,
+  SettingsErrorResponse,
   SettingsListQueryParams,
   SettingsServiceTypesQueryParams,
   SettingsZonesQueryParams,
@@ -56,27 +59,24 @@ import type {
   UpdateZonePayload,
   UpdateZoneResponse,
 } from '../types/settings.types'
-
-interface ErrorEnvelope {
-  message?: string
-  error?: string
-  code?: string
-  details?: SettingsApiErrorDetails
-}
+import { SettingsServiceError } from '../types/settings.types'
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => null)) as
     | T
-    | ErrorEnvelope
+    | SettingsErrorResponse
     | null
 
   if (!response.ok) {
     const errorPayload =
-      payload && typeof payload === 'object' ? (payload as ErrorEnvelope) : null
+      payload && typeof payload === 'object' ? (payload as SettingsErrorResponse) : null
     const fieldMessage = errorPayload?.details?.fieldErrors?.[0]?.message
 
-    throw new Error(
+    throw new SettingsServiceError(
       fieldMessage ?? errorPayload?.message ?? errorPayload?.error ?? 'Request failed.',
+      response.status,
+      errorPayload?.code ?? 'REQUEST_FAILED',
+      errorPayload,
     )
   }
 
@@ -296,6 +296,16 @@ async function previewPricingPolicy(
   return parseJsonResponse<PricingPolicyPreviewResponse>(response)
 }
 
+async function previewMediaPolicy(
+  payload: MediaPolicyPreviewPayload,
+): Promise<MediaPolicyPreviewResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(SETTINGS_POLICY_MEDIA_PREVIEW_PATH),
+    jsonRequest('POST', payload),
+  )
+  return parseJsonResponse<MediaPolicyPreviewResponse>(response)
+}
+
 async function getZones(
   query: SettingsZonesQueryParams = {},
 ): Promise<ServiceZonesListResponse> {
@@ -350,6 +360,7 @@ export const settingsService = {
   getPolicyRules,
   upsertPolicyRule,
   previewPricingPolicy,
+  previewMediaPolicy,
   getZones,
   getZone,
   createZone,

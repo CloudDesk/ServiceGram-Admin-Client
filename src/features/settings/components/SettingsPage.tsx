@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowUpRight,
+  AlertTriangle,
   Archive,
   Calculator,
   CheckCircle2,
@@ -19,6 +20,7 @@ import {
   Settings2,
   SlidersHorizontal,
   ToggleLeft,
+  Video,
   X,
 } from 'lucide-react'
 import { PageContainer } from '../../../components/layout/PageContainer'
@@ -41,9 +43,18 @@ import {
 import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
+import { useToast } from '../../../hooks/useToast'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { settingsService } from '../services/settings.service'
+import { ContentRulePreviewBody } from '../mediaReelPolicy/components/ContentRulePreviewBody'
+import { ContentRulesWorkspace } from '../mediaReelPolicy/components/ContentRulesWorkspace'
+import {
+  MediaReelPolicyModal,
+  type MediaReelPolicyModalSelection,
+} from '../mediaReelPolicy/components/MediaReelPolicyModal'
+import type { MediaReelConfig } from '../mediaReelPolicy/types/mediaReelPolicy.types'
+import { policyActivationConflictDetail } from '../mediaReelPolicy/utils/contentRulePresentation'
 import {
   SettingsActionModal,
   type SettingsActionFormValues,
@@ -83,7 +94,7 @@ import type {
 } from '../types/settings.types'
 
 type Row = PlatformSetting | ServiceCategory | ServiceZone
-type SettingsWorkspaceType = SettingsRecordType | 'policies'
+type SettingsWorkspaceType = SettingsRecordType | 'policies' | 'mediaPolicies'
 type SettingsListResponse =
   | PlatformSettingsListResponse
   | ServiceCategoriesListResponse
@@ -103,6 +114,7 @@ type SettingsPreviewTab = 'summary' | 'details'
 type SettingsPreviewSelection =
   | { type: SettingsRecordType; record: Row }
   | { type: 'policies'; record: PolicyRule }
+  | { type: 'mediaPolicies'; record: PolicyRule }
   | null
 type SettingsColumnId =
   | 'record'
@@ -160,6 +172,7 @@ const settingsTabs: {
   { icon: <ToggleLeft className="size-4" />, label: 'Categories', type: 'categories' },
   { icon: <MapPinned className="size-4" />, label: 'Zones', type: 'zones' },
   { icon: <FileJson className="size-4" />, label: 'Policy rules', type: 'policies' },
+  { icon: <Video className="size-4" />, label: 'Content rules', type: 'mediaPolicies' },
 ]
 
 const settingsColumnsByType: Record<SettingsRecordType, SettingsColumn[]> = {
@@ -479,6 +492,7 @@ function readSettingsWorkspaceType(searchParams: URLSearchParams): SettingsWorks
   }
 
   if (value === 'policies') return 'policies'
+  if (value === 'mediaPolicies') return 'mediaPolicies'
 
   return 'settings'
 }
@@ -503,6 +517,7 @@ function recordLabel(type: SettingsWorkspaceType) {
   if (type === 'settings') return 'settings'
   if (type === 'categories') return 'categories'
   if (type === 'policies') return 'policy rules'
+  if (type === 'mediaPolicies') return 'content rules'
   return 'zones'
 }
 
@@ -622,6 +637,7 @@ function policyPayloadFromRecord(
     metadata: record.metadata,
     effectiveFrom: record.effectiveFrom,
     effectiveTo: record.effectiveTo,
+    expectedVersion: record.version,
     reason: overrides.reason ?? '',
     ...overrides,
   }
@@ -1010,6 +1026,12 @@ function SettingsRecordPreviewPanel({
     )
   }
 
+  if (selection.type === 'mediaPolicies') {
+    // Content rules render their own dedicated ContentRulePreviewBody at the
+    // call site instead of reusing this generic settings-record panel.
+    return null
+  }
+
   const row = selection.record
   const type = selection.type
   const primaryAction = getPrimarySettingsAction({
@@ -1236,12 +1258,14 @@ function PolicyRuleActionModal({
   action,
   error,
   isSubmitting,
+  onClearError,
   onClose,
   onSubmit,
 }: {
   action: PolicyRuleActionSelection | null
-  error?: string | null
+  error?: unknown
   isSubmitting: boolean
+  onClearError?: () => void
   onClose: () => void
   onSubmit: (payload: UpsertPolicyRulePayload) => void
 }) {
@@ -1257,6 +1281,7 @@ function PolicyRuleActionModal({
       action={action}
       error={error}
       isSubmitting={isSubmitting}
+      onClearError={onClearError}
       key={actionKey}
       onClose={onClose}
       onSubmit={onSubmit}
@@ -1268,12 +1293,14 @@ function PolicyRuleActionModalContent({
   action,
   error,
   isSubmitting,
+  onClearError,
   onClose,
   onSubmit,
 }: {
   action: PolicyRuleActionSelection
-  error?: string | null
+  error?: unknown
   isSubmitting: boolean
+  onClearError?: () => void
   onClose: () => void
   onSubmit: (payload: UpsertPolicyRulePayload) => void
 }) {
@@ -1308,6 +1335,8 @@ function PolicyRuleActionModalContent({
   const [status, setStatus] = useState<PolicyStatus>(record?.status ?? 'DRAFT')
   const [vendorId, setVendorId] = useState(record?.scope.vendorId ?? '')
   const [zoneId, setZoneId] = useState(record?.scope.zoneId ?? '')
+  const activationConflict = policyActivationConflictDetail(error)
+  const errorMessage = error instanceof Error ? error.message : null
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1323,6 +1352,7 @@ function PolicyRuleActionModalContent({
       if (isStatusOnly && record) {
         onSubmit(
           policyPayloadFromRecord(record, {
+            priority: Number(priority),
             reason: trimmedReason,
             status: action.action === 'ACTIVATE' ? 'ACTIVE' : 'ARCHIVED',
           }),
@@ -1375,6 +1405,7 @@ function PolicyRuleActionModalContent({
         metadata: parseJsonObjectValue(metadataJson),
         effectiveFrom: normalizeDateTimeInput(effectiveFrom),
         effectiveTo: effectiveTo.trim() ? normalizeDateTimeInput(effectiveTo) : null,
+        expectedVersion: record?.version,
         reason: trimmedReason,
       })
     } catch (caughtError) {
@@ -1620,9 +1651,43 @@ function PolicyRuleActionModalContent({
               />
             </label>
 
-            {formError || error ? (
+            {activationConflict ? (
+              <div className="rounded-[0.75rem] border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-semibold">Another active rule has the same order</p>
+                    <p className="mt-1 text-warning/90">
+                      Choose a different rule order so ServiceGram can decide which rule applies first.
+                    </p>
+                    {activationConflict.conflicts.length ? (
+                      <p className="mt-2 font-medium">
+                        Conflicts with:{' '}
+                        {activationConflict.conflicts
+                          .map((conflict) => conflict.displayName)
+                          .join(', ')}
+                      </p>
+                    ) : null}
+                    {activationConflict.suggestedPriority !== null ? (
+                      <Button
+                        className="mt-3"
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                        onClick={() => {
+                          setPriority(String(activationConflict.suggestedPriority))
+                          onClearError?.()
+                        }}
+                      >
+                        Use suggested order {activationConflict.suggestedPriority}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : formError || errorMessage ? (
               <div className="rounded-[0.75rem] border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
-                {formError ?? error}
+                {formError ?? errorMessage}
               </div>
             ) : null}
           </div>
@@ -2262,6 +2327,8 @@ export function SettingsPage() {
   const [pricingPreviewOpen, setPricingPreviewOpen] = useState(false)
   const [selectedPolicyAction, setSelectedPolicyAction] =
     useState<PolicyRuleActionSelection | null>(null)
+  const [selectedContentRuleAction, setSelectedContentRuleAction] =
+    useState<MediaReelPolicyModalSelection | null>(null)
   const [selectedAction, setSelectedAction] =
     useState<SettingsActionSelection | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
@@ -2351,6 +2418,7 @@ export function SettingsPage() {
     setPolicyStatus('')
     setPricingPreviewOpen(false)
     setSelectedPolicyAction(null)
+    setSelectedContentRuleAction(null)
     setSelectedAction(null)
     setColumnsOpen(false)
     setPreviewSelection(null)
@@ -2426,6 +2494,22 @@ export function SettingsPage() {
     queryKey: ['settings-policy-rules', policyQuery],
     queryFn: () => settingsService.getPolicyRules(policyQuery),
     enabled: type === 'policies',
+  })
+
+  const mediaPolicyQuery = useMemo(
+    () =>
+      ({
+        family: 'MEDIA_REEL_RULE',
+        scopeType: policyScopeType ? (policyScopeType as PolicyScopeType) : undefined,
+        status: policyStatus ? (policyStatus as PolicyStatus) : undefined,
+      }) satisfies PolicyRulesQueryParams,
+    [policyScopeType, policyStatus],
+  )
+
+  const mediaPolicyResult = useQuery<PolicyRulesListResponse>({
+    queryKey: ['settings-policy-rules', 'media-reel', mediaPolicyQuery],
+    queryFn: () => settingsService.getPolicyRules(mediaPolicyQuery),
+    enabled: type === 'mediaPolicies',
   })
 
   const mutation = useMutation<SettingsMutationResponse | unknown, Error, SettingsActionFormValues>({
@@ -2556,16 +2640,50 @@ export function SettingsPage() {
     },
   })
 
+  const { pushToast } = useToast()
   const policyMutation = useMutation<
     PolicyRuleResponse,
     Error,
     UpsertPolicyRulePayload
   >({
     mutationFn: (payload) => settingsService.upsertPolicyRule(payload),
-    onSuccess: () => {
+    onSuccess: (response) => {
       setSelectedPolicyAction(null)
       void policyResult.refetch()
       void queryClient.invalidateQueries({ queryKey: ['settings-policy-rules'] })
+      const warnings = response.data.warnings ?? []
+      pushToast(
+        warnings.length
+          ? {
+              tone: 'warning',
+              title: 'Policy saved with a warning',
+              description: warnings.map((warning) => warning.message).join(' '),
+            }
+          : { tone: 'success', title: 'Policy rule saved' },
+      )
+    },
+  })
+
+  const contentRuleMutation = useMutation<
+    PolicyRuleResponse,
+    unknown,
+    UpsertPolicyRulePayload
+  >({
+    mutationFn: (payload) => settingsService.upsertPolicyRule(payload),
+    onSuccess: (response) => {
+      setSelectedContentRuleAction(null)
+      void mediaPolicyResult.refetch()
+      void queryClient.invalidateQueries({ queryKey: ['settings-policy-rules'] })
+      const warnings = response.data.warnings ?? []
+      pushToast(
+        warnings.length
+          ? {
+              tone: 'warning',
+              title: 'Content rule saved, but another rule applies first',
+              description: warnings.map((warning) => warning.message).join(' '),
+            }
+          : { tone: 'success', title: 'Content rule saved' },
+      )
     },
   })
 
@@ -2574,6 +2692,11 @@ export function SettingsPage() {
     ? ((result.data?.data ?? []) as Row[])
     : []
   const policyRows = policyResult.data?.data ?? []
+  const mediaPolicyRows = mediaPolicyResult.data?.data ?? []
+  const defaultMediaReelConfigSource =
+    (mediaPolicyRows.find(
+      (rule) => rule.scope.scopeType === 'GLOBAL' && rule.status === 'ACTIVE',
+    )?.config as MediaReelConfig | undefined) ?? null
   const pagination = isSettingsRecordType(type) ? result.data?.pagination : undefined
   const columns = settingsColumnsByType[activeSettingsType]
   const [settingsSelectedIds, setSettingsSelectedIds] = useState<string[]>([])
@@ -2621,15 +2744,23 @@ export function SettingsPage() {
   const isInitialLoading =
     type === 'policies'
       ? policyResult.isLoading && policyRows.length === 0
-      : result.isLoading && rows.length === 0
+      : type === 'mediaPolicies'
+        ? mediaPolicyResult.isLoading && mediaPolicyRows.length === 0
+        : result.isLoading && rows.length === 0
   const isRefreshing =
     type === 'policies'
       ? policyResult.isFetching && !isInitialLoading
-      : result.isFetching && !isInitialLoading
+      : type === 'mediaPolicies'
+        ? mediaPolicyResult.isFetching && !isInitialLoading
+        : result.isFetching && !isInitialLoading
   const refreshStatusLabel = isRefreshing
     ? 'Refreshing'
     : formatRefreshTime(
-        type === 'policies' ? policyResult.dataUpdatedAt : result.dataUpdatedAt,
+        type === 'policies'
+          ? policyResult.dataUpdatedAt
+          : type === 'mediaPolicies'
+            ? mediaPolicyResult.dataUpdatedAt
+            : result.dataUpdatedAt,
       )
 
   const toggleColumn = (columnId: SettingsColumnId) => {
@@ -2860,7 +2991,48 @@ export function SettingsPage() {
                         </label>
                       </>
                     ) : null}
-  
+
+                    {type === 'mediaPolicies' ? (
+                      <>
+                        <label className="space-y-1">
+                          <span className="text-xs font-semibold text-muted">Status</span>
+                          <select
+                            className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
+                            value={policyStatus}
+                            onChange={(event) => {
+                              clearSeededSettingsParams()
+                              setPolicyStatus(event.target.value)
+                            }}
+                          >
+                            <option value="">All</option>
+                            {policyStatuses.map((option) => (
+                              <option key={option} value={option}>
+                                {humanizeCode(option)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-xs font-semibold text-muted">Scope</span>
+                          <select
+                            className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
+                            value={policyScopeType}
+                            onChange={(event) => {
+                              clearSeededSettingsParams()
+                              setPolicyScopeType(event.target.value)
+                            }}
+                          >
+                            <option value="">All</option>
+                            {policyScopeTypes.map((option) => (
+                              <option key={option} value={option}>
+                                {humanizeCode(option)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </>
+                    ) : null}
+
                     {(type === 'categories' || type === 'zones') ? (
                       <label className="space-y-1">
                         <span className="text-xs font-semibold text-muted">Active</span>
@@ -2889,9 +3061,15 @@ export function SettingsPage() {
       <section className="flex min-w-0 flex-col xl:min-h-0 xl:flex-1">
         <main
           className="flex min-w-0 flex-col self-stretch overflow-hidden rounded-[1rem] border border-border bg-surface shadow-surface xl:min-h-0 xl:flex-1"
-          id={type === 'policies' ? 'settings-policy-rules' : 'settings-records'}
+          id={
+            type === 'policies'
+              ? 'settings-policy-rules'
+              : type === 'mediaPolicies'
+                ? 'settings-content-rules'
+                : 'settings-records'
+          }
         >
-          {type === 'policies' ? (
+          {type === 'policies' || type === 'mediaPolicies' ? (
           <div className="shrink-0 border-b border-border bg-surface px-3 py-3 sm:px-4">
             <div className="grid gap-3 xl:grid-cols-[minmax(11rem,0.32fr)_minmax(18rem,1fr)_auto] xl:items-center">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -2906,7 +3084,7 @@ export function SettingsPage() {
                 </span>
               </div>
 
-              {type !== 'policies' ? (
+              {type !== 'policies' && type !== 'mediaPolicies' ? (
                 <ListHeaderSearch
                   ariaLabel="Search settings records"
                   className="w-full min-w-0"
@@ -2920,7 +3098,9 @@ export function SettingsPage() {
                 />
               ) : (
                 <div className="min-h-10 rounded-[0.75rem] border border-dashed border-border bg-surface-muted/40 px-3 py-2 text-sm text-muted">
-                  Policy rules are filtered by family, status, and scope.
+                  {type === 'mediaPolicies'
+                    ? 'Content rules are filtered by status and scope.'
+                    : 'Policy rules are filtered by family, status, and scope.'}
                 </div>
               )}
 
@@ -2968,7 +3148,21 @@ export function SettingsPage() {
                   </>
                 ) : null}
 
-                {type !== 'policies' ? (
+                {type === 'mediaPolicies' ? (
+                  <Button
+                    disabled={!canUpdateSettings}
+                    size="sm"
+                    title={canUpdateSettings ? 'Create content rule' : 'Requires settings:update'}
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setSelectedContentRuleAction({ action: 'CREATE' })}
+                  >
+                    <Plus className="mr-2 size-4" />
+                    Rule
+                  </Button>
+                ) : null}
+
+                {type !== 'policies' && type !== 'mediaPolicies' ? (
                   <div className="relative" ref={columnsMenuRef}>
                     <Button
                       aria-expanded={columnsOpen}
@@ -3032,7 +3226,9 @@ export function SettingsPage() {
                   onClick={() =>
                     type === 'policies'
                       ? void policyResult.refetch()
-                      : void result.refetch()
+                      : type === 'mediaPolicies'
+                        ? void mediaPolicyResult.refetch()
+                        : void result.refetch()
                   }
                 >
                   <RefreshCcw
@@ -3053,7 +3249,9 @@ export function SettingsPage() {
                   tab.type === type
                     ? tab.type === 'policies'
                       ? policyRows.length
-                      : pagination?.totalItems
+                      : tab.type === 'mediaPolicies'
+                        ? mediaPolicyRows.length
+                        : pagination?.totalItems
                     : undefined
 
                 return (
@@ -3157,6 +3355,52 @@ export function SettingsPage() {
                   onOpenDetail={openDetail}
                   onOpenPolicyAction={setSelectedPolicyAction}
                   onOpenPolicyAudit={openPolicyAudit}
+                />
+              ) : null}
+            </div>
+          ) : type === 'mediaPolicies' ? (
+            <div
+              className={cn(
+                'min-h-0 xl:flex-1',
+                previewSelection?.type === 'mediaPolicies'
+                  ? 'grid xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-3 xl:p-3'
+                  : 'flex flex-col',
+              )}
+            >
+              <ContentRulesWorkspace
+                canReadAudit={canReadAudit}
+                canUpdateSettings={canUpdateSettings}
+                isError={mediaPolicyResult.isError}
+                isInitialLoading={isInitialLoading}
+                isRefreshing={isRefreshing}
+                rows={mediaPolicyRows}
+                selectedRuleId={
+                  previewSelection?.type === 'mediaPolicies'
+                    ? previewSelection.record.policyRuleId
+                    : null
+                }
+                onCreate={() => setSelectedContentRuleAction({ action: 'CREATE' })}
+                onEdit={(rule) => setSelectedContentRuleAction({ action: 'EDIT', record: rule })}
+                onOpenAudit={openPolicyAudit}
+                onPreview={(rule) => setPreviewSelection({ type: 'mediaPolicies', record: rule })}
+                onRefresh={() => void mediaPolicyResult.refetch()}
+                onToggleStatus={(rule, nextStatus) =>
+                  setSelectedPolicyAction({ action: nextStatus, record: rule })
+                }
+              />
+              {previewSelection?.type === 'mediaPolicies' ? (
+                <ContentRulePreviewBody
+                  allRules={mediaPolicyRows}
+                  canReadAudit={canReadAudit}
+                  canUpdateSettings={canUpdateSettings}
+                  isSubmitting={policyMutation.isPending}
+                  rule={previewSelection.record}
+                  onClose={() => setPreviewSelection(null)}
+                  onEdit={(rule) => setSelectedContentRuleAction({ action: 'EDIT', record: rule })}
+                  onOpenAudit={openPolicyAudit}
+                  onToggleStatus={(rule, nextStatus) =>
+                    setSelectedPolicyAction({ action: nextStatus, record: rule })
+                  }
                 />
               ) : null}
             </div>
@@ -3277,16 +3521,43 @@ export function SettingsPage() {
       />
       <PolicyRuleActionModal
         action={selectedPolicyAction}
-        error={
-          policyMutation.error instanceof Error ? policyMutation.error.message : null
-        }
+        error={policyMutation.error}
         isSubmitting={policyMutation.isPending}
         onClose={() => {
           if (!policyMutation.isPending) {
+            policyMutation.reset()
             setSelectedPolicyAction(null)
           }
         }}
+        onClearError={() => policyMutation.reset()}
         onSubmit={(payload) => policyMutation.mutate(payload)}
+      />
+      <MediaReelPolicyModal
+        action={selectedContentRuleAction}
+        canUpdateSettings={canUpdateSettings}
+        defaultConfigSource={defaultMediaReelConfigSource}
+        error={contentRuleMutation.error}
+        isSubmitting={contentRuleMutation.isPending}
+        onClose={() => {
+          if (!contentRuleMutation.isPending) {
+            contentRuleMutation.reset()
+            setSelectedContentRuleAction(null)
+          }
+        }}
+        onClearError={() => contentRuleMutation.reset()}
+        onReloadLatest={async (context) => {
+          if (!context.policyRuleId) return null
+          const response = await settingsService.getPolicyRules({
+            family: 'MEDIA_REEL_RULE',
+            scopeType: context.scopeType,
+          })
+          return (
+            response.data.find(
+              (rule) => rule.policyRuleId === context.policyRuleId,
+            ) ?? null
+          )
+        }}
+        onSubmit={(payload) => contentRuleMutation.mutate(payload)}
       />
       {pricingPreviewOpen ? (
         <PricingPreviewModal onClose={() => setPricingPreviewOpen(false)} />

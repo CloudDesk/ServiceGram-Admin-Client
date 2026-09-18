@@ -21,6 +21,8 @@ export const SETTINGS_SERVICE_TYPE_UPDATE_PATH = (serviceTypeId: string) =>
 export const SETTINGS_POLICIES_PATH = '/admin/settings/policies'
 export const SETTINGS_POLICY_PRICING_PREVIEW_PATH =
   '/admin/settings/policies/pricing-preview'
+export const SETTINGS_POLICY_MEDIA_PREVIEW_PATH =
+  '/admin/settings/policies/media-preview'
 export const SETTINGS_ZONES_PATH = '/admin/settings/zones'
 export const SETTINGS_ZONE_DETAIL_PATH = (zoneId: string) =>
   `/admin/settings/zones/${zoneId}`
