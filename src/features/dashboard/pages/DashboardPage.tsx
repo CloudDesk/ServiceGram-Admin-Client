@@ -138,9 +138,7 @@ function dayRangeFilters(value: string) {
 }
 
 function vendorReviewPath() {
-  return `${routeWithFilters(routePaths.vendorOnboarding, {
-    onboardingStatus: 'UNDER_REVIEW',
-  })}#vendor-onboarding-records`
+  return routeWithFilters(routePaths.vendors, { queue: 'underReview' })
 }
 
 function normalizeOrderRouteFilters(filters: Record<string, string>) {
@@ -265,7 +263,7 @@ function getCardTarget(card: DashboardCard, access: DashboardAccess): DrilldownT
   if (card.code === 'PENDING_VENDOR_REVIEWS' || card.action === 'REVIEW_VENDORS') {
     return {
       canOpen: access.canReadVendors,
-      label: 'Vendor onboarding',
+      label: 'Under review',
       path: vendorReviewPath(),
     }
   }
@@ -304,7 +302,7 @@ function getQueueTarget(queue: DashboardQueue, access: DashboardAccess): Drilldo
   if (queue.code === 'VENDOR_ONBOARDING') {
     return {
       canOpen: access.canReadVendors,
-      label: 'Vendor onboarding',
+      label: 'Under review',
       path: vendorReviewPath(),
     }
   }
@@ -358,7 +356,7 @@ function getRecommendedActionTarget(
   if (normalized.includes('VENDOR')) {
     return {
       canOpen: access.canReadVendors,
-      label: 'Vendor onboarding',
+      label: 'Under review',
       path: vendorReviewPath(),
     }
   }

@@ -60,7 +60,7 @@ const actionContent: Record<VendorActionKind, ActionContent> = {
   },
   REJECT: {
     title: 'Reject vendor',
-    description: 'Reject this vendor onboarding request with a clear reason.',
+    description: 'Reject this vendor application with a clear reason.',
     submitLabel: 'Reject vendor',
     submitVariant: 'danger',
     reasonLabel: 'Rejection reason',

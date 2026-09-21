@@ -38,6 +38,7 @@ import type {
   VendorOnboardingStatus,
   VendorStatus,
 } from '../types/vendor.types'
+import { readVendorQueue, type VendorQueueKey } from '../vendorRoutes'
 import {
   VendorActionModal,
   type VendorActionFormValues,
@@ -47,13 +48,16 @@ import {
 const VENDOR_LIST_STORAGE_KEY = 'servicegram.vendors.list.v1'
 const DEFAULT_PAGE_SIZE = 50
 
-type VendorQueueKey =
-  | 'active'
-  | 'onboarding'
-  | 'underReview'
-  | 'documentsPending'
-  | 'rejected'
-  | 'suspended'
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedValue(value), delayMs)
+    return () => window.clearTimeout(timeout)
+  }, [delayMs, value])
+
+  return debouncedValue
+}
 
 interface VendorActionTarget {
   action: VendorActionSelection
@@ -72,7 +76,13 @@ const VENDOR_QUEUES: Record<
   }
 > = {
   active: { label: 'Active', source: 'list', vendorStatus: 'ACTIVE' },
-  onboarding: { label: 'Onboarding', source: 'onboarding', tone: 'warning' },
+  onboarding: { label: 'Applications', source: 'onboarding', tone: 'warning' },
+  submitted: {
+    label: 'Submitted',
+    source: 'onboarding',
+    onboardingStatus: 'SUBMITTED',
+    tone: 'warning',
+  },
   underReview: {
     label: 'Under review',
     source: 'onboarding',
@@ -110,6 +120,9 @@ interface RowActionsProps {
   vendor: VendorListItem
   canApproveVendors: boolean
   canUpdateVendors: boolean
+  canReadAudit: boolean
+  canReadSettings: boolean
+  onNavigate: (path: string) => void
   onAction: (vendor: VendorListItem, kind: VendorListActionKind) => void
 }
 
@@ -120,7 +133,10 @@ interface RowActionsProps {
  */
 function RowActions({
   canApproveVendors,
+  canReadAudit,
+  canReadSettings,
   canUpdateVendors,
+  onNavigate,
   onAction,
   vendor,
 }: RowActionsProps) {
@@ -146,9 +162,14 @@ function RowActions({
     }
   }, [open])
 
-  const availableActions = getVisibleVendorActions(getVendorActionSource(vendor))
+  const availableActions = [
+    ...getVisibleVendorActions(getVendorActionSource(vendor)),
+    ...(canApproveVendors ? (['ADD_NOTE'] as const) : []),
+  ].filter((kind, index, actions) => actions.indexOf(kind) === index)
   const canRun = (kind: VendorListActionKind) => {
-    if (kind === 'APPROVE' || kind === 'REJECT') return canApproveVendors
+    if (kind === 'ADD_NOTE' || kind === 'APPROVE' || kind === 'REJECT') {
+      return canApproveVendors
+    }
     return canUpdateVendors
   }
 
@@ -160,6 +181,24 @@ function RowActions({
   const menuActions = availableActions.filter(
     (kind) => kind !== primaryAction && canRun(kind),
   )
+  const relatedLinks = [
+    ...(canReadSettings && vendor.category?.categoryId
+      ? [{ label: 'Category', path: `${routePaths.settings}/categories/${vendor.category.categoryId}` }]
+      : []),
+    ...(canReadSettings && vendor.address.zone?.zoneId
+      ? [{ label: 'Zone', path: `${routePaths.settings}/zones/${vendor.address.zone.zoneId}` }]
+      : []),
+    ...(canReadAudit
+      ? [{
+          label: 'Audit',
+          path: `${routePaths.audit}?${new URLSearchParams({
+            moduleCode: 'vendors',
+            entityType: 'vendor',
+            entityId: vendor.vendorId,
+          }).toString()}`,
+        }]
+      : []),
+  ]
 
   return (
     <div ref={containerRef} className="relative flex items-center justify-end gap-1">
@@ -177,7 +216,7 @@ function RowActions({
         </Button>
       ) : null}
 
-      {menuActions.length ? (
+      {menuActions.length || relatedLinks.length ? (
         <>
           <button
             aria-expanded={open}
@@ -212,6 +251,20 @@ function RowActions({
                   {vendorActionLabel(kind)}
                 </button>
               ))}
+              {relatedLinks.map((link) => (
+                <button
+                  className="flex w-full items-center gap-2 rounded-[0.45rem] px-2 py-1.5 text-left text-sm transition hover:bg-surface-muted"
+                  key={link.label}
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    onNavigate(link.path)
+                  }}
+                >
+                  {link.label}
+                </button>
+              ))}
             </div>
           ) : null}
         </>
@@ -230,28 +283,30 @@ export function VendorsPage({
   const queryClient = useQueryClient()
   const canApproveVendors = usePermission('vendors:approve')
   const canUpdateVendors = usePermission('vendors:update')
+  const canReadAudit = usePermission('audit:read')
+  const canReadSettings = usePermission('settings:read')
 
   const [search, setSearch] = useState(() => searchParams.get('search') ?? '')
-  const [queue, setQueue] = useState<VendorQueueKey>('active')
+  const queue = readVendorQueue(searchParams)
   const [city, setCity] = useState(() => searchParams.get('city') ?? '')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionTarget, setActionTarget] = useState<VendorActionTarget | null>(null)
-
+  const debouncedSearch = useDebouncedValue(search, 300)
   const activeQueue = VENDOR_QUEUES[queue]
 
   const query = useMemo<VendorListQueryParams>(
     () => ({
       page,
       limit,
-      search: search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       city: city.trim() || undefined,
       vendorStatus: activeQueue.vendorStatus,
       onboardingStatus: activeQueue.onboardingStatus,
     }),
-    [activeQueue, city, limit, page, search],
+    [activeQueue, city, debouncedSearch, limit, page],
   )
 
   const vendorsQuery = useQuery({
@@ -269,10 +324,10 @@ export function VendorsPage({
     () => ({
       page: 1,
       limit: 1,
-      search: search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       city: city.trim() || undefined,
     }),
-    [city, search],
+    [city, debouncedSearch],
   )
 
   /**
@@ -316,12 +371,10 @@ export function VendorsPage({
     tone: VENDOR_QUEUES[key].tone,
   }))
 
-  const clearSeededParams = () => {
-    const seededKeys = ['search', 'city', 'categoryId', 'onboardingStatus', 'vendorStatus']
-    if (!seededKeys.some((key) => searchParams.has(key))) return
-
+  const updateUrlParam = (key: string, value?: string) => {
     const nextParams = new URLSearchParams(searchParams)
-    seededKeys.forEach((key) => nextParams.delete(key))
+    if (value) nextParams.set(key, value)
+    else nextParams.delete(key)
     setSearchParams(nextParams, { replace: true })
   }
 
@@ -426,8 +479,19 @@ export function VendorsPage({
         ),
       },
       {
+        id: 'owner',
+        label: 'Owner',
+        defaultWidth: 150,
+        minWidth: 120,
+        priority: 3,
+        defaultHidden: true,
+        render: (vendor) => (
+          <span className="truncate text-muted">{vendor.ownerName ?? '—'}</span>
+        ),
+      },
+      {
         id: 'onboarding',
-        label: 'Onboarding',
+        label: 'Application stage',
         defaultWidth: 140,
         minWidth: 120,
         priority: 1,
@@ -533,6 +597,21 @@ export function VendorsPage({
           <span className="text-muted">{formatDateSafe(vendor.updatedAt)}</span>
         ),
       },
+      {
+        id: 'nextAction',
+        label: 'Next action',
+        defaultWidth: 145,
+        minWidth: 120,
+        priority: 4,
+        defaultHidden: true,
+        render: (vendor) => (
+          <span className="truncate text-muted">
+            {vendor.nextRecommendedAction
+              ? humanizeCode(vendor.nextRecommendedAction)
+              : '—'}
+          </span>
+        ),
+      },
     ],
     [],
   )
@@ -549,7 +628,7 @@ export function VendorsPage({
       { header: 'Owner', value: (vendor) => vendor.ownerName },
       { header: 'Mobile', value: (vendor) => vendor.mobileNumber },
       { header: 'Vendor status', value: (vendor) => vendor.vendorStatus },
-      { header: 'Onboarding status', value: (vendor) => vendor.onboardingStatus },
+      { header: 'Application stage', value: (vendor) => vendor.onboardingStatus },
       { header: 'City', value: (vendor) => vendor.address.city ?? '' },
       { header: 'Zone', value: (vendor) => vendor.address.zone?.zoneName ?? '' },
       { header: 'Category', value: (vendor) => vendor.category?.name ?? '' },
@@ -609,6 +688,7 @@ export function VendorsPage({
               value={city}
               onChange={(event) => {
                 setCity(event.target.value)
+                updateUrlParam('city', event.target.value.trim() || undefined)
                 setPage(1)
               }}
             />
@@ -632,8 +712,11 @@ export function VendorsPage({
         rowActions={(vendor) => (
           <RowActions
             canApproveVendors={canApproveVendors}
+            canReadAudit={canReadAudit}
+            canReadSettings={canReadSettings}
             canUpdateVendors={canUpdateVendors}
             vendor={vendor}
+            onNavigate={navigate}
             onAction={openAction}
           />
         )}
@@ -653,18 +736,24 @@ export function VendorsPage({
         }}
         storageKey={VENDOR_LIST_STORAGE_KEY}
         onQueueChange={(key) => {
-          setQueue(key as VendorQueueKey)
+          const nextQueue = key as VendorQueueKey
           setPage(1)
+          const nextParams = new URLSearchParams(searchParams)
+          nextParams.set('queue', nextQueue)
+          nextParams.delete('onboardingStatus')
+          nextParams.delete('vendorStatus')
+          setSearchParams(nextParams, { replace: true })
         }}
         onResetFilters={() => {
           setCity('')
+          updateUrlParam('city')
           setPage(1)
         }}
         onRetry={() => void vendorsQuery.refetch()}
         onRowClick={(vendor) => navigate(`${listHref}/${vendor.vendorId}`)}
         onSearchChange={(nextSearch) => {
-          clearSeededParams()
           setSearch(nextSearch)
+          updateUrlParam('search', nextSearch.trim() || undefined)
           setPage(1)
         }}
       />
