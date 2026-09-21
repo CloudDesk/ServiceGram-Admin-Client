@@ -261,10 +261,10 @@ export function InfluencerBonusesPage() {
     <PageContainer className="space-y-5">
       <PageContextHeader
         breadcrumbs={[
-          { label: "Release 2", href: routePaths.release2Overview },
+          { label: "Overview", href: routePaths.release2Overview },
           { label: "Influencer Bonuses" },
         ]}
-        description="Release 2 workspace for influencer bonus rules, award liability, and manual award review."
+        description="Manage influencer bonus rules, award liability, and manual award review."
         title="Influencer Bonuses"
         titleMetaNode={<Badge tone="success">Phase 4 · Bonus operations</Badge>}
       />

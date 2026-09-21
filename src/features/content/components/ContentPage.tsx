@@ -1,5 +1,5 @@
-import { Download, MoreHorizontal, Plus, RefreshCcw } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Download, Plus, RefreshCcw } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
@@ -8,6 +8,7 @@ import { DataList } from '../../../components/ui/DataList'
 import type { DataListColumn, DataListQueueTab } from '../../../components/ui/DataList'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import { RowActionMenu, type RowActionMenuItem } from '../../../components/ui/RowActionMenu'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
@@ -79,33 +80,21 @@ function RowActions({
   onAction,
   page,
 }: RowActionsProps) {
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return undefined
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [open])
-
   const showPublish = canPublishContent && canPublish(page)
   const showArchive = canUpdateContent && canArchive(page)
+  const menuItems: RowActionMenuItem[] = showArchive
+    ? [
+        {
+          key: 'archive',
+          label: 'Archive',
+          tone: 'danger',
+          onClick: () => onAction('ARCHIVE', page),
+        },
+      ]
+    : []
 
   return (
-    <div ref={containerRef} className="relative flex items-center justify-end gap-1">
+    <div className="flex items-center justify-end gap-1">
       {showPublish ? (
         <Button
           className="h-6.5 min-h-0 whitespace-nowrap px-2 text-xs font-medium"
@@ -118,39 +107,7 @@ function RowActions({
         </Button>
       ) : null}
 
-      {showArchive ? (
-        <>
-          <button
-            aria-expanded={open}
-            aria-haspopup="menu"
-            aria-label={`More actions for ${page.title}`}
-            className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-[0.4rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-          >
-            <MoreHorizontal className="size-3.5" />
-          </button>
-
-          {open ? (
-            <div
-              className="absolute right-0 top-8 z-40 min-w-[10rem] rounded-[0.6rem] border border-border bg-surface p-1 shadow-lg"
-              role="menu"
-            >
-              <button
-                className="flex w-full items-center rounded-[0.45rem] px-2 py-1.5 text-left text-sm text-danger transition hover:bg-danger/10"
-                role="menuitem"
-                type="button"
-                onClick={() => {
-                  setOpen(false)
-                  onAction('ARCHIVE', page)
-                }}
-              >
-                Archive
-              </button>
-            </div>
-          ) : null}
-        </>
-      ) : null}
+      <RowActionMenu ariaLabel={`More actions for ${page.title}`} items={menuItems} />
     </div>
   )
 }
@@ -196,6 +153,10 @@ export function ContentPage() {
 
   const pages = useMemo(() => pagesQuery.data?.data ?? [], [pagesQuery.data])
   const pagination = pagesQuery.data?.pagination
+  // The Publish pill only ever shows for a handful of queues — reserving room
+  // for it everywhere leaves a dead gap in front of "···" otherwise.
+  const rowActionsWidth =
+    canPublishContent && pages.some((page) => canPublish(page)) ? 110 : 56
 
   const countBase = useMemo<ContentPagesQueryParams>(
     () => ({
@@ -534,7 +495,7 @@ export function ContentPage() {
             }}
           />
         )}
-        rowActionsWidth={110}
+        rowActionsWidth={rowActionsWidth}
         rows={pages}
         search={search}
         searchPlaceholder="Search title, slug…"

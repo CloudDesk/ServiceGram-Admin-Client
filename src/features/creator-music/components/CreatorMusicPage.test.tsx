@@ -7,6 +7,7 @@ import { CreatorMusicPage } from "./CreatorMusicPage";
 
 const list = vi.spyOn(creatorMusicService, "list");
 const create = vi.spyOn(creatorMusicService, "create");
+const detail = vi.spyOn(creatorMusicService, "detail");
 const upload = vi.spyOn(creatorMusicService, "upload");
 
 const savedTrack = {
@@ -16,7 +17,7 @@ const savedTrack = {
   artistName: "ServiceGram",
   sourceType: "LICENSED" as const,
   status: "DRAFT" as const,
-  licenseStatus: "PENDING" as const,
+  licenseStatus: "CLEARED" as const,
   durationMs: 60_000,
   previewStartMs: 0,
   previewDurationMs: 30_000,
@@ -31,6 +32,7 @@ const savedTrack = {
 beforeEach(() => {
   list.mockReset();
   create.mockReset();
+  detail.mockReset();
   upload.mockReset();
   list.mockResolvedValue({
     data: [],
@@ -38,6 +40,7 @@ beforeEach(() => {
     summary: { totalTracks: 42 },
   });
   create.mockResolvedValue({ data: savedTrack });
+  detail.mockResolvedValue({ data: savedTrack });
   upload.mockResolvedValue({ data: savedTrack });
 });
 
@@ -91,6 +94,79 @@ describe("CreatorMusicPage", () => {
     );
   });
 
+  it("requires activation-ready rights and audio before saving", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CreatorMusicPage />, {
+      initialEntry: "/app/creator-music",
+      path: "/app/creator-music",
+      permissions: ["creator_music:read", "creator_music:update"],
+    });
+
+    await user.click(await screen.findByRole("button", { name: /^track$/i }));
+    await user.type(screen.getByLabelText(/^Title/), "Calm service");
+    await user.type(screen.getByLabelText(/^Artist/), "ServiceGram");
+    await user.click(screen.getByRole("button", { name: /create track/i }));
+
+    expect(create).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Rights must be cleared before this track can be saved."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Licence provider is required.")).toBeInTheDocument();
+    expect(screen.getByText("Licence reference is required.")).toBeInTheDocument();
+    expect(screen.getByText("Upload an audio file before saving.")).toBeInTheDocument();
+  });
+
+  it("opens incomplete legacy drafts for correction instead of calling activation", async () => {
+    const user = userEvent.setup();
+    const incompleteTrack = {
+      ...savedTrack,
+      licenseStatus: "PENDING" as const,
+      license: {
+        status: "PENDING" as const,
+        provider: null,
+        reference: null,
+        validFrom: null,
+        validUntil: null,
+        territories: [],
+        attributionText: null,
+      },
+      media: {
+        audioStatus: null,
+        artworkStatus: null,
+      },
+    };
+    list.mockResolvedValue({
+      data: [incompleteTrack],
+      pagination: { page: 1, limit: 50, totalItems: 1, totalPages: 1 },
+      summary: { totalTracks: 1 },
+    });
+    detail.mockResolvedValue({ data: incompleteTrack });
+
+    renderWithProviders(<CreatorMusicPage />, {
+      initialEntry: "/app/creator-music",
+      path: "/app/creator-music",
+      permissions: [
+        "creator_music:read",
+        "creator_music:update",
+        "creator_music:publish",
+      ],
+    });
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "More actions for Calm service",
+      }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Activate" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /cleared licence status.*licence provider.*licence reference.*licensed territory.*available audio/i,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Edit MUSIC-TEST" }),
+    ).toBeInTheDocument();
+  });
+
   it("creates metadata before uploading selected audio and artwork", async () => {
     const user = userEvent.setup();
     renderWithProviders(<CreatorMusicPage />, {
@@ -100,8 +176,11 @@ describe("CreatorMusicPage", () => {
     });
 
     await user.click(await screen.findByRole("button", { name: /^track$/i }));
-    await user.type(screen.getByLabelText("Title"), "Calm service");
-    await user.type(screen.getByLabelText("Artist"), "ServiceGram");
+    await user.type(screen.getByLabelText(/^Title/), "Calm service");
+    await user.type(screen.getByLabelText(/^Artist/), "ServiceGram");
+    await user.selectOptions(screen.getByLabelText(/^Licence status/), "CLEARED");
+    await user.type(screen.getByLabelText(/^Licence provider/), "Example Music");
+    await user.type(screen.getByLabelText(/^Licence reference/), "LIC-2026-001");
     await user.upload(
       screen.getByLabelText(/choose audio/i),
       new File(["audio"], "calm.mp3", { type: "audio/mpeg" }),
@@ -113,6 +192,14 @@ describe("CreatorMusicPage", () => {
     await user.click(screen.getByRole("button", { name: /create track/i }));
 
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        licenseStatus: "CLEARED",
+        licenseProvider: "Example Music",
+        licenseReference: "LIC-2026-001",
+        licensedTerritories: ["IN"],
+      }),
+    );
     expect(upload).toHaveBeenNthCalledWith(
       1,
       savedTrack.trackId,

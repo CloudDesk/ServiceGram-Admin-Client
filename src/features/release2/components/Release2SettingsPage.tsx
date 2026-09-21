@@ -107,7 +107,7 @@ export function Release2SettingsPage() {
     <PageContextHeader
       actionNode={
         <Button
-          aria-label="Refresh Release 2 settings"
+          aria-label="Refresh app configuration"
           className="h-9"
           disabled={settingsQuery.isFetching}
           size="sm"
@@ -126,7 +126,7 @@ export function Release2SettingsPage() {
       }
       layout="document"
       placement="topbar"
-      title="Release 2 Settings"
+      title="App Configuration"
     />
   )
 
@@ -163,7 +163,7 @@ export function Release2SettingsPage() {
         <ErrorState
           description={errorMessage(
             settingsQuery.error,
-            'Could not load Release 2 settings.',
+            'Could not load app configuration.',
           )}
           title="Settings unavailable"
           onRetry={() => void settingsQuery.refetch()}
@@ -178,7 +178,7 @@ export function Release2SettingsPage() {
 
       {summary ? (
         <RecordMetricStrip
-          ariaLabel="Release 2 settings summary"
+          ariaLabel="App configuration summary"
           metrics={[
             { label: 'Groups', value: String(summary.groupCount) },
             { label: 'Settings', value: String(summary.itemCount) },
@@ -223,7 +223,7 @@ export function Release2SettingsPage() {
 
       {filteredGroups.length === 0 ? (
         <EmptyState
-          description="No Release 2 setting matches this search or filter."
+          description="No app setting matches this search or filter."
           title="Nothing to show"
         />
       ) : (

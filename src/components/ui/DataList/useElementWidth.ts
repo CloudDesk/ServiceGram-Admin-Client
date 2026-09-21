@@ -1,6 +1,6 @@
 import { useEffect, useState, type RefObject } from 'react'
 
-/** Tracks an element's content width so the grid can drop columns to fit. */
+/** Tracks the list viewport width for flexible column sizing. */
 export function useElementWidth(ref: RefObject<HTMLElement | null>) {
   const [width, setWidth] = useState(0)
 

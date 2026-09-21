@@ -27,6 +27,8 @@ interface ListSelectionToolbarProps {
   actions?: ReactNode
   onClear: () => void
   onSelectVisible: () => void
+  singularItemName?: string
+  pluralItemName?: string
 }
 
 export function ListSelectionCheckbox({
@@ -93,7 +95,9 @@ export function ListSelectionToolbar({
   className,
   onClear,
   onSelectVisible,
+  pluralItemName = 'records',
   selectedCount,
+  singularItemName = 'record',
   visibleCount,
 }: ListSelectionToolbarProps) {
   if (selectedCount === 0) {
@@ -112,7 +116,7 @@ export function ListSelectionToolbar({
           {selectedCount}
         </span>
         <span className="font-medium">
-          {selectedCount === 1 ? 'record selected' : 'records selected'}
+          {selectedCount === 1 ? singularItemName : pluralItemName} selected
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2">

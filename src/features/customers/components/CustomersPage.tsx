@@ -398,24 +398,6 @@ export function CustomersPage() {
         ),
       },
       {
-        id: 'signals',
-        label: 'Signals',
-        defaultWidth: 72,
-        minWidth: 64,
-        priority: 1,
-        render: (customer) =>
-          customer.warnings.length ? (
-            <span
-              className="inline-flex min-w-5 items-center justify-center rounded-[0.35rem] bg-warning/12 px-1.5 text-xs font-semibold tabular-nums text-warning"
-              title={customer.warnings.join(', ')}
-            >
-              {customer.warnings.length}
-            </span>
-          ) : (
-            <span className="text-muted">—</span>
-          ),
-      },
-      {
         id: 'location',
         label: 'Location',
         defaultWidth: 150,
@@ -541,7 +523,6 @@ export function CustomersPage() {
         header: 'Wallet credit (INR)',
         value: (customer) => (customer.walletSummary.creditBalancePaise ?? 0) / 100,
       },
-      { header: 'Signals', value: (customer) => customer.warnings.join('; ') },
       { header: 'Created', value: (customer) => customer.createdAt },
     ])
   }

@@ -356,7 +356,6 @@ export function PaymentsPage() {
         value: (payment) => payment.refundSummary.requestedCount,
       },
       { header: 'Failure code', value: (payment) => payment.failureCode ?? '' },
-      { header: 'Signals', value: (payment) => payment.warnings.join('; ') },
     ])
   }
 

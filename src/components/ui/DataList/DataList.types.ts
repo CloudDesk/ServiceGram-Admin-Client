@@ -17,11 +17,7 @@ export const DATA_LIST_HEADER_HEIGHT = 32
 
 export type DataListAlign = 'left' | 'right'
 
-/**
- * Responsive priority. When the viewport cannot fit every visible column, the
- * lowest priority is dropped first. Priority 1 columns are never dropped —
- * they are what identifies the record.
- */
+/** Legacy importance hint retained for existing column definitions. */
 export type DataListPriority = 1 | 2 | 3 | 4
 
 export interface DataListColumn<TRow> {
@@ -29,7 +25,7 @@ export interface DataListColumn<TRow> {
   label: string
   defaultWidth: number
   minWidth: number
-  /** Lower drops first when width is tight. Defaults to 3. */
+  /** Importance metadata retained for compatibility. */
   priority?: DataListPriority
   align?: DataListAlign
   /** Column expands to fill leftover space. At most one column should set this. */

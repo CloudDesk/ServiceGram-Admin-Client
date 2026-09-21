@@ -622,43 +622,6 @@ function buildColumns(): PriorityDynamicTableColumn[] {
       ),
     },
     {
-      key: 'signals',
-      label: 'Signals',
-      minWidth: 240,
-      // Not priority 1: the recommended action already renders as the inline
-      // button in the Actions column, so this can drop before the table
-      // resorts to a horizontal scrollbar.
-      priority: 2,
-      renderCell: (order) => {
-        const recommended = mapRecommendedAction(order)
-
-        return (
-          <div className="space-y-2">
-            <p className="text-sm font-semibold text-foreground">
-              {actionLabel(recommended)}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {order.warnings.length ? (
-                order.warnings.slice(0, 2).map((warning) => (
-                  <Badge key={warning} tone="warning">
-                    {humanizeCode(warning)}
-                  </Badge>
-                ))
-              ) : (
-                <Badge tone="success">No warnings</Badge>
-              )}
-              {order.warnings.length > 2 ? (
-                <Badge tone="warning">+{order.warnings.length - 2}</Badge>
-              ) : null}
-            </div>
-            <p className="text-xs text-muted">
-              {order.availableActions.length} available actions
-            </p>
-          </div>
-        )
-      },
-    },
-    {
       key: 'value',
       label: 'Value',
       minWidth: 170,

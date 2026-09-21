@@ -175,3 +175,63 @@ describe('MediaReelPolicyModal server error mapping', () => {
     expect(screen.getByDisplayValue('99')).toBeInTheDocument()
   })
 })
+
+describe('MediaReelPolicyModal version conflicts', () => {
+  it('preserves the unsaved edit and offers Reload latest, which fetches the fresh version silently', async () => {
+    const record = buildRule({ version: 3 })
+    const conflictError = new SettingsServiceError(
+      'This policy was updated by someone else.',
+      409,
+      'POLICY_RULE_VERSION_CONFLICT',
+      {
+        details: {
+          reason: 'The expectedVersion does not match the current policy version.',
+          action: 'Reload the policy, review the latest changes, and try again.',
+          metadata: { currentVersion: 4 },
+        },
+      },
+    )
+
+    const { onClearError, onReloadLatest } = renderModal({
+      action: { action: 'EDIT', record },
+      error: conflictError,
+    })
+
+    fireEvent.change(screen.getByPlaceholderText('Default content rules'), {
+      target: { value: 'My in-progress edit' },
+    })
+
+    expect(await screen.findByText('This policy was updated by someone else.')).toBeInTheDocument()
+    expect(screen.getByText(/Current version is 4\./)).toBeInTheDocument()
+    expect(screen.getByText('Your unsaved changes are still here.')).toBeInTheDocument()
+    // The conflict must not have wiped the field the user was mid-edit on.
+    expect(screen.getByDisplayValue('My in-progress edit')).toBeInTheDocument()
+
+    const freshRecord = buildRule({ version: 4, displayName: 'Default content rules (edited elsewhere)' })
+    onReloadLatest.mockResolvedValueOnce(freshRecord)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reload latest' }))
+
+    await vi.waitFor(() => expect(onReloadLatest).toHaveBeenCalledWith(
+      expect.objectContaining({ policyRuleId: 'rule-1', scopeType: 'GLOBAL' }),
+    ))
+    await vi.waitFor(() => expect(onClearError).toHaveBeenCalled())
+    // Reload must not have discarded the user's still-unsaved typed value.
+    expect(screen.getByDisplayValue('My in-progress edit')).toBeInTheDocument()
+  })
+
+  it('does not map a version-conflict as a field error or open the confirm step', async () => {
+    const record = buildRule()
+    const conflictError = new SettingsServiceError(
+      'Reload this policy before saving your changes.',
+      409,
+      'POLICY_RULE_VERSION_REQUIRED',
+      { details: { metadata: { currentVersion: 4 } } },
+    )
+
+    renderModal({ action: { action: 'EDIT', record }, error: conflictError })
+
+    expect(await screen.findByText('Reload this policy before saving your changes.')).toBeInTheDocument()
+    expect(screen.queryByText('Confirm content rule changes')).not.toBeInTheDocument()
+  })
+})

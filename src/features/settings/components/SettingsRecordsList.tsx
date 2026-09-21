@@ -1,5 +1,5 @@
-import { Edit3, ExternalLink, History, MoreHorizontal, Power } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Edit3, ExternalLink, History, Power } from 'lucide-react'
+import { useMemo, type ReactNode } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { DataList } from '../../../components/ui/DataList'
 import type {
@@ -7,7 +7,7 @@ import type {
   DataListPagination,
   DataListQueueTab,
 } from '../../../components/ui/DataList'
-import { cn } from '../../../utils/cn'
+import { RowActionMenu, type RowActionMenuItem } from '../../../components/ui/RowActionMenu'
 import type { SettingsRecordType } from '../types/settings.types'
 import type { SettingsActionSelection } from './SettingsActionModal'
 
@@ -89,34 +89,39 @@ function RowActions<TRow>({
   onOpenDetail,
   row,
 }: RowActionsProps<TRow>) {
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return undefined
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [open])
-
   const primary = actions.find((action) => !action.destructive)
   const overflow = actions.filter((action) => action !== primary)
   const hasOverflow = overflow.length > 0 || Boolean(canReadAudit && onOpenAudit)
 
+  const menuItems: RowActionMenuItem[] = []
+  if (hasOverflow) {
+    menuItems.push({
+      key: 'open-detail',
+      label: 'Open detail',
+      icon: <ExternalLink className="size-3.5" />,
+      onClick: () => onOpenDetail(row),
+    })
+  }
+  if (canReadAudit && onOpenAudit) {
+    menuItems.push({
+      key: 'audit',
+      label: 'Audit history',
+      icon: <History className="size-3.5" />,
+      onClick: () => onOpenAudit(row),
+    })
+  }
+  overflow.forEach((action) => {
+    menuItems.push({
+      key: action.label,
+      label: action.label,
+      icon: <Power className="size-3.5" />,
+      tone: action.destructive ? 'danger' : 'default',
+      onClick: () => onOpenAction(action.action),
+    })
+  })
+
   return (
-    <div ref={containerRef} className="relative flex items-center justify-end gap-1">
+    <div className="flex items-center justify-end gap-1">
       {primary ? (
         <Button
           className="h-6.5 min-h-0 whitespace-nowrap px-2 text-xs font-medium"
@@ -136,75 +141,7 @@ function RowActions<TRow>({
         </Button>
       ) : null}
 
-      {hasOverflow ? (
-        <>
-          <button
-            aria-expanded={open}
-            aria-haspopup="menu"
-            aria-label="More actions"
-            className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-[0.4rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-          >
-            <MoreHorizontal className="size-3.5" />
-          </button>
-
-          {open ? (
-            <div
-              className="absolute right-0 top-8 z-40 min-w-[11rem] rounded-[0.6rem] border border-border bg-surface p-1 shadow-lg"
-              role="menu"
-            >
-              <button
-                className="flex w-full items-center gap-2 rounded-[0.45rem] px-2 py-1.5 text-left text-sm transition hover:bg-surface-muted"
-                role="menuitem"
-                type="button"
-                onClick={() => {
-                  setOpen(false)
-                  onOpenDetail(row)
-                }}
-              >
-                <ExternalLink className="size-3.5" />
-                Open detail
-              </button>
-
-              {canReadAudit && onOpenAudit ? (
-                <button
-                  className="flex w-full items-center gap-2 rounded-[0.45rem] px-2 py-1.5 text-left text-sm transition hover:bg-surface-muted"
-                  role="menuitem"
-                  type="button"
-                  onClick={() => {
-                    setOpen(false)
-                    onOpenAudit(row)
-                  }}
-                >
-                  <History className="size-3.5" />
-                  Audit history
-                </button>
-              ) : null}
-
-              {overflow.map((action) => (
-                <button
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-[0.45rem] px-2 py-1.5 text-left text-sm transition hover:bg-surface-muted',
-                    action.destructive && 'text-danger hover:bg-danger/10',
-                  )}
-                  disabled={isSubmitting}
-                  key={action.label}
-                  role="menuitem"
-                  type="button"
-                  onClick={() => {
-                    setOpen(false)
-                    onOpenAction(action.action)
-                  }}
-                >
-                  <Power className="size-3.5" />
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </>
-      ) : null}
+      <RowActionMenu ariaLabel="More actions" items={menuItems} />
     </div>
   )
 }
@@ -297,7 +234,15 @@ export function SettingsRecordsList<TRow>({
           onOpenDetail={onOpenDetail}
         />
       )}
-      rowActionsWidth={132}
+      rowActionsWidth={
+        // The primary pill (Edit/Activate/...) only shows for rows whose
+        // getRowActions() returns a non-destructive action — reserving room
+        // for it when nothing on the page has one leaves a dead gap in front
+        // of "···".
+        rows.some((row) => getRowActions(row).some((action) => !action.destructive))
+          ? 132
+          : 56
+      }
       rows={rows}
       search={search}
       searchPlaceholder={searchPlaceholder}

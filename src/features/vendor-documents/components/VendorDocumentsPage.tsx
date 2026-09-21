@@ -36,10 +36,9 @@ import {
   humanizeCode,
 } from '../../vendors/vendorPresenters'
 import type {
-  VendorDocumentListItem,
   VendorDocumentListQueryParams,
-  VendorDocumentListVendor,
   VendorDocumentMediaStatus,
+  VendorDocumentReviewGroup,
   VendorDocumentStatus,
   VendorDocumentType,
   VendorOnboardingStatus,
@@ -108,25 +107,8 @@ const documentReviewQueueItems: {
   { key: 'verified', label: 'Verified' },
 ]
 
-interface VendorDocumentGroupCounts {
-  expired: number
-  mediaIssues: number
-  pending: number
-  rejected: number
-  total: number
-  verified: number
-  warnings: number
-}
-
-interface VendorDocumentGroup {
-  counts: VendorDocumentGroupCounts
-  documents: VendorDocumentListItem[]
-  latestUpdatedAt: string
-  vendor: VendorDocumentListVendor
-}
-
 interface DocumentActionTarget {
-  group: VendorDocumentGroup
+  group: VendorDocumentReviewGroup
   kind: DocumentActionKind
 }
 
@@ -141,130 +123,7 @@ function positiveIntegerParam(value: string | null, fallback: number) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
-function documentHasMediaIssue(row: VendorDocumentListItem) {
-  return !row.mediaAssetId || Boolean(row.media && row.media.status !== 'AVAILABLE')
-}
-
-function documentNeedsAdminAction(row: VendorDocumentListItem) {
-  return (
-    row.availableActions.includes('VERIFY_DOCUMENT') ||
-    row.availableActions.includes('REJECT_DOCUMENT')
-  )
-}
-
-function getUpdatedTime(value: string | null | undefined) {
-  if (!value) return 0
-  const parsed = new Date(value).getTime()
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-function compareDocumentRows(
-  left: VendorDocumentListItem,
-  right: VendorDocumentListItem,
-) {
-  const statusPriority: Record<VendorDocumentStatus, number> = {
-    PENDING: 0,
-    REJECTED: 1,
-    EXPIRED: 2,
-    VERIFIED: 3,
-  }
-
-  const statusDelta = statusPriority[left.status] - statusPriority[right.status]
-  if (statusDelta !== 0) return statusDelta
-
-  return getUpdatedTime(right.updatedAt) - getUpdatedTime(left.updatedAt)
-}
-
-function buildDocumentGroups(
-  documents: VendorDocumentListItem[],
-): VendorDocumentGroup[] {
-  const groupsByVendor = new Map<string, VendorDocumentGroup>()
-
-  documents.forEach((document) => {
-    const vendorId = document.vendor.vendorId
-    const existing = groupsByVendor.get(vendorId)
-
-    if (existing) {
-      existing.documents.push(document)
-      return
-    }
-
-    groupsByVendor.set(vendorId, {
-      counts: {
-        expired: 0,
-        mediaIssues: 0,
-        pending: 0,
-        rejected: 0,
-        total: 0,
-        verified: 0,
-        warnings: 0,
-      },
-      documents: [document],
-      latestUpdatedAt: document.updatedAt,
-      vendor: document.vendor,
-    })
-  })
-
-  return [...groupsByVendor.values()]
-    .map((group) => {
-      const documentsInReviewOrder = [...group.documents].sort(compareDocumentRows)
-      const counts = documentsInReviewOrder.reduce<VendorDocumentGroupCounts>(
-        (nextCounts, document) => {
-          nextCounts.total += 1
-
-          if (document.status === 'PENDING') nextCounts.pending += 1
-          if (document.status === 'VERIFIED') nextCounts.verified += 1
-          if (document.status === 'REJECTED') nextCounts.rejected += 1
-          if (document.status === 'EXPIRED') nextCounts.expired += 1
-          if (documentHasMediaIssue(document)) nextCounts.mediaIssues += 1
-          if (document.warnings.length > 0) nextCounts.warnings += 1
-
-          return nextCounts
-        },
-        {
-          expired: 0,
-          mediaIssues: 0,
-          pending: 0,
-          rejected: 0,
-          total: 0,
-          verified: 0,
-          warnings: 0,
-        },
-      )
-      const latestUpdatedAt =
-        documentsInReviewOrder
-          .map((document) => document.updatedAt)
-          .sort((left, right) => getUpdatedTime(right) - getUpdatedTime(left))[0] ??
-        group.latestUpdatedAt
-
-      return {
-        ...group,
-        counts,
-        documents: documentsInReviewOrder,
-        latestUpdatedAt,
-      }
-    })
-    .sort((left, right) => {
-      const leftActionable = left.documents.some(documentNeedsAdminAction) ? 1 : 0
-      const rightActionable = right.documents.some(documentNeedsAdminAction) ? 1 : 0
-
-      if (leftActionable !== rightActionable) {
-        return rightActionable - leftActionable
-      }
-
-      if (left.counts.mediaIssues !== right.counts.mediaIssues) {
-        return right.counts.mediaIssues - left.counts.mediaIssues
-      }
-
-      if (left.counts.pending !== right.counts.pending) {
-        return right.counts.pending - left.counts.pending
-      }
-
-      return getUpdatedTime(right.latestUpdatedAt) - getUpdatedTime(left.latestUpdatedAt)
-    })
-}
-
-function getGroupReviewState(group: VendorDocumentGroup): ReviewState {
+function getGroupReviewState(group: VendorDocumentReviewGroup): ReviewState {
   if (group.counts.mediaIssues > 0) {
     return { label: 'Media issue', tone: 'danger' }
   }
@@ -304,6 +163,11 @@ function buildQuery(searchParams: URLSearchParams): VendorDocumentListQueryParam
     mediaStatus:
       (searchParams.get('mediaStatus') as VendorDocumentMediaStatus | null) ||
       undefined,
+    reviewQueue:
+      searchParams.get('reviewQueue') === 'MEDIA_ISSUE' ||
+      searchParams.get('documentQueue') === 'mediaIssue'
+        ? 'MEDIA_ISSUE'
+        : undefined,
     onboardingStatus:
       (searchParams.get('onboardingStatus') as VendorOnboardingStatus | null) ||
       undefined,
@@ -312,7 +176,7 @@ function buildQuery(searchParams: URLSearchParams): VendorDocumentListQueryParam
   }
 }
 
-function vendorActionContext(group: VendorDocumentGroup) {
+function vendorActionContext(group: VendorDocumentReviewGroup) {
   return {
     ownerName: group.vendor.ownerName,
     publicVendorId: group.vendor.publicVendorId,
@@ -322,9 +186,8 @@ function vendorActionContext(group: VendorDocumentGroup) {
 
 function getActiveDocumentQueue(
   query: VendorDocumentListQueryParams,
-  queueParam: string | null,
 ): DocumentReviewQueueKey {
-  if (queueParam === 'mediaIssue') return 'mediaIssue'
+  if (query.reviewQueue === 'MEDIA_ISSUE') return 'mediaIssue'
   if (query.documentStatus === 'PENDING') return 'needsReview'
   if (query.documentStatus === 'REJECTED') return 'rejected'
   if (query.documentStatus === 'VERIFIED') return 'verified'
@@ -332,18 +195,7 @@ function getActiveDocumentQueue(
   return 'all'
 }
 
-function filterDocumentGroupsByQueue(
-  groups: VendorDocumentGroup[],
-  queue: DocumentReviewQueueKey,
-) {
-  if (queue === 'mediaIssue') {
-    return groups.filter((group) => group.counts.mediaIssues > 0)
-  }
-
-  return groups
-}
-
-function DocumentSummaryChips({ group }: { group: VendorDocumentGroup }) {
+function DocumentSummaryChips({ group }: { group: VendorDocumentReviewGroup }) {
   const hasReviewIssue =
     group.counts.pending > 0 ||
     group.counts.rejected > 0 ||
@@ -381,15 +233,15 @@ function DocumentSummaryChips({ group }: { group: VendorDocumentGroup }) {
 }
 
 interface RowActionsProps {
-  group: VendorDocumentGroup
-  onAddNote: (group: VendorDocumentGroup) => void
-  onOpenVendor: (group: VendorDocumentGroup) => void
-  onReview: (group: VendorDocumentGroup) => void
+  group: VendorDocumentReviewGroup
+  onAddNote: (group: VendorDocumentReviewGroup) => void
+  onOpenVendor: (group: VendorDocumentReviewGroup) => void
+  onReview: (group: VendorDocumentReviewGroup) => void
 }
 
 /** Mirrors CustomersPage's RowActions: primary action stays inline, everything else behind the overflow menu. */
 function RowActions({ group, onAddNote, onOpenVendor, onReview }: RowActionsProps) {
-  const needsAction = group.documents.some(documentNeedsAdminAction)
+  const needsAction = group.requiresReview
 
   const menuItems: RowActionMenuItem[] = [
     {
@@ -437,7 +289,6 @@ export function VendorDocumentsPage() {
   const { pushToast } = useToast()
   const query = useMemo(() => buildQuery(searchParams), [searchParams])
   const categoryLabel = searchParams.get('categoryLabel') ?? ''
-  const queueParam = searchParams.get('documentQueue')
 
   const updateParams = useCallback(
     (
@@ -459,12 +310,14 @@ export function VendorDocumentsPage() {
         next.set('page', '1')
       }
 
+      setSelectedVendorIds([])
       setSearchParams(next, { replace: true })
     },
     [searchParams, setSearchParams],
   )
 
   const clearFilters = () => {
+    setSelectedVendorIds([])
     setSearchParams(new URLSearchParams({ page: '1', limit: String(query.limit) }), {
       replace: true,
     })
@@ -477,20 +330,14 @@ export function VendorDocumentsPage() {
     staleTime: 20_000,
   })
 
-  const documents = useMemo(
+  const documentGroups = useMemo(
     () => documentQuery.data?.data ?? [],
     [documentQuery.data?.data],
   )
-  const documentGroups = useMemo(() => buildDocumentGroups(documents), [documents])
-  const activeQueue = useMemo(
-    () => getActiveDocumentQueue(query, queueParam),
-    [query, queueParam],
-  )
-  const visibleDocumentGroups = useMemo(
-    () => filterDocumentGroupsByQueue(documentGroups, activeQueue),
-    [activeQueue, documentGroups],
-  )
+  const activeQueue = useMemo(() => getActiveDocumentQueue(query), [query])
+  const visibleDocumentGroups = documentGroups
   const pagination = documentQuery.data?.pagination
+  const summary = documentQuery.data?.summary
 
   const actionMutation = useMutation({
     mutationFn: async ({
@@ -523,13 +370,13 @@ export function VendorDocumentsPage() {
 
   const applyQueue = (queue: DocumentReviewQueueKey) => {
     if (queue === 'all') {
-      updateParams({ documentQueue: null, documentStatus: null, mediaStatus: null })
+      updateParams({ reviewQueue: null, documentStatus: null, mediaStatus: null })
       return
     }
 
     if (queue === 'needsReview') {
       updateParams({
-        documentQueue: null,
+        reviewQueue: null,
         documentStatus: 'PENDING',
         mediaStatus: null,
       })
@@ -538,7 +385,7 @@ export function VendorDocumentsPage() {
 
     if (queue === 'rejected') {
       updateParams({
-        documentQueue: null,
+        reviewQueue: null,
         documentStatus: 'REJECTED',
         mediaStatus: null,
       })
@@ -547,25 +394,29 @@ export function VendorDocumentsPage() {
 
     if (queue === 'verified') {
       updateParams({
-        documentQueue: null,
+        reviewQueue: null,
         documentStatus: 'VERIFIED',
         mediaStatus: null,
       })
       return
     }
 
-    updateParams({ documentQueue: 'mediaIssue', documentStatus: null, mediaStatus: null })
+    updateParams({
+      reviewQueue: 'MEDIA_ISSUE',
+      documentStatus: null,
+      mediaStatus: null,
+    })
   }
 
-  const openDocumentAction = (group: VendorDocumentGroup, kind: DocumentActionKind) => {
+  const openDocumentAction = (group: VendorDocumentReviewGroup, kind: DocumentActionKind) => {
     setActionTarget({ group, kind })
   }
 
-  const openVendorDetail = (group: VendorDocumentGroup) => {
+  const openVendorDetail = (group: VendorDocumentReviewGroup) => {
     navigate(`${routePaths.vendors}/${group.vendor.vendorId}`)
   }
 
-  const openDocumentReviewDetail = (group: VendorDocumentGroup) => {
+  const openDocumentReviewDetail = (group: VendorDocumentReviewGroup) => {
     navigate(`${routePaths.vendorDocuments}/${group.vendor.vendorId}`)
   }
 
@@ -580,13 +431,18 @@ export function VendorDocumentsPage() {
 
   const appliedFilterCount = [
     query.documentType,
+    query.mediaStatus,
     query.city,
     query.categoryId,
     query.onboardingStatus,
     query.vendorStatus,
   ].filter(Boolean).length
+  const documentTotalLabel =
+    activeQueue === 'all' && appliedFilterCount === 0 && !query.search
+      ? 'document'
+      : 'matching document'
 
-  const columns: DataListColumn<VendorDocumentGroup>[] = useMemo(
+  const columns: DataListColumn<VendorDocumentReviewGroup>[] = useMemo(
     () => [
       {
         id: 'vendor',
@@ -768,7 +624,7 @@ export function VendorDocumentsPage() {
                 value={query.documentStatus ?? ''}
                 onChange={(event) =>
                   updateParams({
-                    documentQueue: null,
+                    reviewQueue: null,
                     documentStatus: event.target.value,
                   })
                 }
@@ -833,7 +689,10 @@ export function VendorDocumentsPage() {
                 className={filterInputClass}
                 value={query.mediaStatus ?? ''}
                 onChange={(event) =>
-                  updateParams({ documentQueue: null, mediaStatus: event.target.value })
+                  updateParams({
+                    reviewQueue: null,
+                    mediaStatus: event.target.value,
+                  })
                 }
               >
                 <option value="">All media</option>
@@ -892,6 +751,11 @@ export function VendorDocumentsPage() {
           pageSize: query.limit ?? DEFAULT_PAGE_SIZE,
           totalItems: pagination?.totalItems ?? 0,
           totalPages: pagination?.totalPages ?? 1,
+          itemName: { singular: 'vendor', plural: 'vendors' },
+          pageSizeLabel: 'Vendors',
+          summaryLabel: `${summary?.totalMatchingDocuments ?? 0} ${documentTotalLabel}${
+            summary?.totalMatchingDocuments === 1 ? '' : 's'
+          }`,
           onPageChange: (page) => updateParams({ page }, { resetPage: false }),
           onPageSizeChange: (limit) =>
             updateParams({ limit, page: 1 }, { resetPage: false }),
@@ -912,10 +776,11 @@ export function VendorDocumentsPage() {
         selection={{
           selectedIds: selectedVendorIds,
           onSelectionChange: setSelectedVendorIds,
+          itemName: { singular: 'vendor', plural: 'vendors' },
           actions: (
             <Button size="sm" type="button" variant="ghost" onClick={exportSelected}>
               <Download className="mr-1.5 size-3.5" />
-              Export CSV
+              Export vendors
             </Button>
           ),
         }}

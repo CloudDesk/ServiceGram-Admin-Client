@@ -1,5 +1,5 @@
-import { Download, MoreHorizontal, Plus, RefreshCcw } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Download, Plus, RefreshCcw } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
@@ -8,6 +8,7 @@ import { DataList } from '../../../components/ui/DataList'
 import type { DataListColumn, DataListQueueTab } from '../../../components/ui/DataList'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import { RowActionMenu, type RowActionMenuItem } from '../../../components/ui/RowActionMenu'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
@@ -92,35 +93,19 @@ function RowActions({
   onAction,
   payout,
 }: RowActionsProps) {
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return undefined
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [open])
-
   if (!canApprovePayouts) return null
 
   const primary = getRowPrimaryAction(payout)
   const overflow = getOverflowActions(payout, primary)
+  const menuItems: RowActionMenuItem[] = overflow.map((kind) => ({
+    key: kind,
+    label: payoutActionLabel(kind),
+    tone: isDestructivePayoutAction(kind) ? 'danger' : 'default',
+    onClick: () => onAction(kind, payout),
+  }))
 
   return (
-    <div ref={containerRef} className="relative flex items-center justify-end gap-1">
+    <div className="flex items-center justify-end gap-1">
       {primary ? (
         <Button
           className="h-6.5 min-h-0 whitespace-nowrap px-2 text-xs font-medium"
@@ -134,46 +119,10 @@ function RowActions({
         </Button>
       ) : null}
 
-      {overflow.length ? (
-        <>
-          <button
-            aria-expanded={open}
-            aria-haspopup="menu"
-            aria-label={`More actions for payout ${payout.payoutId}`}
-            className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-[0.4rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-          >
-            <MoreHorizontal className="size-3.5" />
-          </button>
-
-          {open ? (
-            <div
-              className="absolute right-0 top-8 z-40 min-w-[11rem] rounded-[0.6rem] border border-border bg-surface p-1 shadow-lg"
-              role="menu"
-            >
-              {overflow.map((kind) => (
-                <button
-                  className={cn(
-                    'flex w-full items-center rounded-[0.45rem] px-2 py-1.5 text-left text-sm transition hover:bg-surface-muted',
-                    isDestructivePayoutAction(kind) && 'text-danger hover:bg-danger/10',
-                  )}
-                  disabled={isSubmitting}
-                  key={kind}
-                  role="menuitem"
-                  type="button"
-                  onClick={() => {
-                    setOpen(false)
-                    onAction(kind, payout)
-                  }}
-                >
-                  {payoutActionLabel(kind)}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </>
-      ) : null}
+      <RowActionMenu
+        ariaLabel={`More actions for payout ${payout.payoutId}`}
+        items={menuItems}
+      />
     </div>
   )
 }
@@ -216,6 +165,13 @@ export function PayoutsPage() {
 
   const payouts = useMemo(() => payoutsQuery.data?.data ?? [], [payoutsQuery.data])
   const pagination = payoutsQuery.data?.pagination
+  // The primary pill (Approve/Release hold/Mark paid) only ever shows for a
+  // handful of queues — reserving room for it everywhere leaves a dead gap in
+  // front of "···" otherwise.
+  const rowActionsWidth =
+    canApprovePayouts && payouts.some((payout) => getRowPrimaryAction(payout) !== null)
+      ? 140
+      : 56
 
   const countBase = useMemo<AdminPayoutsQueryParams>(
     () => ({
@@ -491,7 +447,6 @@ export function PayoutsPage() {
       { header: 'Paid at', value: (payout) => payout.paidAt ?? '' },
       { header: 'Hold reason', value: (payout) => payout.holdReason ?? '' },
       { header: 'Failure reason', value: (payout) => payout.failureReason ?? '' },
-      { header: 'Signals', value: (payout) => payout.warnings.join('; ') },
     ])
   }
 
@@ -617,7 +572,7 @@ export function PayoutsPage() {
             }}
           />
         )}
-        rowActionsWidth={140}
+        rowActionsWidth={rowActionsWidth}
         rows={payouts}
         search={search}
         searchPlaceholder="Search payout, UTR, vendor…"

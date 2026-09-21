@@ -1,5 +1,5 @@
-import { Download, MoreHorizontal, RefreshCcw } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Download, RefreshCcw } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
@@ -8,6 +8,7 @@ import { DataList } from '../../../components/ui/DataList'
 import type { DataListColumn, DataListQueueTab } from '../../../components/ui/DataList'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import { RowActionMenu, type RowActionMenuItem } from '../../../components/ui/RowActionMenu'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
@@ -124,28 +125,6 @@ function RowActions({
   onAction,
   vendor,
 }: RowActionsProps) {
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return undefined
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [open])
-
   const availableActions = getVisibleVendorActions(getVendorActionSource(vendor))
   const canRun = (kind: VendorListActionKind) => {
     if (kind === 'APPROVE' || kind === 'REJECT') return canApproveVendors
@@ -160,9 +139,15 @@ function RowActions({
   const menuActions = availableActions.filter(
     (kind) => kind !== primaryAction && canRun(kind),
   )
+  const menuItems: RowActionMenuItem[] = menuActions.map((kind) => ({
+    key: kind,
+    label: vendorActionLabel(kind),
+    tone: isHighRiskVendorAction(kind) ? 'danger' : 'default',
+    onClick: () => onAction(vendor, kind),
+  }))
 
   return (
-    <div ref={containerRef} className="relative flex items-center justify-end gap-1">
+    <div className="flex items-center justify-end gap-1">
       {primaryAction ? (
         <Button
           className="h-6.5 min-h-0 whitespace-nowrap px-2 text-xs font-medium"
@@ -177,45 +162,7 @@ function RowActions({
         </Button>
       ) : null}
 
-      {menuActions.length ? (
-        <>
-          <button
-            aria-expanded={open}
-            aria-haspopup="menu"
-            aria-label={`More actions for ${vendor.shopName}`}
-            className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-[0.4rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-          >
-            <MoreHorizontal className="size-3.5" />
-          </button>
-
-          {open ? (
-            <div
-              className="absolute right-0 top-8 z-40 min-w-[11rem] rounded-[0.6rem] border border-border bg-surface p-1 shadow-lg"
-              role="menu"
-            >
-              {menuActions.map((kind) => (
-                <button
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-[0.45rem] px-2 py-1.5 text-left text-sm transition hover:bg-surface-muted',
-                    isHighRiskVendorAction(kind) && 'text-danger',
-                  )}
-                  key={kind}
-                  role="menuitem"
-                  type="button"
-                  onClick={() => {
-                    setOpen(false)
-                    onAction(vendor, kind)
-                  }}
-                >
-                  {vendorActionLabel(kind)}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </>
-      ) : null}
+      <RowActionMenu ariaLabel={`More actions for ${vendor.shopName}`} items={menuItems} />
     </div>
   )
 }
@@ -264,6 +211,13 @@ export function VendorsPage({
 
   const vendors = useMemo(() => vendorsQuery.data?.data ?? [], [vendorsQuery.data])
   const pagination = vendorsQuery.data?.pagination
+  // The primary pill (Approve/Reactivate) only ever shows for a handful of
+  // queues — reserving room for it on every queue leaves a dead gap in front
+  // of "···" wherever nothing on the page recommends it (e.g. Active).
+  const rowActionsWidth =
+    canApproveVendors && vendors.some((vendor) => getRowPrimaryAction(vendor) !== null)
+      ? 140
+      : 56
 
   const countBase = useMemo<VendorListQueryParams>(
     () => ({
@@ -482,24 +436,6 @@ export function VendorsPage({
         ),
       },
       {
-        id: 'signals',
-        label: 'Signals',
-        defaultWidth: 70,
-        minWidth: 62,
-        priority: 1,
-        render: (vendor) =>
-          vendor.warnings.length ? (
-            <span
-              className="inline-flex min-w-5 items-center justify-center rounded-[0.35rem] bg-warning/12 px-1.5 text-xs font-semibold tabular-nums text-warning"
-              title={vendor.warnings.join(', ')}
-            >
-              {vendor.warnings.length}
-            </span>
-          ) : (
-            <span className="text-muted">—</span>
-          ),
-      },
-      {
         id: 'location',
         label: 'Location',
         defaultWidth: 150,
@@ -559,7 +495,6 @@ export function VendorsPage({
       },
       { header: 'Documents total', value: (vendor) => vendor.documentSummary?.total ?? 0 },
       { header: 'Payout', value: (vendor) => getPayoutAccountLabel(vendor) },
-      { header: 'Signals', value: (vendor) => vendor.warnings.join('; ') },
     ])
   }
 
@@ -637,7 +572,7 @@ export function VendorsPage({
             onAction={openAction}
           />
         )}
-        rowActionsWidth={140}
+        rowActionsWidth={rowActionsWidth}
         rows={vendors}
         search={search}
         searchPlaceholder="Search shop, owner, mobile…"

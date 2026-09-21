@@ -789,7 +789,7 @@ function RewardsPanel() {
             <ReasonField reason={reason} setReason={setReason} />
             <p className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-foreground">
               Debits cannot take a balance below zero. Wallet adjustments are
-              also capped by the Release 2 finance setting.
+              also capped by the configured finance limit.
             </p>
             {adjustmentMutation.isError ? (
               <p className="text-sm text-danger">
