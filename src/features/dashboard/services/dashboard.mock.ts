@@ -121,7 +121,7 @@ export const dashboardMockService = {
               availableActions: ['OPEN_QUEUE'],
               code: 'VENDOR_ONBOARDING',
               count: 1,
-              label: 'Vendor onboarding',
+              label: 'Applications under review',
               path: '/admin/vendors/onboarding-queue',
               severity: 'ATTENTION',
             },
@@ -141,7 +141,7 @@ export const dashboardMockService = {
             {
               action: 'REVIEW_VENDORS',
               code: 'PENDING_VENDOR_REVIEWS',
-              label: 'Vendors pending',
+              label: 'Applications under review',
               severity: 'ATTENTION',
               value: 1,
             },
