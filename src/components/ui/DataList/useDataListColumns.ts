@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
   DataListColumn,
   DataListDensity,
-  DataListPriority,
 } from './DataList.types'
 
 interface StoredState {
@@ -35,23 +34,21 @@ function writeStored(storageKey: string, state: StoredState) {
 interface UseDataListColumnsOptions<TRow> {
   columns: DataListColumn<TRow>[]
   storageKey: string
-  /** Measured width available to the grid. Drives responsive column dropping. */
+  /** Measured viewport width. Lets a capped grow column use available space. */
   availableWidth: number
   /** Width of the leading selection column, if any. */
   leadingWidth?: number
   /** Width of the trailing action column, if any. */
   trailingWidth?: number
+  /** Density before any persisted preference applies. Defaults to 'default'. */
+  defaultDensity?: DataListDensity
 }
 
-/**
- * Owns column visibility, width, density and responsive priority for a
- * DataList. The responsive part is the reason this exists: rather than letting
- * the grid overflow into a horizontal scrollbar, we drop the lowest-priority
- * columns until the remainder fits.
- */
+/** Owns persisted column visibility, width and density for a DataList. */
 export function useDataListColumns<TRow>({
   availableWidth,
   columns,
+  defaultDensity = 'default',
   leadingWidth = 0,
   storageKey,
   trailingWidth = 0,
@@ -67,7 +64,7 @@ export function useDataListColumns<TRow>({
     () => stored.widths ?? {},
   )
   const [density, setDensity] = useState<DataListDensity>(
-    () => stored.density ?? 'default',
+    () => stored.density ?? defaultDensity,
   )
 
   useEffect(() => {
@@ -80,70 +77,71 @@ export function useDataListColumns<TRow>({
     [widths],
   )
 
-  /** Columns the user has chosen to show, before responsive dropping. */
+  /** Checked columns are always rendered; wide configurations scroll. */
   const enabledColumns = useMemo(
     () => columns.filter((column) => !hiddenIds.includes(column.id)),
     [columns, hiddenIds],
   )
 
-  /**
-   * Columns that actually fit. Drops by ascending priority until the total
-   * fits the available width, so the table never scrolls sideways.
-   */
-  const { droppedIds, visibleColumns } = useMemo(() => {
+  const tableMinWidth = useMemo(() => {
     const gap = 8
-    // Rows are px-3, so both paddings come out of the usable width. Leaving
-    // this out is what makes the last column clip instead of dropping.
     const rowPadding = 24
     const fixedCount = (leadingWidth ? 1 : 0) + (trailingWidth ? 1 : 0)
-    const budget = availableWidth - leadingWidth - trailingWidth - rowPadding
+    const gapsTotal = Math.max(0, enabledColumns.length + fixedCount - 1) * gap
 
-    if (budget <= 0) {
-      return { droppedIds: [] as string[], visibleColumns: enabledColumns }
-    }
-
-    /** Column widths plus every gap in the row, including around the
-     *  selection and action columns. */
-    const measure = (list: DataListColumn<TRow>[]) =>
-      list.reduce((total, column) => total + widthOf(column), 0) +
-      Math.max(0, list.length + fixedCount - 1) * gap
-
-    let kept = [...enabledColumns]
-    const dropped: string[] = []
-
-    // Drop lowest priority first; within the same priority, drop from the right.
-    for (let priority = 4 as DataListPriority; priority > 1; priority--) {
-      if (measure(kept) <= budget) break
-
-      for (let index = kept.length - 1; index >= 0; index--) {
-        if (measure(kept) <= budget) break
-
-        const column = kept[index]
-        if (!column || (column.priority ?? 3) !== priority) continue
-
-        dropped.push(column.id)
-        kept = kept.filter((candidate) => candidate.id !== column.id)
-      }
-    }
-
-    return { droppedIds: dropped, visibleColumns: kept }
-  }, [availableWidth, enabledColumns, leadingWidth, trailingWidth, widthOf])
+    return (
+      rowPadding +
+      leadingWidth +
+      trailingWidth +
+      gapsTotal +
+      enabledColumns.reduce((total, column) => total + widthOf(column), 0)
+    )
+  }, [enabledColumns, leadingWidth, trailingWidth, widthOf])
 
   const gridTemplate = useMemo(() => {
     const parts: string[] = []
 
     if (leadingWidth) parts.push(`${leadingWidth}px`)
 
-    visibleColumns.forEach((column) => {
-      // Growing columns floor at 0 rather than their preferred width: cells
-      // truncate, so a narrow column is always better than an overflowing row.
-      parts.push(column.grow ? 'minmax(0, 1fr)' : `${widthOf(column)}px`)
-    })
+    // `fr` can't be capped from inside minmax()/min() — there's no CSS track
+    // syntax for "flexible, but no wider than Npx". So when a grow column
+    // declares maxWidth, its px share is computed from the table width here
+    // and emitted as a literal px value instead of `1fr`.
+    const growColumn = enabledColumns.find((column) => column.grow)
+
+    if (growColumn?.maxWidth) {
+      const gap = 8
+      const rowPadding = 24
+      const fixedCount = (leadingWidth ? 1 : 0) + (trailingWidth ? 1 : 0)
+      const gapsTotal = Math.max(0, enabledColumns.length + fixedCount - 1) * gap
+      const fixedColumnsTotal = enabledColumns.reduce(
+        (total, column) => total + (column.grow ? 0 : widthOf(column)),
+        0,
+      )
+      const viewportWidth = Math.max(availableWidth, tableMinWidth)
+      const budget = viewportWidth - leadingWidth - trailingWidth - rowPadding
+      const remaining = budget - fixedColumnsTotal - gapsTotal
+      const growWidth = Math.round(
+        Math.max(widthOf(growColumn), Math.min(growColumn.maxWidth, remaining)),
+      )
+
+      enabledColumns.forEach((column) => {
+        parts.push(column.grow ? `${growWidth}px` : `${widthOf(column)}px`)
+      })
+    } else {
+      enabledColumns.forEach((column) => {
+        parts.push(
+          column.grow
+            ? `minmax(${widthOf(column)}px, 1fr)`
+            : `${widthOf(column)}px`,
+        )
+      })
+    }
 
     if (trailingWidth) parts.push(`${trailingWidth}px`)
 
     return parts.join(' ')
-  }, [leadingWidth, trailingWidth, visibleColumns, widthOf])
+  }, [availableWidth, enabledColumns, leadingWidth, tableMinWidth, trailingWidth, widthOf])
 
   const toggleColumn = useCallback(
     (columnId: string) => {
@@ -172,15 +170,15 @@ export function useDataListColumns<TRow>({
 
   return {
     density,
-    droppedIds,
     enabledColumns,
     gridTemplate,
     hiddenIds,
     resetColumns,
     setColumnWidth,
     setDensity,
+    tableMinWidth,
     toggleColumn,
-    visibleColumns,
+    visibleColumns: enabledColumns,
     widthOf,
   }
 }

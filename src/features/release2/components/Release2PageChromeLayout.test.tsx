@@ -31,7 +31,7 @@ describe('Release 2 page chrome layout', () => {
       permissions: ['feature-flags:read', 'settings:read'],
     })
 
-    await screen.findByRole('button', { name: /refresh release 2 overview/i })
+    await screen.findByRole('button', { name: /refresh overview/i })
 
     expect(screen.getByTestId('page-chrome-actions')).toHaveAttribute(
       'data-page-layout',
@@ -46,7 +46,7 @@ describe('Release 2 page chrome layout', () => {
       permissions: ['settings:read'],
     })
 
-    await screen.findByRole('button', { name: /refresh release 2 settings/i })
+    await screen.findByRole('button', { name: /refresh app configuration/i })
 
     expect(screen.getByTestId('page-chrome-actions')).toHaveAttribute(
       'data-page-layout',

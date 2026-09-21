@@ -122,7 +122,7 @@ export function ReelCommentsModerationQueue({
             <header className="flex items-start gap-4 border-b border-border px-4 py-4 sm:px-6">
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                  Release 2 · Social
+                  Social moderation
                 </p>
                 <h2 id="comment-moderation-title" className="mt-1 text-xl font-semibold text-foreground">
                   Comment moderation

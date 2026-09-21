@@ -122,7 +122,7 @@ describe('Release2SettingDetailPage permission states', () => {
     expect(saveButton).toBeDisabled()
     expect(saveButton).toHaveAttribute(
       'title',
-      'Requires release2-finance-settings:update',
+      'Requires finance settings access',
     )
   })
 

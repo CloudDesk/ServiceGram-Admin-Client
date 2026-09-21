@@ -851,7 +851,6 @@ export function MarketingCampaignsPage() {
                     </th>
                     <th className="px-4 py-3">Campaign</th>
                     <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Audience Signals</th>
                     <th className="px-4 py-3">Frequency Cap</th>
                     <th className="px-4 py-3">Schedule</th>
                     <th className="px-4 py-3 text-right">Actions</th>
@@ -886,23 +885,6 @@ export function MarketingCampaignsPage() {
                         </td>
                         <td className="px-4 py-3.5">
                           <Badge tone={statusTone(c.status)}>{humanize(c.status)}</Badge>
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <div className="flex flex-wrap gap-1">
-                            {c.targeting.newUserRule && c.targeting.newUserRule !== 'ANY' && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
-                                <Sparkles className="size-2.5" />{humanize(c.targeting.newUserRule)}
-                              </span>
-                            )}
-                            {c.targeting.activeOrderRule && c.targeting.activeOrderRule !== 'ANY' && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
-                                <CircleDot className="size-2.5" />{humanize(c.targeting.activeOrderRule)}
-                              </span>
-                            )}
-                            {(!c.targeting.newUserRule || c.targeting.newUserRule === 'ANY') && (!c.targeting.activeOrderRule || c.targeting.activeOrderRule === 'ANY') && (
-                              <span className="text-xs text-muted">Everyone</span>
-                            )}
-                          </div>
                         </td>
                         <td className="px-4 py-3.5">
                           <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-[11px] font-bold text-primary">

@@ -8,6 +8,7 @@ import type {
   DataListDensity,
   DataListQueueTab,
 } from './DataList.types'
+import { QueueTabs } from './QueueTabs'
 
 const DENSITY_LABELS: Record<DataListDensity, string> = {
   compact: 'Compact',
@@ -112,12 +113,12 @@ interface DataListToolbarProps<TRow> {
 
   columns: DataListColumn<TRow>[]
   hiddenIds: string[]
-  droppedIds: string[]
   onToggleColumn: (id: string) => void
   onResetColumns: () => void
 
   density: DataListDensity
   onDensityChange: (density: DataListDensity) => void
+  showDensityControl?: boolean
 
   /** Module-level actions such as Create. Kept to the right of the band. */
   actions?: ReactNode
@@ -129,7 +130,6 @@ export function DataListToolbar<TRow>({
   appliedFilterCount = 0,
   columns,
   density,
-  droppedIds,
   filters,
   hiddenIds,
   onDensityChange,
@@ -141,6 +141,7 @@ export function DataListToolbar<TRow>({
   queueTabs,
   search,
   searchPlaceholder,
+  showDensityControl = true,
 }: DataListToolbarProps<TRow>) {
   return (
     <div className="shrink-0 border-b border-border bg-surface px-3 py-2">
@@ -156,40 +157,12 @@ export function DataListToolbar<TRow>({
           // Chips always get their own line. Sharing with the search field and
           // the menus clips them at every count we ship, and a queue you cannot
           // see is worse than 38px of chrome. Predictable beats packed.
-          <div className="order-last flex w-full min-w-0 items-center gap-1 overflow-x-auto">
-            {queueTabs.map((tab) => {
-              const isActive = tab.key === activeQueue
-
-              return (
-                <button
-                  key={tab.key}
-                  aria-pressed={isActive}
-                  className={cn(
-                    'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[0.65rem] border px-2.5 text-sm transition',
-                    isActive
-                      ? 'border-primary/45 bg-primary/8 font-semibold text-foreground'
-                      : 'border-transparent text-muted hover:bg-surface-muted hover:text-foreground',
-                  )}
-                  type="button"
-                  onClick={() => onQueueChange?.(tab.key)}
-                >
-                  <span>{tab.label}</span>
-                  {typeof tab.count === 'number' ? (
-                    <span
-                      className={cn(
-                        'tabular-nums text-xs',
-                        tab.tone === 'danger' && 'text-danger',
-                        tab.tone === 'warning' && 'text-warning',
-                        (!tab.tone || tab.tone === 'neutral') && 'text-muted',
-                      )}
-                    >
-                      {tab.count}
-                    </span>
-                  ) : null}
-                </button>
-              )
-            })}
-          </div>
+          <QueueTabs
+            activeKey={activeQueue}
+            className="order-last w-full"
+            tabs={queueTabs}
+            onChange={onQueueChange}
+          />
         ) : null}
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -218,7 +191,6 @@ export function DataListToolbar<TRow>({
             </p>
             {columns.map((column) => {
               const isHidden = hiddenIds.includes(column.id)
-              const isDropped = droppedIds.includes(column.id)
 
               return (
                 <label
@@ -236,14 +208,6 @@ export function DataListToolbar<TRow>({
                     onChange={() => onToggleColumn(column.id)}
                   />
                   <span className="flex-1">{column.label}</span>
-                  {isDropped && !isHidden ? (
-                    <span
-                      className="text-[0.65rem] text-muted"
-                      title="Hidden at this window width"
-                    >
-                      no room
-                    </span>
-                  ) : null}
                 </label>
               )
             })}
@@ -254,21 +218,23 @@ export function DataListToolbar<TRow>({
             </div>
           </ToolbarMenu>
 
-          <ToolbarMenu icon={<Rows3 className="size-4" />} label="Density">
-            {(Object.keys(DENSITY_LABELS) as DataListDensity[]).map((key) => (
-              <button
-                key={key}
-                className={cn(
-                  'flex w-full items-center justify-between rounded-[0.5rem] px-2 py-1.5 text-left text-sm transition hover:bg-surface-muted',
-                  density === key && 'font-semibold text-primary',
-                )}
-                type="button"
-                onClick={() => onDensityChange(key)}
-              >
-                {DENSITY_LABELS[key]}
-              </button>
-            ))}
-          </ToolbarMenu>
+          {showDensityControl ? (
+            <ToolbarMenu icon={<Rows3 className="size-4" />} label="Density">
+              {(Object.keys(DENSITY_LABELS) as DataListDensity[]).map((key) => (
+                <button
+                  key={key}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-[0.5rem] px-2 py-1.5 text-left text-sm transition hover:bg-surface-muted',
+                    density === key && 'font-semibold text-primary',
+                  )}
+                  type="button"
+                  onClick={() => onDensityChange(key)}
+                >
+                  {DENSITY_LABELS[key]}
+                </button>
+              ))}
+            </ToolbarMenu>
+          ) : null}
 
           {actions}
         </div>

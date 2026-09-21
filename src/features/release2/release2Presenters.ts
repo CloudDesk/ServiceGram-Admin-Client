@@ -136,7 +136,7 @@ const actionLabels: Record<string, string> = {
   PREVIEW: 'Preview',
   REPLACE_TARGETS: 'Edit targets',
   REVIEW_EXPIRING_FLAGS: 'Review expiring flags',
-  SEED_RELEASE2_SETTINGS: 'Seed Release 2 settings',
+  SEED_RELEASE2_SETTINGS: 'Seed app configuration',
   UPDATE: 'Edit',
   VIEW_HISTORY: 'History',
 }

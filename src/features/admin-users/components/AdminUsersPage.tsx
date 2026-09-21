@@ -1,7 +1,7 @@
 import { ArrowUpRight, Edit3, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { DataList } from '../../../components/ui/DataList'
@@ -273,16 +273,6 @@ export function AdminUsersPage() {
   return (
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
-        actionNode={
-          canCreateAdminUsers ? (
-            <Link to={`${routePaths.adminUsers}/new`}>
-              <Button size="sm" type="button" variant="secondary">
-                <Plus className="mr-2 size-4" />
-                User
-              </Button>
-            </Link>
-          ) : undefined
-        }
         layout="workspace"
         placement="topbar"
         title="Users"
@@ -352,6 +342,22 @@ export function AdminUsersPage() {
           ),
         }}
         storageKey={ADMIN_USER_LIST_STORAGE_KEY}
+        toolbarActions={
+          <Button
+            disabled={!canCreateAdminUsers}
+            size="sm"
+            title={
+              canCreateAdminUsers
+                ? 'Add admin user'
+                : 'Requires admin_users:create permission'
+            }
+            type="button"
+            onClick={() => navigate(`${routePaths.adminUsers}/new`)}
+          >
+            <Plus className="mr-1.5 size-4" />
+            Add user
+          </Button>
+        }
         onQueueChange={(key) => {
           setQueue(key as AdminUserQueueKey)
           setPage(1)

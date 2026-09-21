@@ -1,5 +1,5 @@
-import { Download, Film, MoreHorizontal, RefreshCcw } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Download, Film, RefreshCcw } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Badge } from "../../../components/ui/Badge";
@@ -11,6 +11,10 @@ import type {
 } from "../../../components/ui/DataList";
 import { PageContainer } from "../../../components/layout/PageContainer";
 import { PageContextHeader } from "../../../components/ui/PageHeader";
+import {
+  RowActionMenu,
+  type RowActionMenuItem,
+} from "../../../components/ui/RowActionMenu";
 import { routePaths } from "../../../config/routes";
 import { usePermission } from "../../../hooks/usePermission";
 import { cn } from "../../../utils/cn";
@@ -93,28 +97,6 @@ function RowActions({
   onAction,
   reel,
 }: RowActionsProps) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
-
   const primaryAction = getRowPrimaryAction({
     canDeleteReels,
     canModerateReels,
@@ -126,12 +108,15 @@ function RowActions({
     primaryAction,
     reel,
   });
+  const menuItems: RowActionMenuItem[] = overflowActions.map((kind) => ({
+    key: kind,
+    label: reelActionLabel(kind),
+    tone: isDangerReelAction(kind) ? "danger" : "default",
+    onClick: () => onAction(kind, reel),
+  }));
 
   return (
-    <div
-      ref={containerRef}
-      className="relative flex items-center justify-end gap-1"
-    >
+    <div className="flex items-center justify-end gap-1">
       {primaryAction ? (
         <Button
           className="h-6.5 min-h-0 whitespace-nowrap px-2 text-xs font-medium"
@@ -144,45 +129,10 @@ function RowActions({
         </Button>
       ) : null}
 
-      {overflowActions.length ? (
-        <>
-          <button
-            aria-expanded={open}
-            aria-haspopup="menu"
-            aria-label={`More actions for ${reel.publicReelId}`}
-            className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-[0.4rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-          >
-            <MoreHorizontal className="size-3.5" />
-          </button>
-
-          {open ? (
-            <div
-              className="absolute right-0 top-8 z-40 min-w-[11rem] rounded-[0.6rem] border border-border bg-surface p-1 shadow-lg"
-              role="menu"
-            >
-              {overflowActions.map((kind) => (
-                <button
-                  className={cn(
-                    "flex w-full items-center rounded-[0.45rem] px-2 py-1.5 text-left text-sm transition hover:bg-surface-muted",
-                    isDangerReelAction(kind) && "text-danger",
-                  )}
-                  key={kind}
-                  role="menuitem"
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    onAction(kind, reel);
-                  }}
-                >
-                  {reelActionLabel(kind)}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </>
-      ) : null}
+      <RowActionMenu
+        ariaLabel={`More actions for ${reel.publicReelId}`}
+        items={menuItems}
+      />
     </div>
   );
 }
@@ -227,6 +177,15 @@ export function ReelsPage() {
 
   const reels = useMemo(() => reelsQuery.data?.data ?? [], [reelsQuery.data]);
   const pagination = reelsQuery.data?.pagination;
+  // The primary pill (Approve/Request edit) only ever shows for a handful of
+  // queues — reserving room for it everywhere leaves a dead gap in front of
+  // "···" otherwise.
+  const rowActionsWidth = reels.some(
+    (reel) =>
+      getRowPrimaryAction({ canDeleteReels, canModerateReels, reel }) !== null,
+  )
+    ? 130
+    : 56;
 
   const countBase = useMemo<AdminReelsQueryParams>(
     () => ({
@@ -616,7 +575,7 @@ export function ReelsPage() {
             }}
           />
         )}
-        rowActionsWidth={130}
+        rowActionsWidth={rowActionsWidth}
         rows={reels}
         search={search}
         searchPlaceholder="Search caption, vendor, reel id…"

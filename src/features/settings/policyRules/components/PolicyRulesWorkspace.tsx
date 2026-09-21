@@ -1,4 +1,4 @@
-import { Archive, ClipboardList, Edit3, Plus, Power } from 'lucide-react'
+import { Archive, Calculator, ClipboardList, Edit3, Plus, Power } from 'lucide-react'
 import { useState } from 'react'
 import { Badge } from '../../../../components/ui/Badge'
 import { Button } from '../../../../components/ui/Button'
@@ -9,31 +9,40 @@ import type {
 } from '../../../../components/ui/DataList'
 import { RowActionMenu, type RowActionMenuItem } from '../../../../components/ui/RowActionMenu'
 import { formatCompactDateTime } from '../../../../utils/formatDate'
-import type { PolicyRule, PolicyScopeType, PolicyStatus } from '../../types/settings.types'
+import type {
+  PolicyFamily,
+  PolicyRule,
+  PolicyScopeType,
+  PolicyStatus,
+} from '../../types/settings.types'
 import {
-  contentRuleScopeLabel,
-  contentRuleScopeTypeLabel,
-  contentRuleStatusTone,
-  formatDailyUploadLimitSummary,
-  formatReelDurationSummary,
-  formatReelResolutionSummary,
-  formatReelSizeSummary,
-  isAppliedFirst,
-} from '../utils/contentRulePresentation'
+  getPolicyRuleScopeLabel,
+  getPolicyRuleScopeTypeLabel,
+  hasPolicyRuleAction,
+  humanizeCode,
+  policyRuleStatusTone,
+} from '../utils/policyRulePresentation'
 
 const FILTER_CONTROL_CLASS_NAME =
   'h-9 w-full rounded-[0.65rem] border border-border bg-surface px-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30'
 
-const CONTENT_RULE_STATUSES: PolicyStatus[] = ['DRAFT', 'ACTIVE', 'ARCHIVED']
-const CONTENT_RULE_SCOPE_TYPES: PolicyScopeType[] = ['GLOBAL', 'CATEGORY', 'CITY', 'ZONE', 'VENDOR']
+const POLICY_FAMILIES: PolicyFamily[] = [
+  'CUSTOMER_CATEGORY_PLACEMENT',
+  'NOTIFICATION_WORKFLOW',
+  'MEDIA_REEL_RULE',
+  'PRICING_RULE',
+  'COMMISSION_RULE',
+]
+const POLICY_STATUSES: PolicyStatus[] = ['DRAFT', 'ACTIVE', 'ARCHIVED']
+const POLICY_SCOPE_TYPES: PolicyScopeType[] = ['GLOBAL', 'CATEGORY', 'CITY', 'ZONE', 'VENDOR']
 
-function humanize(value: string) {
-  return value.charAt(0) + value.slice(1).toLowerCase()
-}
+export type PolicyRuleRowAction =
+  | { action: 'EDIT' | 'ACTIVATE' | 'ARCHIVE'; record: PolicyRule }
 
-export interface ContentRulesWorkspaceProps {
+export interface PolicyRulesWorkspaceProps {
   rows: PolicyRule[]
   canReadAudit: boolean
+  canReadVendors: boolean
   canUpdateSettings: boolean
   isError: boolean
   isLoading: boolean
@@ -46,8 +55,10 @@ export interface ContentRulesWorkspaceProps {
   activeQueue: string
   onQueueChange: (key: string) => void
 
+  policyFamily: string
   policyStatus: string
   policyScopeType: string
+  onPolicyFamilyChange: (value: string) => void
   onPolicyStatusChange: (value: string) => void
   onPolicyScopeTypeChange: (value: string) => void
   appliedFilterCount: number
@@ -60,39 +71,48 @@ export interface ContentRulesWorkspaceProps {
 
   onPreview: (rule: PolicyRule) => void
   onCreate: () => void
-  onEdit: (rule: PolicyRule) => void
+  onPreviewPricing: () => void
+  onSelectAction: (action: PolicyRuleRowAction) => void
   onOpenAudit: (rule: PolicyRule) => void
-  onToggleStatus: (rule: PolicyRule, nextStatus: 'ACTIVATE' | 'ARCHIVE') => void
+  onOpenCategory: (categoryId: string) => void
+  onOpenZone: (zoneId: string) => void
+  onOpenVendor: (vendorId: string) => void
 }
 
-export function ContentRulesWorkspace({
+export function PolicyRulesWorkspace({
   activeQueue,
   appliedFilterCount,
   canReadAudit,
+  canReadVendors,
   canUpdateSettings,
   isError,
   isLoading,
   limit,
   onCreate,
-  onEdit,
   onOpenAudit,
+  onOpenCategory,
+  onOpenVendor,
+  onOpenZone,
   onPageChange,
   onPageSizeChange,
+  onPolicyFamilyChange,
   onPolicyScopeTypeChange,
   onPolicyStatusChange,
   onPreview,
+  onPreviewPricing,
   onQueueChange,
   onResetFilters,
   onRetry,
   onSearchChange,
-  onToggleStatus,
+  onSelectAction,
   page,
+  policyFamily,
   policyScopeType,
   policyStatus,
   queueTabs,
   rows,
   search,
-}: ContentRulesWorkspaceProps) {
+}: PolicyRulesWorkspaceProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const filtered = search.trim()
     ? rows.filter((rule) => {
@@ -106,59 +126,92 @@ export function ContentRulesWorkspace({
   const totalItems = filtered.length
   const totalPages = Math.max(Math.ceil(totalItems / limit), 1)
   const pageRows = filtered.slice((page - 1) * limit, page * limit)
+  // The Edit pill only shows for rows the backend allows editing — reserving
+  // room for it when nothing on the page has one leaves a dead gap in front
+  // of "···".
   const rowActionsWidth =
-    canUpdateSettings && pageRows.some((rule) => rule.availableActions.includes('EDIT'))
-      ? 132
-      : 56
+    canUpdateSettings && pageRows.some((rule) => hasPolicyRuleAction(rule, 'EDIT')) ? 132 : 56
 
   const columns: DataListColumn<PolicyRule>[] = [
     {
       id: 'rule',
       label: 'Rule',
-      defaultWidth: 280,
-      minWidth: 220,
+      defaultWidth: 360,
+      minWidth: 260,
       priority: 1,
       grow: true,
       render: (rule) => (
         <div className="min-w-0">
-          <p className="truncate font-semibold text-foreground">{rule.displayName}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <Badge tone={contentRuleStatusTone(rule.status)}>{rule.status}</Badge>
-            {isAppliedFirst(rule, rows) ? <Badge tone="info">Applied first</Badge> : null}
-          </div>
+          <p className="truncate font-semibold text-foreground" title={rule.ruleKey}>
+            {rule.displayName}
+          </p>
+          <p className="truncate text-xs text-muted">
+            {humanizeCode(rule.family)} · v{rule.version}
+          </p>
         </div>
+      ),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      defaultWidth: 110,
+      minWidth: 90,
+      priority: 2,
+      render: (rule) => (
+        <Badge tone={policyRuleStatusTone(rule.status)}>{humanizeCode(rule.status)}</Badge>
       ),
     },
     {
       id: 'appliesTo',
       label: 'Applies to',
-      defaultWidth: 190,
-      minWidth: 150,
+      defaultWidth: 280,
+      minWidth: 220,
       priority: 2,
       render: (rule) => (
         <div className="min-w-0">
-          <p className="truncate font-medium text-foreground">{contentRuleScopeTypeLabel(rule)}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate font-medium text-foreground">
+              {getPolicyRuleScopeTypeLabel(rule)}
+            </p>
+            {rule.scope.categoryId ? (
+              <button
+                className="shrink-0 text-xs font-semibold text-primary hover:underline"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onOpenCategory(rule.scope.categoryId as string)
+                }}
+              >
+                Category
+              </button>
+            ) : null}
+            {rule.scope.zoneId ? (
+              <button
+                className="shrink-0 text-xs font-semibold text-primary hover:underline"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onOpenZone(rule.scope.zoneId as string)
+                }}
+              >
+                Zone
+              </button>
+            ) : null}
+            {rule.scope.vendorId && canReadVendors ? (
+              <button
+                className="shrink-0 text-xs font-semibold text-primary hover:underline"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onOpenVendor(rule.scope.vendorId as string)
+                }}
+              >
+                Vendor
+              </button>
+            ) : null}
+          </div>
           <p className="truncate text-xs text-muted">
-            {contentRuleScopeLabel(rule) === contentRuleScopeTypeLabel(rule)
-              ? `Order ${rule.priority}`
-              : `${contentRuleScopeLabel(rule)} · Order ${rule.priority}`}
-          </p>
-        </div>
-      ),
-    },
-    {
-      id: 'uploadLimits',
-      label: 'Upload limits',
-      defaultWidth: 320,
-      minWidth: 260,
-      priority: 3,
-      render: (rule) => (
-        <div className="min-w-0">
-          <p className="truncate font-medium text-foreground">
-            {formatReelDurationSummary(rule)} · {formatReelSizeSummary(rule)}
-          </p>
-          <p className="truncate text-xs text-muted">
-            {formatReelResolutionSummary(rule)} · {formatDailyUploadLimitSummary(rule)}
+            {getPolicyRuleScopeLabel(rule)} · Order {rule.priority}
           </p>
         </div>
       ),
@@ -187,6 +240,21 @@ export function ContentRulesWorkspace({
   const filters = (
     <div className="space-y-3">
       <label className="block space-y-1">
+        <span className="text-xs font-semibold text-muted">Family</span>
+        <select
+          className={FILTER_CONTROL_CLASS_NAME}
+          value={policyFamily}
+          onChange={(event) => onPolicyFamilyChange(event.target.value)}
+        >
+          <option value="">All</option>
+          {POLICY_FAMILIES.map((option) => (
+            <option key={option} value={option}>
+              {humanizeCode(option)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block space-y-1">
         <span className="text-xs font-semibold text-muted">Status</span>
         <select
           className={FILTER_CONTROL_CLASS_NAME}
@@ -194,9 +262,9 @@ export function ContentRulesWorkspace({
           onChange={(event) => onPolicyStatusChange(event.target.value)}
         >
           <option value="">All</option>
-          {CONTENT_RULE_STATUSES.map((option) => (
+          {POLICY_STATUSES.map((option) => (
             <option key={option} value={option}>
-              {humanize(option)}
+              {humanizeCode(option)}
             </option>
           ))}
         </select>
@@ -209,9 +277,9 @@ export function ContentRulesWorkspace({
           onChange={(event) => onPolicyScopeTypeChange(event.target.value)}
         >
           <option value="">All</option>
-          {CONTENT_RULE_SCOPE_TYPES.map((option) => (
+          {POLICY_SCOPE_TYPES.map((option) => (
             <option key={option} value={option}>
-              {humanize(option)}
+              {humanizeCode(option)}
             </option>
           ))}
         </select>
@@ -225,11 +293,9 @@ export function ContentRulesWorkspace({
       appliedFilterCount={appliedFilterCount}
       columns={columns}
       defaultDensity="comfortable"
-      emptyMessage="No content rules found"
-      emptyHint={
-        search.trim() ? 'No rules match your search.' : 'No content rules have been configured yet.'
-      }
-      errorMessage="We could not load content rules."
+      emptyMessage="No policy rules found"
+      emptyHint={search.trim() ? 'No rules match your search.' : 'No policy rules matched the current filters.'}
+      errorMessage="We could not load policy rules."
       filters={filters}
       getRowId={(rule) => rule.policyRuleId}
       isError={isError}
@@ -245,8 +311,8 @@ export function ContentRulesWorkspace({
       queueTabs={queueTabs}
       rowActions={(rule) => {
         const secondaryAction: 'ACTIVATE' | 'ARCHIVE' = rule.status === 'ACTIVE' ? 'ARCHIVE' : 'ACTIVATE'
-        const canEdit = canUpdateSettings && rule.availableActions.includes('EDIT')
-        const canRunSecondary = canUpdateSettings && rule.availableActions.includes(secondaryAction)
+        const canEdit = canUpdateSettings && hasPolicyRuleAction(rule, 'EDIT')
+        const canRunSecondary = canUpdateSettings && hasPolicyRuleAction(rule, secondaryAction)
 
         const overflowItems: RowActionMenuItem[] = []
         if (canRunSecondary) {
@@ -260,7 +326,7 @@ export function ContentRulesWorkspace({
                 <Power className="size-3.5" />
               ),
             tone: secondaryAction === 'ARCHIVE' ? 'danger' : 'default',
-            onClick: () => onToggleStatus(rule, secondaryAction),
+            onClick: () => onSelectAction({ action: secondaryAction, record: rule }),
           })
         }
         if (canReadAudit) {
@@ -278,10 +344,10 @@ export function ContentRulesWorkspace({
               <Button
                 className="h-6.5 min-h-0 whitespace-nowrap px-2 text-xs font-medium"
                 size="xs"
-                title="Edit content rule"
+                title="Edit policy rule"
                 type="button"
                 variant="secondary"
-                onClick={() => onEdit(rule)}
+                onClick={() => onSelectAction({ action: 'EDIT', record: rule })}
               >
                 <Edit3 className="mr-1 size-3" />
                 Edit
@@ -296,30 +362,36 @@ export function ContentRulesWorkspace({
       }}
       rowActionsWidth={rowActionsWidth}
       rowHeight={64}
-      rows={pageRows}
       search={search}
-      searchPlaceholder="Search content rules..."
-      selection={{ selectedIds, onSelectionChange: setSelectedIds }}
+      searchPlaceholder="Search policy rules..."
+      storageKey="servicegram.settings.policyRules.list.v1"
       showDensityControl={false}
-      storageKey="servicegram.settings.contentRules.list.v1"
       toolbarActions={
-        <Button
-          disabled={!canUpdateSettings}
-          size="sm"
-          title={canUpdateSettings ? 'Create content rule' : 'Requires settings:update'}
-          type="button"
-          variant="primary"
-          onClick={onCreate}
-        >
-          <Plus className="size-4 sm:mr-2" />
-          <span className="hidden sm:inline">Content rule</span>
-        </Button>
+        <>
+          <Button size="sm" type="button" variant="secondary" onClick={onPreviewPricing}>
+            <Calculator className="size-4 sm:mr-2" />
+            <span className="hidden sm:inline">Preview pricing</span>
+          </Button>
+          <Button
+            disabled={!canUpdateSettings}
+            size="sm"
+            title={canUpdateSettings ? 'Create policy rule' : 'Requires settings:update'}
+            type="button"
+            variant="primary"
+            onClick={onCreate}
+          >
+            <Plus className="size-4 sm:mr-2" />
+            <span className="hidden sm:inline">Policy rule</span>
+          </Button>
+        </>
       }
+      rows={pageRows}
       onQueueChange={onQueueChange}
       onResetFilters={onResetFilters}
       onRetry={onRetry}
       onRowClick={onPreview}
       onSearchChange={onSearchChange}
+      selection={{ selectedIds, onSelectionChange: setSelectedIds }}
     />
   )
 }

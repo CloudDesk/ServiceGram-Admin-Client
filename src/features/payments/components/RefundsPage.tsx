@@ -1,5 +1,5 @@
-import { Download, MoreHorizontal, RefreshCcw } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Download, RefreshCcw } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
@@ -8,6 +8,7 @@ import { DataList } from '../../../components/ui/DataList'
 import type { DataListColumn, DataListQueueTab } from '../../../components/ui/DataList'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import { RowActionMenu, type RowActionMenuItem } from '../../../components/ui/RowActionMenu'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
@@ -89,33 +90,21 @@ function RowActions({
   onAction,
   refund,
 }: RowActionsProps) {
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return undefined
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [open])
-
   const showApprove = canReviewRefunds && canApproveRefund(refund)
   const showReject = canReviewRefunds && canRejectRefund(refund)
+  const menuItems: RowActionMenuItem[] = showReject
+    ? [
+        {
+          key: 'reject',
+          label: 'Reject refund',
+          tone: 'danger',
+          onClick: () => onAction({ kind: 'REJECT_REFUND', refund }),
+        },
+      ]
+    : []
 
   return (
-    <div ref={containerRef} className="relative flex items-center justify-end gap-1">
+    <div className="flex items-center justify-end gap-1">
       {showApprove ? (
         <Button
           className="h-6.5 min-h-0 whitespace-nowrap px-2 text-xs font-medium"
@@ -129,40 +118,10 @@ function RowActions({
         </Button>
       ) : null}
 
-      {showReject ? (
-        <>
-          <button
-            aria-expanded={open}
-            aria-haspopup="menu"
-            aria-label={`More actions for refund ${refund.refundId}`}
-            className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-[0.4rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-          >
-            <MoreHorizontal className="size-3.5" />
-          </button>
-
-          {open ? (
-            <div
-              className="absolute right-0 top-8 z-40 min-w-[10rem] rounded-[0.6rem] border border-border bg-surface p-1 shadow-lg"
-              role="menu"
-            >
-              <button
-                className="flex w-full items-center rounded-[0.45rem] px-2 py-1.5 text-left text-sm text-danger transition hover:bg-danger/10"
-                disabled={isSubmitting}
-                role="menuitem"
-                type="button"
-                onClick={() => {
-                  setOpen(false)
-                  onAction({ kind: 'REJECT_REFUND', refund })
-                }}
-              >
-                Reject refund
-              </button>
-            </div>
-          ) : null}
-        </>
-      ) : null}
+      <RowActionMenu
+        ariaLabel={`More actions for refund ${refund.refundId}`}
+        items={menuItems}
+      />
     </div>
   )
 }
@@ -205,6 +164,10 @@ export function RefundsPage() {
 
   const refunds = useMemo(() => refundsQuery.data?.data ?? [], [refundsQuery.data])
   const pagination = refundsQuery.data?.pagination
+  // The Approve pill only ever shows for a handful of queues — reserving room
+  // for it on every queue leaves a dead gap in front of "···" otherwise.
+  const rowActionsWidth =
+    canReviewRefunds && refunds.some((refund) => canApproveRefund(refund)) ? 110 : 56
 
   const countBase = useMemo<AdminRefundsQueryParams>(
     () => ({
@@ -449,7 +412,6 @@ export function RefundsPage() {
       { header: 'Order', value: (refund) => refund.order?.publicOrderId ?? '' },
       { header: 'Customer', value: (refund) => refund.customer?.fullName ?? '' },
       { header: 'Vendor', value: (refund) => refund.vendor?.shopName ?? '' },
-      { header: 'Signals', value: (refund) => refund.warnings.join('; ') },
     ])
   }
 
@@ -558,7 +520,7 @@ export function RefundsPage() {
             }}
           />
         )}
-        rowActionsWidth={110}
+        rowActionsWidth={rowActionsWidth}
         rows={refunds}
         search={search}
         searchPlaceholder="Search refund, payment, customer…"

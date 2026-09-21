@@ -1826,31 +1826,6 @@ const payoutColumns: DynamicTableColumn<AdminPayoutSummary>[] = [
       </div>
     ),
   },
-  {
-    key: "warnings",
-    label: "Signals",
-    minWidth: 220,
-    renderCell: (payout) => (
-      <div>
-        {payout.warnings.length ? (
-          <p className="line-clamp-2 text-xs text-warning">
-            {payout.warnings.map(humanizeCode).join(", ")}
-          </p>
-        ) : (
-          <p className="text-xs text-muted">No warnings</p>
-        )}
-        <p className="mt-2 text-xs text-muted">
-          Next{" "}
-          {payout.nextRecommendedAction
-            ? humanizeCode(payout.nextRecommendedAction)
-            : "No action"}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          Updated {formatDateSafe(payout.updatedAt)}
-        </p>
-      </div>
-    ),
-  },
 ];
 
 const reelColumns: DynamicTableColumn<AdminReel>[] = [

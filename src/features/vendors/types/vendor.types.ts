@@ -273,6 +273,7 @@ export interface VendorDocumentListQueryParams {
   documentStatus?: VendorDocumentStatus
   documentType?: VendorDocumentType
   mediaStatus?: VendorDocumentMediaStatus
+  reviewQueue?: 'MEDIA_ISSUE'
   onboardingStatus?: VendorOnboardingStatus
   vendorStatus?: VendorStatus
 }
@@ -317,6 +318,31 @@ export interface VendorDocumentListItem {
   warnings: string[]
   availableActions: string[]
   nextRecommendedAction: string | null
+}
+
+export interface VendorDocumentReviewCounts {
+  expired: number
+  mediaIssues: number
+  pending: number
+  rejected: number
+  total: number
+  verified: number
+  warnings: number
+}
+
+export interface VendorDocumentReviewGroup {
+  availableActions: string[]
+  counts: VendorDocumentReviewCounts
+  latestUpdatedAt: string
+  nextRecommendedAction: string | null
+  requiresReview: boolean
+  vendor: VendorDocumentListVendor
+  warnings: string[]
+}
+
+export interface VendorDocumentReviewSummary {
+  totalMatchingDocuments: number
+  totalVendors: number
 }
 
 export interface VendorReviewTimelineItem {
@@ -531,10 +557,11 @@ export interface VendorListResponse extends VendorApiResponse<
 }
 
 export interface VendorDocumentListResponse extends VendorApiResponse<
-  VendorDocumentListItem[]
+  VendorDocumentReviewGroup[]
 > {
-  data: VendorDocumentListItem[]
+  data: VendorDocumentReviewGroup[]
   pagination: VendorPagination
+  summary: VendorDocumentReviewSummary
 }
 
 export type VendorOnboardingQueueResponse = VendorListResponse
