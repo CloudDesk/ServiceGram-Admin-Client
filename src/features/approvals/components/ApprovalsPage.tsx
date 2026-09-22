@@ -401,6 +401,7 @@ export function ApprovalsPage() {
 
       {isCreateOpen ? (
         <WorkflowFormModal
+          existingWorkflows={catalogWorkflows}
           onClose={() => setCreateOpen(false)}
           onCreated={(created) => {
             setCreateOpen(false)

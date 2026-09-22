@@ -7,6 +7,7 @@ import { ReasonField } from '../../../components/ui/ReasonModal/ReasonModal'
 import { cn } from '../../../utils/cn'
 import { approvalService } from '../services/approval.service'
 import {
+  approvalApproverKinds,
   approvalConditionOperators,
   approvalDecisionPolicies,
   approvalResolverTypes,
@@ -103,7 +104,9 @@ function toApproverInput(approver: ApprovalStage['approvers'][number]): Approval
   return {
     resolverType: approver.resolverType as ApprovalApproverRuleInput['resolverType'],
     resolverConfig: approver.resolverConfig,
-    approverKind: approver.approverKind,
+    approverKind: approvalApproverKinds.includes(approver.approverKind as never)
+      ? (approver.approverKind as ApprovalApproverRuleInput['approverKind'])
+      : 'PRIMARY',
     fallbackOrder: approver.fallbackOrder ?? 1,
     excludeInitiator: approver.excludeInitiator,
     requireRecentAuth: approver.requireRecentAuth,
@@ -278,11 +281,22 @@ function ApproverRow({
         </label>
         <label className="block space-y-1">
           {fieldLabel('Approver kind')}
-          <Input
-            className="h-9 text-sm"
+          <select
+            className={selectClass}
             value={approver.approverKind}
-            onChange={(event) => onChange({ ...approver, approverKind: event.target.value })}
-          />
+            onChange={(event) =>
+              onChange({
+                ...approver,
+                approverKind: event.target.value as ApprovalApproverRuleInput['approverKind'],
+              })
+            }
+          >
+            {approvalApproverKinds.map((kind) => (
+              <option key={kind} value={kind}>
+                {kind}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="block space-y-1">
           {fieldLabel('Fallback order')}
@@ -591,6 +605,10 @@ function StageCard({
       <div className="space-y-2 border-t border-border pt-2.5">
         <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted">
           Escalation rules
+        </p>
+        <p className="rounded-[0.6rem] border border-warning/25 bg-warning/5 p-2 text-[0.7rem] text-warning">
+          Not yet enforced automatically — these rules are saved, but no scheduled process acts on
+          them yet, so a timeout here will not currently escalate anything on its own.
         </p>
         {stage.escalationRules.map((escalation, escalationIndex) => (
           <EscalationRow

@@ -361,6 +361,8 @@ export const approvalResolverTypes = [
   'CATEGORY_OWNER',
   'STATIC_FALLBACK',
 ] as const
+/** The runtime resolver only ever checks approverKind === 'FALLBACK'; nothing else is meaningful. */
+export const approvalApproverKinds = ['PRIMARY', 'FALLBACK'] as const
 
 export interface ApprovalConditionLeafInput {
   field: string
@@ -371,7 +373,7 @@ export interface ApprovalConditionLeafInput {
 export interface ApprovalApproverRuleInput {
   resolverType: (typeof approvalResolverTypes)[number]
   resolverConfig: Record<string, unknown>
-  approverKind: string
+  approverKind: (typeof approvalApproverKinds)[number]
   fallbackOrder: number
   excludeInitiator: boolean
   requireRecentAuth: boolean

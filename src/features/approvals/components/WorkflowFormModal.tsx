@@ -1,14 +1,22 @@
 import { useMutation } from '@tanstack/react-query'
 import { X } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { Input } from '../../../components/ui/Input'
 import { approvalService } from '../services/approval.service'
-import type { ApprovalWorkflowDetail } from '../types/approval.types'
+import type { ApprovalWorkflowDetail, ApprovalWorkflowListItem } from '../types/approval.types'
+import { humanizeCode } from './sharedUtils'
+
+const CUSTOM_TRIGGER_KEY = '__custom__'
 
 interface WorkflowFormModalProps {
+  existingWorkflows: ApprovalWorkflowListItem[]
   onClose: () => void
   onCreated: (workflow: ApprovalWorkflowDetail) => void
+}
+
+function triggerKey(moduleCode: string, triggerEvent: string) {
+  return `${moduleCode}::${triggerEvent}`
 }
 
 /**
@@ -16,12 +24,47 @@ interface WorkflowFormModalProps {
  * and approvers get added afterwards in the version editor — a brand-new
  * workflow has nothing to route yet.
  */
-export function WorkflowFormModal({ onClose, onCreated }: WorkflowFormModalProps) {
+export function WorkflowFormModal({
+  existingWorkflows,
+  onClose,
+  onCreated,
+}: WorkflowFormModalProps) {
   const [workflowCode, setWorkflowCode] = useState('')
-  const [moduleCode, setModuleCode] = useState('')
-  const [triggerEvent, setTriggerEvent] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [description, setDescription] = useState('')
+
+  /**
+   * `triggerEvent` is a join key the runtime uses to find a workflow when a
+   * real event fires — those event names are hardcoded in application code
+   * (payments/orders/etc.), not stored anywhere as an enum. Defaulting to a
+   * known trigger avoids the silent failure mode of a typo'd or made-up
+   * trigger that never matches anything at runtime.
+   */
+  const knownTriggers = useMemo(() => {
+    const seen = new Map<string, { moduleCode: string; triggerEvent: string }>()
+    for (const workflow of existingWorkflows) {
+      seen.set(triggerKey(workflow.moduleCode, workflow.triggerEvent), {
+        moduleCode: workflow.moduleCode,
+        triggerEvent: workflow.triggerEvent,
+      })
+    }
+    return [...seen.values()].sort((a, b) => triggerKey(a.moduleCode, a.triggerEvent).localeCompare(triggerKey(b.moduleCode, b.triggerEvent)))
+  }, [existingWorkflows])
+
+  const [selectedTriggerKey, setSelectedTriggerKey] = useState<string>(
+    knownTriggers[0] ? triggerKey(knownTriggers[0].moduleCode, knownTriggers[0].triggerEvent) : CUSTOM_TRIGGER_KEY,
+  )
+  const [customModuleCode, setCustomModuleCode] = useState('')
+  const [customTriggerEvent, setCustomTriggerEvent] = useState('')
+
+  const isCustomTrigger = selectedTriggerKey === CUSTOM_TRIGGER_KEY
+  const selectedKnownTrigger = knownTriggers.find(
+    (trigger) => triggerKey(trigger.moduleCode, trigger.triggerEvent) === selectedTriggerKey,
+  )
+  const moduleCode = isCustomTrigger ? customModuleCode : (selectedKnownTrigger?.moduleCode ?? '')
+  const triggerEvent = isCustomTrigger
+    ? customTriggerEvent
+    : (selectedKnownTrigger?.triggerEvent ?? '')
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -85,26 +128,58 @@ export function WorkflowFormModal({ onClose, onCreated }: WorkflowFormModalProps
             />
           </label>
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold text-foreground">Module code *</span>
-              <Input
-                placeholder="payments"
-                required
-                value={moduleCode}
-                onChange={(event) => setModuleCode(event.target.value)}
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold text-foreground">Trigger event *</span>
-              <Input
-                placeholder="VENDOR_PAYOUT_REQUESTED"
-                required
-                value={triggerEvent}
-                onChange={(event) => setTriggerEvent(event.target.value)}
-              />
-            </label>
-          </div>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold text-foreground">Trigger *</span>
+            <select
+              className="form-select h-9 text-sm"
+              value={selectedTriggerKey}
+              onChange={(event) => setSelectedTriggerKey(event.target.value)}
+            >
+              {knownTriggers.map((trigger) => (
+                <option
+                  key={triggerKey(trigger.moduleCode, trigger.triggerEvent)}
+                  value={triggerKey(trigger.moduleCode, trigger.triggerEvent)}
+                >
+                  {humanizeCode(trigger.moduleCode)} · {humanizeCode(trigger.triggerEvent)}
+                </option>
+              ))}
+              <option value={CUSTOM_TRIGGER_KEY}>Custom / new trigger…</option>
+            </select>
+            <span className="block text-[0.7rem] text-muted">
+              This decides when the workflow actually fires — pick an existing trigger unless
+              you're wiring up a brand-new one.
+            </span>
+          </label>
+
+          {isCustomTrigger ? (
+            <div className="space-y-3 rounded-[0.75rem] border border-warning/25 bg-warning/5 p-3">
+              <p className="text-[0.7rem] text-warning">
+                A custom trigger only fires if application code emits this exact module + event
+                combination — confirm with engineering that it exists before publishing, or this
+                workflow will silently never run.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold text-foreground">Module code *</span>
+                  <Input
+                    placeholder="payments"
+                    required
+                    value={customModuleCode}
+                    onChange={(event) => setCustomModuleCode(event.target.value)}
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold text-foreground">Trigger event *</span>
+                  <Input
+                    placeholder="VENDOR_PAYOUT_REQUESTED"
+                    required
+                    value={customTriggerEvent}
+                    onChange={(event) => setCustomTriggerEvent(event.target.value)}
+                  />
+                </label>
+              </div>
+            </div>
+          ) : null}
 
           <label className="block space-y-1">
             <span className="text-xs font-semibold text-foreground">Description</span>
