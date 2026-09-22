@@ -242,11 +242,19 @@ export function Release2SettingsPage() {
               key={group.uiGroup}
             >
               <Card className="!p-0">
-                <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
-                  <h2 className="text-sm font-semibold text-foreground">
+                {/*
+                  The header used to match the row typography almost exactly
+                  (text-sm font-semibold vs. a row's text-sm font-medium), so
+                  a group title and its first setting read as the same tier.
+                  A tinted strip plus a full step up in size/weight (matching
+                  RecordSection's card-header treatment elsewhere) makes it
+                  unmistakably a section label, not another row.
+                */}
+                <div className="flex items-center justify-between gap-2 rounded-t-[0.75rem] border-b border-border bg-surface-muted px-3 py-3">
+                  <h2 className="text-base font-bold tracking-[-0.01em] text-foreground">
                     {settingGroupLabel(group.uiGroup)}
                   </h2>
-                  <span className="flex items-center gap-2 text-xs text-muted">
+                  <span className="flex items-center gap-2 text-xs font-medium text-muted">
                     <span className="tabular-nums">{group.itemCount}</span>
                     {group.highRiskCount > 0 ? (
                       <Badge tone="warning">{group.highRiskCount} risk</Badge>
