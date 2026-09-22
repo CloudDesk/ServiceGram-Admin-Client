@@ -395,6 +395,11 @@ export function ApprovalsPage() {
               void workflowsQuery.refetch()
               void catalogQuery.refetch()
             }}
+            onWorkflowDeleted={() => {
+              updateSearchParams({ workflowId: null })
+              void workflowsQuery.refetch()
+              void catalogQuery.refetch()
+            }}
           />
         </Card>
       </section>

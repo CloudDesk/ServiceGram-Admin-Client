@@ -15,6 +15,7 @@ const workflow: ApprovalWorkflowDetail = {
   availableActions: [],
   blockingReasons: [],
   description: '',
+  isTriggerRoutable: false,
   latestPublishedVersionId: null,
   lifecycle: { createdAt: null, updatedAt: null },
   metadata: {},

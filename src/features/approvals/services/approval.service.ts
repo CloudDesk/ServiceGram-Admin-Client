@@ -25,9 +25,11 @@ import type {
   ApprovalWorkflowDetailResponse,
   ApprovalWorkflowsListResponse,
   ApprovalWorkflowsQueryParams,
+  ApprovalWorkflowDeleteResponse,
   CreateApprovalWorkflowPayload,
   CreateApprovalWorkflowVersionDraftPayload,
   DeactivateApprovalWorkflowVersionPayload,
+  DeleteApprovalWorkflowPayload,
   PublishApprovalWorkflowVersionPayload,
   ReplaceApprovalWorkflowVersionDefinitionPayload,
   UpdateApprovalWorkflowMetaPayload,
@@ -54,7 +56,10 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
   return body as T
 }
 
-function jsonRequest<TPayload>(method: 'POST' | 'PUT' | 'PATCH', payload: TPayload) {
+function jsonRequest<TPayload>(
+  method: 'DELETE' | 'PATCH' | 'POST' | 'PUT',
+  payload: TPayload,
+) {
   return {
     method,
     headers: {
@@ -217,6 +222,18 @@ async function deactivateVersion(
   return parseJsonResponse<ApprovalWorkflowDetailResponse>(response)
 }
 
+async function deleteWorkflow(
+  workflowId: string,
+  payload: DeleteApprovalWorkflowPayload,
+): Promise<ApprovalWorkflowDeleteResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(APPROVAL_WORKFLOW_META_PATH(workflowId)),
+    jsonRequest('DELETE', payload),
+  )
+
+  return parseJsonResponse<ApprovalWorkflowDeleteResponse>(response)
+}
+
 export const approvalService = {
   getWorkflows,
   getWorkflowDetail,
@@ -230,4 +247,5 @@ export const approvalService = {
   replaceVersionDefinition,
   publishVersion,
   deactivateVersion,
+  deleteWorkflow,
 }

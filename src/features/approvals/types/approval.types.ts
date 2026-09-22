@@ -49,6 +49,8 @@ export interface ApprovalWorkflowListItem {
     rules: number
     stages: number
   }
+  /** False means this trigger is configured but dormant — no context builder is wired, so it never evaluates. */
+  isTriggerRoutable: boolean
   runtimeMode: ApprovalRuntimeMode
   metadata: Record<string, unknown>
   lifecycle: ApprovalLifecycle
@@ -148,6 +150,8 @@ export interface ApprovalWorkflowDetail {
   description: string
   status: ApprovalWorkflowStatus
   latestPublishedVersionId: string | null
+  /** False means this trigger is configured but dormant — no context builder is wired, so it never evaluates. */
+  isTriggerRoutable: boolean
   runtimeMode: ApprovalRuntimeMode
   metadata: Record<string, unknown>
   versions: ApprovalWorkflowVersionDetail[]
@@ -442,6 +446,19 @@ export interface PublishApprovalWorkflowVersionPayload {
 
 export interface DeactivateApprovalWorkflowVersionPayload {
   reason: string
+}
+
+export interface DeleteApprovalWorkflowPayload {
+  reason: string
+}
+
+export interface ApprovalWorkflowDeleteResponse {
+  code: string
+  message: string
+  data: {
+    workflowId: string
+    workflowCode: string
+  }
 }
 
 export interface ApprovalErrorDetails extends ApiErrorDetails {

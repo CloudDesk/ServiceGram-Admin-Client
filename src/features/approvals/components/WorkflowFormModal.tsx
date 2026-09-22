@@ -41,11 +41,15 @@ export function WorkflowFormModal({
    * trigger that never matches anything at runtime.
    */
   const knownTriggers = useMemo(() => {
-    const seen = new Map<string, { moduleCode: string; triggerEvent: string }>()
+    const seen = new Map<
+      string,
+      { moduleCode: string; triggerEvent: string; isTriggerRoutable: boolean }
+    >()
     for (const workflow of existingWorkflows) {
       seen.set(triggerKey(workflow.moduleCode, workflow.triggerEvent), {
         moduleCode: workflow.moduleCode,
         triggerEvent: workflow.triggerEvent,
+        isTriggerRoutable: workflow.isTriggerRoutable,
       })
     }
     return [...seen.values()].sort((a, b) => triggerKey(a.moduleCode, a.triggerEvent).localeCompare(triggerKey(b.moduleCode, b.triggerEvent)))
@@ -141,6 +145,7 @@ export function WorkflowFormModal({
                   value={triggerKey(trigger.moduleCode, trigger.triggerEvent)}
                 >
                   {humanizeCode(trigger.moduleCode)} · {humanizeCode(trigger.triggerEvent)}
+                  {trigger.isTriggerRoutable ? '' : ' (dormant — never fires yet)'}
                 </option>
               ))}
               <option value={CUSTOM_TRIGGER_KEY}>Custom / new trigger…</option>
@@ -150,6 +155,13 @@ export function WorkflowFormModal({
               you're wiring up a brand-new one.
             </span>
           </label>
+
+          {!isCustomTrigger && selectedKnownTrigger && !selectedKnownTrigger.isTriggerRoutable ? (
+            <p className="rounded-[0.75rem] border border-warning/25 bg-warning/5 p-3 text-[0.7rem] text-warning">
+              This trigger is configured but dormant — no context builder is wired for it in the
+              backend, so a workflow here will never evaluate real events until that's built.
+            </p>
+          ) : null}
 
           {isCustomTrigger ? (
             <div className="space-y-3 rounded-[0.75rem] border border-warning/25 bg-warning/5 p-3">

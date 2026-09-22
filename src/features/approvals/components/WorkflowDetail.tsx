@@ -11,6 +11,7 @@ import {
   Route,
   Rocket,
   TestTube2,
+  Trash2,
   XCircle,
 } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
@@ -61,6 +62,7 @@ export function WorkflowDetail({
   onTabChange,
   onValidate,
   onWorkflowChanged,
+  onWorkflowDeleted,
   selectedListItem,
   selectedTab,
   selectedVersion,
@@ -87,6 +89,7 @@ export function WorkflowDetail({
   onTabChange: (tab: ApprovalTab) => void
   onValidate: () => void
   onWorkflowChanged: (workflow: ApprovalWorkflowDetail) => void
+  onWorkflowDeleted: (workflowId: string) => void
   selectedListItem?: ApprovalWorkflowListItem
   selectedTab: ApprovalTab
   selectedVersion: ApprovalWorkflowVersionDetail | null
@@ -97,7 +100,9 @@ export function WorkflowDetail({
   validationIsPending: boolean
   workflow: ApprovalWorkflowDetail | null
 }) {
-  const [openModal, setOpenModal] = useState<'edit' | 'publish' | 'deactivate' | null>(null)
+  const [openModal, setOpenModal] = useState<'edit' | 'publish' | 'deactivate' | 'delete' | null>(
+    null,
+  )
 
   const cloneMutation = useMutation({
     mutationFn: async () => {
@@ -135,6 +140,19 @@ export function WorkflowDetail({
       onWorkflowChanged(updated)
     },
   })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (reason: string) => {
+      if (!workflow) throw new Error('No workflow selected.')
+      const response = await approvalService.deleteWorkflow(workflow.workflowId, { reason })
+      return response.data
+    },
+    onSuccess: (deleted) => {
+      setOpenModal(null)
+      onWorkflowDeleted(deleted.workflowId)
+    },
+  })
+
   if (!selectedListItem && !isDetailLoading) {
     return (
       <div className="flex h-full items-center justify-center p-6">
@@ -257,6 +275,18 @@ export function WorkflowDetail({
                 Deactivate
               </Button>
             ) : null}
+
+            {canManage && workflow.status === 'DRAFT' ? (
+              <Button
+                size="sm"
+                type="button"
+                variant="ghost"
+                onClick={() => setOpenModal('delete')}
+              >
+                <Trash2 className="mr-1.5 size-4 text-danger" />
+                Delete
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -271,6 +301,16 @@ export function WorkflowDetail({
           <Info className="size-3.5 shrink-0" />
           Not enforced yet — configuration only
         </p>
+
+        {!workflow.isTriggerRoutable ? (
+          <p
+            className="mt-1 inline-flex items-center gap-1.5 text-xs text-danger"
+            title="No context builder is wired for this trigger, so real events never build the data your conditions check — this workflow cannot evaluate anything yet, even as a shadow."
+          >
+            <Info className="size-3.5 shrink-0" />
+            Dormant trigger — {workflow.triggerEvent} has no context builder, so this never runs
+          </p>
+        ) : null}
 
         {currentValidation && (
           <div
@@ -411,6 +451,24 @@ export function WorkflowDetail({
           warnings={['New requests stop routing through it. Approvals already in flight are unaffected.']}
           onClose={() => setOpenModal(null)}
           onSubmit={(reason) => deactivateMutation.mutate(reason)}
+        />
+      ) : null}
+
+      {openModal === 'delete' ? (
+        <ReasonModal
+          confirmLabel="Delete workflow"
+          error={deleteMutation.error}
+          isDestructive
+          isSubmitting={deleteMutation.isPending}
+          reasonPlaceholder="Why is this workflow being deleted?"
+          subtitle={workflow.displayName}
+          title="Delete this workflow?"
+          warnings={[
+            'Permanently removes the workflow and its draft — this cannot be undone.',
+            'Only available because it has never been published.',
+          ]}
+          onClose={() => setOpenModal(null)}
+          onSubmit={(reason) => deleteMutation.mutate(reason)}
         />
       ) : null}
     </div>

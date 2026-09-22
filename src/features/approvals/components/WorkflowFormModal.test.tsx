@@ -17,6 +17,7 @@ function listItem(overrides: Partial<ApprovalWorkflowListItem> = {}): ApprovalWo
     counts: { rules: 1, stages: 1 },
     description: '',
     displayName: 'Refund approval',
+    isTriggerRoutable: true,
     latestPublishedVersion: null,
     lifecycle: { createdAt: null, updatedAt: null },
     metadata: {},
@@ -37,6 +38,7 @@ function workflow(overrides: Partial<ApprovalWorkflowDetail> = {}): ApprovalWork
     availableActions: [],
     blockingReasons: [],
     description: '',
+    isTriggerRoutable: false,
     latestPublishedVersionId: null,
     lifecycle: { createdAt: null, updatedAt: null },
     metadata: {},
@@ -143,6 +145,26 @@ describe('WorkflowFormModal', () => {
         description: undefined,
       }),
     )
+  })
+
+  it('warns when the selected trigger has no context builder wired', () => {
+    renderWithProviders(
+      <WorkflowFormModal
+        existingWorkflows={[
+          listItem({
+            isTriggerRoutable: false,
+            moduleCode: 'payouts',
+            triggerEvent: 'PAYOUT_CREATED',
+          }),
+        ]}
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByText(/configured but dormant — no context builder is wired/i),
+    ).toBeInTheDocument()
   })
 
   it('reveals module/trigger inputs when "Custom / new trigger…" is selected', async () => {
