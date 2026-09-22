@@ -476,7 +476,7 @@ export function ProfilePage() {
 
   return (
     <PageContainer className="space-y-3">
-      <PageContextHeader layout="workspace" placement="topbar" title="Profile" />
+      <PageContextHeader placement="topbar" title="Profile" />
 
       <ProfileHeroCard
         canReadAdminUsers={canReadAdminUsers}
