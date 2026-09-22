@@ -238,7 +238,6 @@ export function ApprovalsPage() {
             </Button>
           </div>
         }
-        layout="workspace"
         placement="topbar"
         title="Approval workflows"
       />
