@@ -289,7 +289,7 @@ export function ServicesPage() {
             }}
           />
         )}
-        rowActionsWidth={150}
+        rowActionsWidth={canModerateServices ? 150 : 0}
         rows={services}
         search={search}
         searchPlaceholder="Search service name, vendor…"

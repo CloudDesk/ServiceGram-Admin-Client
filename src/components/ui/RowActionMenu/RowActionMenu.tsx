@@ -135,12 +135,16 @@ export function RowActionMenu({ ariaLabel, className, items }: RowActionMenuProp
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={ariaLabel}
-        className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-[0.4rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        // 32px is the largest size that still fits every row density
+        // (compact rows are 32px tall) without the tap target overlapping
+        // the row above or below — the old size-6.5 (26px) box was closer
+        // to a 24px touch target than the ~44px recommended minimum.
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-[0.4rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         ref={triggerRef}
         type="button"
         onClick={() => setOpen((value) => !value)}
       >
-        <MoreHorizontal className="size-3.5" />
+        <MoreHorizontal className="size-4" />
       </button>
 
       {open && position && typeof document !== "undefined"

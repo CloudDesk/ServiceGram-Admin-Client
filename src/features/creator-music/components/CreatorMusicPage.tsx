@@ -681,7 +681,7 @@ export function CreatorMusicPage() {
               )
             : undefined
         }
-        rowActionsWidth={84}
+        rowActionsWidth={canUpdate && canPublish ? 92 : canUpdate ? 64 : canPublish ? 40 : 0}
         rows={tracks}
         search={search}
         searchPlaceholder="Search title, artist, track ID…"

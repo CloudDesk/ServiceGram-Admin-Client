@@ -469,7 +469,9 @@ export function PaymentsPage() {
             </Button>
           ) : null
         }
-        rowActionsWidth={104}
+        rowActionsWidth={
+          canReconcile && payments.some((payment) => canReconcilePayment(payment)) ? 104 : 0
+        }
         rows={payments}
         search={search}
         searchPlaceholder="Search payment, order, customer…"

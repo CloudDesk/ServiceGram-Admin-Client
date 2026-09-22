@@ -1017,10 +1017,27 @@
 
   .data-list-sticky-leading {
     box-shadow: 1px 0 0 var(--adaptive-border);
+    transition: box-shadow 0.15s ease;
   }
 
   .data-list-sticky-trailing {
     box-shadow: -1px 0 0 var(--adaptive-border);
+    transition: box-shadow 0.15s ease;
+  }
+
+  /* Cast a shadow off the sticky column, in the direction content is
+     scrolled underneath it, only while there is more of that content to
+     reveal — the cue disappears once scrolling reaches the end. */
+  [data-scroll-left='true'] .data-list-sticky-leading {
+    box-shadow:
+      6px 0 10px -6px color-mix(in srgb, var(--adaptive-text-main) 35%, transparent),
+      1px 0 0 var(--adaptive-border);
+  }
+
+  [data-scroll-right='true'] .data-list-sticky-trailing {
+    box-shadow:
+      -6px 0 10px -6px color-mix(in srgb, var(--adaptive-text-main) 35%, transparent),
+      -1px 0 0 var(--adaptive-border);
   }
 
   .workbench-grid-row {

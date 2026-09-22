@@ -644,7 +644,7 @@ export function CustomersPage() {
             }
           />
         )}
-        rowActionsWidth={96}
+        rowActionsWidth={canUpdateCustomer ? 96 : 72}
         rows={customers}
         search={search}
         searchPlaceholder="Search name, mobile, email…"

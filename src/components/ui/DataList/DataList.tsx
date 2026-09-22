@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
 import {
+  useEffect,
   useMemo,
   useRef,
   type CSSProperties,
@@ -172,6 +173,33 @@ export function DataList<TRow>({
 
   const rowHeight = fixedRowHeight ?? DATA_LIST_ROW_HEIGHT[density]
   const gridStyle: GridStyle = { '--data-list-template': gridTemplate }
+
+  // Sticky leading/trailing columns hide whatever scrolls underneath them;
+  // toggling these as plain DOM attributes (rather than React state) lets
+  // every row's sticky cell react to scroll position via CSS alone, with no
+  // per-scroll re-render of the list.
+  useEffect(() => {
+    const el = gridRef.current
+    if (!el) return undefined
+
+    const updateScrollEdges = () => {
+      const canScrollLeft = el.scrollLeft > 1
+      const canScrollRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+      el.dataset.scrollLeft = String(canScrollLeft)
+      el.dataset.scrollRight = String(canScrollRight)
+    }
+
+    updateScrollEdges()
+    el.addEventListener('scroll', updateScrollEdges, { passive: true })
+
+    const observer = new ResizeObserver(updateScrollEdges)
+    observer.observe(el)
+
+    return () => {
+      el.removeEventListener('scroll', updateScrollEdges)
+      observer.disconnect()
+    }
+  }, [gridTemplate, tableMinWidth, rows.length])
 
   const selectedSet = useMemo(
     () => new Set(selection?.selectedIds ?? []),

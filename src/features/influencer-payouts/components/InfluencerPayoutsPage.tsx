@@ -1010,7 +1010,11 @@ export function InfluencerPayoutsPage() {
                 </div>
               ) : null
             }
-            rowActionsWidth={130}
+            rowActionsWidth={
+              canReviewInfluencers && bankRows.some((row) => hasAction(row, "VERIFY"))
+                ? 130
+                : 0
+            }
             rows={bankRows}
             search={search}
             searchPlaceholder="Search creator or account…"
@@ -1083,7 +1087,11 @@ export function InfluencerPayoutsPage() {
                 </div>
               ) : null
             }
-            rowActionsWidth={140}
+            rowActionsWidth={
+              canReviewInfluencers && kycRows.some((row) => hasAction(row, "APPROVE"))
+                ? 140
+                : 0
+            }
             rows={kycRows}
             search={search}
             searchPlaceholder="Search creator or document…"
@@ -1188,7 +1196,16 @@ export function InfluencerPayoutsPage() {
                 </div>
               ) : null
             }
-            rowActionsWidth={210}
+            rowActionsWidth={
+              canApprovePayouts &&
+              payoutRows.some((row) =>
+                ["APPROVE", "MARK_PAID", "RETRY", "HOLD", "MARK_FAILED", "CANCEL"].some(
+                  (action) => hasAction(row, action),
+                ),
+              )
+                ? 210
+                : 0
+            }
             rows={payoutRows}
             search={search}
             searchPlaceholder="Search payout, batch or creator…"

@@ -605,7 +605,14 @@ export function OrdersPage() {
             onAction={openAction}
           />
         )}
-        rowActionsWidth={130}
+        rowActionsWidth={
+          orders.some((order) => {
+            const recommended = mapRecommendedAction(order)
+            return recommended && canRunOrderAction(recommended, canRefundPayments, canUpdateOrders)
+          })
+            ? 130
+            : 56
+        }
         rows={orders}
         search={search}
         searchPlaceholder="Search order, customer, vendor…"
