@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, LogOut } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
+  isNavigationItemActive,
   isNavigationItemVisible,
   navigationItems,
   type NavigationGroup,
@@ -34,9 +35,6 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function isNavigationItemActive(pathname: string, href: string) {
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
 
 function SidebarPanel({
   isCollapsed,
