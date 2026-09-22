@@ -15,3 +15,23 @@ export function APPROVAL_WORKFLOW_VERSION_VALIDATE_PATH(versionId: string) {
 export function APPROVAL_WORKFLOW_VERSION_SIMULATE_PATH(versionId: string) {
   return `/admin/approvals/versions/${versionId}/simulate`
 }
+
+export function APPROVAL_WORKFLOW_META_PATH(workflowId: string) {
+  return `/admin/approvals/workflows/${workflowId}`
+}
+
+export function APPROVAL_WORKFLOW_VERSIONS_PATH(workflowId: string) {
+  return `/admin/approvals/workflows/${workflowId}/versions`
+}
+
+export function APPROVAL_WORKFLOW_VERSION_DEFINITION_PATH(versionId: string) {
+  return `/admin/approvals/versions/${versionId}/definition`
+}
+
+export function APPROVAL_WORKFLOW_VERSION_PUBLISH_PATH(versionId: string) {
+  return `/admin/approvals/versions/${versionId}/publish`
+}
+
+export function APPROVAL_WORKFLOW_VERSION_DEACTIVATE_PATH(versionId: string) {
+  return `/admin/approvals/versions/${versionId}/deactivate`
+}

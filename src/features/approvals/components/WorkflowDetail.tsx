@@ -1,17 +1,24 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import {
   ArrowLeft,
   CheckCircle2,
   ClipboardCheck,
+  Copy,
   Info,
+  Pencil,
+  PowerOff,
   Route,
+  Rocket,
   TestTube2,
   XCircle,
 } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
+import { ReasonModal } from '../../../components/ui/ReasonModal/ReasonModal'
 import { cn } from '../../../utils/cn'
+import { approvalService } from '../services/approval.service'
 import type {
   ApprovalActionTemplate,
   ApprovalConditionField,
@@ -27,6 +34,7 @@ import { FlowTab } from './FlowTab'
 import { RegistryTab } from './RegistryTab'
 import { SimulationTab } from './SimulationTab'
 import { StateDot } from './Glyphs'
+import { WorkflowVersionEditorModal } from './WorkflowVersionEditorModal'
 
 export type ApprovalTab = 'flow' | 'reference' | 'simulation'
 
@@ -38,6 +46,8 @@ const approvalTabs: { icon: ReactNode; id: ApprovalTab; label: string }[] = [
 
 export function WorkflowDetail({
   actionTemplates,
+  canManage,
+  canPublish,
   canSimulate,
   conditionFields,
   detailError,
@@ -50,6 +60,7 @@ export function WorkflowDetail({
   onRunSimulation,
   onTabChange,
   onValidate,
+  onWorkflowChanged,
   selectedListItem,
   selectedTab,
   selectedVersion,
@@ -61,6 +72,8 @@ export function WorkflowDetail({
   workflow,
 }: {
   actionTemplates: ApprovalActionTemplate[]
+  canManage: boolean
+  canPublish: boolean
   canSimulate: boolean
   conditionFields: ApprovalConditionField[]
   detailError: unknown
@@ -73,6 +86,7 @@ export function WorkflowDetail({
   onRunSimulation: (context: Record<string, unknown>) => void
   onTabChange: (tab: ApprovalTab) => void
   onValidate: () => void
+  onWorkflowChanged: (workflow: ApprovalWorkflowDetail) => void
   selectedListItem?: ApprovalWorkflowListItem
   selectedTab: ApprovalTab
   selectedVersion: ApprovalWorkflowVersionDetail | null
@@ -83,6 +97,44 @@ export function WorkflowDetail({
   validationIsPending: boolean
   workflow: ApprovalWorkflowDetail | null
 }) {
+  const [openModal, setOpenModal] = useState<'edit' | 'publish' | 'deactivate' | null>(null)
+
+  const cloneMutation = useMutation({
+    mutationFn: async () => {
+      if (!workflow || !selectedVersion) throw new Error('Nothing to clone.')
+      const response = await approvalService.createDraftVersion(workflow.workflowId, {
+        cloneFromVersionId: selectedVersion.versionId,
+      })
+      return response.data
+    },
+    onSuccess: (updated) => onWorkflowChanged(updated),
+  })
+
+  const publishMutation = useMutation({
+    mutationFn: async (reason: string) => {
+      if (!selectedVersion) throw new Error('No version selected.')
+      const response = await approvalService.publishVersion(selectedVersion.versionId, { reason })
+      return response.data
+    },
+    onSuccess: (updated) => {
+      setOpenModal(null)
+      onWorkflowChanged(updated)
+    },
+  })
+
+  const deactivateMutation = useMutation({
+    mutationFn: async (reason: string) => {
+      if (!selectedVersion) throw new Error('No version selected.')
+      const response = await approvalService.deactivateVersion(selectedVersion.versionId, {
+        reason,
+      })
+      return response.data
+    },
+    onSuccess: (updated) => {
+      setOpenModal(null)
+      onWorkflowChanged(updated)
+    },
+  })
   if (!selectedListItem && !isDetailLoading) {
     return (
       <div className="flex h-full items-center justify-center p-6">
@@ -153,19 +205,59 @@ export function WorkflowDetail({
             </p>
           </div>
 
-          <Button
-            className="shrink-0"
-            disabled={!canSimulate}
-            isLoading={validationIsPending}
-            size="sm"
-            title={canSimulate ? undefined : 'You do not have permission to run checks'}
-            type="button"
-            variant="secondary"
-            onClick={onValidate}
-          >
-            <ClipboardCheck className="mr-1.5 size-4" />
-            Check
-          </Button>
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+            <Button
+              disabled={!canSimulate}
+              isLoading={validationIsPending}
+              size="sm"
+              title={canSimulate ? undefined : 'You do not have permission to run checks'}
+              type="button"
+              variant="secondary"
+              onClick={onValidate}
+            >
+              <ClipboardCheck className="mr-1.5 size-4" />
+              Check
+            </Button>
+
+            {canManage && selectedVersion.status === 'DRAFT' ? (
+              <Button size="sm" type="button" variant="secondary" onClick={() => setOpenModal('edit')}>
+                <Pencil className="mr-1.5 size-4" />
+                Edit draft
+              </Button>
+            ) : null}
+
+            {canManage && selectedVersion.status !== 'DRAFT' ? (
+              <Button
+                isLoading={cloneMutation.isPending}
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => cloneMutation.mutate()}
+              >
+                <Copy className="mr-1.5 size-4" />
+                Clone to draft
+              </Button>
+            ) : null}
+
+            {canPublish && selectedVersion.status === 'DRAFT' ? (
+              <Button size="sm" type="button" variant="primary" onClick={() => setOpenModal('publish')}>
+                <Rocket className="mr-1.5 size-4" />
+                Publish
+              </Button>
+            ) : null}
+
+            {canPublish && selectedVersion.status === 'PUBLISHED' ? (
+              <Button
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => setOpenModal('deactivate')}
+              >
+                <PowerOff className="mr-1.5 size-4" />
+                Deactivate
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         {/*
@@ -275,6 +367,52 @@ export function WorkflowDetail({
           />
         )}
       </div>
+
+      {openModal === 'edit' ? (
+        <WorkflowVersionEditorModal
+          actionTemplates={actionTemplates}
+          conditionFields={conditionFields}
+          version={selectedVersion}
+          workflow={workflow}
+          onClose={() => setOpenModal(null)}
+          onSaved={(updated) => {
+            setOpenModal(null)
+            onWorkflowChanged(updated)
+          }}
+        />
+      ) : null}
+
+      {openModal === 'publish' ? (
+        <ReasonModal
+          confirmLabel="Publish"
+          error={publishMutation.error}
+          isSubmitting={publishMutation.isPending}
+          reasonPlaceholder="Why is this version going live?"
+          subtitle={`${workflow.displayName} · version ${selectedVersion.versionNumber}`}
+          title="Publish this version?"
+          warnings={[
+            'Deactivates the workflow’s currently published version, if any.',
+            'Once published, this version becomes immutable — further edits go through a new draft.',
+          ]}
+          onClose={() => setOpenModal(null)}
+          onSubmit={(reason) => publishMutation.mutate(reason)}
+        />
+      ) : null}
+
+      {openModal === 'deactivate' ? (
+        <ReasonModal
+          confirmLabel="Deactivate"
+          error={deactivateMutation.error}
+          isDestructive
+          isSubmitting={deactivateMutation.isPending}
+          reasonPlaceholder="Why is this version being taken offline?"
+          subtitle={`${workflow.displayName} · version ${selectedVersion.versionNumber}`}
+          title="Deactivate this version?"
+          warnings={['New requests stop routing through it. Approvals already in flight are unaffected.']}
+          onClose={() => setOpenModal(null)}
+          onSubmit={(reason) => deactivateMutation.mutate(reason)}
+        />
+      ) : null}
     </div>
   )
 }

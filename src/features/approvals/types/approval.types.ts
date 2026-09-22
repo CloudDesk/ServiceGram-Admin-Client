@@ -1,3 +1,4 @@
+import type { ApiErrorDetails, ApiErrorResponse } from '../../../types/api.types'
 import type { StatusTone } from '../../../types/status.types'
 
 export type ApprovalWorkflowStatus = 'DRAFT' | 'ACTIVE' | 'INACTIVE' | 'ARCHIVED'
@@ -320,6 +321,160 @@ export interface ApprovalRegistryQueryParams {
 
 export interface ApprovalSimulationPayload {
   context: Record<string, unknown>
+}
+
+// ─── Definition write API ───────────────────────────────────────────────────
+
+/** Matches the operator set ApprovalsService.evaluateLeaf implements backend-side. */
+export const approvalConditionOperators = [
+  'eq',
+  'neq',
+  'in',
+  'not_in',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'between',
+  'is_true',
+  'is_false',
+  'is_empty',
+  'is_not_empty',
+  'contains',
+] as const
+export type ApprovalConditionOperator = (typeof approvalConditionOperators)[number]
+
+export const approvalRuleMatchModes = ['FIRST_MATCH', 'MOST_RESTRICTIVE'] as const
+export const approvalStageModes = ['SEQUENTIAL', 'PARALLEL'] as const
+export const approvalDecisionPolicies = [
+  'ANY_ONE',
+  'ALL',
+  'MIN_N',
+  'CLAIM_THEN_DECIDE',
+] as const
+export const approvalResolverTypes = [
+  'USER',
+  'ROLE',
+  'PERMISSION',
+  'TEAM',
+  'LOCATION_OWNER',
+  'CATEGORY_OWNER',
+  'STATIC_FALLBACK',
+] as const
+
+export interface ApprovalConditionLeafInput {
+  field: string
+  op: ApprovalConditionOperator
+  value: unknown
+}
+
+export interface ApprovalApproverRuleInput {
+  resolverType: (typeof approvalResolverTypes)[number]
+  resolverConfig: Record<string, unknown>
+  approverKind: string
+  fallbackOrder: number
+  excludeInitiator: boolean
+  requireRecentAuth: boolean
+}
+
+export interface ApprovalEscalationRuleInput {
+  trigger: string
+  afterMinutes: number
+  action: string
+  targetResolverType?: (typeof approvalResolverTypes)[number]
+  targetResolverConfig: Record<string, unknown>
+  maxEscalations: number
+}
+
+export interface ApprovalStageInput {
+  stageKey: string
+  stageOrder: number
+  stageName: string
+  stageMode: (typeof approvalStageModes)[number]
+  decisionPolicy: (typeof approvalDecisionPolicies)[number]
+  minApprovals: number
+  slaMinutes?: number
+  allowReturnForCorrection: boolean
+  approverRules: ApprovalApproverRuleInput[]
+  escalationRules: ApprovalEscalationRuleInput[]
+}
+
+export interface ApprovalRuleInput {
+  ruleKey: string
+  displayName: string
+  description?: string
+  priority: number
+  conditionJson: { all: ApprovalConditionLeafInput[] }
+  matchMode: (typeof approvalRuleMatchModes)[number]
+  finalActionCode: string
+  autoDecision?: string
+  stages: ApprovalStageInput[]
+}
+
+export interface CreateApprovalWorkflowPayload {
+  workflowCode: string
+  moduleCode: string
+  triggerEvent: string
+  displayName: string
+  description?: string
+}
+
+export interface UpdateApprovalWorkflowMetaPayload {
+  displayName?: string
+  description?: string
+}
+
+export interface CreateApprovalWorkflowVersionDraftPayload {
+  cloneFromVersionId?: string
+}
+
+export interface ReplaceApprovalWorkflowVersionDefinitionPayload {
+  rules: ApprovalRuleInput[]
+  reason: string
+  expectedDefinitionHash: string
+}
+
+export interface PublishApprovalWorkflowVersionPayload {
+  reason: string
+}
+
+export interface DeactivateApprovalWorkflowVersionPayload {
+  reason: string
+}
+
+export interface ApprovalErrorDetails extends ApiErrorDetails {
+  metadata?: {
+    currentStatus?: ApprovalWorkflowVersionStatus
+    errors?: ApprovalVersionValidationIssue[]
+    [key: string]: unknown
+  }
+}
+
+export type ApprovalErrorResponse = ApiErrorResponse<ApprovalErrorDetails>
+
+/**
+ * Carries the structured backend envelope (code, field errors, conflict
+ * metadata) instead of collapsing straight to a message string, so the
+ * write-flow UI (409 version conflicts, 422 publish-blocked-by-validation)
+ * can react to `.code`/`.response.details` instead of parsing prose.
+ */
+export class ApprovalServiceError extends Error {
+  status: number
+  code: string
+  response: ApprovalErrorResponse | null
+
+  constructor(
+    message: string,
+    status: number,
+    code: string,
+    response: ApprovalErrorResponse | null,
+  ) {
+    super(message)
+    this.name = 'ApprovalServiceError'
+    this.status = status
+    this.code = code
+    this.response = response
+  }
 }
 
 export function statusTone(status: string): StatusTone {

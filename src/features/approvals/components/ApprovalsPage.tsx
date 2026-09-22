@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { CheckCircle2, GitBranch, Layers3, RefreshCcw } from 'lucide-react'
+import { CheckCircle2, GitBranch, Layers3, Plus, RefreshCcw } from 'lucide-react'
 import { ListFilterBar, type ActiveFilterChip } from '../../../components/layout/ListFilterBar'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Button } from '../../../components/ui/Button'
@@ -30,6 +30,7 @@ import {
   workflowStatuses,
 } from './shared'
 import { WorkflowDetail } from './WorkflowDetail'
+import { WorkflowFormModal } from './WorkflowFormModal'
 import { WorkflowList } from './WorkflowList'
 
 interface WorkflowFilters {
@@ -43,6 +44,9 @@ const emptyWorkflows: ApprovalWorkflowListItem[] = []
 
 export function ApprovalsPage() {
   const canSimulate = usePermission('approvals:simulate')
+  const canManage = usePermission('approvals:manage')
+  const canPublish = usePermission('approvals:publish')
+  const [isCreateOpen, setCreateOpen] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedWorkflowId = searchParams.get('workflowId') ?? ''
   const selectedTab = readTab(searchParams.get('tab'))
@@ -241,6 +245,12 @@ export function ApprovalsPage() {
               <RefreshCcw className="mr-1.5 size-4" />
               Refresh
             </Button>
+            {canManage ? (
+              <Button size="sm" type="button" variant="primary" onClick={() => setCreateOpen(true)}>
+                <Plus className="mr-1.5 size-4" />
+                New workflow
+              </Button>
+            ) : null}
           </div>
         }
         breadcrumbs={[{ href: routePaths.dashboard, label: 'Dashboard' }, { label: 'Approvals' }]}
@@ -351,6 +361,8 @@ export function ApprovalsPage() {
         <Card className={cn('min-h-0 overflow-hidden p-0', !isDetailOpen && 'hidden lg:block')}>
           <WorkflowDetail
             actionTemplates={actionTemplatesQuery.data?.data ?? []}
+            canManage={canManage}
+            canPublish={canPublish}
             canSimulate={canSimulate}
             conditionFields={conditionFieldsQuery.data?.data ?? []}
             detailError={detailQuery.error}
@@ -378,9 +390,26 @@ export function ApprovalsPage() {
               if (!selectedVersion || !canSimulate) return
               validateMutation.mutate(selectedVersion.versionId)
             }}
+            onWorkflowChanged={() => {
+              void detailQuery.refetch()
+              void workflowsQuery.refetch()
+              void catalogQuery.refetch()
+            }}
           />
         </Card>
       </section>
+
+      {isCreateOpen ? (
+        <WorkflowFormModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={(created) => {
+            setCreateOpen(false)
+            void catalogQuery.refetch()
+            void workflowsQuery.refetch()
+            updateSearchParams({ tab: 'flow', workflowId: created.workflowId })
+          }}
+        />
+      ) : null}
     </PageContainer>
   )
 }
@@ -410,9 +439,16 @@ function readTab(value: string | null): ApprovalTab {
   return tabs.includes(value as ApprovalTab) ? (value as ApprovalTab) : 'flow'
 }
 
+/**
+ * A DRAFT outranks a PUBLISHED version: it is whatever an admin most recently
+ * started editing (a fresh workflow, or a clone of a live one made to edit it),
+ * so it is the more actionable thing to land on. `versions` comes back newest
+ * first, so `find` naturally prefers the latest draft over an older one.
+ */
 function findSelectedVersion(workflow: ApprovalWorkflowDetail | null) {
   if (!workflow) return null
   return (
+    workflow.versions.find((v) => v.status === 'DRAFT') ??
     workflow.versions.find((v) => v.versionId === workflow.latestPublishedVersionId) ??
     workflow.versions.find((v) => v.status === 'PUBLISHED') ??
     workflow.versions[0] ??
