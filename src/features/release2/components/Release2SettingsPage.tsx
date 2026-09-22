@@ -227,11 +227,20 @@ export function Release2SettingsPage() {
           title="Nothing to show"
         />
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2">
+        // A two-column CSS grid pairs cards row-by-row and sizes each row to
+        // its tallest card, so a short group (e.g. Messaging, 2 rows) next to
+        // a tall one (e.g. Loyalty, 5 rows) left a dead gap under the short
+        // one before the next row could start. CSS columns let each column
+        // flow independently instead, closing that gap.
+        <div className="columns-1 gap-3 lg:columns-2">
           {filteredGroups.map((group) => (
             // Grid items default to min-width:auto and would otherwise be
             // sized by the longest setting key, pushing rows past the viewport.
-            <div className="min-w-0" id={group.uiGroup} key={group.uiGroup}>
+            <div
+              className="mb-3 min-w-0 break-inside-avoid"
+              id={group.uiGroup}
+              key={group.uiGroup}
+            >
               <Card className="!p-0">
                 <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
                   <h2 className="text-sm font-semibold text-foreground">
