@@ -208,7 +208,7 @@ export function ApprovalsPage() {
   const isDetailOpen = Boolean(selectedWorkflowId)
 
   return (
-    <PageContainer className="flex min-h-full flex-col gap-3 !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
+    <PageContainer className="flex min-h-full flex-col gap-3 !px-3 !py-3 sm:!px-4 lg:!px-6">
       <PageContextHeader
         actionNode={
           <div className="flex items-center gap-2">
