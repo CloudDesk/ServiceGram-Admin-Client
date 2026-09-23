@@ -42,6 +42,7 @@ function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
 
   return value
+    .replace(/^release2[-_:]?/i, '')
     .toLowerCase()
     .split(/[:_-]+/)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -98,21 +99,6 @@ function initialsForName(value: string | null | undefined) {
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join('')
-}
-
-function formatRemainingSeconds(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return 'Not available'
-  }
-
-  if (value <= 0) return 'Expired'
-
-  const hours = Math.floor(value / 3600)
-  const minutes = Math.floor((value % 3600) / 60)
-
-  if (hours > 0) return `${hours}h ${minutes}m`
-
-  return `${Math.max(minutes, 1)}m`
 }
 
 function buildProfileAdminUsersListPath(profile: CurrentAdminUser) {
@@ -490,7 +476,7 @@ export function ProfilePage() {
 
   return (
     <PageContainer className="space-y-3">
-      <PageContextHeader layout="workspace" placement="topbar" title="Profile" />
+      <PageContextHeader placement="topbar" title="Profile" />
 
       <ProfileHeroCard
         canReadAdminUsers={canReadAdminUsers}
@@ -503,10 +489,8 @@ export function ProfilePage() {
 
       <RecordMetricStrip
         metrics={[
-          { label: 'Role', value: profile.role?.roleCode ?? 'NO_ROLE' },
           { label: 'Permissions', value: String(profile.permissions.length) },
           { label: 'Scopes', value: String(profile.scopes.length) },
-          { label: 'Session remaining', value: formatRemainingSeconds(profile.session?.remainingSeconds) },
           { label: 'Updated', value: formatDateSafe(profile.updatedAt) },
         ]}
       />

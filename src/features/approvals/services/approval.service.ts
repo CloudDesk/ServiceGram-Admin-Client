@@ -3,6 +3,11 @@ import {
   APPROVAL_ACTION_TEMPLATES_PATH,
   APPROVAL_CONDITION_FIELDS_PATH,
   APPROVAL_WORKFLOW_DETAIL_PATH,
+  APPROVAL_WORKFLOW_META_PATH,
+  APPROVAL_WORKFLOW_VERSIONS_PATH,
+  APPROVAL_WORKFLOW_VERSION_DEACTIVATE_PATH,
+  APPROVAL_WORKFLOW_VERSION_DEFINITION_PATH,
+  APPROVAL_WORKFLOW_VERSION_PUBLISH_PATH,
   APPROVAL_WORKFLOW_VERSION_SIMULATE_PATH,
   APPROVAL_WORKFLOW_VERSION_VALIDATE_PATH,
   APPROVAL_WORKFLOWS_PATH,
@@ -12,6 +17,7 @@ import { buildQueryParams } from '../../../utils/buildQueryParams'
 import type {
   ApprovalActionTemplatesResponse,
   ApprovalConditionFieldsResponse,
+  ApprovalErrorResponse,
   ApprovalRegistryQueryParams,
   ApprovalSimulationPayload,
   ApprovalSimulationResponse,
@@ -19,52 +25,52 @@ import type {
   ApprovalWorkflowDetailResponse,
   ApprovalWorkflowsListResponse,
   ApprovalWorkflowsQueryParams,
+  ApprovalWorkflowDeleteResponse,
+  CreateApprovalWorkflowPayload,
+  CreateApprovalWorkflowVersionDraftPayload,
+  DeactivateApprovalWorkflowVersionPayload,
+  DeleteApprovalWorkflowPayload,
+  PublishApprovalWorkflowVersionPayload,
+  ReplaceApprovalWorkflowVersionDefinitionPayload,
+  UpdateApprovalWorkflowMetaPayload,
 } from '../types/approval.types'
-
-interface ApprovalApiErrorEnvelope {
-  message?: string
-  error?: string
-  code?: string
-  details?: {
-    fieldErrors?: {
-      field: string
-      message: string
-    }[]
-  }
-}
+import { ApprovalServiceError } from '../types/approval.types'
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json().catch(() => null)) as
-    | T
-    | ApprovalApiErrorEnvelope
-    | null
+  const text = await response.text()
+  const body = text ? (JSON.parse(text) as T | ApprovalErrorResponse) : null
 
   if (!response.ok) {
-    const errorPayload =
-      payload && typeof payload === 'object'
-        ? (payload as ApprovalApiErrorEnvelope)
-        : null
-    const fieldMessage = errorPayload?.details?.fieldErrors?.[0]?.message
+    const errorBody = (body ?? null) as ApprovalErrorResponse | null
 
-    throw new Error(
-      fieldMessage ??
-        errorPayload?.message ??
-        errorPayload?.error ??
+    throw new ApprovalServiceError(
+      errorBody?.details?.fieldErrors?.[0]?.message ??
+        errorBody?.message ??
         'Approval request failed.',
+      response.status,
+      errorBody?.code ?? 'REQUEST_FAILED',
+      errorBody,
     )
   }
 
-  return payload as T
+  return body as T
 }
 
-function postJson<TPayload>(payload: TPayload) {
+function jsonRequest<TPayload>(
+  method: 'DELETE' | 'PATCH' | 'POST' | 'PUT',
+  payload: TPayload,
+) {
   return {
-    method: 'POST',
+    method,
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
   }
+}
+
+function postJson<TPayload>(payload: TPayload) {
+  return jsonRequest('POST', payload)
 }
 
 async function getWorkflows(
@@ -145,6 +151,89 @@ async function simulateWorkflowVersion(
   return parseJsonResponse<ApprovalSimulationResponse>(response)
 }
 
+async function createWorkflow(
+  payload: CreateApprovalWorkflowPayload,
+): Promise<ApprovalWorkflowDetailResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(APPROVAL_WORKFLOWS_PATH),
+    postJson(payload),
+  )
+
+  return parseJsonResponse<ApprovalWorkflowDetailResponse>(response)
+}
+
+async function updateWorkflowMeta(
+  workflowId: string,
+  payload: UpdateApprovalWorkflowMetaPayload,
+): Promise<ApprovalWorkflowDetailResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(APPROVAL_WORKFLOW_META_PATH(workflowId)),
+    jsonRequest('PATCH', payload),
+  )
+
+  return parseJsonResponse<ApprovalWorkflowDetailResponse>(response)
+}
+
+async function createDraftVersion(
+  workflowId: string,
+  payload: CreateApprovalWorkflowVersionDraftPayload,
+): Promise<ApprovalWorkflowDetailResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(APPROVAL_WORKFLOW_VERSIONS_PATH(workflowId)),
+    postJson(payload),
+  )
+
+  return parseJsonResponse<ApprovalWorkflowDetailResponse>(response)
+}
+
+async function replaceVersionDefinition(
+  versionId: string,
+  payload: ReplaceApprovalWorkflowVersionDefinitionPayload,
+): Promise<ApprovalWorkflowDetailResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(APPROVAL_WORKFLOW_VERSION_DEFINITION_PATH(versionId)),
+    jsonRequest('PUT', payload),
+  )
+
+  return parseJsonResponse<ApprovalWorkflowDetailResponse>(response)
+}
+
+async function publishVersion(
+  versionId: string,
+  payload: PublishApprovalWorkflowVersionPayload,
+): Promise<ApprovalWorkflowDetailResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(APPROVAL_WORKFLOW_VERSION_PUBLISH_PATH(versionId)),
+    postJson(payload),
+  )
+
+  return parseJsonResponse<ApprovalWorkflowDetailResponse>(response)
+}
+
+async function deactivateVersion(
+  versionId: string,
+  payload: DeactivateApprovalWorkflowVersionPayload,
+): Promise<ApprovalWorkflowDetailResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(APPROVAL_WORKFLOW_VERSION_DEACTIVATE_PATH(versionId)),
+    postJson(payload),
+  )
+
+  return parseJsonResponse<ApprovalWorkflowDetailResponse>(response)
+}
+
+async function deleteWorkflow(
+  workflowId: string,
+  payload: DeleteApprovalWorkflowPayload,
+): Promise<ApprovalWorkflowDeleteResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(APPROVAL_WORKFLOW_META_PATH(workflowId)),
+    jsonRequest('DELETE', payload),
+  )
+
+  return parseJsonResponse<ApprovalWorkflowDeleteResponse>(response)
+}
+
 export const approvalService = {
   getWorkflows,
   getWorkflowDetail,
@@ -152,4 +241,11 @@ export const approvalService = {
   getActionTemplates,
   validateWorkflowVersion,
   simulateWorkflowVersion,
+  createWorkflow,
+  updateWorkflowMeta,
+  createDraftVersion,
+  replaceVersionDefinition,
+  publishVersion,
+  deactivateVersion,
+  deleteWorkflow,
 }

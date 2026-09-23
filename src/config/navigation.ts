@@ -38,10 +38,6 @@ import type { PermissionKey } from "../types/common.types";
 /** Sidebar section a nav item belongs to. Ungrouped items render first. */
 export type NavigationGroup = "release2";
 
-export const navigationGroupLabels: Record<NavigationGroup, string> = {
-  release2: "Release 2",
-};
-
 export interface NavigationItem {
   label: string;
   href: string;
@@ -244,7 +240,7 @@ export const navigationItems: NavigationItem[] = [
     group: "release2",
   },
   {
-    label: "Release 2 Settings",
+    label: "App Configuration",
     href: routePaths.release2Settings,
     icon: SlidersHorizontal,
     permission: permissions.release2Settings,
@@ -257,6 +253,10 @@ export const navigationItems: NavigationItem[] = [
     alwaysVisible: true,
   },
 ] as const;
+
+export function isNavigationItemActive(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export function isNavigationItemVisible(
   item: NavigationItem,

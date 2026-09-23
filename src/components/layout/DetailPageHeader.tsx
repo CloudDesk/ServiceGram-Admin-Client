@@ -22,7 +22,7 @@ interface DetailPageHeaderProps {
 // lg:px-6) exactly, or the bar overhangs the container and the page scrolls
 // sideways by the difference.
 const detailHeaderDockClassName =
-  'sticky top-0 z-20 -mx-3 pb-3 premium-page-surface sm:-mx-4 lg:-mx-6'
+  'sticky top-0 z-50 -mx-3 pb-3 premium-page-surface sm:-mx-4 lg:-mx-6'
 const detailHeaderBarClassName =
   'border-y border-border bg-surface/95 px-3 py-2 shadow-[var(--sg-shadow-surface)] backdrop-blur-xl sm:px-4 lg:px-6'
 

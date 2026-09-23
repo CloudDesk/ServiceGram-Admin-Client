@@ -1,5 +1,5 @@
 import type { FormEvent, ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -10,17 +10,9 @@ import {
   CheckCircle2,
   ClipboardList,
   Edit3,
-  Filter,
-  FileJson,
   Image as ImageIcon,
-  MapPinned,
   Plus,
   Power,
-  RefreshCcw,
-  Settings2,
-  SlidersHorizontal,
-  ToggleLeft,
-  Video,
   X,
 } from 'lucide-react'
 import { PageContainer } from '../../../components/layout/PageContainer'
@@ -29,7 +21,6 @@ import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
-import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
 import {
 } from '../../../components/ui/ListSelection'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
@@ -55,6 +46,7 @@ import {
 } from '../mediaReelPolicy/components/MediaReelPolicyModal'
 import type { MediaReelConfig } from '../mediaReelPolicy/types/mediaReelPolicy.types'
 import { policyActivationConflictDetail } from '../mediaReelPolicy/utils/contentRulePresentation'
+import { PolicyRulesWorkspace } from '../policyRules/components/PolicyRulesWorkspace'
 import {
   SettingsActionModal,
   type SettingsActionFormValues,
@@ -164,15 +156,14 @@ const policyScopeTypes: PolicyScopeType[] = [
 ]
 
 const settingsTabs: {
-  icon: ReactNode
   label: string
   type: SettingsWorkspaceType
 }[] = [
-  { icon: <Settings2 className="size-4" />, label: 'Platform settings', type: 'settings' },
-  { icon: <ToggleLeft className="size-4" />, label: 'Categories', type: 'categories' },
-  { icon: <MapPinned className="size-4" />, label: 'Zones', type: 'zones' },
-  { icon: <FileJson className="size-4" />, label: 'Policy rules', type: 'policies' },
-  { icon: <Video className="size-4" />, label: 'Content rules', type: 'mediaPolicies' },
+  { label: 'Platform settings', type: 'settings' },
+  { label: 'Categories', type: 'categories' },
+  { label: 'Zones', type: 'zones' },
+  { label: 'Policy rules', type: 'policies' },
+  { label: 'Content rules', type: 'mediaPolicies' },
 ]
 
 const settingsColumnsByType: Record<SettingsRecordType, SettingsColumn[]> = {
@@ -457,10 +448,6 @@ const settingsColumnsByType: Record<SettingsRecordType, SettingsColumn[]> = {
 }
 
 
-function defaultVisibleColumns(type: SettingsRecordType) {
-  return settingsColumnsByType[type].map((column) => column.id)
-}
-
 function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
 
@@ -651,15 +638,6 @@ function formatPaise(value: number) {
   }).format(value / 100)
 }
 
-function formatRefreshTime(value: number) {
-  if (!value) return 'Not refreshed yet'
-
-  return `Last refreshed ${new Intl.DateTimeFormat(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(value))}`
-}
-
 function MetricCard({
   icon,
   label,
@@ -681,44 +659,6 @@ function MetricCard({
         {value}
       </div>
       <p className="mt-0.5 text-xs leading-4 text-muted">{meta}</p>
-    </div>
-  )
-}
-
-function ActiveSettingsFilterChips({
-  chips,
-  onClearAll,
-}: {
-  chips: ActiveSettingsFilterChip[]
-  onClearAll: () => void
-}) {
-  if (!chips.length) return null
-
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-2">
-      {chips.map((chip) => (
-        <span
-          className="inline-flex min-h-7 max-w-full items-center gap-2 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-foreground"
-          key={chip.key}
-        >
-          <span className="truncate">{chip.label}</span>
-          <button
-            aria-label={`Clear ${chip.label}`}
-            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-surface-muted hover:text-foreground"
-            type="button"
-            onClick={chip.onClear}
-          >
-            <X className="size-3.5" />
-          </button>
-        </span>
-      ))}
-      <button
-        className="min-h-7 rounded-full px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
-        type="button"
-        onClick={onClearAll}
-      >
-        Clear all
-      </button>
     </div>
   )
 }
@@ -1956,332 +1896,6 @@ function PricingPreviewResult({ preview }: { preview: PricingPolicyPreview }) {
   )
 }
 
-function PolicyRulesWorkspace({
-  canReadAudit,
-  canReadVendors,
-  canUpdateSettings,
-  isError,
-  isInitialLoading,
-  isRefreshing,
-  onCreate,
-  onOpenAudit,
-  onOpenCategory,
-  onOpenVendor,
-  onOpenZone,
-  onPreview,
-  onPreviewPricing,
-  onRefresh,
-  onSelectAction,
-  rows,
-  selectedPolicyRuleId,
-}: {
-  canReadAudit: boolean
-  canReadVendors: boolean
-  canUpdateSettings: boolean
-  isError: boolean
-  isInitialLoading: boolean
-  isRefreshing: boolean
-  onCreate: () => void
-  onOpenAudit: (row: PolicyRule) => void
-  onOpenCategory: (categoryId: string) => void
-  onOpenVendor: (vendorId: string) => void
-  onOpenZone: (zoneId: string) => void
-  onPreview: (row: PolicyRule) => void
-  onPreviewPricing: () => void
-  onRefresh: () => void
-  onSelectAction: (action: PolicyRuleActionSelection) => void
-  rows: PolicyRule[]
-  selectedPolicyRuleId?: string | null
-}) {
-  if (isError) {
-    return (
-      <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-        <ErrorState
-          description="We could not load policy rules."
-          title="Policy rules unavailable"
-          onRetry={onRefresh}
-        />
-      </div>
-    )
-  }
-
-  if (isInitialLoading) {
-    return (
-      <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-        <SettingsRowsSkeleton />
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex flex-col xl:min-h-0 xl:flex-1">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-muted/40 px-3 py-2.5">
-        <p className="text-sm text-muted">
-          {rows.length} policy rules from backend filters
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" type="button" variant="secondary" onClick={onPreviewPricing}>
-            <Calculator className="mr-2 size-4" />
-            Preview pricing
-          </Button>
-          <Button
-            disabled={!canUpdateSettings}
-            size="sm"
-            title={
-              canUpdateSettings
-                ? 'Create policy rule'
-                : 'Requires settings:update'
-            }
-            type="button"
-            variant="secondary"
-            onClick={onCreate}
-          >
-            <Plus className="mr-2 size-4" />
-            Policy rule
-          </Button>
-          <Button size="sm" type="button" variant="secondary" onClick={onRefresh}>
-            <RefreshCcw
-              className={cn(
-                'mr-2 size-4',
-                isRefreshing && 'animate-spin motion-reduce:animate-none',
-              )}
-            />
-            Refresh
-          </Button>
-        </div>
-      </div>
-
-      {rows.length === 0 ? (
-        <div className="p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-          <EmptyState
-            description="No policy rules matched the current backend filters."
-            title="No policy rules found"
-          />
-        </div>
-      ) : (
-        <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-auto">
-          <div className="min-w-[78rem]">
-            <div className="sticky top-0 z-30 grid grid-cols-[minmax(17rem,1.4fr)_8rem_minmax(12rem,0.9fr)_8rem_minmax(13rem,0.9fr)_15rem] gap-3 border-b border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold uppercase tracking-normal text-muted shadow-[0_1px_0_var(--adaptive-border)]">
-              <div>Rule</div>
-              <div>Status</div>
-              <div>Scope</div>
-              <div>Priority</div>
-              <div>Effective</div>
-              <div className="workbench-sticky-action-head flex min-w-0 pr-3">
-                <span className="truncate">Actions</span>
-              </div>
-            </div>
-            <div>
-              {rows.map((rule) => (
-                <PolicyRuleRow
-                  canReadAudit={canReadAudit}
-                  canReadVendors={canReadVendors}
-                  canUpdateSettings={canUpdateSettings}
-                  isPreviewed={selectedPolicyRuleId === rule.policyRuleId}
-                  key={rule.policyRuleId}
-                  rule={rule}
-                  onOpenAudit={onOpenAudit}
-                  onOpenCategory={onOpenCategory}
-                  onOpenVendor={onOpenVendor}
-                  onOpenZone={onOpenZone}
-                  onPreview={onPreview}
-                  onSelectAction={onSelectAction}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function PolicyRuleRow({
-  canReadAudit,
-  canReadVendors,
-  canUpdateSettings,
-  isPreviewed,
-  onOpenAudit,
-  onOpenCategory,
-  onOpenVendor,
-  onOpenZone,
-  onPreview,
-  onSelectAction,
-  rule,
-}: {
-  canReadAudit: boolean
-  canReadVendors: boolean
-  canUpdateSettings: boolean
-  isPreviewed: boolean
-  onOpenAudit: (row: PolicyRule) => void
-  onOpenCategory: (categoryId: string) => void
-  onOpenVendor: (vendorId: string) => void
-  onOpenZone: (zoneId: string) => void
-  onPreview: (row: PolicyRule) => void
-  onSelectAction: (action: PolicyRuleActionSelection) => void
-  rule: PolicyRule
-}) {
-  const secondaryAction: PolicyRuleAction =
-    rule.status === 'ACTIVE' ? 'ARCHIVE' : 'ACTIVATE'
-  const canEdit = canUpdateSettings && hasPolicyAction(rule, 'EDIT')
-  const canRunSecondary =
-    canUpdateSettings &&
-    hasPolicyAction(rule, secondaryAction === 'ARCHIVE' ? 'ARCHIVE' : 'ACTIVATE')
-
-  return (
-    <div
-      aria-label={`Preview policy rule ${rule.displayName}`}
-      aria-selected={isPreviewed}
-      className={cn(
-        'workbench-grid-row grid cursor-pointer grid-cols-[minmax(17rem,1.4fr)_8rem_minmax(12rem,0.9fr)_8rem_minmax(13rem,0.9fr)_15rem] gap-3 border-b border-border bg-surface px-3 py-2.5 transition last:border-b-0 hover:bg-surface-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-        isPreviewed &&
-          'bg-primary/5 ring-1 ring-inset ring-primary/20 hover:bg-primary/10',
-      )}
-      role="button"
-      tabIndex={0}
-      onClick={() => onPreview(rule)}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget) return
-
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onPreview(rule)
-        }
-      }}
-    >
-      <div className="min-w-0">
-        <p className="truncate font-semibold text-foreground">{rule.displayName}</p>
-        <p className="truncate text-xs text-muted">{rule.ruleKey}</p>
-        <p className="mt-1 text-xs text-muted">{humanizeCode(rule.family)}</p>
-      </div>
-      <div>
-        <Badge tone={policyStatusTone(rule.status)}>
-          {humanizeCode(rule.status)}
-        </Badge>
-        <p className="mt-1 text-xs text-muted">v{rule.version}</p>
-      </div>
-      <div className="min-w-0">
-        <p className="font-medium text-foreground">
-          {humanizeCode(rule.scope.scopeType)}
-        </p>
-        <p className="break-all text-xs text-muted">{getPolicyScopeLabel(rule)}</p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {rule.scope.categoryId ? (
-            <button
-              className="text-xs font-semibold text-primary hover:underline"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                onOpenCategory(rule.scope.categoryId as string)
-              }}
-            >
-              Category
-            </button>
-          ) : null}
-          {rule.scope.zoneId ? (
-            <button
-              className="text-xs font-semibold text-primary hover:underline"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                onOpenZone(rule.scope.zoneId as string)
-              }}
-            >
-              Zone
-            </button>
-          ) : null}
-          {rule.scope.vendorId && canReadVendors ? (
-            <button
-              className="text-xs font-semibold text-primary hover:underline"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                onOpenVendor(rule.scope.vendorId as string)
-              }}
-            >
-              Vendor
-            </button>
-          ) : null}
-        </div>
-      </div>
-      <div>
-        <p className="font-semibold text-foreground">{rule.priority}</p>
-        <p className="text-xs text-muted">Lower wins</p>
-      </div>
-      <div>
-        <p className="text-sm font-medium text-foreground">
-          {formatDate(rule.effectiveFrom, true)}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          {rule.effectiveTo ? formatDate(rule.effectiveTo, true) : 'No end date'}
-        </p>
-      </div>
-      <div className="workbench-sticky-action-cell flex min-w-0 flex-nowrap items-center justify-end gap-1.5 pl-2 pr-3">
-        <Button
-          className="w-[7.75rem] shrink-0 overflow-hidden px-2.5"
-          disabled={!canEdit}
-          size="sm"
-          title={
-            canEdit
-              ? 'Edit policy rule'
-              : canUpdateSettings
-                ? 'Edit unavailable from backend actions'
-                : 'Requires settings:update'
-          }
-          type="button"
-          variant="secondary"
-          onClick={(event) => {
-            event.stopPropagation()
-            onSelectAction({ action: 'EDIT', record: rule })
-          }}
-        >
-          <Edit3 className="mr-2 size-4 shrink-0" />
-          <span className="min-w-0 truncate">Edit</span>
-        </Button>
-        <Button
-          aria-label={policyActionLabel(secondaryAction)}
-          className="size-9 shrink-0 px-0"
-          disabled={!canRunSecondary}
-          size="sm"
-          title={
-            canRunSecondary
-              ? `${humanizeCode(secondaryAction)} policy rule`
-              : canUpdateSettings
-                ? 'State change unavailable from backend actions'
-                : 'Requires settings:update'
-          }
-          type="button"
-          variant={secondaryAction === 'ARCHIVE' ? 'danger' : 'secondary'}
-          onClick={(event) => {
-            event.stopPropagation()
-            onSelectAction({ action: secondaryAction, record: rule })
-          }}
-        >
-          {secondaryAction === 'ARCHIVE' ? (
-            <Archive className="size-4 shrink-0" />
-          ) : (
-            <Power className="size-4 shrink-0" />
-          )}
-          <span className="sr-only">{policyActionLabel(secondaryAction)}</span>
-        </Button>
-        {canReadAudit ? (
-          <button
-            className="btn-icon shrink-0"
-            title="Open audit history"
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              onOpenAudit(rule)
-            }}
-          >
-            <ClipboardList className="size-4" />
-          </button>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
 export function SettingsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -2331,42 +1945,8 @@ export function SettingsPage() {
     useState<MediaReelPolicyModalSelection | null>(null)
   const [selectedAction, setSelectedAction] =
     useState<SettingsActionSelection | null>(null)
-  const [columnsOpen, setColumnsOpen] = useState(false)
-  const [filtersOpen, setFiltersOpen] = useState(false)
-  const columnsMenuRef = useRef<HTMLDivElement | null>(null)
   const [previewSelection, setPreviewSelection] =
     useState<SettingsPreviewSelection>(null)
-  const [visibleColumns, setVisibleColumns] = useState<SettingsColumnId[]>(
-    defaultVisibleColumns(isSettingsRecordType(type) ? type : 'settings'),
-  )
-
-  useEffect(() => {
-    if (!columnsOpen) return
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target
-
-      if (target instanceof Node && columnsMenuRef.current?.contains(target)) {
-        return
-      }
-
-      setColumnsOpen(false)
-    }
-
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setColumnsOpen(false)
-      }
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [columnsOpen])
 
   const resetToFirstPage = () => setPage(1)
   const hasActiveFilters = Boolean(
@@ -2420,11 +2000,7 @@ export function SettingsPage() {
     setSelectedPolicyAction(null)
     setSelectedContentRuleAction(null)
     setSelectedAction(null)
-    setColumnsOpen(false)
     setPreviewSelection(null)
-    if (isSettingsRecordType(nextType)) {
-      setVisibleColumns(defaultVisibleColumns(nextType))
-    }
   }
 
   const query = useMemo(() => {
@@ -2747,36 +2323,6 @@ export function SettingsPage() {
       : type === 'mediaPolicies'
         ? mediaPolicyResult.isLoading && mediaPolicyRows.length === 0
         : result.isLoading && rows.length === 0
-  const isRefreshing =
-    type === 'policies'
-      ? policyResult.isFetching && !isInitialLoading
-      : type === 'mediaPolicies'
-        ? mediaPolicyResult.isFetching && !isInitialLoading
-        : result.isFetching && !isInitialLoading
-  const refreshStatusLabel = isRefreshing
-    ? 'Refreshing'
-    : formatRefreshTime(
-        type === 'policies'
-          ? policyResult.dataUpdatedAt
-          : type === 'mediaPolicies'
-            ? mediaPolicyResult.dataUpdatedAt
-            : result.dataUpdatedAt,
-      )
-
-  const toggleColumn = (columnId: SettingsColumnId) => {
-    setVisibleColumns((currentColumns) => {
-      if (currentColumns.includes(columnId)) {
-        return currentColumns.length === 1
-          ? currentColumns
-          : currentColumns.filter((item) => item !== columnId)
-      }
-
-      return columns
-        .map((column) => column.id)
-        .filter((item) => currentColumns.includes(item) || item === columnId)
-    })
-  }
-
   const clearFilters = () => {
     clearSeededSettingsParams()
     setSearch('')
@@ -2933,105 +2479,6 @@ export function SettingsPage() {
                       </label>
                     ) : null}
   
-                    {type === 'policies' ? (
-                      <>
-                        <label className="space-y-1">
-                          <span className="text-xs font-semibold text-muted">Family</span>
-                          <select
-                            className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
-                            value={policyFamily}
-                            onChange={(event) => {
-                              clearSeededSettingsParams()
-                              setPolicyFamily(event.target.value)
-                            }}
-                          >
-                            <option value="">All</option>
-                            {policyFamilies.map((option) => (
-                              <option key={option} value={option}>
-                                {humanizeCode(option)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="space-y-1">
-                          <span className="text-xs font-semibold text-muted">Status</span>
-                          <select
-                            className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
-                            value={policyStatus}
-                            onChange={(event) => {
-                              clearSeededSettingsParams()
-                              setPolicyStatus(event.target.value)
-                            }}
-                          >
-                            <option value="">All</option>
-                            {policyStatuses.map((option) => (
-                              <option key={option} value={option}>
-                                {humanizeCode(option)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="space-y-1">
-                          <span className="text-xs font-semibold text-muted">Scope</span>
-                          <select
-                            className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
-                            value={policyScopeType}
-                            onChange={(event) => {
-                              clearSeededSettingsParams()
-                              setPolicyScopeType(event.target.value)
-                            }}
-                          >
-                            <option value="">All</option>
-                            {policyScopeTypes.map((option) => (
-                              <option key={option} value={option}>
-                                {humanizeCode(option)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </>
-                    ) : null}
-
-                    {type === 'mediaPolicies' ? (
-                      <>
-                        <label className="space-y-1">
-                          <span className="text-xs font-semibold text-muted">Status</span>
-                          <select
-                            className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
-                            value={policyStatus}
-                            onChange={(event) => {
-                              clearSeededSettingsParams()
-                              setPolicyStatus(event.target.value)
-                            }}
-                          >
-                            <option value="">All</option>
-                            {policyStatuses.map((option) => (
-                              <option key={option} value={option}>
-                                {humanizeCode(option)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="space-y-1">
-                          <span className="text-xs font-semibold text-muted">Scope</span>
-                          <select
-                            className={SETTINGS_FILTER_CONTROL_CLASS_NAME}
-                            value={policyScopeType}
-                            onChange={(event) => {
-                              clearSeededSettingsParams()
-                              setPolicyScopeType(event.target.value)
-                            }}
-                          >
-                            <option value="">All</option>
-                            {policyScopeTypes.map((option) => (
-                              <option key={option} value={option}>
-                                {humanizeCode(option)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </>
-                    ) : null}
 
                     {(type === 'categories' || type === 'zones') ? (
                       <label className="space-y-1">
@@ -3069,248 +2516,6 @@ export function SettingsPage() {
                 : 'settings-records'
           }
         >
-          {type === 'policies' || type === 'mediaPolicies' ? (
-          <div className="shrink-0 border-b border-border bg-surface px-3 py-3 sm:px-4">
-            <div className="grid gap-3 xl:grid-cols-[minmax(11rem,0.32fr)_minmax(18rem,1fr)_auto] xl:items-center">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <h1 className="text-base font-semibold text-foreground">Settings</h1>
-                <span
-                  className={cn(
-                    'rounded-full bg-surface-muted px-2 py-1 text-xs font-semibold',
-                    isRefreshing ? 'text-primary' : 'text-muted',
-                  )}
-                >
-                  {refreshStatusLabel}
-                </span>
-              </div>
-
-              {type !== 'policies' && type !== 'mediaPolicies' ? (
-                <ListHeaderSearch
-                  ariaLabel="Search settings records"
-                  className="w-full min-w-0"
-                  placeholder={`Search ${recordLabel(type)}...`}
-                  value={search}
-                  onChange={(nextSearch) => {
-                    clearSeededSettingsParams()
-                    setSearch(nextSearch)
-                    resetToFirstPage()
-                  }}
-                />
-              ) : (
-                <div className="min-h-10 rounded-[0.75rem] border border-dashed border-border bg-surface-muted/40 px-3 py-2 text-sm text-muted">
-                  {type === 'mediaPolicies'
-                    ? 'Content rules are filtered by status and scope.'
-                    : 'Policy rules are filtered by family, status, and scope.'}
-                </div>
-              )}
-
-              <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 xl:justify-end">
-                <Button
-                  aria-expanded={filtersOpen}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setFiltersOpen((current) => !current)}
-                >
-                  <Filter className="mr-2 size-4" />
-                  Filters
-                  {activeFilterChips.length ? (
-                    <span className="ml-1 size-2 rounded-full bg-primary" />
-                  ) : null}
-                </Button>
-
-                {type === 'policies' ? (
-                  <>
-                    <Button
-                      size="sm"
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setPricingPreviewOpen(true)}
-                    >
-                      <Calculator className="mr-2 size-4" />
-                      Preview
-                    </Button>
-                    <Button
-                      disabled={!canUpdateSettings}
-                      size="sm"
-                      title={
-                        canUpdateSettings
-                          ? 'Create policy rule'
-                          : 'Requires settings:update'
-                      }
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setSelectedPolicyAction({ action: 'CREATE' })}
-                    >
-                      <Plus className="mr-2 size-4" />
-                      Rule
-                    </Button>
-                  </>
-                ) : null}
-
-                {type === 'mediaPolicies' ? (
-                  <Button
-                    disabled={!canUpdateSettings}
-                    size="sm"
-                    title={canUpdateSettings ? 'Create content rule' : 'Requires settings:update'}
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setSelectedContentRuleAction({ action: 'CREATE' })}
-                  >
-                    <Plus className="mr-2 size-4" />
-                    Rule
-                  </Button>
-                ) : null}
-
-                {type !== 'policies' && type !== 'mediaPolicies' ? (
-                  <div className="relative" ref={columnsMenuRef}>
-                    <Button
-                      aria-expanded={columnsOpen}
-                      aria-haspopup="menu"
-                      size="sm"
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setColumnsOpen((current) => !current)}
-                    >
-                      <SlidersHorizontal className="mr-2 size-4" />
-                      Columns
-                      {visibleColumns.length ? (
-                        <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs text-primary">
-                          {visibleColumns.length}
-                        </span>
-                      ) : null}
-                    </Button>
-
-                    {columnsOpen ? (
-                      <div
-                        className="absolute right-0 top-[calc(100%+0.5rem)] z-[80] w-60 rounded-[0.875rem] border border-border bg-surface p-2 shadow-surface"
-                        role="menu"
-                      >
-                        <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-normal text-muted">
-                          Visible columns
-                        </p>
-                        {columns.map((column) => {
-                          const isChecked = visibleColumns.includes(column.id)
-                          const isRequiredLastColumn =
-                            isChecked && visibleColumns.length === 1
-
-                          return (
-                            <label
-                              className={cn(
-                                'flex min-h-9 cursor-pointer items-center gap-2 rounded-[0.65rem] px-2 text-sm text-foreground hover:bg-surface-muted',
-                                isRequiredLastColumn &&
-                                  'cursor-not-allowed opacity-60',
-                              )}
-                              key={column.id}
-                            >
-                              <input
-                                checked={isChecked}
-                                className="size-4 accent-[color:var(--adaptive-primary)]"
-                                disabled={isRequiredLastColumn}
-                                type="checkbox"
-                                onChange={() => toggleColumn(column.id)}
-                              />
-                              <span>{column.label}</span>
-                            </label>
-                          )
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={() =>
-                    type === 'policies'
-                      ? void policyResult.refetch()
-                      : type === 'mediaPolicies'
-                        ? void mediaPolicyResult.refetch()
-                        : void result.refetch()
-                  }
-                >
-                  <RefreshCcw
-                    className={cn(
-                      'mr-2 size-4',
-                      isRefreshing && 'animate-spin motion-reduce:animate-none',
-                    )}
-                  />
-                  Refresh
-                </Button>
-              </div>
-            </div>
-
-            <div className="mt-3 flex gap-2 overflow-x-auto rounded-[0.875rem] border border-border bg-surface-muted/45 p-1">
-              {settingsTabs.map((tab) => {
-                const isActiveTab = type === tab.type
-                const count =
-                  tab.type === type
-                    ? tab.type === 'policies'
-                      ? policyRows.length
-                      : tab.type === 'mediaPolicies'
-                        ? mediaPolicyRows.length
-                        : pagination?.totalItems
-                    : undefined
-
-                return (
-                  <button
-                    className={cn(
-                      'inline-flex min-h-9 min-w-max flex-1 items-center justify-center gap-2 rounded-[0.65rem] px-3 text-sm font-semibold transition',
-                      isActiveTab
-                        ? 'bg-surface text-primary shadow-sm ring-1 ring-primary/25'
-                        : 'text-muted hover:bg-surface/75 hover:text-foreground',
-                    )}
-                    key={tab.type}
-                    type="button"
-                    onClick={() => switchType(tab.type)}
-                  >
-                    {tab.icon}
-                    <span>{tab.label}</span>
-                    {typeof count !== 'undefined' ? (
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-xs',
-                          isActiveTab
-                            ? 'bg-primary/10 text-primary'
-                            : 'bg-surface text-muted',
-                        )}
-                      >
-                        {count}
-                      </span>
-                    ) : null}
-                  </button>
-                )
-              })}
-            </div>
-
-            <ActiveSettingsFilterChips
-              chips={activeFilterChips}
-              onClearAll={clearFilters}
-            />
-
-            {filtersOpen ? (
-              <div className="mt-3 rounded-[0.875rem] border border-border bg-surface-muted/35 p-3">
-                <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(10rem,1fr))_auto] xl:items-end">
-                  {settingsFilterControls}
-
-                  <Button
-                    className="h-10 w-full"
-                    disabled={!hasActiveFilters}
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                    onClick={clearFilters}
-                  >
-                    Reset
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-          ) : null}
-
           {type === 'policies' ? (
             <div
               className={cn(
@@ -3321,27 +2526,58 @@ export function SettingsPage() {
               )}
             >
               <PolicyRulesWorkspace
+                rows={policyRows}
                 canReadAudit={canReadAudit}
                 canReadVendors={canReadVendors}
                 canUpdateSettings={canUpdateSettings}
                 isError={policyResult.isError}
-                isInitialLoading={isInitialLoading}
-                isRefreshing={isRefreshing}
-                rows={policyRows}
-                selectedPolicyRuleId={
-                  previewSelection?.type === 'policies'
-                    ? previewSelection.record.policyRuleId
-                    : null
-                }
+                isLoading={isInitialLoading}
+                onRetry={() => void policyResult.refetch()}
+                search={search}
+                onSearchChange={(nextSearch) => {
+                  clearSeededSettingsParams()
+                  setSearch(nextSearch)
+                  resetToFirstPage()
+                }}
+                queueTabs={settingsTabs.map((tab) => ({
+                  key: tab.type,
+                  label: tab.label,
+                  count: tab.type === 'policies' ? policyRows.length : undefined,
+                }))}
+                activeQueue={type}
+                onQueueChange={(key) => switchType(key as SettingsWorkspaceType)}
+                policyFamily={policyFamily}
+                policyStatus={policyStatus}
+                policyScopeType={policyScopeType}
+                onPolicyFamilyChange={(value) => {
+                  clearSeededSettingsParams()
+                  setPolicyFamily(value)
+                }}
+                onPolicyStatusChange={(value) => {
+                  clearSeededSettingsParams()
+                  setPolicyStatus(value)
+                }}
+                onPolicyScopeTypeChange={(value) => {
+                  clearSeededSettingsParams()
+                  setPolicyScopeType(value)
+                }}
+                appliedFilterCount={activeFilterChips.length}
+                onResetFilters={clearFilters}
+                page={page}
+                limit={limit}
+                onPageChange={setPage}
+                onPageSizeChange={(nextLimit) => {
+                  setLimit(nextLimit)
+                  resetToFirstPage()
+                }}
+                onPreview={(rule) => setPreviewSelection({ type: 'policies', record: rule })}
                 onCreate={() => setSelectedPolicyAction({ action: 'CREATE' })}
+                onPreviewPricing={() => setPricingPreviewOpen(true)}
+                onSelectAction={setSelectedPolicyAction}
                 onOpenAudit={openPolicyAudit}
                 onOpenCategory={openPolicyCategory}
-                onOpenVendor={openPolicyVendor}
                 onOpenZone={openPolicyZone}
-                onPreview={(rule) => setPreviewSelection({ type: 'policies', record: rule })}
-                onPreviewPricing={() => setPricingPreviewOpen(true)}
-                onRefresh={() => void policyResult.refetch()}
-                onSelectAction={setSelectedPolicyAction}
+                onOpenVendor={openPolicyVendor}
               />
               {previewSelection?.type === 'policies' ? (
                 <SettingsRecordPreviewPanel
@@ -3368,22 +2604,48 @@ export function SettingsPage() {
               )}
             >
               <ContentRulesWorkspace
+                rows={mediaPolicyRows}
                 canReadAudit={canReadAudit}
                 canUpdateSettings={canUpdateSettings}
                 isError={mediaPolicyResult.isError}
-                isInitialLoading={isInitialLoading}
-                isRefreshing={isRefreshing}
-                rows={mediaPolicyRows}
-                selectedRuleId={
-                  previewSelection?.type === 'mediaPolicies'
-                    ? previewSelection.record.policyRuleId
-                    : null
-                }
+                isLoading={isInitialLoading}
+                onRetry={() => void mediaPolicyResult.refetch()}
+                search={search}
+                onSearchChange={(nextSearch) => {
+                  clearSeededSettingsParams()
+                  setSearch(nextSearch)
+                  resetToFirstPage()
+                }}
+                queueTabs={settingsTabs.map((tab) => ({
+                  key: tab.type,
+                  label: tab.label,
+                  count: tab.type === 'mediaPolicies' ? mediaPolicyRows.length : undefined,
+                }))}
+                activeQueue={type}
+                onQueueChange={(key) => switchType(key as SettingsWorkspaceType)}
+                policyStatus={policyStatus}
+                policyScopeType={policyScopeType}
+                onPolicyStatusChange={(value) => {
+                  clearSeededSettingsParams()
+                  setPolicyStatus(value)
+                }}
+                onPolicyScopeTypeChange={(value) => {
+                  clearSeededSettingsParams()
+                  setPolicyScopeType(value)
+                }}
+                appliedFilterCount={activeFilterChips.length}
+                onResetFilters={clearFilters}
+                page={page}
+                limit={limit}
+                onPageChange={setPage}
+                onPageSizeChange={(nextLimit) => {
+                  setLimit(nextLimit)
+                  resetToFirstPage()
+                }}
+                onPreview={(rule) => setPreviewSelection({ type: 'mediaPolicies', record: rule })}
                 onCreate={() => setSelectedContentRuleAction({ action: 'CREATE' })}
                 onEdit={(rule) => setSelectedContentRuleAction({ action: 'EDIT', record: rule })}
                 onOpenAudit={openPolicyAudit}
-                onPreview={(rule) => setPreviewSelection({ type: 'mediaPolicies', record: rule })}
-                onRefresh={() => void mediaPolicyResult.refetch()}
                 onToggleStatus={(rule, nextStatus) =>
                   setSelectedPolicyAction({ action: nextStatus, record: rule })
                 }
@@ -3456,6 +2718,7 @@ export function SettingsPage() {
               queueTabs={settingsTabs.map((tab) => ({
                 key: tab.type,
                 label: tab.label,
+                count: tab.type === type ? pagination?.totalItems : undefined,
               }))}
               rows={rows}
               search={search}

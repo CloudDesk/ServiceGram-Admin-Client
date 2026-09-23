@@ -1,5 +1,7 @@
 export { DataList } from './DataList'
 export type { DataListPagination, DataListSelection } from './DataList'
+export { QueueTabs } from './QueueTabs'
+export type { QueueTabsProps } from './QueueTabs'
 export {
   DATA_LIST_HEADER_HEIGHT,
   DATA_LIST_ROW_HEIGHT,

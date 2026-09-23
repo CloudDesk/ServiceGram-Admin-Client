@@ -3,6 +3,7 @@ import {
   PAYOUT_APPROVE_PATH,
   PAYOUT_CREATE_PATH,
   PAYOUT_DETAIL_PATH,
+  PAYOUT_EARNINGS_RECONCILE_PATH,
   PAYOUT_HOLD_PATH,
   PAYOUT_LIST_PATH,
   PAYOUT_MARK_FAILED_PATH,
@@ -24,6 +25,8 @@ import type {
   MarkPayoutPaidPayload,
   PayoutActionResponse,
   PayoutReasonPayload,
+  ReconcileVendorEarningsPayload,
+  ReconcileVendorEarningsResponse,
 } from '../types/payout.types'
 
 interface ErrorEnvelope {
@@ -168,6 +171,17 @@ async function markPayoutFailed(
   return parseJsonResponse<PayoutActionResponse>(response)
 }
 
+async function reconcileVendorEarnings(
+  payload: ReconcileVendorEarningsPayload,
+): Promise<ReconcileVendorEarningsResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(PAYOUT_EARNINGS_RECONCILE_PATH),
+    postJson(payload),
+  )
+
+  return parseJsonResponse<ReconcileVendorEarningsResponse>(response)
+}
+
 export const payoutService = {
   getPayoutList,
   getVendorPayouts,
@@ -178,4 +192,5 @@ export const payoutService = {
   releasePayoutHold,
   markPayoutPaid,
   markPayoutFailed,
+  reconcileVendorEarnings,
 }

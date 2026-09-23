@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
 import {
+  useEffect,
   useMemo,
   useRef,
   type CSSProperties,
@@ -17,6 +18,7 @@ import {
   DATA_LIST_HEADER_HEIGHT,
   DATA_LIST_ROW_HEIGHT,
   type DataListColumn,
+  type DataListDensity,
   type DataListQueueTab,
   type DataListSort,
 } from './DataList.types'
@@ -31,8 +33,14 @@ interface GridStyle extends CSSProperties {
 export interface DataListSelection {
   selectedIds: string[]
   onSelectionChange: (ids: string[]) => void
+  itemName?: DataListItemName
   /** Bulk operations for the current selection. */
   actions?: ReactNode
+}
+
+export interface DataListItemName {
+  singular: string
+  plural: string
 }
 
 export interface DataListPagination {
@@ -42,6 +50,9 @@ export interface DataListPagination {
   totalPages: number
   onPageChange: (page: number) => void
   onPageSizeChange: (pageSize: number) => void
+  itemName?: DataListItemName
+  pageSizeLabel?: string
+  summaryLabel?: string
 }
 
 interface DataListProps<TRow> {
@@ -50,6 +61,18 @@ interface DataListProps<TRow> {
   getRowId: (row: TRow) => string
   /** Namespaced key for persisted column and density preferences. */
   storageKey: string
+  /**
+   * Row density before the user picks one from the Density menu (still
+   * overridden by whatever's persisted under `storageKey`). Defaults to
+   * `'default'`. Bump to `'comfortable'` for a list whose cells stack two
+   * lines of content — two lines in a 40px row leaves almost no vertical
+   * breathing room.
+   */
+  defaultDensity?: DataListDensity
+  /** Fixed height for purpose-built multiline rows. */
+  rowHeight?: number
+  /** Hide density choices when a screen requires a stable multiline row. */
+  showDensityControl?: boolean
 
   search: string
   searchPlaceholder: string
@@ -95,6 +118,7 @@ export function DataList<TRow>({
   activeQueue,
   appliedFilterCount = 0,
   columns,
+  defaultDensity,
   emptyHint,
   emptyMessage = 'No records found',
   errorMessage,
@@ -113,12 +137,14 @@ export function DataList<TRow>({
   queueTabs,
   rowActions,
   rowActionsWidth = 96,
+  rowHeight: fixedRowHeight,
   rows,
   search,
   searchPlaceholder,
   selection,
   sort,
   storageKey,
+  showDensityControl = true,
   toolbarActions,
 }: DataListProps<TRow>) {
   const gridRef = useRef<HTMLDivElement | null>(null)
@@ -129,23 +155,51 @@ export function DataList<TRow>({
 
   const {
     density,
-    droppedIds,
     gridTemplate,
     hiddenIds,
     resetColumns,
     setDensity,
+    tableMinWidth,
     toggleColumn,
     visibleColumns,
   } = useDataListColumns({
     availableWidth,
     columns,
+    defaultDensity,
     leadingWidth,
     storageKey,
     trailingWidth,
   })
 
-  const rowHeight = DATA_LIST_ROW_HEIGHT[density]
+  const rowHeight = fixedRowHeight ?? DATA_LIST_ROW_HEIGHT[density]
   const gridStyle: GridStyle = { '--data-list-template': gridTemplate }
+
+  // Sticky leading/trailing columns hide whatever scrolls underneath them;
+  // toggling these as plain DOM attributes (rather than React state) lets
+  // every row's sticky cell react to scroll position via CSS alone, with no
+  // per-scroll re-render of the list.
+  useEffect(() => {
+    const el = gridRef.current
+    if (!el) return undefined
+
+    const updateScrollEdges = () => {
+      const canScrollLeft = el.scrollLeft > 1
+      const canScrollRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+      el.dataset.scrollLeft = String(canScrollLeft)
+      el.dataset.scrollRight = String(canScrollRight)
+    }
+
+    updateScrollEdges()
+    el.addEventListener('scroll', updateScrollEdges, { passive: true })
+
+    const observer = new ResizeObserver(updateScrollEdges)
+    observer.observe(el)
+
+    return () => {
+      el.removeEventListener('scroll', updateScrollEdges)
+      observer.disconnect()
+    }
+  }, [gridTemplate, tableMinWidth, rows.length])
 
   const selectedSet = useMemo(
     () => new Set(selection?.selectedIds ?? []),
@@ -189,6 +243,10 @@ export function DataList<TRow>({
   }
 
   const { page, pageSize, totalItems, totalPages } = pagination
+  const paginationItemName = pagination.itemName ?? {
+    singular: 'record',
+    plural: 'records',
+  }
   const rangeStart = totalItems === 0 ? 0 : (page - 1) * pageSize + 1
   const rangeEnd = Math.min(page * pageSize, totalItems)
 
@@ -200,12 +258,12 @@ export function DataList<TRow>({
         appliedFilterCount={appliedFilterCount}
         columns={columns}
         density={density}
-        droppedIds={droppedIds}
         filters={filters}
         hiddenIds={hiddenIds}
         queueTabs={queueTabs}
         search={search}
         searchPlaceholder={searchPlaceholder}
+        showDensityControl={showDensityControl}
         onDensityChange={setDensity}
         onQueueChange={onQueueChange}
         onResetColumns={resetColumns}
@@ -218,74 +276,91 @@ export function DataList<TRow>({
         <ListSelectionToolbar
           actions={selection.actions}
           allVisibleSelected={allVisibleSelected}
+          pluralItemName={selection.itemName?.plural}
           selectedCount={selection.selectedIds.length}
+          singularItemName={selection.itemName?.singular}
           visibleCount={visibleIds.length}
           onClear={() => selection.onSelectionChange([])}
           onSelectVisible={toggleAllVisible}
         />
       ) : null}
 
-      <div ref={gridRef} className="flex min-h-0 flex-1 flex-col">
-        <div
-          className="sticky top-0 z-20 grid shrink-0 items-center gap-2 border-b border-border bg-surface-muted px-3 text-[0.68rem] font-semibold uppercase tracking-wide text-muted"
-          style={{ ...gridStyle, gridTemplateColumns: 'var(--data-list-template)', height: DATA_LIST_HEADER_HEIGHT }}
-        >
-          {selection ? (
-            <ListSelectionCheckbox
-              checked={allVisibleSelected}
-              indeterminate={selectedVisibleCount > 0}
-              label="Select visible rows"
-              onChange={toggleAllVisible}
-            />
-          ) : null}
+      <div
+        ref={gridRef}
+        aria-label={`${paginationItemName.plural} table`}
+        className="min-h-0 flex-1 overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        role="region"
+        tabIndex={0}
+      >
+        <div className="min-h-full" style={{ minWidth: tableMinWidth }}>
+          <div
+            className="sticky top-0 z-20 grid w-full shrink-0 items-center gap-2 border-b border-border bg-surface-muted px-3 text-[0.68rem] font-semibold uppercase tracking-wide text-muted"
+            style={{ ...gridStyle, gridTemplateColumns: 'var(--data-list-template)', height: DATA_LIST_HEADER_HEIGHT }}
+          >
+            {selection ? (
+              <div className="data-list-sticky-cell data-list-sticky-leading sticky left-0 z-30 flex h-full items-center justify-center bg-surface-muted">
+                <ListSelectionCheckbox
+                  checked={allVisibleSelected}
+                  className="size-8"
+                  indeterminate={selectedVisibleCount > 0}
+                  label={`Select visible ${selection.itemName?.plural ?? 'rows'}`}
+                  onChange={toggleAllVisible}
+                />
+              </div>
+            ) : null}
 
-          {visibleColumns.map((column) => {
-            const isSorted = Boolean(column.sortKey && sort?.key === column.sortKey)
+            {visibleColumns.map((column) => {
+              const isSorted = Boolean(column.sortKey && sort?.key === column.sortKey)
 
-            return column.sortKey && onSortChange ? (
-              <button
-                key={column.id}
-                className={cn(
-                  'flex min-w-0 items-center gap-1 truncate rounded-[0.4rem] px-1 py-0.5 text-left transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  column.align === 'right' && 'justify-end',
-                  isSorted && 'text-foreground',
-                )}
-                title={`Sort by ${column.label}`}
-                type="button"
-                onClick={() => handleSort(column)}
-              >
-                <span className="truncate">{column.label}</span>
-                {isSorted ? (
-                  sort?.direction === 'asc' ? (
-                    <ArrowUp className="size-3 shrink-0" />
+              return column.sortKey && onSortChange ? (
+                <button
+                  key={column.id}
+                  className={cn(
+                    'flex min-w-0 items-center gap-1 truncate rounded-[0.4rem] px-1 py-0.5 text-left transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    column.align === 'right' && 'justify-end',
+                    isSorted && 'text-foreground',
+                  )}
+                  title={`Sort by ${column.label}`}
+                  type="button"
+                  onClick={() => handleSort(column)}
+                >
+                  <span className="truncate">{column.label}</span>
+                  {isSorted ? (
+                    sort?.direction === 'asc' ? (
+                      <ArrowUp className="size-3 shrink-0" />
+                    ) : (
+                      <ArrowDown className="size-3 shrink-0" />
+                    )
                   ) : (
-                    <ArrowDown className="size-3 shrink-0" />
-                  )
-                ) : (
-                  <ChevronsUpDown className="size-3 shrink-0 opacity-35" />
-                )}
-              </button>
-            ) : (
-              <span
-                key={column.id}
-                className={cn(
-                  'min-w-0 truncate px-1',
-                  column.align === 'right' && 'text-right',
-                )}
-              >
-                {column.label}
+                    <ChevronsUpDown className="size-3 shrink-0 opacity-35" />
+                  )}
+                </button>
+              ) : (
+                <span
+                  key={column.id}
+                  className={cn(
+                    'min-w-0 truncate px-1',
+                    column.align === 'right' && 'text-right',
+                  )}
+                >
+                  {column.label}
+                </span>
+              )
+            })}
+
+            {rowActions ? (
+              <span className="data-list-sticky-cell data-list-sticky-trailing sticky right-0 z-30 bg-surface-muted px-1 text-right">
+                Actions
               </span>
-            )
-          })}
+            ) : null}
+          </div>
 
-          {rowActions ? <span className="px-1 text-right">Actions</span> : null}
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="space-y-px p-3">
               {Array.from({ length: 8 }).map((_, index) => (
-                <Skeleton key={index} className="h-8 w-full" />
+                <div key={index} style={{ height: rowHeight }}>
+                  <Skeleton className="h-full w-full" />
+                </div>
               ))}
             </div>
           ) : isError ? (
@@ -316,7 +391,7 @@ export function DataList<TRow>({
                   key={id}
                   aria-selected={isSelected}
                   className={cn(
-                    'grid w-full items-center gap-2 border-b border-border px-3 text-sm transition last:border-b-0',
+                    'data-list-row grid w-full items-center gap-2 border-b border-border px-3 text-sm transition last:border-b-0',
                     onRowClick && 'cursor-pointer',
                     isSelected ? 'bg-primary/5' : 'hover:bg-surface-muted/50',
                   )}
@@ -337,11 +412,13 @@ export function DataList<TRow>({
                   }}
                 >
                   {selection ? (
-                    <ListSelectionCheckbox
-                      checked={isSelected}
-                      label={`Select row ${id}`}
-                      onChange={() => toggleRow(id)}
-                    />
+                    <div className="data-list-sticky-cell data-list-sticky-leading sticky left-0 z-10 flex h-full items-center justify-center">
+                      <ListSelectionCheckbox
+                        checked={isSelected}
+                        label={`Select row ${id}`}
+                        onChange={() => toggleRow(id)}
+                      />
+                    </div>
                   ) : null}
 
                   {visibleColumns.map((column) => (
@@ -358,7 +435,7 @@ export function DataList<TRow>({
 
                   {rowActions ? (
                     <div
-                      className="flex items-center justify-end gap-1"
+                      className="data-list-sticky-cell data-list-sticky-trailing sticky right-0 z-10 flex items-center justify-end gap-1"
                       onClick={(event) => event.stopPropagation()}
                     >
                       {rowActions(row)}
@@ -372,15 +449,27 @@ export function DataList<TRow>({
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border bg-surface-muted px-3 py-2 text-sm text-muted">
-        <span className="tabular-nums">
+        <span className="flex items-center gap-1.5 tabular-nums">
           {totalItems === 0
-            ? 'No records'
-            : `${rangeStart}–${rangeEnd} of ${totalItems}`}
+            ? `No ${paginationItemName.plural}`
+            : `${rangeStart}–${rangeEnd} of ${totalItems} ${
+                totalItems === 1
+                  ? paginationItemName.singular
+                  : paginationItemName.plural
+              }`}
+          {pagination.summaryLabel ? (
+            <>
+              <span aria-hidden="true" className="text-border">
+                /
+              </span>
+              <span>{pagination.summaryLabel}</span>
+            </>
+          ) : null}
         </span>
 
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1.5">
-            <span className="text-xs">Rows</span>
+            <span className="text-xs">{pagination.pageSizeLabel ?? 'Rows'}</span>
             <select
               className="h-8 rounded-[0.5rem] border border-border bg-surface px-1.5 text-sm text-foreground outline-none focus:border-primary"
               value={pageSize}

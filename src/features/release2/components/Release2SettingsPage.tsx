@@ -107,7 +107,7 @@ export function Release2SettingsPage() {
     <PageContextHeader
       actionNode={
         <Button
-          aria-label="Refresh Release 2 settings"
+          aria-label="Refresh app configuration"
           className="h-9"
           disabled={settingsQuery.isFetching}
           size="sm"
@@ -126,7 +126,7 @@ export function Release2SettingsPage() {
       }
       layout="document"
       placement="topbar"
-      title="Release 2 Settings"
+      title="App Configuration"
     />
   )
 
@@ -163,7 +163,7 @@ export function Release2SettingsPage() {
         <ErrorState
           description={errorMessage(
             settingsQuery.error,
-            'Could not load Release 2 settings.',
+            'Could not load app configuration.',
           )}
           title="Settings unavailable"
           onRetry={() => void settingsQuery.refetch()}
@@ -178,7 +178,7 @@ export function Release2SettingsPage() {
 
       {summary ? (
         <RecordMetricStrip
-          ariaLabel="Release 2 settings summary"
+          ariaLabel="App configuration summary"
           metrics={[
             { label: 'Groups', value: String(summary.groupCount) },
             { label: 'Settings', value: String(summary.itemCount) },
@@ -223,21 +223,38 @@ export function Release2SettingsPage() {
 
       {filteredGroups.length === 0 ? (
         <EmptyState
-          description="No Release 2 setting matches this search or filter."
+          description="No app setting matches this search or filter."
           title="Nothing to show"
         />
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2">
+        // A two-column CSS grid pairs cards row-by-row and sizes each row to
+        // its tallest card, so a short group (e.g. Messaging, 2 rows) next to
+        // a tall one (e.g. Loyalty, 5 rows) left a dead gap under the short
+        // one before the next row could start. CSS columns let each column
+        // flow independently instead, closing that gap.
+        <div className="columns-1 gap-3 lg:columns-2">
           {filteredGroups.map((group) => (
             // Grid items default to min-width:auto and would otherwise be
             // sized by the longest setting key, pushing rows past the viewport.
-            <div className="min-w-0" id={group.uiGroup} key={group.uiGroup}>
+            <div
+              className="mb-3 min-w-0 break-inside-avoid"
+              id={group.uiGroup}
+              key={group.uiGroup}
+            >
               <Card className="!p-0">
-                <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
-                  <h2 className="text-sm font-semibold text-foreground">
+                {/*
+                  The header used to match the row typography almost exactly
+                  (text-sm font-semibold vs. a row's text-sm font-medium), so
+                  a group title and its first setting read as the same tier.
+                  A tinted strip plus a full step up in size/weight (matching
+                  RecordSection's card-header treatment elsewhere) makes it
+                  unmistakably a section label, not another row.
+                */}
+                <div className="flex items-center justify-between gap-2 rounded-t-[0.75rem] border-b border-border bg-surface-muted px-3 py-3">
+                  <h2 className="text-base font-bold tracking-[-0.01em] text-foreground">
                     {settingGroupLabel(group.uiGroup)}
                   </h2>
-                  <span className="flex items-center gap-2 text-xs text-muted">
+                  <span className="flex items-center gap-2 text-xs font-medium text-muted">
                     <span className="tabular-nums">{group.itemCount}</span>
                     {group.highRiskCount > 0 ? (
                       <Badge tone="warning">{group.highRiskCount} risk</Badge>

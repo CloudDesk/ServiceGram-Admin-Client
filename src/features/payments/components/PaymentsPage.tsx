@@ -356,7 +356,6 @@ export function PaymentsPage() {
         value: (payment) => payment.refundSummary.requestedCount,
       },
       { header: 'Failure code', value: (payment) => payment.failureCode ?? '' },
-      { header: 'Signals', value: (payment) => payment.warnings.join('; ') },
     ])
   }
 
@@ -470,7 +469,9 @@ export function PaymentsPage() {
             </Button>
           ) : null
         }
-        rowActionsWidth={104}
+        rowActionsWidth={
+          canReconcile && payments.some((payment) => canReconcilePayment(payment)) ? 104 : 0
+        }
         rows={payments}
         search={search}
         searchPlaceholder="Search payment, order, customer…"

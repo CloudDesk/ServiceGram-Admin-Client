@@ -440,35 +440,6 @@ const relatedVendorColumns: PriorityDynamicTableColumn<AdminCustomerRelatedVendo
       </div>
     ),
   },
-  {
-    key: "signals",
-    label: "Signals",
-    minWidth: 250,
-    priority: 1,
-    renderCell: (row) => (
-      <div className="space-y-2">
-        {row.warnings.length ? (
-          <div className="flex flex-wrap gap-1.5">
-            {row.warnings.slice(0, 2).map((warning) => (
-              <Badge key={warning} tone="warning">
-                {relatedVendorWarningLabel(warning)}
-              </Badge>
-            ))}
-            {row.warnings.length > 2 ? (
-              <Badge tone="neutral">+{row.warnings.length - 2}</Badge>
-            ) : null}
-          </div>
-        ) : (
-          <Badge tone="success">No warnings</Badge>
-        )}
-        <p className="text-xs text-muted">
-          {row.nextRecommendedAction
-            ? humanizeCode(row.nextRecommendedAction)
-            : "View vendor"}
-        </p>
-      </div>
-    ),
-  },
 ];
 
 const paymentColumns: PriorityDynamicTableColumn<AdminPaymentSummary>[] = [
@@ -839,17 +810,6 @@ function relatedVendorRelationshipLabel(
   if (relationship === "SAVED_AND_ORDERED") return "Saved + Ordered";
   if (relationship === "SAVED") return "Saved";
   return "Ordered";
-}
-
-function relatedVendorWarningLabel(warning: string) {
-  const labels: Record<string, string> = {
-    HAS_ACTIVE_ORDERS: "Active orders",
-    SAVED_VENDOR_NOT_VISIBLE: "Saved vendor hidden",
-    SAVED_WITH_NO_ORDERS: "Saved, no orders",
-    VENDOR_NOT_CUSTOMER_VISIBLE: "Not customer visible",
-  };
-
-  return labels[warning] ?? humanizeCode(warning);
 }
 
 function orderDisplayValue(order: AdminOrderSummary) {

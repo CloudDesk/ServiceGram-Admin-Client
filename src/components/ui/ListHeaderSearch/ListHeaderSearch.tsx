@@ -57,7 +57,7 @@ export function ListHeaderSearch({
         aria-label={ariaLabel}
         className="h-10 w-full rounded-[0.75rem] border border-border bg-surface px-9 text-sm text-foreground outline-none transition placeholder:text-muted focus:border-primary/45 focus:ring-2 focus:ring-primary/10"
         placeholder={placeholder}
-        type="search"
+        type="text"
         value={draftValue}
         onChange={(event) =>
           setDraftState({ draftValue: event.target.value, value })

@@ -3,8 +3,8 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, LogOut } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
+  isNavigationItemActive,
   isNavigationItemVisible,
-  navigationGroupLabels,
   navigationItems,
   type NavigationGroup,
   type NavigationItem,
@@ -35,9 +35,6 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function isNavigationItemActive(pathname: string, href: string) {
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
 
 function SidebarPanel({
   isCollapsed,
@@ -105,10 +102,7 @@ function SidebarPanel({
     [can],
   );
 
-  /**
-   * Ungrouped items keep their original flat order; grouped items collect into
-   * labelled sections underneath so Release 2 rollout screens read as one set.
-   */
+  /** Ungrouped items keep their original order; grouped items follow a divider. */
   const groupedItems = useMemo(() => {
     const groups = new Map<NavigationGroup, NavigationItem[]>();
 
@@ -228,16 +222,13 @@ function SidebarPanel({
 
         {groupedItems.map(([group, items]) => (
           <div className="mt-5" key={group}>
-            {isCollapsed && !isMobile ? (
-              <div
-                aria-hidden="true"
-                className="mx-auto mb-2 h-px w-6 bg-[color:var(--sg-sidebar-border)]"
-              />
-            ) : (
-              <p className="premium-sidebar-section-label mb-2 px-3.5">
-                {navigationGroupLabels[group]}
-              </p>
-            )}
+            <div
+              aria-hidden="true"
+              className={cn(
+                "mb-3 h-px bg-[color:var(--sg-sidebar-border)]",
+                isCollapsed && !isMobile ? "mx-auto w-6" : "mx-3.5",
+              )}
+            />
             <ul className="space-y-1">{items.map(renderNavItem)}</ul>
           </div>
         ))}

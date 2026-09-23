@@ -166,16 +166,6 @@ export function VendorOffersPanel() {
       minWidth: 220,
       renderCell: (offer) => <div><span>{formatDate(offer.startsAt, true)}</span><span className="mx-1">–</span><span>{formatDate(offer.endsAt, true)}</span></div>,
     },
-    {
-      key: "risk",
-      label: "Risk signals",
-      minWidth: 190,
-      renderCell: (offer) => {
-        const utilization = offer.maxRedemptions ? offer.redemptionCount / offer.maxRedemptions : 0;
-        const signals = [offer.discountBps >= 1500 ? "High discount" : "", utilization >= 0.8 ? "High utilization" : "", offer.countdownSeconds > 0 && offer.countdownSeconds <= 259200 ? "Expiring soon" : ""].filter(Boolean);
-        return signals.length ? <span className="text-warning">{signals.join(", ")}</span> : "—";
-      },
-    },
   ];
 
   const summary = offersQuery.data?.summary;
@@ -192,7 +182,7 @@ export function VendorOffersPanel() {
         columns={columns}
         data={offersQuery.data?.data ?? []}
         description="Review vendor-funded offer exposure and intervene only when policy, abuse, or support review requires it."
-        emptyDescription="Vendor-created offers will appear here after the Release 2 feature is enabled."
+        emptyDescription="Vendor-created offers will appear here after the feature is enabled."
         emptyTitle="No vendor offers"
         error={offersQuery.isError ? errorMessage(offersQuery.error) : false}
         loading={offersQuery.isLoading}

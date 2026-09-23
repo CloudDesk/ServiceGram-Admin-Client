@@ -145,7 +145,7 @@ export function Release2OverviewPage() {
     <PageContextHeader
       actionNode={
         <Button
-          aria-label="Refresh Release 2 overview"
+          aria-label="Refresh overview"
           className="h-9"
           disabled={overviewQuery.isFetching}
           size="sm"
@@ -164,7 +164,7 @@ export function Release2OverviewPage() {
       }
       layout="document"
       placement="topbar"
-      title="Release 2 Overview"
+      title="Overview"
     />
   )
 
@@ -189,7 +189,7 @@ export function Release2OverviewPage() {
         <Release2PermissionPanel
           error={overviewQuery.error}
           required={['feature-flags:read', 'settings:read']}
-          title="Release 2 overview needs both rollout permissions"
+          title="Overview requires feature flags and settings access"
         />
       </PageContainer>
     )
@@ -200,7 +200,7 @@ export function Release2OverviewPage() {
       <PageContainer>
         {header}
         <ErrorState
-          description={errorMessage(overviewQuery.error, 'Could not load the Release 2 overview.')}
+          description={errorMessage(overviewQuery.error, 'Could not load the overview.')}
           title="Overview unavailable"
           onRetry={() => void overviewQuery.refetch()}
         />
@@ -294,7 +294,7 @@ export function Release2OverviewPage() {
 
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <SectionTitle>Release 2 settings</SectionTitle>
+          <SectionTitle>App configuration</SectionTitle>
           {overview.settings.available ? (
             <Link
               className="inline-flex items-center gap-1 text-xs font-semibold text-primary"
@@ -348,7 +348,7 @@ export function Release2OverviewPage() {
           </>
         ) : (
           <Release2Notice
-            detail="settings:read is required to see Release 2 setting groups."
+            detail="settings:read is required to see app configuration groups."
             title="Setting summary not available for your role"
             tone="warning"
           />

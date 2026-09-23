@@ -48,7 +48,7 @@ export function ReelHashtagsModerationQueue({ canModerate }: { canModerate: bool
     {open ? createPortal(<div className="premium-overlay flex items-center justify-center p-3 sm:p-5">
       <section aria-modal="true" className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow-overlay)]" role="dialog">
         <header className="flex items-start border-b border-border p-5">
-          <div className="flex-1"><p className="text-xs font-semibold uppercase tracking-wide text-primary">Release 2 · Social</p><h2 className="mt-1 text-xl font-semibold">Hashtag moderation</h2><p className="mt-1 text-sm text-muted">Review suspicious tags. Blocking hides the tag immediately and queues exact-token caption cleanup.</p></div>
+          <div className="flex-1"><p className="text-xs font-semibold uppercase tracking-wide text-primary">Social moderation</p><h2 className="mt-1 text-xl font-semibold">Hashtag moderation</h2><p className="mt-1 text-sm text-muted">Review suspicious tags. Blocking hides the tag immediately and queues exact-token caption cleanup.</p></div>
           <button aria-label="Close" className="p-2 text-muted" onClick={() => setOpen(false)}><X className="size-5" /></button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto p-5">

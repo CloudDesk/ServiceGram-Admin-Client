@@ -16,7 +16,6 @@ import {
   FileJson,
   Film,
   ListChecks,
-  MapPinned,
   Plus,
   Power,
   ReceiptText,
@@ -888,39 +887,6 @@ function RelatedRecordsPanel({
       title="Related records"
     >
       <div className="divide-y divide-border">
-        <RelatedRecordRow
-          actionLabel="Console"
-          canOpen
-          icon={<Settings2 className="size-4" />}
-          label="Settings console"
-          meta={zone.city}
-          value={zone.zoneName}
-          onOpen={() => onNavigate(buildSettingsConsolePath(recordType, record))}
-        />
-        <RelatedRecordRow
-          actionLabel="Edit"
-          canOpen={canEditRecord}
-          icon={<Edit3 className="size-4" />}
-          label="Editable zone"
-          meta="City, name, pincodes, status, and metadata"
-          value={zone.isActive ? 'Active zone' : 'Inactive zone'}
-          onOpen={() =>
-            onSelectAction({
-              type: 'zones',
-              action: 'EDIT',
-              record: zone,
-            })
-          }
-        />
-        <RelatedRecordRow
-          actionLabel="Coverage"
-          canOpen
-          icon={<MapPinned className="size-4" />}
-          label="Pincode coverage"
-          meta={zone.city}
-          value={`${zone.pincodeList.length} configured pincodes`}
-          onOpen={() => onOpenSection(settingsDetailSectionIds.zoneCoverage)}
-        />
         <RelatedRecordRow
           actionLabel="Policies"
           canOpen

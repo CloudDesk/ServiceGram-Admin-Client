@@ -174,7 +174,7 @@ export function Release2SettingDetailPage() {
         <ErrorState
           description={errorMessage(
             settingQuery.error,
-            'Could not load this Release 2 setting.',
+            'Could not load this app setting.',
           )}
           title="Setting unavailable"
           onRetry={() => void settingQuery.refetch()}
@@ -200,7 +200,7 @@ export function Release2SettingDetailPage() {
   const saveBlockedReason = !canUpdateSettings
     ? 'Requires settings:update'
     : financeBlocked
-      ? 'Requires release2-finance-settings:update'
+      ? 'Requires finance settings access'
       : !setting.isEditable
         ? 'This setting is not editable'
         : !isDirty
@@ -238,12 +238,12 @@ export function Release2SettingDetailPage() {
           </Button>
         }
         breadcrumbs={[
-          { label: 'Release 2', href: routePaths.release2Overview },
+          { label: 'Overview', href: routePaths.release2Overview },
           { label: 'Settings', href: routePaths.release2Settings },
           { label: setting.displayName },
         ]}
         listHref={routePaths.release2Settings}
-        listLabel="Release 2 Settings"
+        listLabel="App Configuration"
         recordName={setting.displayName}
         title={setting.displayName}
         titleMetaNode={
@@ -261,7 +261,7 @@ export function Release2SettingDetailPage() {
 
       {financeBlocked ? (
         <Release2Notice
-          detail="Ask a Super Admin or Finance Admin to apply this change. The backend rejects it without release2-finance-settings:update."
+          detail="Ask a Super Admin or Finance Admin to apply this change. Your role does not have finance settings access."
           title="Finance setting is read-only for your role"
           tone="warning"
         />

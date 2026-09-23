@@ -191,6 +191,10 @@ export const appRoutes: RouteObject[] = [
                     element: <VendorDocumentReviewDetailPage />,
                   },
                   {
+                    path: `${routePaths.vendorDocumentReview}/tab/:tab`,
+                    element: <VendorDocumentReviewDetailPage />,
+                  },
+                  {
                     path: `${routePaths.vendors}/:vendorId`,
                     element: <VendorDetailPage />,
                   },
@@ -204,12 +208,7 @@ export const appRoutes: RouteObject[] = [
                   },
                   {
                     path: `${routePaths.vendorOnboarding}/:vendorId`,
-                    element: (
-                      <VendorDetailPage
-                        listHref={routePaths.vendorOnboarding}
-                        listLabel="Vendor Onboarding"
-                      />
-                    ),
+                    element: <VendorOnboardingPage />,
                   },
                 ],
               },

@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useMemo, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { CheckCircle2, GitBranch, Layers3, RefreshCcw } from 'lucide-react'
+import { Plus, RefreshCcw } from 'lucide-react'
 import { ListFilterBar, type ActiveFilterChip } from '../../../components/layout/ListFilterBar'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
 import { ListHeaderSearch } from '../../../components/ui/ListHeaderSearch'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
-import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
 import { approvalService } from '../services/approval.service'
@@ -22,14 +21,13 @@ import { workflowStatusLabel } from '../copy'
 import type { ApprovalTab } from './WorkflowDetail'
 import {
   FilterSelect,
-  formatCount,
   humanizeCode,
   readWorkflowStatus,
-  sumWorkflowCounts,
   uniqueSorted,
   workflowStatuses,
 } from './shared'
 import { WorkflowDetail } from './WorkflowDetail'
+import { WorkflowFormModal } from './WorkflowFormModal'
 import { WorkflowList } from './WorkflowList'
 
 interface WorkflowFilters {
@@ -43,6 +41,9 @@ const emptyWorkflows: ApprovalWorkflowListItem[] = []
 
 export function ApprovalsPage() {
   const canSimulate = usePermission('approvals:simulate')
+  const canManage = usePermission('approvals:manage')
+  const canPublish = usePermission('approvals:publish')
+  const [isCreateOpen, setCreateOpen] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedWorkflowId = searchParams.get('workflowId') ?? ''
   const selectedTab = readTab(searchParams.get('tab'))
@@ -185,11 +186,6 @@ export function ApprovalsPage() {
     [catalogWorkflows, filters.moduleCode],
   )
 
-  const totalWorkflowCount =
-    catalogQuery.data?.summary.totalMatching ?? workflowsQuery.data?.summary.totalMatching ?? 0
-  const activeWorkflowCount = catalogWorkflows.filter((wf) => wf.status === 'ACTIVE').length
-  const configuredRuleCount = sumWorkflowCounts(catalogWorkflows, 'rules')
-  const configuredStageCount = sumWorkflowCounts(catalogWorkflows, 'stages')
   const selectedListItem = workflows.find((wf) => wf.workflowId === selectedWorkflowId)
 
   const activeFilters = buildActiveFilterChips(filters, updateSearchParams)
@@ -212,39 +208,37 @@ export function ApprovalsPage() {
   const isDetailOpen = Boolean(selectedWorkflowId)
 
   return (
-    <PageContainer className="flex flex-col gap-3">
-      {/*
-        The totals ride in the header rather than in three full-width cards.
-        Four numbers do not earn a band of their own.
-      */}
+    <PageContainer className="flex min-h-full flex-col gap-3 !px-3 !py-3 sm:!px-4 lg:!px-6">
       <PageContextHeader
         actionNode={
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="hidden items-center gap-3 sm:flex">
-              <HeaderStat
-                icon={<GitBranch className="size-3.5" />}
-                label={`${formatCount(activeWorkflowCount)} live`}
-                value={formatCount(totalWorkflowCount)}
+          <div className="flex items-center gap-2">
+            {canManage ? (
+              <Button size="sm" type="button" onClick={() => setCreateOpen(true)}>
+                <Plus className="mr-2 size-4" />
+                New workflow
+              </Button>
+            ) : null}
+            <Button
+              aria-label="Refresh approval workflows"
+              className="h-9"
+              disabled={workflowsQuery.isLoading}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={refreshAll}
+            >
+              <RefreshCcw
+                className={cn(
+                  'size-4 sm:mr-2',
+                  (workflowsQuery.isFetching || catalogQuery.isFetching) &&
+                    'animate-spin motion-reduce:animate-none',
+                )}
               />
-              <HeaderStat
-                icon={<CheckCircle2 className="size-3.5" />}
-                label="rules"
-                value={formatCount(configuredRuleCount)}
-              />
-              <HeaderStat
-                icon={<Layers3 className="size-3.5" />}
-                label="stages"
-                value={formatCount(configuredStageCount)}
-              />
-            </div>
-            <Button size="sm" type="button" variant="secondary" onClick={refreshAll}>
-              <RefreshCcw className="mr-1.5 size-4" />
-              Refresh
+              <span className="hidden sm:inline">Refresh</span>
             </Button>
           </div>
         }
-        breadcrumbs={[{ href: routePaths.dashboard, label: 'Dashboard' }, { label: 'Approvals' }]}
-        compact
+        placement="topbar"
         title="Approval workflows"
       />
 
@@ -351,6 +345,8 @@ export function ApprovalsPage() {
         <Card className={cn('min-h-0 overflow-hidden p-0', !isDetailOpen && 'hidden lg:block')}>
           <WorkflowDetail
             actionTemplates={actionTemplatesQuery.data?.data ?? []}
+            canManage={canManage}
+            canPublish={canPublish}
             canSimulate={canSimulate}
             conditionFields={conditionFieldsQuery.data?.data ?? []}
             detailError={detailQuery.error}
@@ -378,41 +374,53 @@ export function ApprovalsPage() {
               if (!selectedVersion || !canSimulate) return
               validateMutation.mutate(selectedVersion.versionId)
             }}
+            onWorkflowChanged={() => {
+              void detailQuery.refetch()
+              void workflowsQuery.refetch()
+              void catalogQuery.refetch()
+            }}
+            onWorkflowDeleted={() => {
+              updateSearchParams({ workflowId: null })
+              void workflowsQuery.refetch()
+              void catalogQuery.refetch()
+            }}
           />
         </Card>
       </section>
+
+      {isCreateOpen ? (
+        <WorkflowFormModal
+          existingWorkflows={catalogWorkflows}
+          onClose={() => setCreateOpen(false)}
+          onCreated={(created) => {
+            setCreateOpen(false)
+            void catalogQuery.refetch()
+            void workflowsQuery.refetch()
+            updateSearchParams({ tab: 'flow', workflowId: created.workflowId })
+          }}
+        />
+      ) : null}
     </PageContainer>
   )
 }
 
 // ─── Module-private helpers ───────────────────────────────────────────────────
 
-function HeaderStat({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode
-  label: string
-  value: string
-}) {
-  return (
-    <span className="inline-flex items-baseline gap-1.5 text-xs text-muted">
-      <span className="translate-y-0.5 text-muted">{icon}</span>
-      <span className="text-sm font-semibold tabular-nums text-foreground">{value}</span>
-      {label}
-    </span>
-  )
-}
-
 function readTab(value: string | null): ApprovalTab {
   const tabs: ApprovalTab[] = ['flow', 'reference', 'simulation']
   return tabs.includes(value as ApprovalTab) ? (value as ApprovalTab) : 'flow'
 }
 
+/**
+ * A DRAFT outranks a PUBLISHED version: it is whatever an admin most recently
+ * started editing (a fresh workflow, or a clone of a live one made to edit it),
+ * so it is the more actionable thing to land on. `versions` comes back newest
+ * first, so `find` naturally prefers the latest draft over an older one.
+ */
 function findSelectedVersion(workflow: ApprovalWorkflowDetail | null) {
   if (!workflow) return null
   return (
+    workflow.versions.find((v) => v.status === 'DRAFT') ??
     workflow.versions.find((v) => v.versionId === workflow.latestPublishedVersionId) ??
     workflow.versions.find((v) => v.status === 'PUBLISHED') ??
     workflow.versions[0] ??

@@ -375,24 +375,6 @@ export function OrdersPage() {
         ),
       },
       {
-        id: 'signals',
-        label: 'Signals',
-        defaultWidth: 70,
-        minWidth: 62,
-        priority: 1,
-        render: (order) =>
-          order.warnings.length ? (
-            <span
-              className="inline-flex min-w-5 items-center justify-center rounded-[0.35rem] bg-warning/12 px-1.5 text-xs font-semibold tabular-nums text-warning"
-              title={order.warnings.join(', ')}
-            >
-              {order.warnings.length}
-            </span>
-          ) : (
-            <span className="text-muted">—</span>
-          ),
-      },
-      {
         id: 'customer',
         label: 'Customer',
         defaultWidth: 150,
@@ -521,7 +503,6 @@ export function OrdersPage() {
             order.pricing.priceEstimatePaise) / 100,
       },
       { header: 'Pickup date', value: (order) => order.schedule.pickupDate ?? '' },
-      { header: 'Signals', value: (order) => order.warnings.join('; ') },
     ])
   }
 
@@ -624,7 +605,14 @@ export function OrdersPage() {
             onAction={openAction}
           />
         )}
-        rowActionsWidth={130}
+        rowActionsWidth={
+          orders.some((order) => {
+            const recommended = mapRecommendedAction(order)
+            return recommended && canRunOrderAction(recommended, canRefundPayments, canUpdateOrders)
+          })
+            ? 130
+            : 56
+        }
         rows={orders}
         search={search}
         searchPlaceholder="Search order, customer, vendor…"

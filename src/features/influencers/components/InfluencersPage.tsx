@@ -804,7 +804,14 @@ export function InfluencersPage() {
             onOpenCustomer={() => viewCustomer(influencer)}
           />
         )}
-        rowActionsWidth={128}
+        rowActionsWidth={
+          influencers.some(
+            (influencer) =>
+              getPrimaryInfluencerAction({ canReviewInfluencers, influencer }) !== null,
+          )
+            ? 128
+            : 56
+        }
         rows={influencers}
         search={search}
         searchPlaceholder="Search creators, handles, mobile..."

@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
-  Edit3,
   FileAudio,
   Image,
   Pause,
@@ -21,6 +20,7 @@ import type {
 } from '../../../components/ui/DataList'
 import { filterInputClass } from '../../../components/ui/Input'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
+import { ReasonModal } from '../../../components/ui/ReasonModal'
 import {
   RowActionMenu,
   type RowActionMenuItem,
@@ -68,6 +68,27 @@ function humanize(value: string) {
     .replace(/^./, (character) => character.toUpperCase())
 }
 
+function activationBlockMessage(track: AdminMusicTrack) {
+  const missing: string[] = []
+  const now = Date.now()
+
+  if (track.licenseStatus !== 'CLEARED') missing.push('cleared licence status')
+  if (!track.license?.provider) missing.push('licence provider')
+  if (!track.license?.reference) missing.push('licence reference')
+  if (!track.license?.territories.length) missing.push('licensed territory')
+  if (track.media?.audioStatus !== 'AVAILABLE') missing.push('available audio')
+  if (track.license?.validFrom && Date.parse(track.license.validFrom) > now) {
+    missing.push('a licence that has already started')
+  }
+  if (track.license?.validUntil && Date.parse(track.license.validUntil) <= now) {
+    missing.push('an unexpired licence')
+  }
+
+  return missing.length
+    ? `Complete ${missing.join(', ')} before activation.`
+    : null
+}
+
 function QuickUpload({
   accept,
   ariaLabel,
@@ -111,7 +132,6 @@ function TrackRowActions({
   canUpdate,
   disabled,
   track,
-  onEdit,
   onLifecycle,
   onUpload,
 }: {
@@ -119,7 +139,6 @@ function TrackRowActions({
   canUpdate: boolean
   disabled: boolean
   track: AdminMusicTrack
-  onEdit: () => void
   onLifecycle: (action: LifecycleAction) => void
   onUpload: (kind: 'AUDIO' | 'ARTWORK', file: File) => void
 }) {
@@ -162,17 +181,6 @@ function TrackRowActions({
   return (
     <div className="flex items-center gap-0.5">
       {canUpdate ? (
-        <button
-          aria-label={`Edit ${track.title}`}
-          className="inline-flex size-7 items-center justify-center rounded-[0.5rem] text-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          title="Edit"
-          type="button"
-          onClick={onEdit}
-        >
-          <Edit3 className="size-4" />
-        </button>
-      ) : null}
-      {canUpdate ? (
         <QuickUpload
           accept="audio/mpeg,audio/mp4,audio/aac,audio/wav"
           ariaLabel={`Upload audio for ${track.title}`}
@@ -214,7 +222,12 @@ export function CreatorMusicPage() {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [expiringFilter, setExpiringFilter] = useState('')
   const [formTarget, setFormTarget] = useState<AdminMusicTrack | null>()
+  const [formMessage, setFormMessage] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [lifecycleTarget, setLifecycleTarget] = useState<{
+    action: LifecycleAction
+    track: AdminMusicTrack
+  } | null>(null)
 
   const status: '' | MusicTrackStatus =
     queue === 'draft'
@@ -410,7 +423,10 @@ export function CreatorMusicPage() {
       track: AdminMusicTrack
     }) => creatorMusicService.lifecycle(track, action, reason),
     onMutate: () => setActionError(null),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['creator-music'] }),
+    onSuccess: () => {
+      setLifecycleTarget(null)
+      void queryClient.invalidateQueries({ queryKey: ['creator-music'] })
+    },
     onError: (cause) =>
       setActionError(cause instanceof Error ? cause.message : 'Action failed.'),
   })
@@ -431,11 +447,33 @@ export function CreatorMusicPage() {
       setActionError(cause instanceof Error ? cause.message : 'Upload failed.'),
   })
 
-  const runLifecycle = (track: AdminMusicTrack, action: LifecycleAction) => {
-    const reason = window
-      .prompt(`Reason for ${action.toLowerCase().replaceAll('_', ' ')}:`)
-      ?.trim()
-    if (reason) lifecycleMutation.mutate({ track, action, reason })
+  const runLifecycle = async (track: AdminMusicTrack, action: LifecycleAction) => {
+    let currentTrack = track
+
+    if (action === 'ACTIVATE') {
+      try {
+        const response = await creatorMusicService.detail(track.trackId)
+        currentTrack = response.data
+        const blockMessage = activationBlockMessage(currentTrack)
+
+        if (blockMessage) {
+          setActionError(null)
+          setFormMessage(blockMessage)
+          setFormTarget(track)
+          return
+        }
+      } catch (cause) {
+        setActionError(
+          cause instanceof Error
+            ? cause.message
+            : 'Could not verify whether this track is ready to activate.',
+        )
+        return
+      }
+    }
+
+    setActionError(null)
+    setLifecycleTarget({ action, track: currentTrack })
   }
 
   const resetFilters = () => {
@@ -451,6 +489,7 @@ export function CreatorMusicPage() {
 
   const formSaved = () => {
     setFormTarget(undefined)
+    setFormMessage(null)
     setActionError(null)
     void queryClient.invalidateQueries({ queryKey: ['creator-music'] })
   }
@@ -461,7 +500,14 @@ export function CreatorMusicPage() {
         actionNode={
           <div className="flex items-center gap-2">
             {canUpdate ? (
-              <Button size="sm" type="button" onClick={() => setFormTarget(null)}>
+              <Button
+                size="sm"
+                type="button"
+                onClick={() => {
+                  setFormMessage(null)
+                  setFormTarget(null)
+                }}
+              >
                 <Plus className="mr-2 size-4" />
                 Track
               </Button>
@@ -627,8 +673,7 @@ export function CreatorMusicPage() {
                   canUpdate={canUpdate}
                   disabled={uploadMutation.isPending}
                   track={track}
-                  onEdit={() => setFormTarget(track)}
-                  onLifecycle={(action) => runLifecycle(track, action)}
+                  onLifecycle={(action) => void runLifecycle(track, action)}
                   onUpload={(kind, file) =>
                     uploadMutation.mutate({ trackId: track.trackId, kind, file })
                   }
@@ -636,7 +681,7 @@ export function CreatorMusicPage() {
               )
             : undefined
         }
-        rowActionsWidth={112}
+        rowActionsWidth={canUpdate && canPublish ? 92 : canUpdate ? 64 : canPublish ? 40 : 0}
         rows={tracks}
         search={search}
         searchPlaceholder="Search title, artist, track ID…"
@@ -645,6 +690,14 @@ export function CreatorMusicPage() {
           setQueue(key as QueueKey)
           setPage(1)
         }}
+        onRowClick={
+          canUpdate
+            ? (track) => {
+                setFormMessage(null)
+                setFormTarget(track)
+              }
+            : undefined
+        }
         onResetFilters={resetFilters}
         onRetry={() => void tracksQuery.refetch()}
         onSearchChange={(nextSearch) => {
@@ -656,9 +709,35 @@ export function CreatorMusicPage() {
       {formTarget !== undefined ? (
         <CreatorMusicFormModal
           key={formTarget?.trackId ?? 'new'}
+          initialMessage={formMessage}
           track={formTarget}
-          onClose={() => setFormTarget(undefined)}
+          onClose={() => {
+            setFormMessage(null)
+            setFormTarget(undefined)
+          }}
           onSaved={formSaved}
+        />
+      ) : null}
+
+      {lifecycleTarget ? (
+        <ReasonModal
+          confirmLabel={humanize(lifecycleTarget.action)}
+          error={lifecycleMutation.error}
+          isDestructive={
+            lifecycleTarget.action === 'RETIRE' ||
+            lifecycleTarget.action === 'REVOKE_LICENSE'
+          }
+          isSubmitting={lifecycleMutation.isPending}
+          subtitle={lifecycleTarget.track.title}
+          title={`${humanize(lifecycleTarget.action)} this track?`}
+          onClose={() => setLifecycleTarget(null)}
+          onSubmit={(reason) =>
+            lifecycleMutation.mutate({
+              action: lifecycleTarget.action,
+              reason,
+              track: lifecycleTarget.track,
+            })
+          }
         />
       ) : null}
     </PageContainer>

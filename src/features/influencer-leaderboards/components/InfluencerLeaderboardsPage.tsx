@@ -349,10 +349,10 @@ export function InfluencerLeaderboardsPage() {
     <PageContainer className="space-y-5">
       <PageContextHeader
         breadcrumbs={[
-          { label: "Release 2", href: routePaths.release2Overview },
+          { label: "Overview", href: routePaths.release2Overview },
           { label: "Influencer Leaderboards" },
         ]}
-        description="Release 2 workspace for monthly influencer rankings, reputation scores, badge awards, and fraud-review visibility."
+        description="Review monthly influencer rankings, reputation scores, badge awards, and fraud signals."
         title="Influencer Leaderboards"
         titleMetaNode={<Badge tone="success">Phase 4 · Admin controls</Badge>}
       />

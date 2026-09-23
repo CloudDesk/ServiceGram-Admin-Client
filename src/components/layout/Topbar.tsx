@@ -10,9 +10,10 @@ import {
   UserCircle2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../ui/Button";
+import { isNavigationItemActive, navigationItems } from "../../config/navigation";
 import { routePaths } from "../../config/routes";
 import { useAuthStore } from "../../store/authStore";
 import { useUiStore } from "../../store/uiStore";
@@ -59,6 +60,7 @@ export function Topbar() {
   const openMobileSidebar = useUiStore((state) => state.openMobileSidebar);
   const { resolvedMode, toggleResolvedMode } = useTheme();
   const { pageChrome } = usePageChrome();
+  const location = useLocation();
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const approvalRef = useRef<HTMLDivElement | null>(null);
@@ -66,6 +68,15 @@ export function Topbar() {
   const title = pageChrome.title ?? "ServiceGram Admin";
   const description =
     pageChrome.description ?? (pageChrome.title ? undefined : "Admin operations console");
+  // Ties the title back to the sidebar entry the admin came from — the most
+  // specific href match wins so a detail route (e.g. /app/customers/:id)
+  // still picks up the "Customers" icon rather than falling through to none.
+  const TitleIcon = useMemo(() => {
+    const match = navigationItems
+      .filter((item) => isNavigationItemActive(location.pathname, item.href))
+      .sort((a, b) => b.href.length - a.href.length)[0];
+    return match?.icon;
+  }, [location.pathname]);
   const isDarkTheme = resolvedMode === "dark";
   const themeToggleLabel = isDarkTheme
     ? "Switch to light theme"
@@ -162,8 +173,13 @@ export function Topbar() {
         >
           <Menu className="size-4" />
         </Button>
+        {TitleIcon ? (
+          <div className="hidden size-10 shrink-0 items-center justify-center rounded-[0.7rem] bg-[color:var(--adaptive-primary-soft)] text-[color:var(--adaptive-primary)] sm:flex">
+            <TitleIcon className="size-5" />
+          </div>
+        ) : null}
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-bold leading-6 text-adaptive-main sm:text-xl">
+          <h1 className="truncate text-lg font-bold leading-6 tracking-[-0.02em] text-adaptive-main sm:text-xl">
             {title}
           </h1>
           {description ? (
