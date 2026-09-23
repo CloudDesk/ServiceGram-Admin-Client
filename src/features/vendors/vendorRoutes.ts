@@ -10,6 +10,45 @@ export type VendorQueueKey =
   | 'rejected'
   | 'suspended'
 
+export type VendorDetailTab =
+  | 'overview'
+  | 'analytics'
+  | 'reputation'
+  | 'documents'
+  | 'payout-account'
+  | 'payouts'
+  | 'orders'
+  | 'services'
+  | 'reels'
+  | 'profile'
+
+export const vendorDetailSectionIds = {
+  overview: 'vendor-detail-overview',
+  documents: 'vendor-detail-documents',
+  payoutAccount: 'vendor-detail-payout-account',
+  payouts: 'vendor-detail-payouts',
+  orders: 'vendor-detail-orders',
+  services: 'vendor-detail-services',
+  reels: 'vendor-detail-reels',
+  profile: 'vendor-detail-profile',
+} as const
+
+export type VendorDetailSectionKey = keyof typeof vendorDetailSectionIds
+
+export const vendorDetailTabBySection: Record<
+  VendorDetailSectionKey,
+  VendorDetailTab
+> = {
+  overview: 'overview',
+  documents: 'documents',
+  payoutAccount: 'payout-account',
+  payouts: 'payouts',
+  orders: 'orders',
+  services: 'services',
+  reels: 'reels',
+  profile: 'profile',
+}
+
 const vendorQueueKeys: VendorQueueKey[] = [
   'active',
   'onboarding',
@@ -69,4 +108,15 @@ export function buildVendorOnboardingRedirect(
 
   const query = params.toString()
   return `${routePaths.vendors}${query ? `?${query}` : ''}${hash}`
+}
+
+export function buildVendorDetailSectionPath(
+  vendorId: string,
+  section: VendorDetailSectionKey,
+) {
+  const tab = vendorDetailTabBySection[section]
+  const basePath = `${routePaths.vendors}/${vendorId}`
+  const pathname = tab === 'overview' ? basePath : `${basePath}/tab/${tab}`
+
+  return `${pathname}#${vendorDetailSectionIds[section]}`
 }

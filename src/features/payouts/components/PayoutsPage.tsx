@@ -1,4 +1,4 @@
-import { Download, Plus, RefreshCcw } from 'lucide-react'
+import { Download, ListRestart, Plus, RefreshCcw, TriangleAlert } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -9,6 +9,7 @@ import type { DataListColumn, DataListQueueTab } from '../../../components/ui/Da
 import { PageContainer } from '../../../components/layout/PageContainer'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { RowActionMenu, type RowActionMenuItem } from '../../../components/ui/RowActionMenu'
+import { ReasonModal } from '../../../components/ui/ReasonModal/ReasonModal'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
@@ -144,6 +145,7 @@ export function PayoutsPage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedAction, setSelectedAction] =
     useState<PayoutActionSelection | null>(null)
+  const [reconcileOpen, setReconcileOpen] = useState(false)
 
   const query = useMemo<AdminPayoutsQueryParams>(
     () => ({
@@ -193,6 +195,11 @@ export function PayoutsPage() {
   })
 
   const summary = summaryQuery.data?.summary
+  const reconciliation = summary?.earningsReconciliation
+  const reconciliationAttentionCount =
+    (reconciliation?.readyToCreateCount ?? 0) +
+    (reconciliation?.dueEligibilityCount ?? 0) +
+    (reconciliation?.refundReviewCount ?? 0)
 
   const queueTabs: DataListQueueTab[] = [
     { key: 'all', label: 'All', count: summary?.total },
@@ -289,6 +296,19 @@ export function PayoutsPage() {
     },
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : 'Payout action failed.')
+    },
+  })
+
+  const reconcileMutation = useMutation({
+    mutationFn: (reason: string) =>
+      payoutService.reconcileVendorEarnings({
+        dryRun: false,
+        limit: 250,
+        reason,
+      }),
+    onSuccess: () => {
+      setReconcileOpen(false)
+      void queryClient.invalidateQueries({ queryKey: ['payouts'] })
     },
   })
 
@@ -477,6 +497,20 @@ export function PayoutsPage() {
             </Button>
             {canApprovePayouts ? (
               <Button
+                aria-label="Reconcile vendor earnings"
+                className="h-9"
+                disabled={reconcileMutation.isPending}
+                size="sm"
+                type="button"
+                variant="secondary"
+                onClick={() => setReconcileOpen(true)}
+              >
+                <ListRestart className="size-4 sm:mr-2" />
+                <span className="hidden sm:inline">Reconcile</span>
+              </Button>
+            ) : null}
+            {canApprovePayouts ? (
+              <Button
                 className="h-9"
                 size="sm"
                 type="button"
@@ -496,6 +530,40 @@ export function PayoutsPage() {
         placement="topbar"
         title="Payouts"
       />
+
+      {reconciliation &&
+      (reconciliation.missingEarningCount > 0 ||
+        reconciliation.dueEligibilityCount > 0 ||
+        reconciliation.refundReviewCount > 0) ? (
+        <div className="mb-3 flex shrink-0 flex-col gap-3 rounded-[0.75rem] border border-warning/25 bg-warning/5 px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-2">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+            <div className="min-w-0">
+              <p className="font-medium text-foreground">
+                Vendor earnings need reconciliation
+              </p>
+              <p className="mt-0.5 text-xs text-muted">
+                {reconciliation.readyToCreateCount} ready to create ·{' '}
+                {reconciliation.dueEligibilityCount} hold periods complete ·{' '}
+                {reconciliation.paymentBlockedCount} awaiting payment ·{' '}
+                {reconciliation.refundReviewCount} refund reviews
+              </p>
+            </div>
+          </div>
+          {canApprovePayouts ? (
+            <Button
+              className="shrink-0"
+              disabled={reconcileMutation.isPending || reconciliationAttentionCount === 0}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => setReconcileOpen(true)}
+            >
+              Reconcile now
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <DataList
         activeQueue={queue}
@@ -620,6 +688,26 @@ export function PayoutsPage() {
           onSubmit={(values) =>
             void mutation.mutateAsync({ action: selectedAction, values })
           }
+        />
+      ) : null}
+
+      {reconcileOpen ? (
+        <ReasonModal
+          confirmLabel="Run reconciliation"
+          error={reconcileMutation.error}
+          isSubmitting={reconcileMutation.isPending}
+          reasonLabel="Reconciliation reason"
+          reasonPlaceholder="Why is this earnings reconciliation being run?"
+          subtitle="Creates missing earnings and advances eligible hold periods."
+          title="Reconcile vendor earnings"
+          warnings={[
+            'Orders awaiting payment stay pending; refunded earnings are held or cancelled for review.',
+            'This does not transfer money or create payout batches.',
+          ]}
+          onClose={() => {
+            if (!reconcileMutation.isPending) setReconcileOpen(false)
+          }}
+          onSubmit={(reason) => reconcileMutation.mutate(reason)}
         />
       ) : null}
     </PageContainer>

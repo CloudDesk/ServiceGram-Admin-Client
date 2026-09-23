@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildVendorDetailSectionPath,
   buildVendorOnboardingRedirect,
   readVendorQueue,
 } from '../vendorRoutes'
@@ -48,6 +49,20 @@ describe('legacy vendor onboarding redirects', () => {
     )
     expect(buildVendorOnboardingRedirect('', '', 'vendor-123')).toBe(
       '/app/vendors/vendor-123',
+    )
+  })
+})
+
+describe('vendor detail review shortcuts', () => {
+  it('routes document review to the mounted Documents tab and section', () => {
+    expect(buildVendorDetailSectionPath('vendor-123', 'documents')).toBe(
+      '/app/vendors/vendor-123/tab/documents#vendor-detail-documents',
+    )
+  })
+
+  it('maps payout account review to its hyphenated tab route', () => {
+    expect(buildVendorDetailSectionPath('vendor-123', 'payoutAccount')).toBe(
+      '/app/vendors/vendor-123/tab/payout-account#vendor-detail-payout-account',
     )
   })
 })

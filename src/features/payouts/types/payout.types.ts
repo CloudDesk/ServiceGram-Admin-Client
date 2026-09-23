@@ -191,6 +191,35 @@ export interface AdminPayoutChildSummary {
   currency: string
   byStatus: Partial<Record<AdminPayoutStatus, number>>
   byPayoutMethod: Partial<Record<AdminPayoutMethod, number>>
+  earningsReconciliation?: VendorEarningsReconciliationSummary
+}
+
+export interface VendorEarningsReconciliationSummary {
+  deliveredOrderCount: number
+  missingEarningCount: number
+  readyToCreateCount: number
+  paymentBlockedCount: number
+  missingPricingSnapshotCount: number
+  dueEligibilityCount: number
+  refundReviewCount: number
+}
+
+export interface ReconcileVendorEarningsPayload {
+  reason: string
+  limit?: number
+  dryRun?: boolean
+  vendorId?: string
+  orderId?: string
+}
+
+export interface ReconcileVendorEarningsResult {
+  dryRun: boolean
+  candidateCount: number
+  counts: Record<string, number>
+  before: VendorEarningsReconciliationSummary
+  after: VendorEarningsReconciliationSummary
+  warnings: string[]
+  nextRecommendedAction: string | null
 }
 
 export interface AdminVendorPayoutsListResponse
@@ -204,6 +233,8 @@ export type AdminPayoutDetailResponse = AdminPayoutApiResponse<AdminPayoutDetail
 export type CreatePayoutResponse = AdminPayoutApiResponse<AdminPayoutDetail>
 export type ApprovePayoutResponse = AdminPayoutApiResponse<ApprovePayoutResult>
 export type PayoutActionResponse = AdminPayoutApiResponse<AdminPayoutDetail>
+export type ReconcileVendorEarningsResponse =
+  AdminPayoutApiResponse<ReconcileVendorEarningsResult>
 
 export interface AdminPayoutApiErrorDetails extends ApiErrorDetails {
   fieldErrors?: {

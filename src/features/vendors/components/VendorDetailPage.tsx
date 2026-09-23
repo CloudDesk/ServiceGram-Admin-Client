@@ -24,9 +24,9 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { EmptyState } from "../../../components/ui/EmptyState";
@@ -104,6 +104,13 @@ import { VendorProfileEditModal } from "./VendorProfileEditModal";
 import { VendorAnalyticsPanel } from "./VendorAnalyticsPanel";
 import { VendorReputationPanel } from "./VendorReputationPanel";
 import {
+  buildVendorDetailSectionPath,
+  vendorDetailSectionIds,
+  vendorDetailTabBySection,
+  type VendorDetailSectionKey,
+  type VendorDetailTab,
+} from "../vendorRoutes";
+import {
   VendorServiceActionModal,
   type VendorServiceActionFormValues,
   type VendorServiceActionKind,
@@ -167,17 +174,6 @@ function getVendorDetailActionSource(vendor: VendorDetailActionContext) {
   return [...vendor.availableActions, "REACTIVATE"];
 }
 
-const vendorDetailSectionIds = {
-  overview: "vendor-detail-overview",
-  documents: "vendor-detail-documents",
-  payoutAccount: "vendor-detail-payout-account",
-  payouts: "vendor-detail-payouts",
-  orders: "vendor-detail-orders",
-  services: "vendor-detail-services",
-  reels: "vendor-detail-reels",
-  profile: "vendor-detail-profile",
-} as const;
-
 interface VendorActionVisibility {
   canApproveVendors: boolean;
   canUpdateProfile: boolean;
@@ -186,8 +182,6 @@ interface VendorActionVisibility {
 type VendorTone = "success" | "warning" | "danger" | "info" | "neutral";
 
 type VendorBrandLogoAction = "change" | "remove";
-type VendorDetailSectionKey = keyof typeof vendorDetailSectionIds;
-
 interface VendorReviewJumpTarget {
   description: string;
   icon: ReactNode;
@@ -1150,10 +1144,12 @@ function scrollToVendorDetailSection(section: VendorDetailSectionKey) {
 
 function VendorReviewJumpPanel({
   message,
+  onSelectSection,
   targets,
   vendor,
 }: {
   message: string | null;
+  onSelectSection: (section: VendorDetailSectionKey) => void;
   targets: VendorReviewJumpTarget[];
   vendor: VendorDetail;
 }) {
@@ -1243,7 +1239,7 @@ function VendorReviewJumpPanel({
               title={target.description}
               type="button"
               variant="secondary"
-              onClick={() => scrollToVendorDetailSection(target.section)}
+              onClick={() => onSelectSection(target.section)}
             >
               {target.icon}
               {target.label}
@@ -1254,18 +1250,6 @@ function VendorReviewJumpPanel({
     </section>
   );
 }
-
-export type VendorDetailTab =
-  | 'overview'
-  | 'analytics'
-  | 'reputation'
-  | 'documents'
-  | 'payout-account'
-  | 'payouts'
-  | 'orders'
-  | 'services'
-  | 'reels'
-  | 'profile'
 
 const VENDOR_DETAIL_TABS: VendorDetailTab[] = [
   'overview',
@@ -2064,6 +2048,7 @@ export function VendorDetailPage({
     ? (tabParam as VendorDetailTab)
     : "overview";
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { openMediaViewer } = useMediaViewer();
   const canApproveVendors = useAuthStore((state) =>
@@ -2871,6 +2856,33 @@ export function VendorDetailPage({
     });
   };
 
+  useEffect(() => {
+    if (!vendor || !location.hash) return undefined;
+
+    const sectionId = location.hash.slice(1);
+    const section = Object.entries(vendorDetailSectionIds).find(
+      ([, id]) => id === sectionId,
+    )?.[0] as VendorDetailSectionKey | undefined;
+
+    if (!section || vendorDetailTabBySection[section] !== activeTab) {
+      return undefined;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollToVendorDetailSection(section);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, location.hash, vendor]);
+
+  const openReviewSection = (section: VendorDetailSectionKey) => {
+    if (!vendorId) return;
+
+    navigate(buildVendorDetailSectionPath(vendorId, section), {
+      replace: vendorDetailTabBySection[section] === activeTab,
+    });
+  };
+
   if (!vendorId) {
     return (
       <PageContainer>
@@ -3089,6 +3101,7 @@ export function VendorDetailPage({
       >
         <VendorReviewJumpPanel
           message={approvalBlockMessage}
+          onSelectSection={openReviewSection}
           targets={reviewJumpTargets}
           vendor={vendor}
         />
