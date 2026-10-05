@@ -13,6 +13,7 @@ import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { downloadCsv, timestampedFilename } from '../../../utils/exportCsv'
 import { formatDate } from '../../../utils/formatDate'
+import { permissionDisplayLabel } from '../../../utils/displayText'
 import { rbacService } from '../../rbac/services/rbac.service'
 import { adminUserService } from '../services/adminUser.service'
 import type {
@@ -349,7 +350,7 @@ export function AdminUsersPage() {
             title={
               canCreateAdminUsers
                 ? 'Add admin user'
-                : 'Requires admin_users:create permission'
+                : `Requires permission: ${permissionDisplayLabel('admin_users:create')}`
             }
             type="button"
             onClick={() => navigate(`${routePaths.adminUsers}/new`)}

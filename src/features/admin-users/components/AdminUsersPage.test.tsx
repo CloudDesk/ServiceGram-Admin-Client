@@ -49,7 +49,7 @@ describe('AdminUsersPage', () => {
     expect(addUser).toBeDisabled()
     expect(addUser).toHaveAttribute(
       'title',
-      'Requires admin_users:create permission',
+      'Requires permission: Create admin users',
     )
   })
 })

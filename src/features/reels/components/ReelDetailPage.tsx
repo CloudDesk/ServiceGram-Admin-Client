@@ -841,8 +841,13 @@ function OperationalSignalsPanel({
 
 function ReelMediaPanel({ id, reel }: { id?: string; reel: AdminReel }) {
   const { openMediaViewer } = useMediaViewer()
+  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(
+    null,
+  )
+  const thumbnailFailed = failedThumbnailUrl === reel.media.thumbnailUrl
   const mediaItems = buildReelMediaViewerItems(reel)
-  const hasThumbnail = isOpenableUrl(reel.media.thumbnailUrl)
+  const hasThumbnail =
+    !thumbnailFailed && isOpenableUrl(reel.media.thumbnailUrl)
   const thumbnailIndex = findReelMediaIndex(mediaItems, 'image')
   const videoIndex = findReelMediaIndex(mediaItems, 'video')
   const hasPlayback = videoIndex >= 0
@@ -885,6 +890,9 @@ function ReelMediaPanel({ id, reel }: { id?: string; reel: AdminReel }) {
                   alt={`Thumbnail for ${reel.publicReelId}`}
                   className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
                   src={reel.media.thumbnailUrl as string}
+                  onError={() =>
+                    setFailedThumbnailUrl(reel.media.thumbnailUrl ?? null)
+                  }
                 />
                 <span className="absolute bottom-3 right-3 inline-flex items-center rounded-control bg-black/70 px-3 py-2 text-xs font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                   <Eye className="mr-2 size-4" />
@@ -894,7 +902,9 @@ function ReelMediaPanel({ id, reel }: { id?: string; reel: AdminReel }) {
             ) : (
               <div className="flex flex-col items-center gap-2 text-muted">
                 <ImageIcon className="size-8" />
-                <span className="text-sm">No thumbnail</span>
+                <span className="text-sm">
+                  {thumbnailFailed ? 'Thumbnail unavailable' : 'No thumbnail'}
+                </span>
               </div>
             )}
           </div>

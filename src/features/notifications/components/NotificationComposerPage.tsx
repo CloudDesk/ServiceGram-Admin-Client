@@ -12,6 +12,7 @@ import { Input } from '../../../components/ui/Input'
 import { routePaths } from '../../../config/routes'
 import { useAuthStore } from '../../../store/authStore'
 import { formatDate } from '../../../utils/formatDate'
+import { humanizeIdentifier } from '../../../utils/displayText'
 import { notificationService } from '../services/notification.service'
 import type {
   NotificationAdminStatus,
@@ -177,7 +178,9 @@ function SendResultPanel({ result }: { result: SendNotificationData }) {
         </div>
       </div>
       <div className="mt-3 rounded-control border border-border bg-surface px-3 py-2">
-        <p className="text-sm font-semibold text-foreground">{result.title ?? result.templateCode}</p>
+        <p className="text-sm font-semibold text-foreground">
+          {result.title ?? humanizeIdentifier(result.templateCode)}
+        </p>
         <p className="mt-1 text-sm text-muted">{result.body}</p>
       </div>
     </section>
@@ -201,7 +204,9 @@ function ConfirmationModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold tracking-[-0.03em] text-foreground">Confirm notification</h2>
-            <p className="mt-1 text-sm text-muted">{payload.templateCode}</p>
+            <p className="mt-1 text-sm text-muted">
+              {humanizeIdentifier(payload.templateCode)}
+            </p>
           </div>
           <button
             aria-label="Close confirmation"
@@ -485,7 +490,7 @@ export function NotificationComposerPage() {
                 <option value="">Select template</option>
                 {templates.map((template) => (
                   <option key={template.templateId} value={template.templateCode}>
-                    {template.templateCode}
+                    {humanizeIdentifier(template.templateCode)}
                   </option>
                 ))}
               </select>
@@ -675,7 +680,10 @@ export function NotificationComposerPage() {
           </div>
           <div className="mt-4 rounded-[1.25rem] border border-border bg-background/40 p-4">
             <p className="text-sm font-semibold text-foreground">
-              {previewTitle || selectedTemplate?.templateCode || 'Select template'}
+              {previewTitle ||
+                humanizeIdentifier(selectedTemplate?.templateCode, {
+                  fallback: 'Select template',
+                })}
             </p>
             <p className="mt-2 whitespace-pre-wrap text-sm text-muted">
               {previewBody || 'Template body will appear here.'}

@@ -31,6 +31,7 @@ import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
+import { humanizeIdentifier } from '../../../utils/displayText'
 import { notificationService } from '../services/notification.service'
 import type {
   NotificationChannel,
@@ -39,13 +40,7 @@ import type {
 } from '../types/notification.types'
 
 function humanizeCode(value: string | null | undefined) {
-  if (!value) return 'Not available'
-
-  return value
-    .toLowerCase()
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
+  return humanizeIdentifier(value)
 }
 
 function formatDateSafe(value: string | null | undefined) {
@@ -332,7 +327,7 @@ function RelatedRecordsPanel({
           icon={<ReceiptText className="size-4" />}
           label="Filtered event queue"
           meta={`${event.channel} · ${humanizeCode(event.status)} · ${humanizeCode(event.recipientType)}`}
-          value={event.templateCode}
+          value={humanizeCode(event.templateCode)}
           onOpen={() => onNavigate(buildNotificationEventsPath(event))}
         />
         <RelatedRecordRow
@@ -341,7 +336,7 @@ function RelatedRecordsPanel({
           icon={<Radio className="size-4" />}
           label="Template"
           meta="Opens the template editor with this template selected"
-          value={event.templateCode}
+          value={humanizeCode(event.templateCode)}
           onOpen={() => onNavigate(buildTemplateEditorPath(event))}
         />
         <RelatedRecordRow
@@ -372,7 +367,7 @@ function RelatedRecordsPanel({
           icon={channelIcon(event.channel)}
           label="Rendered payload"
           meta="Jump to rendered body and provider message"
-          value={event.title ?? event.templateCode}
+          value={event.title ?? humanizeCode(event.templateCode)}
           onOpen={() => onOpenSection(notificationSectionIds.payload)}
         />
         <RelatedRecordRow
@@ -533,10 +528,13 @@ function PayloadPanel({ event }: { event: NotificationEvent }) {
       title="Delivery payload"
     >
       <div className="grid gap-3 md:grid-cols-2">
-        <DetailField label="Template code" value={event.templateCode} />
+        <DetailField label="Template" value={humanizeCode(event.templateCode)} />
         <DetailField label="Provider message ID" value={event.providerMessageId} />
         <DetailField label="Title" value={event.title ?? 'Not available'} />
-        <DetailField label="Failure reason" value={event.failureReason} />
+        <DetailField
+          label="Failure reason"
+          value={humanizeCode(event.failureReason)}
+        />
       </div>
       <pre className="mt-3 max-h-[24rem] overflow-auto whitespace-pre-wrap rounded-[0.75rem] border border-border bg-surface-muted/35 p-3 text-sm leading-6 text-foreground">
         {event.body}
@@ -722,7 +720,7 @@ export function NotificationDetailPage() {
         description={`${humanizeCode(event.recipientType)} notification delivery event`}
         listHref={routePaths.notifications}
         listLabel="Notifications"
-        recordName={event.templateCode}
+        recordName={humanizeCode(event.templateCode)}
         titleMetaNode={<HeaderStatus event={event} />}
       />
 

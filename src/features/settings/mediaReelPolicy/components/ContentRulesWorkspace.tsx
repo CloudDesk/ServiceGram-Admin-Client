@@ -9,6 +9,7 @@ import type {
 } from '../../../../components/ui/DataList'
 import { RowActionMenu, type RowActionMenuItem } from '../../../../components/ui/RowActionMenu'
 import { formatCompactDateTime } from '../../../../utils/formatDate'
+import { permissionRequirementLabel } from '../../../../utils/displayText'
 import type { PolicyRule, PolicyScopeType, PolicyStatus } from '../../types/settings.types'
 import {
   contentRuleScopeLabel,
@@ -306,7 +307,11 @@ export function ContentRulesWorkspace({
         <Button
           disabled={!canUpdateSettings}
           size="sm"
-          title={canUpdateSettings ? 'Create content rule' : 'Requires settings:update'}
+          title={
+            canUpdateSettings
+              ? 'Create content rule'
+              : permissionRequirementLabel('settings:update')
+          }
           type="button"
           variant="primary"
           onClick={onCreate}

@@ -22,6 +22,7 @@ import { useTheme } from "../../providers/themeContext";
 import { GlobalSearch } from "../../features/search/components/GlobalSearch";
 import { authService } from "../../features/auth/services/auth.service";
 import { dashboardApiService } from "../../features/dashboard/services/dashboard.api";
+import { humanizeIdentifier } from "../../utils/displayText";
 
 const BANK_ACCOUNT_APPROVAL_QUEUE = "BANK_ACCOUNT_APPROVALS";
 
@@ -94,6 +95,10 @@ export function Topbar() {
   const totalPendingApprovals = approvalCenter?.totalPending ?? 0;
   const approvalCountLabel =
     totalPendingApprovals > 99 ? "99+" : String(totalPendingApprovals);
+  const roleLabel = humanizeIdentifier(user?.role, {
+    capitalization: "title",
+    fallback: "No role",
+  });
 
   useEffect(() => {
     if (!profileOpen) {
@@ -329,7 +334,7 @@ export function Topbar() {
                 {user?.name ?? "Guest"}
               </p>
               <p className="truncate text-xs text-adaptive-muted">
-                {user?.role ?? "No role"}
+                {roleLabel}
               </p>
             </div>
             <ChevronDown
@@ -350,7 +355,7 @@ export function Topbar() {
                       {user?.name ?? "Guest"}
                     </p>
                     <p className="truncate text-sm text-adaptive-muted">
-                      {user?.role ?? "No role"}
+                      {roleLabel}
                     </p>
                     <p className="truncate text-xs text-adaptive-muted">
                       {user?.email ?? "No email available"}

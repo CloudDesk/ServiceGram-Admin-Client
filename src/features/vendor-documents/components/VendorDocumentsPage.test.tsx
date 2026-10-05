@@ -124,4 +124,22 @@ describe('VendorDocumentsPage', () => {
     )
     expect(screen.queryByText('vendors selected')).not.toBeInTheDocument()
   })
+
+  it('lets vendor details absorb free width and keeps actions compact', async () => {
+    renderWithProviders(<VendorDocumentsPage />, {
+      initialEntry: '/app/vendor-documents',
+      path: '/app/vendor-documents',
+      permissions: ['vendors:read'],
+    })
+
+    await screen.findByText('Sparkle Laundry')
+
+    const actionsHeader = screen.getByText('Actions')
+    const gridTemplate = actionsHeader.parentElement?.style.getPropertyValue(
+      '--data-list-template',
+    )
+
+    expect(gridTemplate).toContain('minmax(260px, 1fr)')
+    expect(gridTemplate).toMatch(/68px$/)
+  })
 })

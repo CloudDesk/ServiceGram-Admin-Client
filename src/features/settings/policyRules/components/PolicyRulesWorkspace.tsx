@@ -9,6 +9,7 @@ import type {
 } from '../../../../components/ui/DataList'
 import { RowActionMenu, type RowActionMenuItem } from '../../../../components/ui/RowActionMenu'
 import { formatCompactDateTime } from '../../../../utils/formatDate'
+import { permissionRequirementLabel } from '../../../../utils/displayText'
 import type {
   PolicyFamily,
   PolicyRule,
@@ -375,7 +376,11 @@ export function PolicyRulesWorkspace({
           <Button
             disabled={!canUpdateSettings}
             size="sm"
-            title={canUpdateSettings ? 'Create policy rule' : 'Requires settings:update'}
+            title={
+              canUpdateSettings
+                ? 'Create policy rule'
+                : permissionRequirementLabel('settings:update')
+            }
             type="button"
             variant="primary"
             onClick={onCreate}

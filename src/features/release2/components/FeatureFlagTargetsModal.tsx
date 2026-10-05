@@ -95,6 +95,7 @@ function TargetRow({
     label: string,
     field: 'zoneId' | 'vendorId' | 'influencerId' | 'subjectUserId',
     apply: (value: string) => Partial<FeatureFlagTargetInput>,
+    hint?: string,
   ) => (
     <label className="block space-y-1">
       <span className="text-[0.7rem] font-medium text-muted">{label}</span>
@@ -107,6 +108,8 @@ function TargetRow({
       />
       {errorFor(field) ? (
         <span className="block text-[0.7rem] text-danger">{errorFor(field)}</span>
+      ) : hint ? (
+        <span className="block text-[0.7rem] text-muted">{hint}</span>
       ) : null}
     </label>
   )
@@ -236,7 +239,12 @@ function TargetRow({
         {idField('Zone id', 'zoneId', (value) => ({ zoneId: value }))}
         {idField('Vendor id', 'vendorId', (value) => ({ vendorId: value }))}
         {idField('Influencer id', 'influencerId', (value) => ({ influencerId: value }))}
-        {idField('User id', 'subjectUserId', (value) => ({ subjectUserId: value }))}
+        {idField(
+          'User id',
+          'subjectUserId',
+          (value) => ({ subjectUserId: value }),
+          "The account's User ID (see \"User ID\" on its detail page) - not the customer or vendor record ID.",
+        )}
       </div>
 
       {errorFor('appType') ? (

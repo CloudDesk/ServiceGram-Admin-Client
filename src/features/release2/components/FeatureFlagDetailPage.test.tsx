@@ -137,7 +137,10 @@ describe('FeatureFlagDetailPage permission and lifecycle states', () => {
       const button = await screen.findByRole('button', { name: label })
 
       expect(button).toBeDisabled()
-      expect(button).toHaveAttribute('title', 'Requires feature-flags:update')
+      expect(button).toHaveAttribute(
+        'title',
+        'Requires permission: Manage feature flags',
+      )
     }
   })
 
@@ -175,6 +178,19 @@ describe('FeatureFlagDetailPage permission and lifecycle states', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.getByText('Next: Add an ALLOW target')).toBeInTheDocument()
+  })
+
+  it('renders available action codes as readable labels', async () => {
+    getFeatureFlag.mockResolvedValue(detailResponse())
+
+    renderPage(FULL_ACCESS)
+
+    expect(
+      await screen.findByText(
+        'Update, Replace Targets, Archive, Evaluate, View History',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/REPLACE_TARGETS/)).not.toBeInTheDocument()
   })
 })
 

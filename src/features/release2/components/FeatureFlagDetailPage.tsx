@@ -14,6 +14,7 @@ import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
+import { permissionRequirementLabel } from '../../../utils/displayText'
 import {
   errorMessage,
   formatDateTime,
@@ -204,7 +205,7 @@ export function FeatureFlagDetailPage() {
     ? isArchived
       ? 'Archived flags cannot be changed'
       : undefined
-    : 'Requires feature-flags:update'
+    : permissionRequirementLabel('feature-flags:update')
 
   return (
     <PageContainer className="space-y-4">
@@ -421,7 +422,7 @@ export function FeatureFlagDetailPage() {
               <RecordField label="Updated" value={formatDateTime(flag.updatedAt)} />
               <RecordField
                 label="Actions"
-                value={flag.availableActions.join(', ') || '—'}
+                value={flag.availableActions.map(humanizeCode).join(', ') || '—'}
               />
             </RecordFieldList>
           </Card>

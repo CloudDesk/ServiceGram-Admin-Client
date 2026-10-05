@@ -95,7 +95,10 @@ describe('FeatureFlagsPage', () => {
     const createButton = await screen.findByRole('button', { name: /new flag/i })
 
     expect(createButton).toBeDisabled()
-    expect(createButton).toHaveAttribute('title', 'Requires feature-flags:update')
+    expect(createButton).toHaveAttribute(
+      'title',
+      'Requires permission: Manage feature flags',
+    )
   })
 
   it('enables create with feature-flags:update', async () => {

@@ -1,6 +1,7 @@
 import { CheckSquare, Square } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
 import { cn } from '../../../utils/cn'
+import { permissionDisplayLabel } from '../../../utils/displayText'
 import type { PermissionGroup } from '../types/rbac.types'
 
 interface PermissionMatrixProps {
@@ -97,11 +98,10 @@ export function PermissionMatrix({
                     />
                     <span className="min-w-0 space-y-1">
                       <span className="block break-words font-medium text-foreground">
-                        {permission.permissionCode}
+                        {permissionDisplayLabel(permission.permissionCode)}
                       </span>
                       <span className="block break-words text-xs leading-5 text-muted">
-                        {permission.description ??
-                          `${permission.moduleCode}:${permission.actionCode}`}
+                        {permission.description ?? 'No permission description provided.'}
                       </span>
                     </span>
                   </label>

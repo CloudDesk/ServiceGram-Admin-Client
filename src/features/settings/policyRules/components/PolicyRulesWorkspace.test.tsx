@@ -120,6 +120,9 @@ describe('PolicyRulesWorkspace', () => {
 
     const createButton = screen.getByRole('button', { name: /Policy rule/ })
     expect(createButton).toBeDisabled()
-    expect(createButton).toHaveAttribute('title', 'Requires settings:update')
+    expect(createButton).toHaveAttribute(
+      'title',
+      'Requires permission: Manage settings',
+    )
   })
 })

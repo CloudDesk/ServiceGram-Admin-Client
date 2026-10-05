@@ -197,7 +197,7 @@ export function PayoutsPage() {
   const summary = summaryQuery.data?.summary
   const reconciliation = summary?.earningsReconciliation
   const reconciliationAttentionCount =
-    (reconciliation?.readyToCreateCount ?? 0) +
+    (reconciliation?.missingEarningCount ?? 0) +
     (reconciliation?.dueEligibilityCount ?? 0) +
     (reconciliation?.refundReviewCount ?? 0)
 

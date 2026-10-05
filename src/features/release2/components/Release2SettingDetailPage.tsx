@@ -14,6 +14,7 @@ import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
+import { permissionRequirementLabel } from '../../../utils/displayText'
 import {
   errorMessage,
   fieldErrorMap,
@@ -23,6 +24,7 @@ import {
   settingGroupLabel,
   validationHint,
   formatDateTime,
+  humanizeCode,
 } from '../release2Presenters'
 import { release2Service } from '../services/release2.service'
 import type { Release2Setting } from '../types/release2.types'
@@ -198,7 +200,7 @@ export function Release2SettingDetailPage() {
     reason.trim().length >= 3
 
   const saveBlockedReason = !canUpdateSettings
-    ? 'Requires settings:update'
+    ? permissionRequirementLabel('settings:update')
     : financeBlocked
       ? 'Requires finance settings access'
       : !setting.isEditable
@@ -469,7 +471,7 @@ export function Release2SettingDetailPage() {
             <RecordField label="Updated" value={formatDateTime(setting.updatedAt)} />
             <RecordField
               label="Actions"
-              value={setting.availableActions.join(', ') || '—'}
+              value={setting.availableActions.map(humanizeCode).join(', ') || '—'}
             />
           </RecordFieldList>
         </Card>

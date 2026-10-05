@@ -904,7 +904,13 @@ export function MarketingCampaignsPage() {
                               <Eye className="mr-1 size-3.5" />
                               Preview
                             </Button>
-                            <Button onClick={() => navigate(`${routePaths.marketingCampaigns}/${c.campaignId}`)} size="sm" variant="ghost">
+                            <Button
+                              aria-label={`Open ${c.title} campaign details`}
+                              onClick={() => navigate(`${routePaths.marketingCampaigns}/${c.campaignId}`)}
+                              size="sm"
+                              title={`Open ${c.title} campaign details`}
+                              variant="ghost"
+                            >
                               <ArrowUpRight className="size-3.5" />
                             </Button>
                           </div>
@@ -975,7 +981,7 @@ export function MarketingCampaignsPage() {
                     <MobilePhonePreview campaign={selectedCampaign} form={form} />
 
                     <QuickPreviewFactGrid>
-                      <QuickPreviewFact label="Placement" value="CUSTOMER_HOME_POPOVER" />
+                      <QuickPreviewFact label="Placement" value="Customer Home Popover" />
                       <QuickPreviewFact label="Priority" value={String(form.priority)} />
                       <QuickPreviewFact label="Lifetime Cap" value={`${form.maxImpressionsPerCustomer} shows`} />
                       <QuickPreviewFact label="Daily Cap" value={`${form.maxImpressionsPerDay}/day`} />

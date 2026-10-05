@@ -17,6 +17,7 @@ describe('PayoutsPage vendor earnings reconciliation guardrails', () => {
     expect(page).toContain('This does not transfer money or create payout batches.')
     expect(page).toContain('Orders awaiting payment stay pending')
     expect(page).toContain('readyToCreateCount')
+    expect(page).toContain('(reconciliation?.missingEarningCount ?? 0) +')
     expect(page).toContain('dueEligibilityCount')
     expect(page).toContain('refundReviewCount')
   })

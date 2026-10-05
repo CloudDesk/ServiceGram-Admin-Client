@@ -31,6 +31,7 @@ import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
 import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { formatDate } from '../../../utils/formatDate'
+import { humanizeIdentifier } from '../../../utils/displayText'
 import { adminUserService } from '../services/adminUser.service'
 import type {
   AdminUserRole,
@@ -41,12 +42,7 @@ import type {
 function humanizeCode(value: string | null | undefined) {
   if (!value) return 'Not available'
 
-  return value
-    .replace(/^release2[-_:]?/i, '')
-    .toLowerCase()
-    .split(/[:_-]+/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
+  return humanizeIdentifier(value.replace(/^release2[-_:]?/i, ''))
 }
 
 function formatDateSafe(value: string | null | undefined) {
@@ -140,10 +136,10 @@ function HeaderStatus({ profile }: { profile: CurrentAdminUser }) {
       <Badge tone={authStatusTone(profile.userStatus)}>
         Auth {humanizeCode(profile.userStatus)}
       </Badge>
-      <Badge tone={roleTone(profile.role)}>{profile.role?.roleCode ?? 'NO_ROLE'}</Badge>
+      <Badge tone={roleTone(profile.role)}>{profile.role?.roleName ?? 'No role'}</Badge>
       {profile.scopes.map((scope) => (
         <Badge key={scopeKey(scope)} tone="neutral">
-          {scope.scopeType}
+          {humanizeCode(scope.scopeType)}
         </Badge>
       ))}
     </div>
@@ -236,7 +232,9 @@ function ScopesPanel({ scopes }: { scopes: AdminUserScope[] }) {
                 key={scopeKey(scope)}
               >
                 <div>
-                  <p className="text-sm font-semibold text-foreground">{scope.scopeType}</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {humanizeCode(scope.scopeType)}
+                  </p>
                   <p className="mt-1 break-all text-xs text-muted">
                     {scopeRef ?? 'Platform-wide'}
                   </p>
@@ -298,7 +296,7 @@ function PermissionsPanel({ permissions }: { permissions: string[] }) {
               <div className="flex flex-wrap gap-2">
                 {group.actions.map((action) => (
                   <Badge key={`${group.moduleCode}:${action}`} tone="neutral">
-                    {action}
+                    {humanizeCode(action)}
                   </Badge>
                 ))}
               </div>
@@ -386,7 +384,13 @@ function RelatedRecordsPanel({
           canOpen={Boolean(profile.role && canReadRoles)}
           icon={<ShieldCheck className="size-4" />}
           label="Assigned role"
-          meta={profile.role?.roleCode ?? 'No assigned role'}
+          meta={
+            profile.role
+              ? profile.role.isSystem
+                ? 'System role'
+                : 'Custom role'
+              : 'No assigned role'
+          }
           value={profile.role?.roleName ?? 'Unassigned'}
           onOpen={() => {
             if (profile.role) onNavigate(`${routePaths.roles}/${profile.role.roleId}`)
@@ -398,7 +402,7 @@ function RelatedRecordsPanel({
           icon={<ShieldCheck className="size-4" />}
           label="Role catalogue"
           meta={profile.role?.isSystem ? 'System role' : 'Custom role'}
-          value={profile.role?.roleCode ?? 'No role'}
+          value={profile.role?.roleName ?? 'No role'}
           onOpen={() => onNavigate(buildProfileRoleCataloguePath(profile))}
         />
         <RelatedRecordRow
@@ -534,7 +538,6 @@ export function ProfilePage() {
         >
           <RecordFieldList>
             <RecordField label="Role name" value={profile.role?.roleName} />
-            <RecordField label="Role code" value={profile.role?.roleCode} />
             <RecordField label="Role type" value={profile.role?.isSystem ? 'System' : profile.role ? 'Custom' : null} />
             <RecordField
               label="Role active"
@@ -553,7 +556,7 @@ export function ProfilePage() {
                   <div className="flex flex-wrap justify-end gap-1.5">
                     {profile.roleCodes.map((roleCode) => (
                       <Badge key={roleCode} tone="neutral">
-                        {roleCode}
+                        {humanizeIdentifier(roleCode, { capitalization: 'title' })}
                       </Badge>
                     ))}
                   </div>

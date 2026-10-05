@@ -137,6 +137,15 @@ describe('Release2SettingDetailPage permission states', () => {
       ),
     ).toBeInTheDocument()
   })
+
+  it('renders available action codes as readable labels', async () => {
+    getSetting.mockResolvedValue(settingResponse())
+
+    renderPage(['settings:read'])
+
+    expect(await screen.findByText('Preview, Update')).toBeInTheDocument()
+    expect(screen.queryByText('PREVIEW, UPDATE')).not.toBeInTheDocument()
+  })
 })
 
 describe('Release2SettingDetailPage preview before save', () => {

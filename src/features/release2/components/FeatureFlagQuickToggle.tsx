@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useToast } from '../../../hooks/useToast'
 import { cn } from '../../../utils/cn'
+import { permissionRequirementLabel } from '../../../utils/displayText'
 import { release2Service } from '../services/release2.service'
 import type { FeatureFlagListRow } from '../types/release2.types'
 import { Release2ReasonModal } from './Release2ReasonModal'
@@ -34,7 +35,7 @@ export function FeatureFlagQuickToggle({ canUpdate, field, row }: FeatureFlagQui
   const canToggle = canUpdate && !isArchived
 
   const disabledTitle = !canUpdate
-    ? 'Requires feature-flags:update'
+    ? permissionRequirementLabel('feature-flags:update')
     : isArchived
       ? 'Archived flags cannot be changed'
       : undefined

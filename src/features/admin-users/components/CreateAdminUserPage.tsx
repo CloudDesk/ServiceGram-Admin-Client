@@ -313,7 +313,7 @@ export function CreateAdminUserPage() {
               <option value="">Select role</option>
               {activeRoles.map((role) => (
                 <option key={role.roleId} value={role.roleId}>
-                  {role.roleName} ({role.roleCode})
+                  {role.roleName}
                 </option>
               ))}
             </select>

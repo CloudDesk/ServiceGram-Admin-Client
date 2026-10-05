@@ -449,7 +449,6 @@ export function VendorDocumentsPage() {
         label: 'Vendor',
         defaultWidth: 260,
         minWidth: 200,
-        maxWidth: 320,
         priority: 1,
         grow: true,
         locked: true,
@@ -769,7 +768,7 @@ export function VendorDocumentsPage() {
             onReview={openDocumentReviewDetail}
           />
         )}
-        rowActionsWidth={76}
+        rowActionsWidth={68}
         rows={visibleDocumentGroups}
         search={query.search ?? ''}
         searchPlaceholder="Search vendor, mobile, file..."

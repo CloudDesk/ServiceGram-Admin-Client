@@ -12,6 +12,7 @@ import { RecordMetricStrip } from '../../../components/ui/RecordPage'
 import { routePaths } from '../../../config/routes'
 import { usePermission } from '../../../hooks/usePermission'
 import { cn } from '../../../utils/cn'
+import { permissionRequirementLabel } from '../../../utils/displayText'
 import {
   formatDateTime,
   isPermissionDenied,
@@ -272,7 +273,7 @@ export function FeatureFlagsPage() {
             title={
               canUpdateFlags
                 ? 'Create a feature flag'
-                : 'Requires feature-flags:update'
+                : permissionRequirementLabel('feature-flags:update')
             }
             type="button"
             variant="primary"
