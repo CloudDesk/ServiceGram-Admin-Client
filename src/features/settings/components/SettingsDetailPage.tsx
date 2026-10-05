@@ -39,6 +39,7 @@ import { usePermission } from '../../../hooks/usePermission'
 import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
+import { humanizeIdentifier } from '../../../utils/displayText'
 import { settingsService } from '../services/settings.service'
 import {
   SettingsActionModal,
@@ -1342,7 +1343,9 @@ function CategorySections({ category }: { category: ServiceCategory }) {
           <Field label="Display order" value={category.displayOrder} />
           <Field
             label="Next action"
-            value={category.nextRecommendedAction ?? 'No next action'}
+            value={humanizeIdentifier(category.nextRecommendedAction, {
+              fallback: 'No next action',
+            })}
           />
           <Field
             label="Icon asset"
@@ -1350,7 +1353,11 @@ function CategorySections({ category }: { category: ServiceCategory }) {
           />
           <Field
             label="Available actions"
-            value={category.availableActions.length ? category.availableActions.join(', ') : 'None'}
+            value={
+              category.availableActions.length
+                ? category.availableActions.map((action) => humanizeIdentifier(action)).join(', ')
+                : 'None'
+            }
           />
           <Field
             label="Warnings"
@@ -1443,11 +1450,17 @@ function ZoneSections({ zone }: { zone: ServiceZone }) {
           />
           <Field
             label="Available actions"
-            value={zone.availableActions.length ? zone.availableActions.join(', ') : 'None'}
+            value={
+              zone.availableActions.length
+                ? zone.availableActions.map((action) => humanizeIdentifier(action)).join(', ')
+                : 'None'
+            }
           />
           <Field
             label="Next action"
-            value={zone.nextRecommendedAction ?? 'No next action'}
+            value={humanizeIdentifier(zone.nextRecommendedAction, {
+              fallback: 'No next action',
+            })}
           />
           <Field label="Pincodes" value={zone.pincodeList.length} />
         </div>

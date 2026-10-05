@@ -363,6 +363,7 @@ function FrequencyCapStepper({
       <span className="text-center text-[10px] font-bold uppercase tracking-wider text-muted">{label}</span>
       <div className="flex items-center gap-1 rounded-xl border border-border bg-surface p-1">
         <button
+          aria-label={`Decrease ${label.toLowerCase()}`}
           className="flex size-8 items-center justify-center rounded-lg bg-secondary text-foreground transition hover:bg-secondary-hover disabled:opacity-40"
           disabled={num <= min}
           onClick={() => onChange(String(Math.max(min, num - 1)))}
@@ -372,6 +373,7 @@ function FrequencyCapStepper({
         </button>
         <span className="w-10 text-center text-sm font-extrabold text-foreground">{num}</span>
         <button
+          aria-label={`Increase ${label.toLowerCase()}`}
           className="flex size-8 items-center justify-center rounded-lg bg-secondary text-foreground transition hover:bg-secondary-hover disabled:opacity-40"
           disabled={num >= max}
           onClick={() => onChange(String(Math.min(max, num + 1)))}

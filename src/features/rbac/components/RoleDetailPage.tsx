@@ -31,6 +31,7 @@ import { usePermission } from '../../../hooks/usePermission'
 import type { StatusTone } from '../../../types/status.types'
 import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { formatDate } from '../../../utils/formatDate'
+import { humanizeIdentifier } from '../../../utils/displayText'
 import { rbacService } from '../services/rbac.service'
 import { PermissionMatrix } from './PermissionMatrix'
 import type {
@@ -53,13 +54,7 @@ type RoleDetailSectionId =
   (typeof roleDetailSectionIds)[keyof typeof roleDetailSectionIds]
 
 function humanizeCode(value: string | null | undefined) {
-  if (!value) return 'Not available'
-
-  return value
-    .toLowerCase()
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
+  return humanizeIdentifier(value)
 }
 
 function formatDateSafe(value: string | null | undefined) {
@@ -276,7 +271,7 @@ function RoleHeroCard({
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
               <span className="inline-flex min-w-0 items-center gap-1.5">
                 <ShieldCheck className="size-3.5 shrink-0" />
-                <span className="truncate">{role.roleCode}</span>
+                <span className="truncate">{roleTypeLabel(role)} role</span>
               </span>
               <span className="inline-flex min-w-0 items-center gap-1.5">
                 <KeyRound className="size-3.5 shrink-0" />
@@ -462,7 +457,7 @@ function LifecyclePanel({ role }: { role: RoleDetail }) {
         <DetailField label="Created" value={formatDateSafe(role.createdAt)} />
         <DetailField label="Updated" value={formatDateSafe(role.updatedAt)} />
         <DetailField label="Role ID" value={role.roleId} />
-        <DetailField label="Role code" value={role.roleCode} />
+        <DetailField label="Role" value={role.roleName} />
         <DetailField
           label="Role type"
           value={<Badge tone={role.isSystem ? 'info' : 'neutral'}>{roleTypeLabel(role)}</Badge>}
@@ -490,7 +485,6 @@ function DetailsPanel({ role }: { role: RoleDetail }) {
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <DetailField label="Role name" value={role.roleName} />
-        <DetailField label="Role code" value={role.roleCode} />
         <DetailField label="Description" value={role.description} />
         <DetailField label="Permission count" value={role.permissions.length} />
       </div>
@@ -588,7 +582,7 @@ function RelatedRecordsPanel({
           icon={<ShieldCheck className="size-4" />}
           label="Role catalogue"
           meta={`${roleTypeLabel(role)} role`}
-          value={role.roleCode}
+          value={role.roleName}
           onOpen={() => onNavigate(buildRolesCataloguePath(role))}
         />
         <RelatedRecordRow

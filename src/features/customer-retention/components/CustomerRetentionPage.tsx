@@ -85,6 +85,7 @@ const tabs: {
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const minimumAdjustmentReasonLength = 6;
 
 function errorMessage(error: unknown) {
   return error instanceof Error
@@ -159,18 +160,30 @@ function ReasonField({
   reason: string;
   setReason: (value: string) => void;
 }) {
+  const trimmedLength = reason.trim().length;
+  const isTooShort =
+    trimmedLength > 0 && trimmedLength < minimumAdjustmentReasonLength;
+
   return (
     <label className="block space-y-1.5">
       <span className="text-xs font-semibold text-foreground">Reason *</span>
       <textarea
+        aria-describedby="adjustment-reason-help"
+        aria-invalid={isTooShort}
         className="form-input min-h-20 resize-y"
         maxLength={500}
+        minLength={minimumAdjustmentReasonLength}
         placeholder="Explain why this operation is required."
         value={reason}
         onChange={(event) => setReason(event.target.value)}
       />
-      <span className="text-xs text-muted">
-        Stored in the audit trail. Minimum 3 characters.
+      <span
+        className={cn("text-xs", isTooShort ? "text-danger" : "text-muted")}
+        id="adjustment-reason-help"
+      >
+        {isTooShort
+          ? `Enter at least ${minimumAdjustmentReasonLength} characters.`
+          : `Stored in the audit trail. Minimum ${minimumAdjustmentReasonLength} characters.`}
       </span>
     </label>
   );
@@ -753,7 +766,10 @@ function RewardsPanel() {
             className="mt-4 space-y-4"
             onSubmit={(event) => {
               event.preventDefault();
-              if (Number(amount) > 0 && reason.trim().length >= 6)
+              if (
+                Number(amount) > 0 &&
+                reason.trim().length >= minimumAdjustmentReasonLength
+              )
                 adjustmentMutation.mutate();
             }}
           >
@@ -805,7 +821,10 @@ function RewardsPanel() {
                 Cancel
               </Button>
               <Button
-                disabled={Number(amount) <= 0 || reason.trim().length < 6}
+                disabled={
+                  Number(amount) <= 0 ||
+                  reason.trim().length < minimumAdjustmentReasonLength
+                }
                 isLoading={adjustmentMutation.isPending}
                 type="submit"
               >

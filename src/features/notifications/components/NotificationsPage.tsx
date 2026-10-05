@@ -60,6 +60,7 @@ import type { LookupOption } from '../../../types/lookup.types'
 import type { StatusTone } from '../../../types/status.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
+import { humanizeIdentifier } from '../../../utils/displayText'
 import { notificationService } from '../services/notification.service'
 import type {
   NotificationChannel,
@@ -185,8 +186,12 @@ const templateColumns: DynamicTableColumn<NotificationTemplate>[] = [
     minWidth: 280,
     renderCell: (template) => (
       <div className="space-y-1">
-        <OverflowText as="p" className="font-semibold text-foreground" title={template.templateCode}>
-          {template.templateCode}
+        <OverflowText
+          as="p"
+          className="font-semibold text-foreground"
+          title={humanizeIdentifier(template.templateCode)}
+        >
+          {humanizeIdentifier(template.templateCode)}
         </OverflowText>
         <p
           className="line-clamp-1 text-xs text-muted"
@@ -242,13 +247,7 @@ const templateColumns: DynamicTableColumn<NotificationTemplate>[] = [
 ]
 
 function humanizeCode(value: string | null | undefined) {
-  if (!value) return 'Not available'
-
-  return value
-    .toLowerCase()
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
+  return humanizeIdentifier(value)
 }
 
 function formatDateSafe(value: string | null | undefined) {
@@ -625,7 +624,9 @@ function TemplateEditModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-foreground">Edit template</h2>
-            <p className="mt-1 text-sm text-muted">{template.templateCode}</p>
+            <p className="mt-1 text-sm text-muted">
+              {humanizeIdentifier(template.templateCode)}
+            </p>
           </div>
           <button
             aria-label="Close template editor"
@@ -896,9 +897,9 @@ function NotificationPreviewPanel({
                 <OverflowText
                   as="p"
                   className="mt-0.5 text-xs text-muted"
-                  title={`${event.templateCode} / ${recipientLabel(event)}`}
+                  title={`${humanizeCode(event.templateCode)} / ${recipientLabel(event)}`}
                 >
-                  {event.templateCode} / {recipientLabel(event)}
+                  {humanizeCode(event.templateCode)} / {recipientLabel(event)}
                 </OverflowText>
                 <div className="mt-1.5 flex flex-wrap gap-2">
                   <Badge tone={statusTone(event.status)}>
@@ -994,7 +995,7 @@ function NotificationPreviewPanel({
                 </div>
                 <NotificationPreviewField
                   label="Template"
-                  value={event.templateCode}
+                  value={humanizeCode(event.templateCode)}
                 />
                 <NotificationPreviewField
                   label="Title"
@@ -1086,8 +1087,8 @@ function EventCell({
 
     return (
       <div className="min-w-0 space-y-1">
-        <OverflowText as="p" className="font-semibold text-foreground" title={event.templateCode}>
-          {event.templateCode}
+        <OverflowText as="p" className="font-semibold text-foreground" title={humanizeCode(event.templateCode)}>
+          {humanizeCode(event.templateCode)}
         </OverflowText>
         <p className="line-clamp-1 text-xs text-muted" title={eventSummary}>
           {eventSummary}
@@ -1106,7 +1107,7 @@ function EventCell({
             <ArrowUpRight className="size-3.5" />
           </button>
           <button
-            aria-label={`Filter events by template ${event.templateCode}`}
+            aria-label={`Filter events by template ${humanizeCode(event.templateCode)}`}
             className="btn-icon size-7"
             title="Filter by template"
             type="button"
@@ -1532,7 +1533,6 @@ export function NotificationsPage() {
 
     return uniqueTemplateCodes.map((templateCode) => ({
       label: humanizeCode(templateCode),
-      meta: templateCode,
       value: templateCode,
     }))
   }, [templates])
@@ -2098,7 +2098,7 @@ export function NotificationsPage() {
                   <div className="divide-y divide-border">
                     {events.map((event) => (
                       <div
-                        aria-label={`Preview notification event ${event.templateCode}`}
+                        aria-label={`Preview notification event ${humanizeCode(event.templateCode)}`}
                         aria-selected={eventSelection.isSelected(event.eventId)}
                         className={cn(
                           'grid min-h-[5.5rem] cursor-pointer grid-cols-[var(--notification-grid-template)] gap-x-3 px-3 py-3 text-left transition hover:bg-surface-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -2184,6 +2184,7 @@ export function NotificationsPage() {
                   </div>
                   <div className="flex items-center justify-end gap-2">
                     <Button
+                      aria-label="Previous notifications page"
                       disabled={!pagination.hasPreviousPage}
                       size="sm"
                       type="button"
@@ -2196,6 +2197,7 @@ export function NotificationsPage() {
                       Page {pagination.page} of {pagination.totalPages}
                     </span>
                     <Button
+                      aria-label="Next notifications page"
                       disabled={!pagination.hasNextPage}
                       size="sm"
                       type="button"

@@ -13,6 +13,7 @@ import { useAuthStore } from '../../../store/authStore'
 import { cn } from '../../../utils/cn'
 import { downloadCsv, timestampedFilename } from '../../../utils/exportCsv'
 import { formatDate } from '../../../utils/formatDate'
+import { humanizeIdentifier } from '../../../utils/displayText'
 import { rbacService } from '../services/rbac.service'
 import type { RoleSummary } from '../types/rbac.types'
 
@@ -127,15 +128,10 @@ export function RolesPage() {
         grow: true,
         locked: true,
         render: (role) => (
-          <div
-            className="flex min-w-0 items-baseline gap-2"
-            title={role.description ?? role.roleName}
-          >
-            <span className="max-w-[60%] shrink-0 truncate font-medium text-foreground">
-              {role.roleName}
-            </span>
-            <span className="min-w-0 truncate text-xs text-muted">
-              {role.roleCode}
+          <div className="flex min-w-0 items-baseline" title={role.description ?? role.roleName}>
+            <span className="min-w-0 truncate font-medium text-foreground">
+              {role.roleName ||
+                humanizeIdentifier(role.roleCode, { capitalization: 'title' })}
             </span>
           </div>
         ),

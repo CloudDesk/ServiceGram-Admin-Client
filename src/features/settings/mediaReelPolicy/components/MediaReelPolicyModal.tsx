@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { FormProvider, useForm } from 'react-hook-form'
 import { Button } from '../../../../components/ui/Button'
 import { Modal } from '../../../../components/ui/Modal'
+import { permissionRequirementLabel } from '../../../../utils/displayText'
 import type { PolicyRule, UpsertPolicyRulePayload } from '../../types/settings.types'
 import { SettingsServiceError } from '../../types/settings.types'
 import {
@@ -187,7 +188,11 @@ function MediaReelPolicyModalContent({
             </Button>
             <Button
               disabled={readOnly}
-              title={readOnly ? 'Requires settings:update' : undefined}
+              title={
+                readOnly
+                  ? permissionRequirementLabel('settings:update')
+                  : undefined
+              }
               type="button"
               onClick={() => void openConfirmStep()}
             >

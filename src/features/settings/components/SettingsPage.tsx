@@ -37,6 +37,10 @@ import { usePermission } from '../../../hooks/usePermission'
 import { useToast } from '../../../hooks/useToast'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
+import {
+  humanizeIdentifier,
+  permissionRequirementLabel,
+} from '../../../utils/displayText'
 import { settingsService } from '../services/settings.service'
 import { ContentRulePreviewBody } from '../mediaReelPolicy/components/ContentRulePreviewBody'
 import { ContentRulesWorkspace } from '../mediaReelPolicy/components/ContentRulesWorkspace'
@@ -449,15 +453,7 @@ const settingsColumnsByType: Record<SettingsRecordType, SettingsColumn[]> = {
 
 
 function humanizeCode(value: string | null | undefined) {
-  if (!value) return 'Not available'
-
-  return value
-    .replace(/_/g, ' ')
-    .replace(/-/g, ' ')
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ')
+  return humanizeIdentifier(value, { capitalization: 'title' })
 }
 
 function formatValue(value: unknown) {
@@ -2734,7 +2730,7 @@ export function SettingsPage() {
                     title={
                       canUpdateSettings
                         ? `Create ${activeSettingsType === 'categories' ? 'category' : 'zone'}`
-                        : 'Requires settings:update'
+                        : permissionRequirementLabel('settings:update')
                     }
                     type="button"
                     variant="primary"

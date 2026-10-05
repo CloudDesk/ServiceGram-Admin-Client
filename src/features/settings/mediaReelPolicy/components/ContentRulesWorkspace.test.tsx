@@ -115,6 +115,9 @@ describe('ContentRulesWorkspace', () => {
 
     const createButton = screen.getByRole('button', { name: /Content rule/ })
     expect(createButton).toBeDisabled()
-    expect(createButton).toHaveAttribute('title', 'Requires settings:update')
+    expect(createButton).toHaveAttribute(
+      'title',
+      'Requires permission: Manage settings',
+    )
   })
 })

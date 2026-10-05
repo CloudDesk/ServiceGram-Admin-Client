@@ -65,7 +65,10 @@ describe('MediaReelPolicyModal permissions', () => {
     expect(screen.getByText(/read-only access/i)).toBeInTheDocument()
     const saveButton = screen.getByRole('button', { name: 'Save' })
     expect(saveButton).toBeDisabled()
-    expect(saveButton).toHaveAttribute('title', 'Requires settings:update')
+    expect(saveButton).toHaveAttribute(
+      'title',
+      'Requires permission: Manage settings',
+    )
   })
 })
 

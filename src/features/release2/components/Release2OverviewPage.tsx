@@ -11,6 +11,7 @@ import { Skeleton } from '../../../components/ui/Skeleton'
 import { routePaths } from '../../../config/routes'
 import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
+import { codeDisplayLabel } from '../../../utils/displayText'
 import {
   errorMessage,
   formatDateTime,
@@ -108,7 +109,7 @@ function ClientConfigCard({
       <p className="mt-1 text-xs text-muted">{detail}</p>
       {access.code ? (
         <p className="mt-1 font-mono text-[0.68rem] uppercase tracking-wide text-muted">
-          {access.code}
+          {codeDisplayLabel(access.code)}
         </p>
       ) : null}
     </Card>

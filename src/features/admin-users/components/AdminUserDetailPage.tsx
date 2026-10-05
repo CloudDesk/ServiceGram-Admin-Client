@@ -155,7 +155,7 @@ function AdminUserHeroCard({ user }: { user: AdminUser }) {
               Auth {humanizeCode(user.userStatus)}
             </Badge>
             <Badge tone={user.role?.isActive === false ? 'warning' : 'neutral'}>
-              {user.role?.roleCode ?? 'NO_ROLE'}
+              {user.role?.roleName ?? 'No role'}
             </Badge>
           </div>
           <p className="mt-1 truncate text-xs text-muted">
@@ -315,7 +315,6 @@ function RolePanel({
     >
       <RecordFieldList>
         <RecordField label="Role name" value={role?.roleName} />
-        <RecordField label="Role code" value={role?.roleCode} />
         <RecordField label="Role ID" value={role?.roleId} />
         <RecordField label="Role type" value={role?.isSystem ? 'System' : role ? 'Custom' : null} />
         <RecordField
@@ -483,12 +482,12 @@ function EditAdminUserModal({
               </option>
               {user.role && !roleOptions.some((role) => role.roleId === user.role?.roleId) ? (
                 <option value={user.role.roleId}>
-                  {user.role.roleName} ({user.role.roleCode})
+                  {user.role.roleName}
                 </option>
               ) : null}
               {roleOptions.map((role) => (
                 <option key={role.roleId} value={role.roleId}>
-                  {role.roleName} ({role.roleCode})
+                  {role.roleName}
                 </option>
               ))}
             </select>

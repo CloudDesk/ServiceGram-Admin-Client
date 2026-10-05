@@ -402,6 +402,7 @@ export function InfluencerLeaderboardsPage() {
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
+              aria-label="Search influencers"
               className={cn(inputClass, "sm:w-64")}
               placeholder="Search influencer"
               value={search}
@@ -410,12 +411,14 @@ export function InfluencerLeaderboardsPage() {
             {activeTab === "leaderboards" ? (
               <>
                 <input
+                  aria-label="Ranking month"
                   className={cn(inputClass, "sm:w-36")}
                   type="month"
                   value={periodMonth}
                   onChange={(event) => setPeriodMonth(event.target.value)}
                 />
                 <select
+                  aria-label="Leaderboard category"
                   className={cn(inputClass, "sm:w-56")}
                   value={category}
                   onChange={(event) =>
@@ -444,6 +447,7 @@ export function InfluencerLeaderboardsPage() {
             ) : (
               <>
                 <select
+                  aria-label="Reputation grade"
                   className={cn(inputClass, "sm:w-44")}
                   value={grade}
                   onChange={(event) =>
@@ -460,6 +464,7 @@ export function InfluencerLeaderboardsPage() {
                   ))}
                 </select>
                 <select
+                  aria-label="Fraud review status"
                   className={cn(inputClass, "sm:w-48")}
                   value={fraudReviewStatus}
                   onChange={(event) =>

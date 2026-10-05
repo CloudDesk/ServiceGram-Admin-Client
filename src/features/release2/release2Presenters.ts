@@ -1,4 +1,5 @@
 import type { StatusTone } from '../../types/status.types'
+import { humanizeIdentifier } from '../../utils/displayText'
 import {
   Release2ServiceError,
   type FeatureFlagRiskLevel,
@@ -22,14 +23,10 @@ export const release2ErrorCodes = {
 } as const
 
 export function humanizeCode(value: string | null | undefined) {
-  if (!value) return '—'
-
-  return value
-    .replaceAll(/[._:-]+/g, ' ')
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ')
+  return humanizeIdentifier(value, {
+    capitalization: 'title',
+    fallback: '—',
+  })
 }
 
 export function asRelease2Error(error: unknown) {
