@@ -170,9 +170,20 @@ const riskBarTone: Record<number, string> = {
 }
 
 /** A four-step meter. Height carries the level; colour reinforces it. */
-export function RiskMeter({ level }: { level: string }) {
+export function RiskMeter({
+  level,
+  subject,
+}: {
+  level: string
+  /**
+   * Risk here always describes the registered action, never the rule that
+   * leads to it — the schema has no rule-level risk at all. Pass this where
+   * that could otherwise read as rating the rule itself (see F-05).
+   */
+  subject?: string
+}) {
   const step = riskStep(level)
-  const label = riskLabel(level)
+  const label = subject ? `${riskLabel(level)} (${subject})` : riskLabel(level)
   const heights = ['h-1.5', 'h-2.5', 'h-3.5', 'h-4.5']
 
   return (

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
+import { ReasonModal } from "../../../components/ui/ReasonModal";
 import { PageContainer } from "../../../components/layout/PageContainer";
 import { PageContextHeader } from "../../../components/ui/PageHeader";
 import { usePermission } from "../../../hooks/usePermission";
@@ -23,10 +24,12 @@ import { influencerCampaignService } from "../services/influencerCampaign.servic
 import type {
   InfluencerCampaign,
   InfluencerCampaignAnalyticsPeriod,
+  InfluencerCampaignEligibilityRule,
   InfluencerCampaignObjective,
   InfluencerCampaignParticipant,
   InfluencerCampaignParticipantStatus,
   InfluencerCampaignPayload,
+  InfluencerCampaignReward,
   InfluencerCampaignRewardAward,
   InfluencerCampaignRewardAwardStatus,
   InfluencerCampaignRewardType,
@@ -78,6 +81,15 @@ const rewardTypes: ("ALL" | InfluencerCampaignRewardType)[] = [
   "COMMISSION_BOOST",
   "BADGE",
   "FEATURED_PLACEMENT",
+];
+
+const eligibilityRuleTypes: InfluencerCampaignEligibilityRule["ruleType"][] = [
+  "APPROVED_INFLUENCER",
+  "CITY",
+  "CATEGORY",
+  "MIN_FOLLOWERS",
+  "MIN_REELS",
+  "INVITED_INFLUENCER",
 ];
 
 const participantStatuses: ("ALL" | InfluencerCampaignParticipantStatus)[] = [
@@ -156,6 +168,33 @@ const emptyForm: InfluencerCampaignPayload = {
   reason: "Create Phase 4 influencer campaign draft.",
 };
 
+type PendingReasonAction =
+  | {
+      kind: "campaign";
+      action: "submit" | "approve" | "cancel";
+      campaign: InfluencerCampaign;
+    }
+  | {
+      kind: "submission";
+      decision: "APPROVED" | "REJECTED";
+      submission: InfluencerCampaignSubmission;
+    }
+  | {
+      kind: "rewardAward";
+      decision: "APPROVED" | "REJECTED";
+      award: InfluencerCampaignRewardAward;
+    }
+  | {
+      kind: "sponsorshipReview";
+      decision: InfluencerCampaignSponsorshipReviewDecision;
+      sponsorship: InfluencerCampaignSponsorship;
+    }
+  | {
+      kind: "sponsorshipAction";
+      action: "CANCEL" | "RESTRICT";
+      sponsorship: InfluencerCampaignSponsorship;
+    };
+
 function humanize(value: string) {
   return value
     .toLowerCase()
@@ -205,6 +244,59 @@ function fromDateInput(value: string) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function eligibilityValueText(rule: InfluencerCampaignEligibilityRule) {
+  if (rule.ruleType === "CITY") {
+    return Array.isArray(rule.value.cities) ? rule.value.cities.join(", ") : "";
+  }
+  if (rule.ruleType === "CATEGORY") {
+    return Array.isArray(rule.value.categoryIds)
+      ? rule.value.categoryIds.join(", ")
+      : "";
+  }
+  if (rule.ruleType === "INVITED_INFLUENCER") {
+    return Array.isArray(rule.value.influencerProfileIds)
+      ? rule.value.influencerProfileIds.join(", ")
+      : "";
+  }
+  if (["MIN_FOLLOWERS", "MIN_REELS"].includes(rule.ruleType)) {
+    return String(rule.value.minimum ?? "");
+  }
+  return "";
+}
+
+function eligibilityValue(
+  ruleType: InfluencerCampaignEligibilityRule["ruleType"],
+  rawValue: string,
+) {
+  const list = rawValue
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (ruleType === "CITY") return { cities: list };
+  if (ruleType === "CATEGORY") return { categoryIds: list };
+  if (ruleType === "INVITED_INFLUENCER") {
+    return { influencerProfileIds: list };
+  }
+  if (["MIN_FOLLOWERS", "MIN_REELS"].includes(ruleType)) {
+    return { minimum: Math.max(0, Number(rawValue) || 0) };
+  }
+  return {};
+}
+
+function eligibilityValueLabel(
+  ruleType: InfluencerCampaignEligibilityRule["ruleType"],
+) {
+  if (ruleType === "CITY") return "Cities (comma separated)";
+  if (ruleType === "CATEGORY") return "Category IDs (comma separated)";
+  if (ruleType === "INVITED_INFLUENCER") {
+    return "Influencer profile IDs (comma separated)";
+  }
+  if (ruleType === "MIN_FOLLOWERS") return "Minimum followers";
+  if (ruleType === "MIN_REELS") return "Minimum reels";
+  return null;
 }
 
 function numberValue(value: unknown) {
@@ -271,12 +363,37 @@ function campaignToForm(campaign: InfluencerCampaign): InfluencerCampaignPayload
     budgetPaise: campaign.budget.amountPaise,
     currency: campaign.budget.currency,
     rewardSummary: campaign.rewardSummary,
-    rewards: campaign.rewards.map(({ rewardId: _rewardId, ...reward }) => reward),
+    rewards: campaign.rewards.map((reward) => ({
+      rewardType: reward.rewardType,
+      title: reward.title,
+      ...(reward.description ? { description: reward.description } : {}),
+      ...(reward.amountPaise !== null && reward.amountPaise !== undefined
+        ? { amountPaise: reward.amountPaise }
+        : {}),
+      ...(reward.commissionBoostBps !== null &&
+      reward.commissionBoostBps !== undefined
+        ? { commissionBoostBps: reward.commissionBoostBps }
+        : {}),
+      ...(reward.rankFrom !== null && reward.rankFrom !== undefined
+        ? { rankFrom: reward.rankFrom }
+        : {}),
+      ...(reward.rankTo !== null && reward.rankTo !== undefined
+        ? { rankTo: reward.rankTo }
+        : {}),
+      ...(reward.maxWinners !== null && reward.maxWinners !== undefined
+        ? { maxWinners: reward.maxWinners }
+        : {}),
+      metadata: reward.metadata ?? {},
+    })),
     contentRequirements: campaign.contentRequirements,
     eligibilitySummary: campaign.eligibilitySummary,
-    eligibilityRules: campaign.eligibilityRules.map(
-      ({ ruleId: _ruleId, ...rule }) => rule,
-    ),
+    eligibilityRules: campaign.eligibilityRules.map((rule) => ({
+      ruleType: rule.ruleType,
+      value: rule.value,
+      ...(rule.description ? { description: rule.description } : {}),
+      isRequired: rule.isRequired,
+      displayOrder: rule.displayOrder,
+    })),
     visibilityRules: campaign.visibilityRules,
     metadata: {},
     reason: "Update influencer campaign draft.",
@@ -314,7 +431,33 @@ export function InfluencerCampaignsPage() {
   const [visibilityJson, setVisibilityJson] = useState(
     JSON.stringify(emptyForm.visibilityRules, null, 2),
   );
+
+  const updateReward = (
+    index: number,
+    patch: Partial<Omit<InfluencerCampaignReward, "rewardId">>,
+  ) => {
+    setForm((current) => ({
+      ...current,
+      rewards: current.rewards.map((reward, rewardIndex) =>
+        rewardIndex === index ? { ...reward, ...patch } : reward,
+      ),
+    }));
+  };
+
+  const updateEligibilityRule = (
+    index: number,
+    patch: Partial<Omit<InfluencerCampaignEligibilityRule, "ruleId">>,
+  ) => {
+    setForm((current) => ({
+      ...current,
+      eligibilityRules: current.eligibilityRules.map((rule, ruleIndex) =>
+        ruleIndex === index ? { ...rule, ...patch } : rule,
+      ),
+    }));
+  };
   const [error, setError] = useState<string | null>(null);
+  const [pendingReasonAction, setPendingReasonAction] =
+    useState<PendingReasonAction | null>(null);
 
   const campaignsQuery = useQuery({
     queryKey: ["influencer-campaigns", search, status],
@@ -374,7 +517,10 @@ export function InfluencerCampaignsPage() {
         visibilityRules: JSON.parse(visibilityJson) as Record<string, unknown>,
       };
       return editing
-        ? influencerCampaignService.update(editing.campaignId, body)
+        ? influencerCampaignService.update(editing.campaignId, {
+            ...body,
+            expectedVersion: editing.lifecycle.version,
+          })
         : influencerCampaignService.create(body);
     },
     onSuccess: async () => {
@@ -408,8 +554,11 @@ export function InfluencerCampaignsPage() {
         return influencerCampaignService.approve(campaign.campaignId, reason);
       return influencerCampaignService.cancel(campaign.campaignId, reason);
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["influencer-campaigns"] }),
+    onSuccess: () => {
+      setPendingReasonAction(null);
+      setError(null);
+      return queryClient.invalidateQueries({ queryKey: ["influencer-campaigns"] });
+    },
     onError: (cause) =>
       setError(cause instanceof Error ? cause.message : "Action failed."),
   });
@@ -429,6 +578,8 @@ export function InfluencerCampaignsPage() {
         reason,
       }),
     onSuccess: async () => {
+      setPendingReasonAction(null);
+      setError(null);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["influencer-campaign-submissions"],
@@ -458,6 +609,8 @@ export function InfluencerCampaignsPage() {
         reason,
       }),
     onSuccess: async () => {
+      setPendingReasonAction(null);
+      setError(null);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["influencer-campaign-reward-awards"],
@@ -490,6 +643,8 @@ export function InfluencerCampaignsPage() {
         },
       ),
     onSuccess: async () => {
+      setPendingReasonAction(null);
+      setError(null);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["influencer-campaign-sponsorships"],
@@ -522,6 +677,8 @@ export function InfluencerCampaignsPage() {
         },
       ),
     onSuccess: async () => {
+      setPendingReasonAction(null);
+      setError(null);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["influencer-campaign-sponsorships"],
@@ -549,52 +706,76 @@ export function InfluencerCampaignsPage() {
     campaign: InfluencerCampaign,
     action: "submit" | "approve" | "cancel",
   ) => {
-    const reason = window.prompt(`Reason to ${action} this campaign:`)?.trim();
-    if (reason) lifecycleMutation.mutate({ action, campaign, reason });
+    setError(null);
+    setPendingReasonAction({ action, campaign, kind: "campaign" });
   };
 
   const runSubmissionReview = (
     submission: InfluencerCampaignSubmission,
     decision: "APPROVED" | "REJECTED",
   ) => {
-    const verb = decision === "APPROVED" ? "approve" : "reject";
-    const reason = window.prompt(`Reason to ${verb} this submission:`)?.trim();
-    if (reason) submissionReviewMutation.mutate({ decision, reason, submission });
+    setError(null);
+    setPendingReasonAction({ decision, kind: "submission", submission });
   };
 
   const runRewardAwardReview = (
     award: InfluencerCampaignRewardAward,
     decision: "APPROVED" | "REJECTED",
   ) => {
-    const verb = decision === "APPROVED" ? "approve" : "reject";
-    const reason = window
-      .prompt(`Reason to ${verb} this campaign reward award:`)
-      ?.trim();
-    if (reason) rewardAwardReviewMutation.mutate({ award, decision, reason });
+    setError(null);
+    setPendingReasonAction({ award, decision, kind: "rewardAward" });
   };
 
   const runSponsorshipReview = (
     sponsorship: InfluencerCampaignSponsorship,
     decision: InfluencerCampaignSponsorshipReviewDecision,
   ) => {
-    const verb =
-      decision === "APPROVED"
-        ? "approve"
-        : decision === "REJECTED"
-          ? "reject"
-          : "request changes for";
-    const reason = window.prompt(`Reason to ${verb} this sponsorship:`)?.trim();
-    if (reason) sponsorshipReviewMutation.mutate({ decision, reason, sponsorship });
+    setError(null);
+    setPendingReasonAction({
+      decision,
+      kind: "sponsorshipReview",
+      sponsorship,
+    });
   };
 
   const runSponsorshipAction = (
     sponsorship: InfluencerCampaignSponsorship,
     action: "CANCEL" | "RESTRICT",
   ) => {
-    const verb = action === "RESTRICT" ? "restrict" : "cancel";
-    const reason = window.prompt(`Reason to ${verb} this sponsorship:`)?.trim();
-    if (reason) sponsorshipActionMutation.mutate({ action, reason, sponsorship });
+    setError(null);
+    setPendingReasonAction({ action, kind: "sponsorshipAction", sponsorship });
   };
+
+  const submitReasonAction = (reason: string) => {
+    if (!pendingReasonAction) return;
+
+    if (pendingReasonAction.kind === "campaign") {
+      lifecycleMutation.mutate({ ...pendingReasonAction, reason });
+    } else if (pendingReasonAction.kind === "submission") {
+      submissionReviewMutation.mutate({ ...pendingReasonAction, reason });
+    } else if (pendingReasonAction.kind === "rewardAward") {
+      rewardAwardReviewMutation.mutate({ ...pendingReasonAction, reason });
+    } else if (pendingReasonAction.kind === "sponsorshipReview") {
+      sponsorshipReviewMutation.mutate({ ...pendingReasonAction, reason });
+    } else {
+      sponsorshipActionMutation.mutate({ ...pendingReasonAction, reason });
+    }
+  };
+
+  const reasonActionCopy = pendingReasonAction
+    ? getReasonActionCopy(pendingReasonAction)
+    : null;
+  const reasonActionPending = pendingReasonAction
+    ? pendingReasonAction.kind === "campaign"
+      ? lifecycleMutation.isPending
+      : pendingReasonAction.kind === "submission"
+        ? submissionReviewMutation.isPending
+        : pendingReasonAction.kind === "rewardAward"
+          ? rewardAwardReviewMutation.isPending
+          : pendingReasonAction.kind === "sponsorshipReview"
+            ? sponsorshipReviewMutation.isPending
+            : sponsorshipActionMutation.isPending
+    : false;
 
   const summary = campaignsQuery.data?.summary;
   const submissionSummary = submissionsQuery.data?.summary;
@@ -859,6 +1040,15 @@ export function InfluencerCampaignsPage() {
                 }
               />
             </Field>
+            <Field label="Eligibility summary">
+              <input
+                className={inputClass}
+                value={form.eligibilitySummary}
+                onChange={(event) =>
+                  setForm({ ...form, eligibilitySummary: event.target.value })
+                }
+              />
+            </Field>
             <Field label="Reason">
               <input
                 className={inputClass}
@@ -889,6 +1079,293 @@ export function InfluencerCampaignsPage() {
                 onChange={(event) => setVisibilityJson(event.target.value)}
               />
             </Field>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-lg border border-border p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-medium">Reward rules</h3>
+                  <p className="text-xs text-muted">
+                    Define at least one reward before review.
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      rewards: [
+                        ...current.rewards,
+                        {
+                          rewardType: "CASH",
+                          title: `Reward ${current.rewards.length + 1}`,
+                          amountPaise: 100000,
+                          metadata: {},
+                        },
+                      ],
+                    }))
+                  }
+                >
+                  Add reward
+                </Button>
+              </div>
+              <div className="grid gap-3">
+                {form.rewards.map((reward, index) => (
+                  <div
+                    className="grid gap-3 rounded-lg bg-surface-subtle p-3 sm:grid-cols-2"
+                    key={`reward-${index}`}
+                  >
+                    <Field label="Reward type">
+                      <select
+                        className={inputClass}
+                        value={reward.rewardType}
+                        onChange={(event) =>
+                          updateReward(index, {
+                            rewardType: event.target
+                              .value as InfluencerCampaignRewardType,
+                          })
+                        }
+                      >
+                        {rewardTypes
+                          .filter((type) => type !== "ALL")
+                          .map((type) => (
+                            <option key={type} value={type}>
+                              {humanize(type)}
+                            </option>
+                          ))}
+                      </select>
+                    </Field>
+                    <Field label="Title">
+                      <input
+                        className={inputClass}
+                        value={reward.title}
+                        onChange={(event) =>
+                          updateReward(index, { title: event.target.value })
+                        }
+                      />
+                    </Field>
+                    {reward.rewardType === "CASH" ? (
+                      <Field label="Amount paise">
+                        <input
+                          className={inputClass}
+                          min={1}
+                          type="number"
+                          value={reward.amountPaise ?? ""}
+                          onChange={(event) =>
+                            updateReward(index, {
+                              amountPaise: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </Field>
+                    ) : null}
+                    {reward.rewardType === "COMMISSION_BOOST" ? (
+                      <Field label="Commission boost (bps)">
+                        <input
+                          className={inputClass}
+                          min={1}
+                          max={10000}
+                          type="number"
+                          value={reward.commissionBoostBps ?? ""}
+                          onChange={(event) =>
+                            updateReward(index, {
+                              commissionBoostBps: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </Field>
+                    ) : null}
+                    <Field label="Rank from">
+                      <input
+                        className={inputClass}
+                        min={1}
+                        type="number"
+                        value={reward.rankFrom ?? ""}
+                        onChange={(event) =>
+                          updateReward(index, {
+                            rankFrom: event.target.value
+                              ? Number(event.target.value)
+                              : null,
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label="Rank to">
+                      <input
+                        className={inputClass}
+                        min={1}
+                        type="number"
+                        value={reward.rankTo ?? ""}
+                        onChange={(event) =>
+                          updateReward(index, {
+                            rankTo: event.target.value
+                              ? Number(event.target.value)
+                              : null,
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label="Max winners">
+                      <input
+                        className={inputClass}
+                        min={1}
+                        type="number"
+                        value={reward.maxWinners ?? ""}
+                        onChange={(event) =>
+                          updateReward(index, {
+                            maxWinners: event.target.value
+                              ? Number(event.target.value)
+                              : null,
+                          })
+                        }
+                      />
+                    </Field>
+                    <div className="flex items-end justify-end sm:col-span-2">
+                      <Button
+                        disabled={form.rewards.length === 1}
+                        variant="ghost"
+                        onClick={() =>
+                          setForm((current) => ({
+                            ...current,
+                            rewards: current.rewards.filter(
+                              (_item, rewardIndex) => rewardIndex !== index,
+                            ),
+                          }))
+                        }
+                      >
+                        Remove reward
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-medium">Eligibility rules</h3>
+                  <p className="text-xs text-muted">
+                    Required rules limit who can join this campaign.
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      eligibilityRules: [
+                        ...current.eligibilityRules,
+                        {
+                          ruleType: "CITY",
+                          value: { cities: [] },
+                          description: "Eligible service cities.",
+                          isRequired: true,
+                          displayOrder: current.eligibilityRules.length + 1,
+                        },
+                      ],
+                    }))
+                  }
+                >
+                  Add rule
+                </Button>
+              </div>
+              <div className="grid gap-3">
+                {form.eligibilityRules.map((rule, index) => {
+                  const valueLabel = eligibilityValueLabel(rule.ruleType);
+                  return (
+                    <div
+                      className="grid gap-3 rounded-lg bg-surface-subtle p-3"
+                      key={`eligibility-${index}`}
+                    >
+                      <Field label="Rule type">
+                        <select
+                          className={inputClass}
+                          value={rule.ruleType}
+                          onChange={(event) => {
+                            const ruleType = event.target
+                              .value as InfluencerCampaignEligibilityRule["ruleType"];
+                            updateEligibilityRule(index, {
+                              ruleType,
+                              value: eligibilityValue(ruleType, ""),
+                            });
+                          }}
+                        >
+                          {eligibilityRuleTypes.map((type) => (
+                            <option key={type} value={type}>
+                              {humanize(type)}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      {valueLabel ? (
+                        <Field label={valueLabel}>
+                          <input
+                            className={inputClass}
+                            type={
+                              ["MIN_FOLLOWERS", "MIN_REELS"].includes(
+                                rule.ruleType,
+                              )
+                                ? "number"
+                                : "text"
+                            }
+                            value={eligibilityValueText(rule)}
+                            onChange={(event) =>
+                              updateEligibilityRule(index, {
+                                value: eligibilityValue(
+                                  rule.ruleType,
+                                  event.target.value,
+                                ),
+                              })
+                            }
+                          />
+                        </Field>
+                      ) : null}
+                      <Field label="Description">
+                        <input
+                          className={inputClass}
+                          value={rule.description ?? ""}
+                          onChange={(event) =>
+                            updateEligibilityRule(index, {
+                              description: event.target.value,
+                            })
+                          }
+                        />
+                      </Field>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          checked={rule.isRequired}
+                          type="checkbox"
+                          onChange={(event) =>
+                            updateEligibilityRule(index, {
+                              isRequired: event.target.checked,
+                            })
+                          }
+                        />
+                        Required rule
+                      </label>
+                      <div className="flex justify-end">
+                        <Button
+                          disabled={form.eligibilityRules.length === 1}
+                          variant="ghost"
+                          onClick={() =>
+                            setForm((current) => ({
+                              ...current,
+                              eligibilityRules: current.eligibilityRules.filter(
+                                (_item, ruleIndex) => ruleIndex !== index,
+                              ),
+                            }))
+                          }
+                        >
+                          Remove rule
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           <div className="mt-4 flex justify-end">
@@ -1239,8 +1716,82 @@ export function InfluencerCampaignsPage() {
           </div>
         </section>
       ) : null}
+
+      {pendingReasonAction && reasonActionCopy ? (
+        <ReasonModal
+          confirmLabel={reasonActionCopy.confirmLabel}
+          error={error}
+          isDestructive={reasonActionCopy.isDestructive}
+          isSubmitting={reasonActionPending}
+          reasonPlaceholder="Add a concise note for the audit trail."
+          subtitle={reasonActionCopy.subtitle}
+          title={reasonActionCopy.title}
+          onClose={() => {
+            if (!reasonActionPending) {
+              setPendingReasonAction(null);
+              setError(null);
+            }
+          }}
+          onSubmit={submitReasonAction}
+        />
+      ) : null}
     </PageContainer>
   );
+}
+
+function getReasonActionCopy(action: PendingReasonAction) {
+  if (action.kind === "campaign") {
+    const verb = action.action === "submit" ? "Submit" : humanize(action.action);
+    return {
+      confirmLabel: verb,
+      isDestructive: action.action === "cancel",
+      subtitle: `${action.campaign.title} · ${action.campaign.publicCampaignId}`,
+      title: `${verb} campaign`,
+    };
+  }
+
+  if (action.kind === "submission") {
+    const verb = action.decision === "APPROVED" ? "Approve" : "Reject";
+    return {
+      confirmLabel: verb,
+      isDestructive: action.decision === "REJECTED",
+      subtitle: `${action.submission.campaign.title} · ${action.submission.influencer.displayName}`,
+      title: `${verb} submission`,
+    };
+  }
+
+  if (action.kind === "rewardAward") {
+    const verb = action.decision === "APPROVED" ? "Approve" : "Reject";
+    return {
+      confirmLabel: verb,
+      isDestructive: action.decision === "REJECTED",
+      subtitle: `${action.award.campaign.title} · ${action.award.influencer.displayName}`,
+      title: `${verb} campaign reward`,
+    };
+  }
+
+  if (action.kind === "sponsorshipReview") {
+    const verb =
+      action.decision === "APPROVED"
+        ? "Approve"
+        : action.decision === "REJECTED"
+          ? "Reject"
+          : "Request changes";
+    return {
+      confirmLabel: verb,
+      isDestructive: action.decision === "REJECTED",
+      subtitle: `${action.sponsorship.title} · ${action.sponsorship.publicSponsorshipId}`,
+      title: `${verb} sponsorship`,
+    };
+  }
+
+  const verb = action.action === "RESTRICT" ? "Restrict" : "Cancel";
+  return {
+    confirmLabel: verb,
+    isDestructive: true,
+    subtitle: `${action.sponsorship.title} · ${action.sponsorship.publicSponsorshipId}`,
+    title: `${verb} sponsorship`,
+  };
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
@@ -1501,14 +2052,30 @@ function CampaignPerformancePanel({
             <MetricCard
               icon={<Eye className="size-5" />}
               label="Views"
-              value={integer(analytics.engagement.views)}
-              helper={`${integer(analytics.engagement.uniqueViewers)} viewers`}
+              value={
+                analytics.privacy.thresholdApplied
+                  ? "Not enough data yet"
+                  : integer(analytics.engagement.views)
+              }
+              helper={
+                analytics.privacy.thresholdApplied
+                  ? `Minimum ${analytics.privacy.minimumAudienceSize} viewers`
+                  : `${integer(analytics.engagement.uniqueViewers)} viewers`
+              }
             />
             <MetricCard
               icon={<BarChart3 className="size-5" />}
               label="Avg watch"
-              value={watchTime(analytics.engagement.averageWatchTimeMs)}
-              helper={`${integer(analytics.engagement.likes)} likes`}
+              value={
+                analytics.privacy.thresholdApplied
+                  ? "Not enough data yet"
+                  : watchTime(analytics.engagement.averageWatchTimeMs)
+              }
+              helper={
+                analytics.privacy.thresholdApplied
+                  ? "Privacy protected"
+                  : `${integer(analytics.engagement.likes)} likes`
+              }
             />
           </div>
 
@@ -1525,7 +2092,12 @@ function CampaignPerformancePanel({
                   {analytics.window.dateFrom} – {analytics.window.dateTo}
                 </Badge>
               </div>
-              {analytics.submissions.topSubmissions.length === 0 ? (
+              {analytics.privacy.thresholdApplied ? (
+                <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted">
+                  Not enough data yet. Engagement details appear after at least{" "}
+                  {analytics.privacy.minimumAudienceSize} viewers.
+                </p>
+              ) : analytics.submissions.topSubmissions.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted">
                   No submitted reel engagement in this period.
                 </p>
@@ -1582,7 +2154,7 @@ function CampaignPerformancePanel({
                 <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
                 <p>
                   {analytics.privacy.thresholdApplied
-                    ? `Audience is below ${analytics.privacy.minimumAudienceSize}; treat conversion reads as directional.`
+                    ? `Not enough data yet. A minimum of ${analytics.privacy.minimumAudienceSize} viewers is required before engagement metrics are shown.`
                     : "Viewer and booking identities stay hidden; this dashboard uses aggregate backend counts."}
                 </p>
               </div>

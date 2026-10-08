@@ -7,7 +7,8 @@ export type ApprovalWorkflowVersionStatus =
   | 'PUBLISHED'
   | 'DEACTIVATED'
   | 'ARCHIVED'
-export type ApprovalRuntimeMode = 'CONFIGURATION_ONLY' | 'SIMULATION_ONLY'
+export type ApprovalRuntimeMode = 'CONFIGURATION_ONLY' | 'SIMULATION_ONLY' | 'ENFORCED'
+export type ApprovalWorkflowEnforcementMode = 'SHADOW' | 'ENFORCED'
 export type ApprovalIssueSeverity = 'ERROR' | 'WARNING'
 
 export interface ApprovalPaginationMeta {
@@ -52,6 +53,8 @@ export interface ApprovalWorkflowListItem {
   /** False means this trigger is configured but dormant — no context builder is wired, so it never evaluates. */
   isTriggerRoutable: boolean
   runtimeMode: ApprovalRuntimeMode
+  /** True if any version of this workflow — published or not — is sitting in DRAFT, independent of the workflow's own lifecycle status. */
+  hasDraftVersion: boolean
   metadata: Record<string, unknown>
   lifecycle: ApprovalLifecycle
   warnings: string[]
@@ -405,12 +408,23 @@ export interface ApprovalStageInput {
   escalationRules: ApprovalEscalationRuleInput[]
 }
 
+/**
+ * The write API (and the evaluator) support arbitrarily nested all/any/not
+ * condition groups, but every real rule today is exactly one flat group, so
+ * that's all this editor builds. A rule whose real shape is deeper than that
+ * (nested group, or a `not`) is "unsupported" — it's round-tripped verbatim
+ * rather than flattened, so editing it never silently drops its real logic.
+ */
+export type ApprovalConditionGroupInput =
+  | { kind: 'simple'; mode: 'all' | 'any'; leaves: ApprovalConditionLeafInput[] }
+  | { kind: 'unsupported'; raw: unknown }
+
 export interface ApprovalRuleInput {
   ruleKey: string
   displayName: string
   description?: string
   priority: number
-  conditionJson: { all: ApprovalConditionLeafInput[] }
+  conditionJson: ApprovalConditionGroupInput
   matchMode: (typeof approvalRuleMatchModes)[number]
   finalActionCode: string
   autoDecision?: string
@@ -435,7 +449,7 @@ export interface CreateApprovalWorkflowVersionDraftPayload {
 }
 
 export interface ReplaceApprovalWorkflowVersionDefinitionPayload {
-  rules: ApprovalRuleInput[]
+  rules: (Omit<ApprovalRuleInput, 'conditionJson'> & { conditionJson: Record<string, unknown> })[]
   reason: string
   expectedDefinitionHash: string
 }
@@ -445,6 +459,11 @@ export interface PublishApprovalWorkflowVersionPayload {
 }
 
 export interface DeactivateApprovalWorkflowVersionPayload {
+  reason: string
+}
+
+export interface SetApprovalWorkflowEnforcementPayload {
+  runtimeMode: ApprovalWorkflowEnforcementMode
   reason: string
 }
 

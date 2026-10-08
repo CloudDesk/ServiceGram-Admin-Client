@@ -17,6 +17,7 @@ function listItem(overrides: Partial<ApprovalWorkflowListItem> = {}): ApprovalWo
     counts: { rules: 1, stages: 1 },
     description: '',
     displayName: 'Refund approval',
+    hasDraftVersion: false,
     isTriggerRoutable: true,
     latestPublishedVersion: null,
     lifecycle: { createdAt: null, updatedAt: null },
@@ -198,5 +199,54 @@ describe('WorkflowFormModal', () => {
         description: undefined,
       }),
     )
+  })
+
+  it('shows inline errors for empty required fields on submit, and never calls createWorkflow', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(
+      <WorkflowFormModal existingWorkflows={[listItem()]} onClose={vi.fn()} onCreated={vi.fn()} />,
+    )
+
+    expect(screen.queryByText('Workflow code is required.')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Create workflow' }))
+
+    expect(await screen.findByText('Workflow code is required.')).toBeInTheDocument()
+    expect(screen.getByText('Display name is required.')).toBeInTheDocument()
+    expect(createWorkflow).not.toHaveBeenCalled()
+  })
+
+  it('clears a field error as soon as that field is filled in', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(
+      <WorkflowFormModal existingWorkflows={[listItem()]} onClose={vi.fn()} onCreated={vi.fn()} />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Create workflow' }))
+    expect(await screen.findByText('Workflow code is required.')).toBeInTheDocument()
+
+    await user.type(screen.getByPlaceholderText('vendor_payout.approval.phase1'), 'a.code')
+
+    expect(screen.queryByText('Workflow code is required.')).not.toBeInTheDocument()
+    expect(screen.getByText('Display name is required.')).toBeInTheDocument()
+  })
+
+  it('requires module code and trigger event when the custom trigger is selected', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(
+      <WorkflowFormModal existingWorkflows={[listItem()]} onClose={vi.fn()} onCreated={vi.fn()} />,
+    )
+
+    await user.selectOptions(screen.getByRole('combobox'), 'Custom / new trigger…')
+    await user.type(screen.getByPlaceholderText('vendor_payout.approval.phase1'), 'a.new.workflow')
+    await user.type(screen.getByPlaceholderText('Vendor payout approval'), 'A new workflow')
+    await user.click(screen.getByRole('button', { name: 'Create workflow' }))
+
+    expect(await screen.findByText('Module code is required.')).toBeInTheDocument()
+    expect(screen.getByText('Trigger event is required.')).toBeInTheDocument()
+    expect(createWorkflow).not.toHaveBeenCalled()
   })
 })

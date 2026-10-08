@@ -34,6 +34,55 @@ describe("influencerCampaignService performance request mapping", () => {
   });
 });
 
+describe("influencerCampaignService campaign update mapping", () => {
+  it("includes the campaign version in update requests", async () => {
+    await influencerCampaignService.update("campaign-1", {
+      campaignCode: "creator-campaign",
+      title: "Creator campaign",
+      summary: "Campaign summary",
+      brief: "A campaign brief long enough to be valid.",
+      objective: "AWARENESS",
+      startsAt: null,
+      endsAt: null,
+      submissionDeadlineAt: null,
+      maxParticipants: 10,
+      budgetPaise: 100000,
+      currency: "INR",
+      rewardSummary: "Winner receives a cash reward.",
+      rewards: [
+        {
+          rewardType: "CASH",
+          title: "Winner reward",
+          amountPaise: 100000,
+          metadata: {},
+        },
+      ],
+      contentRequirements: {},
+      eligibilitySummary: "Approved influencers only.",
+      eligibilityRules: [
+        {
+          ruleType: "APPROVED_INFLUENCER",
+          value: {},
+          isRequired: true,
+          displayOrder: 1,
+        },
+      ],
+      visibilityRules: {},
+      metadata: {},
+      reason: "Update campaign details.",
+      expectedVersion: 4,
+    });
+
+    expect(requestSpy).toHaveBeenCalledWith(
+      "http://localhost:4000/api/v1/admin/influencer-campaigns/campaign-1",
+      expect.objectContaining({
+        body: expect.stringContaining('"expectedVersion":4'),
+        method: "PUT",
+      }),
+    );
+  });
+});
+
 describe("influencerCampaignService reward award request mapping", () => {
   it("maps reward award queue filters to the admin endpoint", async () => {
     await influencerCampaignService.listRewardAwards({

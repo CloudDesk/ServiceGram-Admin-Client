@@ -192,5 +192,25 @@ export function issueLocation(path: string) {
 
 // ─── Runtime ──────────────────────────────────────────────────────────────────
 
-export const runtimeNotice =
-  'Workflows here describe how approvals should route. The engine that runs them is not built yet, so these rules do not enforce anything today.'
+const runtimeModeBannerText: Record<string, string> = {
+  CONFIGURATION_ONLY: 'Not enforced yet — configuration only',
+  ENFORCED: 'Enforced — resolved decisions call the real action',
+  SIMULATION_ONLY: 'Not enforced yet — simulation only',
+}
+
+const runtimeModeTooltips: Record<string, string> = {
+  CONFIGURATION_ONLY:
+    'This workflow has no published version yet, so it cannot evaluate real requests at all — not even as a simulation.',
+  ENFORCED:
+    'Approving or rejecting a task here calls the real action for new approval instances. Anything already in flight keeps the mode it was created under.',
+  SIMULATION_ONLY:
+    'Decisions are logged but nothing happens automatically yet. Turn on enforcement to have resolved decisions call the real action.',
+}
+
+export function runtimeModeBanner(mode: string) {
+  return runtimeModeBannerText[mode] ?? humanizeCode(mode)
+}
+
+export function runtimeModeTooltip(mode: string) {
+  return runtimeModeTooltips[mode] ?? ''
+}

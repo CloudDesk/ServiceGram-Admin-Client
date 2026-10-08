@@ -157,7 +157,7 @@ function RuleNode({
                 <p className="min-w-0 flex-1 text-sm font-medium text-foreground">
                   {actionTemplate.displayName}
                 </p>
-                <RiskMeter level={actionTemplate.riskLevel} />
+                <RiskMeter level={actionTemplate.riskLevel} subject="action" />
               </div>
             ) : (
               <p className="text-sm text-muted">Not registered</p>

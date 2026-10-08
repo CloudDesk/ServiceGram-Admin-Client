@@ -35,3 +35,7 @@ export function APPROVAL_WORKFLOW_VERSION_PUBLISH_PATH(versionId: string) {
 export function APPROVAL_WORKFLOW_VERSION_DEACTIVATE_PATH(versionId: string) {
   return `/admin/approvals/versions/${versionId}/deactivate`
 }
+
+export function APPROVAL_WORKFLOW_ENFORCEMENT_PATH(workflowId: string) {
+  return `/admin/approvals/workflows/${workflowId}/enforcement`
+}

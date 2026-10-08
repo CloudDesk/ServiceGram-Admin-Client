@@ -91,7 +91,10 @@ async function create(body: InfluencerCampaignPayload) {
   );
 }
 
-async function update(campaignId: string, body: InfluencerCampaignPayload) {
+async function update(
+  campaignId: string,
+  body: InfluencerCampaignPayload & { expectedVersion: number },
+) {
   return parse<InfluencerCampaignResponse>(
     await apiClient.request(buildApiUrl(`${ROOT}/${campaignId}`), json("PUT", body)),
   );
