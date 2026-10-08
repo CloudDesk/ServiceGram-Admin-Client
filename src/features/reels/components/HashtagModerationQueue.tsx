@@ -411,7 +411,10 @@ function HashtagModerationModal({
   }
 
   return createPortal(
-    <div className="premium-overlay z-[70] flex items-center justify-center p-4">
+    <div
+      className="premium-overlay flex items-center justify-center p-4"
+      style={{ zIndex: 90 }}
+    >
       <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-overlay)]">
         <div className="flex items-start justify-between gap-4">
           <div>

@@ -18,6 +18,7 @@ import type {
   ApprovalActionTemplate,
   ApprovalApproverRuleInput,
   ApprovalConditionField,
+  ApprovalConditionGroupInput,
   ApprovalConditionLeafInput,
   ApprovalEscalationRuleInput,
   ApprovalRule,
@@ -74,30 +75,47 @@ function emptyRule(): ApprovalRuleInput {
     ruleKey: '',
     displayName: '',
     priority: 100,
-    conditionJson: { all: [] },
+    conditionJson: { kind: 'simple', mode: 'all', leaves: [] },
     matchMode: 'FIRST_MATCH',
     finalActionCode: '',
     stages: [],
   }
 }
 
-/** Only a flat all-of-leaves survives round-tripping — matches the v1 write API. */
-function toLeafInputs(conditionJson: Record<string, unknown>): ApprovalConditionLeafInput[] {
-  const all = (conditionJson as { all?: unknown[] }).all
-  if (!Array.isArray(all)) return []
+function isPlainLeaf(value: unknown): value is { field: string; op: string; value?: unknown } {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value) && 'field' in (value as object)
+}
 
-  return all
-    .filter(
-      (leaf): leaf is { field: string; op: string; value?: unknown } =>
-        Boolean(leaf) && typeof leaf === 'object' && 'field' in (leaf as object),
-    )
-    .map((leaf) => ({
-      field: leaf.field,
-      op: approvalConditionOperators.includes(leaf.op as never)
-        ? (leaf.op as ApprovalConditionLeafInput['op'])
-        : 'eq',
-      value: leaf.value,
-    }))
+function toLeafInput(leaf: { field: string; op: string; value?: unknown }): ApprovalConditionLeafInput {
+  return {
+    field: leaf.field,
+    op: approvalConditionOperators.includes(leaf.op as never)
+      ? (leaf.op as ApprovalConditionLeafInput['op'])
+      : 'eq',
+    value: leaf.value,
+  }
+}
+
+/**
+ * Every real rule today is exactly one flat group (all-of-leaves or
+ * any-of-leaves). Anything deeper — a nested group, a `not`, a mixed array —
+ * is "unsupported": it round-trips through `raw` untouched rather than being
+ * flattened, which is what silently destroyed these rules' real logic before.
+ */
+function toConditionGroupInput(conditionJson: Record<string, unknown>): ApprovalConditionGroupInput {
+  for (const mode of ['all', 'any'] as const) {
+    const items = (conditionJson as Record<string, unknown>)[mode]
+    if (Array.isArray(items) && items.every(isPlainLeaf)) {
+      return { kind: 'simple', mode, leaves: items.map(toLeafInput) }
+    }
+  }
+
+  return { kind: 'unsupported', raw: conditionJson }
+}
+
+function toConditionJson(group: ApprovalConditionGroupInput): Record<string, unknown> {
+  if (group.kind === 'unsupported') return group.raw as Record<string, unknown>
+  return { [group.mode]: group.leaves }
 }
 
 function toApproverInput(approver: ApprovalStage['approvers'][number]): ApprovalApproverRuleInput {
@@ -148,7 +166,7 @@ function toRuleInput(rule: ApprovalRule): ApprovalRuleInput {
     displayName: rule.displayName,
     description: rule.description || undefined,
     priority: rule.priority,
-    conditionJson: { all: toLeafInputs(rule.conditionJson) },
+    conditionJson: toConditionGroupInput(rule.conditionJson),
     matchMode: rule.matchMode as ApprovalRuleInput['matchMode'],
     finalActionCode: rule.finalActionCode,
     autoDecision: rule.autoDecision ?? undefined,
@@ -661,7 +679,7 @@ function RuleCard({
   onRemove: () => void
   rule: ApprovalRuleInput
 }) {
-  const leaves = rule.conditionJson.all
+  const group = rule.conditionJson
 
   return (
     <div className="space-y-3 rounded-[0.75rem] border border-border bg-surface p-3">
@@ -741,46 +759,98 @@ function RuleCard({
       </div>
 
       <div className="space-y-2 border-t border-border pt-2.5">
-        <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted">
-          Conditions — all must match
-        </p>
-        {leaves.length === 0 ? (
-          <p className="text-xs text-muted">
-            No conditions — this rule matches every request for this trigger.
-          </p>
-        ) : null}
-        {leaves.map((leaf, leafIndex) => (
-          <LeafRow
-            conditionFields={conditionFields}
-            key={leafIndex}
-            leaf={leaf}
-            onChange={(next) =>
-              onChange({
-                ...rule,
-                conditionJson: {
-                  all: leaves.map((item, i) => (i === leafIndex ? next : item)),
-                },
-              })
-            }
-            onRemove={() =>
-              onChange({
-                ...rule,
-                conditionJson: { all: leaves.filter((_item, i) => i !== leafIndex) },
-              })
-            }
-          />
-        ))}
-        <Button
-          size="xs"
-          type="button"
-          variant="secondary"
-          onClick={() =>
-            onChange({ ...rule, conditionJson: { all: [...leaves, emptyLeaf()] } })
-          }
-        >
-          <Plus className="mr-1 size-3.5" />
-          Add condition
-        </Button>
+        {group.kind === 'unsupported' ? (
+          <>
+            <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted">
+              Conditions
+            </p>
+            <p className="text-xs text-muted">
+              This rule's conditions use a structure this editor doesn't support yet — saved as-is,
+              unedited.
+            </p>
+            <pre className="overflow-x-auto rounded-[0.5rem] bg-surface-muted p-2 text-[0.7rem] text-muted">
+              {JSON.stringify(group.raw, null, 2)}
+            </pre>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted">
+                Conditions — {group.mode === 'all' ? 'all must match' : 'any one must match'}
+              </p>
+              <label className="flex items-center gap-1.5">
+                {fieldLabel('Combine conditions')}
+                <select
+                  className={cn(selectClass, 'h-7')}
+                  value={group.mode}
+                  onChange={(event) =>
+                    onChange({
+                      ...rule,
+                      conditionJson: {
+                        kind: 'simple',
+                        mode: event.target.value as 'all' | 'any',
+                        leaves: group.leaves,
+                      },
+                    })
+                  }
+                >
+                  <option value="all">ALL of these</option>
+                  <option value="any">ANY of these</option>
+                </select>
+              </label>
+            </div>
+            {group.leaves.length === 0 ? (
+              <p className="text-xs text-muted">
+                No conditions — this rule matches every request for this trigger.
+              </p>
+            ) : null}
+            {group.leaves.map((leaf, leafIndex) => (
+              <LeafRow
+                conditionFields={conditionFields}
+                key={leafIndex}
+                leaf={leaf}
+                onChange={(next) =>
+                  onChange({
+                    ...rule,
+                    conditionJson: {
+                      kind: 'simple',
+                      mode: group.mode,
+                      leaves: group.leaves.map((item, i) => (i === leafIndex ? next : item)),
+                    },
+                  })
+                }
+                onRemove={() =>
+                  onChange({
+                    ...rule,
+                    conditionJson: {
+                      kind: 'simple',
+                      mode: group.mode,
+                      leaves: group.leaves.filter((_item, i) => i !== leafIndex),
+                    },
+                  })
+                }
+              />
+            ))}
+            <Button
+              size="xs"
+              type="button"
+              variant="secondary"
+              onClick={() =>
+                onChange({
+                  ...rule,
+                  conditionJson: {
+                    kind: 'simple',
+                    mode: group.mode,
+                    leaves: [...group.leaves, emptyLeaf()],
+                  },
+                })
+              }
+            >
+              <Plus className="mr-1 size-3.5" />
+              Add condition
+            </Button>
+          </>
+        )}
       </div>
 
       <div className="space-y-2.5 border-t border-border pt-2.5">
@@ -847,7 +917,10 @@ export function WorkflowVersionEditorModal({
   const saveMutation = useMutation({
     mutationFn: async () => {
       const response = await approvalService.replaceVersionDefinition(version.versionId, {
-        rules,
+        rules: rules.map((rule) => ({
+          ...rule,
+          conditionJson: toConditionJson(rule.conditionJson),
+        })),
         reason: reason.trim(),
         expectedDefinitionHash: version.definitionHash,
       })

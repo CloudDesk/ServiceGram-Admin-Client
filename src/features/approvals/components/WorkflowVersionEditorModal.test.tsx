@@ -6,6 +6,7 @@ import { approvalService } from '../services/approval.service'
 import type {
   ApprovalActionTemplate,
   ApprovalConditionField,
+  ApprovalRule,
   ApprovalWorkflowDetail,
   ApprovalWorkflowVersionDetail,
 } from '../types/approval.types'
@@ -137,5 +138,150 @@ describe('WorkflowVersionEditorModal', () => {
       }),
     )
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(workflow))
+  })
+
+  it('loads an any-group rule as ANY with its real conditions, not as empty', async () => {
+    const anyRule: ApprovalRule = {
+      ruleId: 'rule-uuid',
+      ruleKey: 'payout.finance.high_value_or_hold',
+      displayName: 'High-value or hold payout review',
+      description: '',
+      priority: 100,
+      matchMode: 'FIRST_MATCH',
+      conditionJson: {
+        any: [
+          { field: 'payout.totalAmountPaise', op: 'gt', value: 2500000 },
+          { field: 'payout.hasHold', op: 'is_true' },
+        ],
+      },
+      finalActionCode: 'PAYOUT_APPROVE',
+      autoDecision: null,
+      metadata: {},
+      stages: [],
+    }
+    const version: ApprovalWorkflowVersionDetail = {
+      ...draftVersion,
+      rules: [anyRule],
+      counts: { rules: 1, stages: 0 },
+    }
+
+    renderWithProviders(
+      <WorkflowVersionEditorModal
+        actionTemplates={actionTemplates}
+        conditionFields={conditionFields}
+        version={version}
+        workflow={workflow}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/conditions — any one must match/i)).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /combine conditions/i })).toHaveValue('any')
+    expect(
+      screen.queryByText('No conditions — this rule matches every request for this trigger.'),
+    ).not.toBeInTheDocument()
+    expect(screen.getAllByLabelText('Field')).toHaveLength(2)
+  })
+
+  it('switching the combinator to ANY and saving sends an any-group, not an all-group', async () => {
+    const user = userEvent.setup()
+    replaceVersionDefinition.mockResolvedValue({
+      code: 'ADMIN_APPROVAL_WORKFLOW_VERSION_DEFINITION_REPLACED',
+      message: 'Approval workflow version definition saved successfully.',
+      data: workflow,
+    })
+
+    renderWithProviders(
+      <WorkflowVersionEditorModal
+        actionTemplates={actionTemplates}
+        conditionFields={conditionFields}
+        version={draftVersion}
+        workflow={workflow}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /add rule/i }))
+    await user.click(screen.getByRole('button', { name: /add condition/i }))
+    await user.selectOptions(screen.getByRole('combobox', { name: /combine conditions/i }), 'any')
+    await user.type(
+      screen.getByPlaceholderText('Why is this change being made?'),
+      'Switching to any-of-these.',
+    )
+    await user.click(screen.getByRole('button', { name: 'Save draft' }))
+
+    await waitFor(() =>
+      expect(replaceVersionDefinition).toHaveBeenCalledWith(
+        'version-uuid',
+        expect.objectContaining({
+          rules: [
+            expect.objectContaining({
+              conditionJson: { any: [{ field: '', op: 'eq', value: '' }] },
+            }),
+          ],
+        }),
+      ),
+    )
+  })
+
+  it('renders an unsupported condition shape read-only and round-trips it unchanged on save', async () => {
+    const user = userEvent.setup()
+    replaceVersionDefinition.mockResolvedValue({
+      code: 'ADMIN_APPROVAL_WORKFLOW_VERSION_DEFINITION_REPLACED',
+      message: 'Approval workflow version definition saved successfully.',
+      data: workflow,
+    })
+    const unsupportedConditionJson = {
+      not: { field: 'vendor.bankAccountStatus', op: 'eq', value: 'VERIFIED' },
+    }
+    const notRule: ApprovalRule = {
+      ruleId: 'rule-uuid',
+      ruleKey: 'not.example',
+      displayName: 'Not example',
+      description: '',
+      priority: 100,
+      matchMode: 'FIRST_MATCH',
+      conditionJson: unsupportedConditionJson,
+      finalActionCode: 'PAYOUT_APPROVE',
+      autoDecision: null,
+      metadata: {},
+      stages: [],
+    }
+    const version: ApprovalWorkflowVersionDetail = {
+      ...draftVersion,
+      rules: [notRule],
+      counts: { rules: 1, stages: 0 },
+    }
+
+    renderWithProviders(
+      <WorkflowVersionEditorModal
+        actionTemplates={actionTemplates}
+        conditionFields={conditionFields}
+        version={version}
+        workflow={workflow}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/doesn't support yet/i)).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: /combine conditions/i })).not.toBeInTheDocument()
+
+    await user.type(
+      screen.getByPlaceholderText('Why is this change being made?'),
+      'Unrelated change, should not touch this rule.',
+    )
+    await user.click(screen.getByRole('button', { name: 'Save draft' }))
+
+    await waitFor(() =>
+      expect(replaceVersionDefinition).toHaveBeenCalledWith(
+        'version-uuid',
+        expect.objectContaining({
+          rules: [expect.objectContaining({ conditionJson: unsupportedConditionJson })],
+        }),
+      ),
+    )
   })
 })

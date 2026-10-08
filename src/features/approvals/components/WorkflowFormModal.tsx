@@ -32,6 +32,8 @@ export function WorkflowFormModal({
   const [workflowCode, setWorkflowCode] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [description, setDescription] = useState('')
+  /** Set on the first submit attempt, so a field isn't marked invalid before the admin has even tried to submit. */
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false)
 
   /**
    * `triggerEvent` is a join key the runtime uses to find a workflow when a
@@ -85,8 +87,20 @@ export function WorkflowFormModal({
   const errorMessage =
     createMutation.error instanceof Error ? createMutation.error.message : null
 
+  const fieldErrors = {
+    workflowCode: workflowCode.trim() ? null : 'Workflow code is required.',
+    displayName: displayName.trim() ? null : 'Display name is required.',
+    customModuleCode:
+      isCustomTrigger && !customModuleCode.trim() ? 'Module code is required.' : null,
+    customTriggerEvent:
+      isCustomTrigger && !customTriggerEvent.trim() ? 'Trigger event is required.' : null,
+  }
+  const hasFieldErrors = Object.values(fieldErrors).some(Boolean)
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    setAttemptedSubmit(true)
+    if (hasFieldErrors) return
     createMutation.mutate()
   }
 
@@ -111,25 +125,37 @@ export function WorkflowFormModal({
           </button>
         </div>
 
-        <form className="mt-4 space-y-3" onSubmit={submit}>
+        <form className="mt-4 space-y-3" noValidate onSubmit={submit}>
           <label className="block space-y-1">
             <span className="text-xs font-semibold text-foreground">Workflow code *</span>
             <Input
+              aria-invalid={attemptedSubmit && Boolean(fieldErrors.workflowCode)}
+              hasError={attemptedSubmit && Boolean(fieldErrors.workflowCode)}
               placeholder="vendor_payout.approval.phase1"
-              required
               value={workflowCode}
               onChange={(event) => setWorkflowCode(event.target.value)}
             />
+            {attemptedSubmit && fieldErrors.workflowCode ? (
+              <span className="block text-xs text-danger" role="alert">
+                {fieldErrors.workflowCode}
+              </span>
+            ) : null}
           </label>
 
           <label className="block space-y-1">
             <span className="text-xs font-semibold text-foreground">Display name *</span>
             <Input
+              aria-invalid={attemptedSubmit && Boolean(fieldErrors.displayName)}
+              hasError={attemptedSubmit && Boolean(fieldErrors.displayName)}
               placeholder="Vendor payout approval"
-              required
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
             />
+            {attemptedSubmit && fieldErrors.displayName ? (
+              <span className="block text-xs text-danger" role="alert">
+                {fieldErrors.displayName}
+              </span>
+            ) : null}
           </label>
 
           <label className="block space-y-1">
@@ -174,20 +200,32 @@ export function WorkflowFormModal({
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold text-foreground">Module code *</span>
                   <Input
+                    aria-invalid={attemptedSubmit && Boolean(fieldErrors.customModuleCode)}
+                    hasError={attemptedSubmit && Boolean(fieldErrors.customModuleCode)}
                     placeholder="payments"
-                    required
                     value={customModuleCode}
                     onChange={(event) => setCustomModuleCode(event.target.value)}
                   />
+                  {attemptedSubmit && fieldErrors.customModuleCode ? (
+                    <span className="block text-xs text-danger" role="alert">
+                      {fieldErrors.customModuleCode}
+                    </span>
+                  ) : null}
                 </label>
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold text-foreground">Trigger event *</span>
                   <Input
+                    aria-invalid={attemptedSubmit && Boolean(fieldErrors.customTriggerEvent)}
+                    hasError={attemptedSubmit && Boolean(fieldErrors.customTriggerEvent)}
                     placeholder="VENDOR_PAYOUT_REQUESTED"
-                    required
                     value={customTriggerEvent}
                     onChange={(event) => setCustomTriggerEvent(event.target.value)}
                   />
+                  {attemptedSubmit && fieldErrors.customTriggerEvent ? (
+                    <span className="block text-xs text-danger" role="alert">
+                      {fieldErrors.customTriggerEvent}
+                    </span>
+                  ) : null}
                 </label>
               </div>
             </div>

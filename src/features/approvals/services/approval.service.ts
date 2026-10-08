@@ -3,6 +3,7 @@ import {
   APPROVAL_ACTION_TEMPLATES_PATH,
   APPROVAL_CONDITION_FIELDS_PATH,
   APPROVAL_WORKFLOW_DETAIL_PATH,
+  APPROVAL_WORKFLOW_ENFORCEMENT_PATH,
   APPROVAL_WORKFLOW_META_PATH,
   APPROVAL_WORKFLOW_VERSIONS_PATH,
   APPROVAL_WORKFLOW_VERSION_DEACTIVATE_PATH,
@@ -32,6 +33,7 @@ import type {
   DeleteApprovalWorkflowPayload,
   PublishApprovalWorkflowVersionPayload,
   ReplaceApprovalWorkflowVersionDefinitionPayload,
+  SetApprovalWorkflowEnforcementPayload,
   UpdateApprovalWorkflowMetaPayload,
 } from '../types/approval.types'
 import { ApprovalServiceError } from '../types/approval.types'
@@ -222,6 +224,18 @@ async function deactivateVersion(
   return parseJsonResponse<ApprovalWorkflowDetailResponse>(response)
 }
 
+async function setEnforcement(
+  workflowId: string,
+  payload: SetApprovalWorkflowEnforcementPayload,
+): Promise<ApprovalWorkflowDetailResponse> {
+  const response = await apiClient.request(
+    buildApiUrl(APPROVAL_WORKFLOW_ENFORCEMENT_PATH(workflowId)),
+    jsonRequest('PATCH', payload),
+  )
+
+  return parseJsonResponse<ApprovalWorkflowDetailResponse>(response)
+}
+
 async function deleteWorkflow(
   workflowId: string,
   payload: DeleteApprovalWorkflowPayload,
@@ -247,5 +261,6 @@ export const approvalService = {
   replaceVersionDefinition,
   publishVersion,
   deactivateVersion,
+  setEnforcement,
   deleteWorkflow,
 }

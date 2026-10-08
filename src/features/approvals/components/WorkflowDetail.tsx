@@ -29,7 +29,7 @@ import type {
   ApprovalWorkflowListItem,
   ApprovalWorkflowVersionDetail,
 } from '../types/approval.types'
-import { runtimeNotice, versionStatusLabel } from '../copy'
+import { runtimeModeBanner, runtimeModeTooltip, versionStatusLabel } from '../copy'
 import { DetailSkeleton, IssueList, formatDateTime, readErrorMessage } from './shared'
 import { FlowTab } from './FlowTab'
 import { RegistryTab } from './RegistryTab'
@@ -100,9 +100,9 @@ export function WorkflowDetail({
   validationIsPending: boolean
   workflow: ApprovalWorkflowDetail | null
 }) {
-  const [openModal, setOpenModal] = useState<'edit' | 'publish' | 'deactivate' | 'delete' | null>(
-    null,
-  )
+  const [openModal, setOpenModal] = useState<
+    'edit' | 'publish' | 'deactivate' | 'enforcement' | 'delete' | null
+  >(null)
 
   const cloneMutation = useMutation({
     mutationFn: async () => {
@@ -131,6 +131,22 @@ export function WorkflowDetail({
     mutationFn: async (reason: string) => {
       if (!selectedVersion) throw new Error('No version selected.')
       const response = await approvalService.deactivateVersion(selectedVersion.versionId, {
+        reason,
+      })
+      return response.data
+    },
+    onSuccess: (updated) => {
+      setOpenModal(null)
+      onWorkflowChanged(updated)
+    },
+  })
+
+  const enforcementMutation = useMutation({
+    mutationFn: async (reason: string) => {
+      if (!workflow) throw new Error('No workflow selected.')
+      const nextMode = workflow.runtimeMode === 'ENFORCED' ? 'SHADOW' : 'ENFORCED'
+      const response = await approvalService.setEnforcement(workflow.workflowId, {
+        runtimeMode: nextMode,
         reason,
       })
       return response.data
@@ -276,6 +292,40 @@ export function WorkflowDetail({
               </Button>
             ) : null}
 
+            {canPublish ? (
+              <div className="flex items-center gap-1.5 pl-1">
+                <button
+                  aria-checked={workflow.runtimeMode === 'ENFORCED'}
+                  aria-label={`Turn enforcement ${workflow.runtimeMode === 'ENFORCED' ? 'off' : 'on'} for ${workflow.displayName}`}
+                  className={cn(
+                    'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+                    workflow.runtimeMode === 'ENFORCED' ? 'bg-success' : 'bg-border',
+                    workflow.runtimeMode === 'CONFIGURATION_ONLY'
+                      ? 'cursor-not-allowed opacity-50'
+                      : 'cursor-pointer',
+                  )}
+                  disabled={workflow.runtimeMode === 'CONFIGURATION_ONLY'}
+                  role="switch"
+                  title={
+                    workflow.runtimeMode === 'CONFIGURATION_ONLY'
+                      ? 'Publish a version before this workflow can be enforced.'
+                      : undefined
+                  }
+                  type="button"
+                  onClick={() => setOpenModal('enforcement')}
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'inline-block size-3.5 translate-x-[3px] transform rounded-full bg-white shadow-sm transition-transform',
+                      workflow.runtimeMode === 'ENFORCED' && 'translate-x-[18px]',
+                    )}
+                  />
+                </button>
+                <span className="text-xs text-muted">Enforce</span>
+              </div>
+            ) : null}
+
             {canManage && workflow.status === 'DRAFT' ? (
               <Button
                 size="sm"
@@ -295,11 +345,14 @@ export function WorkflowDetail({
           a full-width paragraph band repeated on every workflow.
         */}
         <p
-          className="mt-2 inline-flex items-center gap-1.5 text-xs text-warning"
-          title={runtimeNotice}
+          className={cn(
+            'mt-2 inline-flex items-center gap-1.5 text-xs',
+            workflow.runtimeMode === 'ENFORCED' ? 'text-success' : 'text-warning',
+          )}
+          title={runtimeModeTooltip(workflow.runtimeMode)}
         >
           <Info className="size-3.5 shrink-0" />
-          Not enforced yet — configuration only
+          {runtimeModeBanner(workflow.runtimeMode)}
         </p>
 
         {!workflow.isTriggerRoutable ? (
@@ -451,6 +504,41 @@ export function WorkflowDetail({
           warnings={['New requests stop routing through it. Approvals already in flight are unaffected.']}
           onClose={() => setOpenModal(null)}
           onSubmit={(reason) => deactivateMutation.mutate(reason)}
+        />
+      ) : null}
+
+      {openModal === 'enforcement' ? (
+        <ReasonModal
+          confirmLabel={workflow.runtimeMode === 'ENFORCED' ? 'Turn off' : 'Turn on'}
+          error={enforcementMutation.error}
+          isDestructive={workflow.runtimeMode === 'ENFORCED'}
+          isSubmitting={enforcementMutation.isPending}
+          reasonPlaceholder={
+            workflow.runtimeMode === 'ENFORCED'
+              ? 'Why is enforcement being turned off?'
+              : 'Why is enforcement being turned on?'
+          }
+          subtitle={workflow.displayName}
+          title={
+            workflow.runtimeMode === 'ENFORCED'
+              ? 'Turn off enforcement?'
+              : 'Turn on enforcement?'
+          }
+          warnings={
+            workflow.runtimeMode === 'ENFORCED'
+              ? ['Future approval instances go back to observe-only. Anything already enforced is unaffected.']
+              : [
+                  'Only affects approval instances created from now on — anything already in progress keeps running in observe-only mode.',
+                  'Once on, approving or rejecting a task here calls the real action instead of just logging the decision.',
+                  ...(workflow.moduleCode === 'payouts'
+                    ? [
+                        'Payouts have no automatic reject action yet — rejecting a payout approval still just leaves the payout pending for manual handling.',
+                      ]
+                    : []),
+                ]
+          }
+          onClose={() => setOpenModal(null)}
+          onSubmit={(reason) => enforcementMutation.mutate(reason)}
         />
       ) : null}
 

@@ -131,8 +131,21 @@ function WorkflowRow({
         <span className="min-w-0 flex-1">
           {/* Wraps to two lines rather than truncating — "Vendor bank account
               verification workflow" is unreadable clipped to one line in a rail. */}
-          <span className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
-            {workflow.displayName}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+              {workflow.displayName}
+            </span>
+            {/* Separate from the Live/Draft/Paused/Archived status dot on purpose —
+                "Draft" there means the workflow's own state, not that a published
+                workflow has unpublished edits sitting on top of it (see F-06). */}
+            {workflow.hasDraftVersion && workflow.status !== 'DRAFT' ? (
+              <span
+                className="shrink-0 rounded-full border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[0.65rem] font-semibold text-warning"
+                title="This workflow has an unpublished draft version with changes not yet live."
+              >
+                Draft pending
+              </span>
+            ) : null}
           </span>
           <span className="mt-0.5 block truncate text-xs text-muted">
             {humanizeCode(workflow.moduleCode)} · {workflow.counts.rules}{' '}
