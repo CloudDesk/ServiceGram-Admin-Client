@@ -24,6 +24,7 @@ import {
   Truck,
   UserRound,
   Wallet,
+  WalletCards,
   XCircle,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
@@ -1117,17 +1118,21 @@ function CustomerHeaderStatus({ customer }: { customer: AdminCustomerDetail }) {
 
 function CustomerHeaderActions({
   canCreditWallet,
+  canReadWallet,
   canUpdateCustomer,
   customer,
   isSubmitting,
   onEditProfile,
+  onOpenWalletLoyalty,
   onSelectAction,
 }: {
   canCreditWallet: boolean;
+  canReadWallet: boolean;
   canUpdateCustomer: boolean;
   customer: AdminCustomerDetail;
   isSubmitting: boolean;
   onEditProfile: () => void;
+  onOpenWalletLoyalty: () => void;
   onSelectAction: (kind: CustomerActionKind) => void;
 }) {
   const availableActions = permittedAvailableActions(customer.availableActions, {
@@ -1153,6 +1158,15 @@ function CustomerHeaderActions({
           icon: <ShieldCheck className="size-4" />,
           intent: "secondary" as const,
           onSelect: () => onSelectAction("UNBLOCK"),
+        }
+      : null,
+    canReadWallet
+      ? {
+          key: "WALLET_LOYALTY",
+          label: "Wallet & Loyalty",
+          icon: <WalletCards className="size-4" />,
+          intent: "secondary" as const,
+          onSelect: onOpenWalletLoyalty,
         }
       : null,
     featureFlags.customerWallet && canCreditWallet && hasAction("WALLET_CREDIT")
@@ -1588,6 +1602,7 @@ export function CustomerDetailPage() {
   const queryClient = useQueryClient();
   const canCreditWallet = usePermission("customers:wallet_credit");
   const canUpdateCustomer = usePermission("customers:update");
+  const canReadWallet = usePermission("wallet:read");
   const canReadOrders = usePermission("orders:read");
   const canReadVendors = usePermission("vendors:read");
   const canUpdateOrders = usePermission("orders:update_status");
@@ -2256,10 +2271,16 @@ export function CustomerDetailPage() {
         actionNode={
           <CustomerHeaderActions
             canCreditWallet={canCreditWallet}
+            canReadWallet={canReadWallet}
             canUpdateCustomer={canUpdateCustomer}
             customer={customer}
             isSubmitting={isSubmitting}
             onEditProfile={openProfileEditor}
+            onOpenWalletLoyalty={() =>
+              navigate(
+                `${routePaths.customerRetention}?tab=rewards&customerId=${customer.customerId}&customerName=${encodeURIComponent(customer.fullName)}`,
+              )
+            }
             onSelectAction={openAction}
           />
         }

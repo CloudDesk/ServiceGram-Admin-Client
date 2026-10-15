@@ -691,10 +691,13 @@ export function InfluencersPage() {
       { header: 'Live reels', value: (row) => row.summary.liveReelCount },
       { header: 'Attributed bookings', value: (row) => row.summary.attributedBookingCount },
       {
-        header: 'Confirmed commission (paise)',
-        value: (row) => row.summary.confirmedCommissionPaise,
+        header: 'Confirmed commission (₹)',
+        value: (row) => row.summary.confirmedCommissionPaise / 100,
       },
-      { header: 'Pending commission (paise)', value: (row) => row.summary.pendingCommissionPaise },
+      {
+        header: 'Pending commission (₹)',
+        value: (row) => row.summary.pendingCommissionPaise / 100,
+      },
       { header: 'Updated', value: (row) => row.updatedAt },
     ])
   }
@@ -766,14 +769,12 @@ export function InfluencersPage() {
                     {commissionPolicyLabel}
                   </p>
                 </div>
-                {commissionSetting ? (
-                  <Link
-                    className="ml-auto shrink-0 text-xs font-semibold text-primary"
-                    to={`${routePaths.settings}/settings/${encodeURIComponent(commissionSetting.settingKey)}`}
-                  >
-                    Open
-                  </Link>
-                ) : null}
+                <Link
+                  className="ml-auto shrink-0 text-xs font-semibold text-primary"
+                  to={`${routePaths.commission}?tab=influencer`}
+                >
+                  Open
+                </Link>
               </div>
             </div>
           </>

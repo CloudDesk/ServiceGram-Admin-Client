@@ -2,6 +2,7 @@ import { buildApiUrl } from '../../../config/api'
 import {
   DASHBOARD_APPROVAL_CENTER_PATH,
   DASHBOARD_OVERVIEW_PATH,
+  DASHBOARD_PEAK_TIMES_PATH,
 } from '../../../config/dashboardApiPaths'
 import { apiClient } from '../../../services/apiClient'
 import type {
@@ -10,6 +11,8 @@ import type {
   DashboardApiResponse,
   DashboardData,
   DashboardOverviewResponse,
+  DashboardPeakTimesData,
+  DashboardPeakTimesResponse,
   DashboardQueue,
 } from '../types/dashboard.types'
 
@@ -75,6 +78,15 @@ export const dashboardApiService = {
   async getApprovalCenter(): Promise<DashboardApprovalCenterData> {
     const response = await get<DashboardApprovalCenterResponse>(
       DASHBOARD_APPROVAL_CENTER_PATH,
+    )
+
+    return response.data
+  },
+  async getPeakTimes(
+    range: '7d' | '30d' | '90d' = '30d',
+  ): Promise<DashboardPeakTimesData> {
+    const response = await get<DashboardPeakTimesResponse>(
+      `${DASHBOARD_PEAK_TIMES_PATH}?range=${range}`,
     )
 
     return response.data

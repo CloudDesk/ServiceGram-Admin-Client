@@ -29,6 +29,7 @@ import {
   HeartHandshake,
   Medal,
   Trophy,
+  Percent,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { permissions } from "./permissions";
@@ -202,6 +203,13 @@ export const navigationItems: NavigationItem[] = [
       "loyalty:read",
       "promotions:read",
     ],
+    group: "release2",
+  },
+  {
+    label: "Commission",
+    href: routePaths.commission,
+    icon: Percent,
+    permission: permissions.settings,
     group: "release2",
   },
   {

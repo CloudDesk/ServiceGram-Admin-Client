@@ -23,6 +23,7 @@ import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
 import {
 } from '../../../components/ui/ListSelection'
+import { LookupSelect } from '../../../components/ui/LookupSelect'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import {
   QuickPreviewActions,
@@ -42,6 +43,11 @@ import {
   permissionRequirementLabel,
 } from '../../../utils/displayText'
 import { settingsService } from '../services/settings.service'
+import {
+  searchCategoryLookupOptions,
+  searchVendorLookupOptions,
+  searchZoneLookupOptions,
+} from '../../lookups/adminLookups'
 import { ContentRulePreviewBody } from '../mediaReelPolicy/components/ContentRulePreviewBody'
 import { ContentRulesWorkspace } from '../mediaReelPolicy/components/ContentRulesWorkspace'
 import {
@@ -51,6 +57,17 @@ import {
 import type { MediaReelConfig } from '../mediaReelPolicy/types/mediaReelPolicy.types'
 import { policyActivationConflictDetail } from '../mediaReelPolicy/utils/contentRulePresentation'
 import { PolicyRulesWorkspace } from '../policyRules/components/PolicyRulesWorkspace'
+import { CommissionRateFields } from '../../commission/components/CommissionRateFields'
+import {
+  isWellFormedCommissionConfig,
+  parseBoundedInt,
+  parseMoneyToPaise,
+  parsePercentToBps,
+  textFromBps,
+  textFromPaise,
+  type CommissionRateType,
+  type CommissionRuleConfig,
+} from '../../commission/utils/commissionFormatting'
 import {
   SettingsActionModal,
   type SettingsActionFormValues,
@@ -102,7 +119,7 @@ type SettingsMutationResponse =
   | CategoryImageUploadResponse
   | UpdateZoneResponse
 type PolicyRuleAction = 'CREATE' | 'EDIT' | 'ACTIVATE' | 'ARCHIVE'
-type PolicyRuleActionSelection =
+export type PolicyRuleActionSelection =
   | { action: 'CREATE'; record?: undefined }
   | { action: 'EDIT' | 'ACTIVATE' | 'ARCHIVE'; record: PolicyRule }
 type CatalogueAction = 'EDIT' | 'ACTIVATE' | 'DEACTIVATE'
@@ -1190,10 +1207,11 @@ function SettingsRowsSkeleton() {
 
 
 
-function PolicyRuleActionModal({
+export function PolicyRuleActionModal({
   action,
   error,
   isSubmitting,
+  lockedFamily,
   onClearError,
   onClose,
   onSubmit,
@@ -1201,6 +1219,8 @@ function PolicyRuleActionModal({
   action: PolicyRuleActionSelection | null
   error?: unknown
   isSubmitting: boolean
+  /** Fixes the Family field to this value and hides the picker — for hosts scoped to one family. */
+  lockedFamily?: PolicyFamily
   onClearError?: () => void
   onClose: () => void
   onSubmit: (payload: UpsertPolicyRulePayload) => void
@@ -1217,6 +1237,7 @@ function PolicyRuleActionModal({
       action={action}
       error={error}
       isSubmitting={isSubmitting}
+      lockedFamily={lockedFamily}
       onClearError={onClearError}
       key={actionKey}
       onClose={onClose}
@@ -1229,6 +1250,7 @@ function PolicyRuleActionModalContent({
   action,
   error,
   isSubmitting,
+  lockedFamily,
   onClearError,
   onClose,
   onSubmit,
@@ -1236,6 +1258,7 @@ function PolicyRuleActionModalContent({
   action: PolicyRuleActionSelection
   error?: unknown
   isSubmitting: boolean
+  lockedFamily?: PolicyFamily
   onClearError?: () => void
   onClose: () => void
   onSubmit: (payload: UpsertPolicyRulePayload) => void
@@ -1243,6 +1266,7 @@ function PolicyRuleActionModalContent({
   const record = action.action === 'CREATE' ? null : action.record
   const isStatusOnly = action.action === 'ACTIVATE' || action.action === 'ARCHIVE'
   const [categoryId, setCategoryId] = useState(record?.scope.categoryId ?? '')
+  const [categoryLabel, setCategoryLabel] = useState('')
   const [cityScope, setCityScope] = useState(record?.scope.city ?? '')
   const [configJson, setConfigJson] = useState(
     formatJsonObjectValue(record?.config ?? {}),
@@ -1256,7 +1280,7 @@ function PolicyRuleActionModalContent({
     formatPolicyDateTimeInput(record?.effectiveTo),
   )
   const [family, setFamily] = useState<PolicyFamily>(
-    record?.family ?? 'PRICING_RULE',
+    record?.family ?? lockedFamily ?? 'PRICING_RULE',
   )
   const [formError, setFormError] = useState<string | null>(null)
   const [metadataJson, setMetadataJson] = useState(
@@ -1270,9 +1294,31 @@ function PolicyRuleActionModalContent({
   )
   const [status, setStatus] = useState<PolicyStatus>(record?.status ?? 'DRAFT')
   const [vendorId, setVendorId] = useState(record?.scope.vendorId ?? '')
+  const [vendorLabel, setVendorLabel] = useState('')
   const [zoneId, setZoneId] = useState(record?.scope.zoneId ?? '')
+  const [zoneLabel, setZoneLabel] = useState('')
   const activationConflict = policyActivationConflictDetail(error)
   const errorMessage = error instanceof Error ? error.message : null
+
+  const initialCommissionConfig = (record?.config ?? {}) as CommissionRuleConfig
+  const useStructuredCommissionFields =
+    family === 'COMMISSION_RULE' && isWellFormedCommissionConfig(record?.config ?? {})
+  const [commissionRateType, setCommissionRateType] = useState<CommissionRateType>(
+    initialCommissionConfig.fixedCommissionPaise ? 'FIXED' : 'PERCENTAGE',
+  )
+  const [commissionPercentText, setCommissionPercentText] = useState(
+    textFromBps(initialCommissionConfig.commissionRateBps ?? 1500),
+  )
+  const [commissionFixedText, setCommissionFixedText] = useState(
+    textFromPaise(initialCommissionConfig.fixedCommissionPaise ?? 0),
+  )
+  const [logisticsDeductionText, setLogisticsDeductionText] = useState(
+    textFromPaise(initialCommissionConfig.logisticsDeductionPaise ?? 0),
+  )
+  const [payoutHoldDaysText, setPayoutHoldDaysText] = useState(
+    String(initialCommissionConfig.payoutHoldDays ?? 2),
+  )
+  const [showAdvancedCommission, setShowAdvancedCommission] = useState(false)
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1325,6 +1371,24 @@ function PolicyRuleActionModalContent({
         return
       }
 
+      const nextConfig = useStructuredCommissionFields
+        ? ({
+            commissionRateBps:
+              commissionRateType === 'PERCENTAGE'
+                ? parsePercentToBps(commissionPercentText, 'Commission rate')
+                : 0,
+            fixedCommissionPaise:
+              commissionRateType === 'FIXED'
+                ? parseMoneyToPaise(commissionFixedText, 'Fixed amount')
+                : 0,
+            logisticsDeductionPaise: parseMoneyToPaise(
+              logisticsDeductionText,
+              'Logistics deduction',
+            ),
+            payoutHoldDays: parseBoundedInt(payoutHoldDaysText, 'Payout hold days', 90),
+          } satisfies CommissionRuleConfig)
+        : parseJsonObjectValue(configJson)
+
       onSubmit({
         family,
         ruleKey: trimmedRuleKey,
@@ -1337,7 +1401,7 @@ function PolicyRuleActionModalContent({
         city: nextCity || null,
         zoneId: nextZoneId || null,
         vendorId: nextVendorId || null,
-        config: parseJsonObjectValue(configJson),
+        config: nextConfig,
         metadata: parseJsonObjectValue(metadataJson),
         effectiveFrom: normalizeDateTimeInput(effectiveFrom),
         effectiveTo: effectiveTo.trim() ? normalizeDateTimeInput(effectiveTo) : null,
@@ -1406,7 +1470,7 @@ function PolicyRuleActionModalContent({
                     <span className="text-xs font-semibold text-muted">Family</span>
                     <select
                       className="form-input"
-                      disabled={Boolean(record)}
+                      disabled={Boolean(record) || Boolean(lockedFamily)}
                       value={family}
                       onChange={(event) => setFamily(event.target.value as PolicyFamily)}
                     >
@@ -1487,16 +1551,18 @@ function PolicyRuleActionModalContent({
 
                 <div className="grid gap-3 md:grid-cols-2">
                   {scopeType === 'CATEGORY' ? (
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Category id
-                      </span>
-                      <Input
-                        placeholder="uuid"
-                        value={categoryId}
-                        onChange={(event) => setCategoryId(event.target.value)}
-                      />
-                    </label>
+                    <LookupSelect
+                      fetchOptions={searchCategoryLookupOptions}
+                      label="Category"
+                      placeholder="Search category"
+                      queryKey={['lookup', 'categories', 'policy-rule']}
+                      selectedLabel={categoryLabel}
+                      value={categoryId}
+                      onChange={(value, option) => {
+                        setCategoryId(value)
+                        setCategoryLabel(option?.label ?? '')
+                      }}
+                    />
                   ) : null}
                   {scopeType === 'CITY' ? (
                     <label className="space-y-1">
@@ -1509,26 +1575,32 @@ function PolicyRuleActionModalContent({
                     </label>
                   ) : null}
                   {scopeType === 'ZONE' ? (
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">Zone id</span>
-                      <Input
-                        placeholder="uuid"
-                        value={zoneId}
-                        onChange={(event) => setZoneId(event.target.value)}
-                      />
-                    </label>
+                    <LookupSelect
+                      fetchOptions={searchZoneLookupOptions}
+                      label="Zone"
+                      placeholder="Search zone"
+                      queryKey={['lookup', 'zones', 'policy-rule']}
+                      selectedLabel={zoneLabel}
+                      value={zoneId}
+                      onChange={(value, option) => {
+                        setZoneId(value)
+                        setZoneLabel(option?.label ?? '')
+                      }}
+                    />
                   ) : null}
                   {scopeType === 'VENDOR' ? (
-                    <label className="space-y-1">
-                      <span className="text-xs font-semibold text-muted">
-                        Vendor id
-                      </span>
-                      <Input
-                        placeholder="uuid"
-                        value={vendorId}
-                        onChange={(event) => setVendorId(event.target.value)}
-                      />
-                    </label>
+                    <LookupSelect
+                      fetchOptions={searchVendorLookupOptions}
+                      label="Vendor"
+                      placeholder="Search vendor"
+                      queryKey={['lookup', 'vendors', 'policy-rule']}
+                      selectedLabel={vendorLabel}
+                      value={vendorId}
+                      onChange={(value, option) => {
+                        setVendorId(value)
+                        setVendorLabel(option?.label ?? '')
+                      }}
+                    />
                   ) : null}
                   <label className="space-y-1">
                     <span className="text-xs font-semibold text-muted">
@@ -1552,28 +1624,88 @@ function PolicyRuleActionModalContent({
                   </label>
                 </div>
 
-                <div className="grid gap-3 lg:grid-cols-2">
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted">
-                      Config JSON
-                    </span>
-                    <textarea
-                      className="form-input min-h-52 font-mono text-xs"
-                      value={configJson}
-                      onChange={(event) => setConfigJson(event.target.value)}
+                {useStructuredCommissionFields ? (
+                  <div className="space-y-3 rounded-[0.875rem] border border-border p-4">
+                    <CommissionRateFields
+                      rateType={commissionRateType}
+                      onRateTypeChange={setCommissionRateType}
+                      percentText={commissionPercentText}
+                      onPercentTextChange={setCommissionPercentText}
+                      fixedText={commissionFixedText}
+                      onFixedTextChange={setCommissionFixedText}
                     />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted">
-                      Metadata JSON
-                    </span>
-                    <textarea
-                      className="form-input min-h-52 font-mono text-xs"
-                      value={metadataJson}
-                      onChange={(event) => setMetadataJson(event.target.value)}
-                    />
-                  </label>
-                </div>
+                    <button
+                      className="text-xs font-semibold text-primary"
+                      type="button"
+                      onClick={() => setShowAdvancedCommission((value) => !value)}
+                    >
+                      {showAdvancedCommission ? 'Hide advanced' : 'Show advanced'}
+                    </button>
+                    {showAdvancedCommission ? (
+                      <div className="space-y-3">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <label className="space-y-1">
+                            <span className="text-xs text-muted">
+                              Logistics deduction (₹)
+                            </span>
+                            <Input
+                              inputMode="decimal"
+                              value={logisticsDeductionText}
+                              onChange={(event) =>
+                                setLogisticsDeductionText(event.target.value)
+                              }
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-xs text-muted">
+                              Payout hold days
+                            </span>
+                            <Input
+                              inputMode="numeric"
+                              value={payoutHoldDaysText}
+                              onChange={(event) =>
+                                setPayoutHoldDaysText(event.target.value)
+                              }
+                            />
+                          </label>
+                        </div>
+                        <label className="block space-y-1">
+                          <span className="text-xs font-semibold text-muted">
+                            Metadata JSON
+                          </span>
+                          <textarea
+                            className="form-input min-h-32 font-mono text-xs"
+                            value={metadataJson}
+                            onChange={(event) => setMetadataJson(event.target.value)}
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">
+                        Config JSON
+                      </span>
+                      <textarea
+                        className="form-input min-h-52 font-mono text-xs"
+                        value={configJson}
+                        onChange={(event) => setConfigJson(event.target.value)}
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-semibold text-muted">
+                        Metadata JSON
+                      </span>
+                      <textarea
+                        className="form-input min-h-52 font-mono text-xs"
+                        value={metadataJson}
+                        onChange={(event) => setMetadataJson(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                )}
               </>
             )}
 
@@ -1653,11 +1785,14 @@ function PricingPreviewModal({
   onClose: () => void
 }) {
   const [categoryId, setCategoryId] = useState('')
+  const [categoryLabel, setCategoryLabel] = useState('')
   const [city, setCity] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
-  const [subtotalPaise, setSubtotalPaise] = useState('60000')
+  const [subtotalText, setSubtotalText] = useState('600')
   const [vendorId, setVendorId] = useState('')
+  const [vendorLabel, setVendorLabel] = useState('')
   const [zoneId, setZoneId] = useState('')
+  const [zoneLabel, setZoneLabel] = useState('')
 
   const previewMutation = useMutation<
     PricingPolicyPreviewResponse,
@@ -1673,9 +1808,11 @@ function PricingPreviewModal({
     event.preventDefault()
     setFormError(null)
 
-    const subtotal = Number(subtotalPaise)
-    if (!Number.isInteger(subtotal) || subtotal < 0) {
-      setFormError('Subtotal must be a non-negative integer in paise.')
+    let subtotal: number
+    try {
+      subtotal = parseMoneyToPaise(subtotalText, 'Subtotal')
+    } catch (caughtError) {
+      setFormError(caughtError instanceof Error ? caughtError.message : 'Subtotal is invalid.')
       return
     }
 
@@ -1716,22 +1853,26 @@ function PricingPreviewModal({
             <div className="space-y-3">
               <label className="space-y-1">
                 <span className="text-xs font-semibold text-muted">
-                  Subtotal paise
+                  Subtotal (₹)
                 </span>
                 <Input
-                  inputMode="numeric"
-                  value={subtotalPaise}
-                  onChange={(event) => setSubtotalPaise(event.target.value)}
+                  inputMode="decimal"
+                  value={subtotalText}
+                  onChange={(event) => setSubtotalText(event.target.value)}
                 />
               </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-muted">Category id</span>
-                <Input
-                  placeholder="uuid"
-                  value={categoryId}
-                  onChange={(event) => setCategoryId(event.target.value)}
-                />
-              </label>
+              <LookupSelect
+                fetchOptions={searchCategoryLookupOptions}
+                label="Category id"
+                placeholder="Search category"
+                queryKey={['lookup', 'categories', 'pricing-preview']}
+                selectedLabel={categoryLabel}
+                value={categoryId}
+                onChange={(value, option) => {
+                  setCategoryId(value)
+                  setCategoryLabel(option?.label ?? '')
+                }}
+              />
               <label className="space-y-1">
                 <span className="text-xs font-semibold text-muted">City</span>
                 <Input
@@ -1740,22 +1881,30 @@ function PricingPreviewModal({
                   onChange={(event) => setCity(event.target.value)}
                 />
               </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-muted">Zone id</span>
-                <Input
-                  placeholder="uuid"
-                  value={zoneId}
-                  onChange={(event) => setZoneId(event.target.value)}
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-muted">Vendor id</span>
-                <Input
-                  placeholder="uuid"
-                  value={vendorId}
-                  onChange={(event) => setVendorId(event.target.value)}
-                />
-              </label>
+              <LookupSelect
+                fetchOptions={searchZoneLookupOptions}
+                label="Zone id"
+                placeholder="Search zone"
+                queryKey={['lookup', 'zones', 'pricing-preview']}
+                selectedLabel={zoneLabel}
+                value={zoneId}
+                onChange={(value, option) => {
+                  setZoneId(value)
+                  setZoneLabel(option?.label ?? '')
+                }}
+              />
+              <LookupSelect
+                fetchOptions={searchVendorLookupOptions}
+                label="Vendor id"
+                placeholder="Search vendor"
+                queryKey={['lookup', 'vendors', 'pricing-preview']}
+                selectedLabel={vendorLabel}
+                value={vendorId}
+                onChange={(value, option) => {
+                  setVendorId(value)
+                  setVendorLabel(option?.label ?? '')
+                }}
+              />
               {previewError ? (
                 <div className="rounded-[0.75rem] border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
                   {previewError}

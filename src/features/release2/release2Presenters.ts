@@ -4,6 +4,11 @@ import {
   Release2ServiceError,
   type FeatureFlagRiskLevel,
 } from './types/release2.types'
+import {
+  friendlyUnitLabel,
+  isConvertibleUnit,
+  textFromBytes,
+} from './utils/settingValueFormatting'
 
 /** Backend codes the Release 2 screens react to rather than just printing. */
 export const release2ErrorCodes = {
@@ -158,6 +163,16 @@ export function formatSettingValue(
       }).format(value / 100)}`
     }
 
+    if (unit === 'bps') {
+      return `${new Intl.NumberFormat('en-IN', {
+        maximumFractionDigits: 2,
+      }).format(value / 100)}%`
+    }
+
+    if (unit === 'bytes') {
+      return `${textFromBytes(value)} ${friendlyUnitLabel('bytes')}`
+    }
+
     return unit ? `${formatted} ${unit}` : formatted
   }
 
@@ -173,11 +188,20 @@ export function validationHint(validation: {
   unit?: string
 }) {
   const parts: string[] = []
+  const unit = validation.unit
+  const convertible = isConvertibleUnit(unit)
+
+  const friendlyBound = (bound: number) => {
+    if (unit === 'paise') return `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(bound / 100)}`
+    if (unit === 'bps') return `${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(bound / 100)}%`
+    if (unit === 'bytes') return `${textFromBytes(bound)} MB`
+    return String(bound)
+  }
 
   if (validation.enum?.length) parts.push(`One of: ${validation.enum.join(', ')}`)
-  if (validation.min !== undefined) parts.push(`min ${validation.min}`)
-  if (validation.max !== undefined) parts.push(`max ${validation.max}`)
-  if (validation.unit) parts.push(validation.unit)
+  if (validation.min !== undefined) parts.push(`min ${friendlyBound(validation.min)}`)
+  if (validation.max !== undefined) parts.push(`max ${friendlyBound(validation.max)}`)
+  if (unit && !convertible) parts.push(unit)
 
   return parts.join(' · ')
 }

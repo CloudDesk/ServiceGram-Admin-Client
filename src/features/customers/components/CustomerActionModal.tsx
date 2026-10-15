@@ -3,6 +3,7 @@ import { Button } from '../../../components/ui/Button'
 import { Modal } from '../../../components/ui/Modal'
 import { featureFlags } from '../../../config/featureFlags'
 import { formatMoney } from '../../../utils/formatMoney'
+import { parseMoneyToPaise } from '../../commission/utils/commissionFormatting'
 import type {
   AdminCustomerDetail,
   AdminCustomerListItem,
@@ -249,15 +250,24 @@ function WalletCreditFields({ customer, error, isSubmitting, onClose, onSubmit }
     const trimmedReason = reason.trim()
     const trimmedCurrency = currency.trim().toUpperCase()
     const trimmedReferenceId = referenceId.trim()
-    const amountPaise = amountText ? Number(amountText) : undefined
 
     if (!trimmedReason) {
       setFormError('Reason is required.')
       return
     }
 
-    if (!amountPaise || !Number.isInteger(amountPaise) || amountPaise <= 0) {
-      setFormError('Wallet credit amount in paise must be a positive whole number.')
+    let amountPaise: number
+    try {
+      amountPaise = parseMoneyToPaise(amountText, 'Wallet credit amount')
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error ? caughtError.message : 'Wallet credit amount is invalid.',
+      )
+      return
+    }
+
+    if (amountPaise <= 0) {
+      setFormError('Wallet credit amount must be a positive amount.')
       return
     }
 
@@ -300,13 +310,13 @@ function WalletCreditFields({ customer, error, isSubmitting, onClose, onSubmit }
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block space-y-2">
             <span className="text-sm font-semibold text-foreground">
-              Amount (paise) <span className="text-danger">*</span>
+              Amount (₹) <span className="text-danger">*</span>
             </span>
             <input
               className="form-input"
-              inputMode="numeric"
+              inputMode="decimal"
               onChange={(event) => setAmountText(event.target.value)}
-              placeholder="5000"
+              placeholder="50"
               value={amountText}
             />
           </label>

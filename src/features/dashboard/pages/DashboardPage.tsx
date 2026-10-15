@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { EChartsCoreOption } from 'echarts/core'
 import {
   ArrowUpRight,
   Bell,
   CircleDollarSign,
+  Clock3,
   CreditCard,
   Film,
   HandCoins,
@@ -14,6 +15,7 @@ import {
   RotateCcw,
   ShieldAlert,
   ShieldCheck,
+  TrendingUp,
   TriangleAlert,
   Users,
   Wrench,
@@ -31,6 +33,7 @@ import type { StatusTone } from '../../../types/status.types'
 import { buildPathWithQueryParams } from '../../../utils/buildQueryParams'
 import { cn } from '../../../utils/cn'
 import { DashboardChart } from '../components/DashboardChart'
+import { PeakTimesPanel } from '../components/PeakTimesPanel'
 import type {
   DashboardCard,
   DashboardChartItem,
@@ -41,6 +44,16 @@ import type {
   DashboardQueue,
 } from '../types/dashboard.types'
 import { useDashboardData } from '../hooks/useDashboardData'
+
+type DashboardTab = 'orders' | 'trends' | 'review-queues' | 'finance' | 'peak-times'
+
+const dashboardTabs: { id: DashboardTab; label: string; icon: typeof PackageSearch }[] = [
+  { id: 'orders', label: 'Orders', icon: PackageSearch },
+  { id: 'trends', label: 'Trends', icon: TrendingUp },
+  { id: 'review-queues', label: 'Review Queues', icon: ShieldAlert },
+  { id: 'finance', label: 'Finance', icon: CircleDollarSign },
+  { id: 'peak-times', label: 'Peak Times', icon: Clock3 },
+]
 
 interface DrilldownTarget {
   canOpen: boolean
@@ -1309,6 +1322,10 @@ function DashboardSkeleton() {
 
 export function DashboardPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedTab = searchParams.get('tab') as DashboardTab | null
+  const activeTab: DashboardTab =
+    dashboardTabs.find((tab) => tab.id === requestedTab)?.id ?? 'orders'
   const dashboardQuery = useDashboardData()
   const canReadCustomers = usePermission('customers:read')
   const canReadNotifications = usePermission('notifications:read')
@@ -1404,14 +1421,37 @@ export function DashboardPage() {
             ))}
           </section>
 
-          <TrendsPanel
-            canReadOrders={canReadOrders}
-            canReadPayments={canReadPayments}
-            points={data.trends.points}
-            onOpen={navigate}
-          />
+          <div
+            aria-label="Dashboard sections"
+            className="flex gap-1 overflow-x-auto border-b border-border"
+            role="tablist"
+          >
+            {dashboardTabs.map((tab) => {
+              const Icon = tab.icon
+              const selected = tab.id === activeTab
 
-          <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.55fr)]">
+              return (
+                <button
+                  aria-selected={selected}
+                  className={cn(
+                    'flex shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition',
+                    selected
+                      ? 'border-accent text-foreground'
+                      : 'border-transparent text-muted hover:text-foreground',
+                  )}
+                  key={tab.id}
+                  role="tab"
+                  type="button"
+                  onClick={() => setSearchParams({ tab: tab.id })}
+                >
+                  <Icon className="size-4" />
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+
+          {activeTab === 'orders' ? (
             <OrdersPanel
               byPaymentStatus={data.orders.byPaymentStatus}
               byStatus={data.orders.byStatus}
@@ -1422,26 +1462,26 @@ export function DashboardPage() {
               statusItems={data.orders.statusItems}
               onOpen={navigate}
             />
-            <SignalsPanel
-              access={access}
-              alerts={data.summary.alerts}
-              loadedAt={data.loadedAt}
-              nextRecommendedAction={
-                data.reviewQueues.nextRecommendedAction ??
-                data.summary.nextRecommendedAction
-              }
-              onOpen={navigate}
-              scopeType={data.summary.scope.type}
-              zoneIds={data.summary.scope.zoneIds}
-            />
-          </section>
+          ) : null}
 
-          <section className="grid gap-3 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+          {activeTab === 'trends' ? (
+            <TrendsPanel
+              canReadOrders={canReadOrders}
+              canReadPayments={canReadPayments}
+              points={data.trends.points}
+              onOpen={navigate}
+            />
+          ) : null}
+
+          {activeTab === 'review-queues' ? (
             <QueuePanel
               access={access}
               queues={data.reviewQueues.queues}
               onOpen={navigate}
             />
+          ) : null}
+
+          {activeTab === 'finance' ? (
             <FinancePanel
               access={access}
               permitted={data.finance.permitted}
@@ -1449,7 +1489,24 @@ export function DashboardPage() {
               widgets={data.finance.widgets}
               onOpen={navigate}
             />
-          </section>
+          ) : null}
+
+          {activeTab === 'peak-times' ? (
+            <PeakTimesPanel active={activeTab === 'peak-times'} />
+          ) : null}
+
+          <SignalsPanel
+            access={access}
+            alerts={data.summary.alerts}
+            loadedAt={data.loadedAt}
+            nextRecommendedAction={
+              data.reviewQueues.nextRecommendedAction ??
+              data.summary.nextRecommendedAction
+            }
+            onOpen={navigate}
+            scopeType={data.summary.scope.type}
+            zoneIds={data.summary.scope.zoneIds}
+          />
         </>
       ) : null}
     </PageContainer>

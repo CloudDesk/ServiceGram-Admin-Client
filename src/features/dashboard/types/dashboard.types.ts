@@ -171,6 +171,37 @@ export interface DashboardTrendsData {
   scope: DashboardScope
 }
 
+export interface DashboardPeakHourRow {
+  hour: number
+  orders: number
+}
+
+export interface DashboardPeakDayTotal {
+  dayIndex: number
+  dayOfWeek: string
+  orders: number
+}
+
+export interface DashboardPeakHeatmapCell {
+  dayIndex: number
+  dayOfWeek: string
+  hour: number
+  orders: number
+}
+
+export interface DashboardPeakTimesData {
+  range: '7d' | '30d' | '90d'
+  timezone: string
+  hourly: DashboardPeakHourRow[]
+  heatmap: DashboardPeakHeatmapCell[]
+  topHour: DashboardPeakHourRow | null
+  topDay: DashboardPeakDayTotal | null
+  scope: DashboardScope
+}
+
+export type DashboardPeakTimesResponse =
+  DashboardApiResponse<DashboardPeakTimesData>
+
 export type DashboardSummaryResponse = DashboardApiResponse<DashboardSummaryData>
 export type DashboardOverviewResponse =
   DashboardApiResponse<DashboardOverviewData>

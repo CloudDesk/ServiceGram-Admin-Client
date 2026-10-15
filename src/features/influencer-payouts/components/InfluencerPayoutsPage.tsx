@@ -20,6 +20,8 @@ import type {
 } from "../../../components/ui/DataList";
 import { PageContainer } from "../../../components/layout/PageContainer";
 import { PageContextHeader } from "../../../components/ui/PageHeader";
+import { SegmentedControl } from "../../../components/ui/SegmentedControl";
+import { SummaryMetricCard } from "../../../components/ui/SummaryMetricCard";
 import { routePaths } from "../../../config/routes";
 import { usePermission } from "../../../hooks/usePermission";
 import { cn } from "../../../utils/cn";
@@ -874,61 +876,50 @@ export function InfluencerPayoutsPage() {
   );
 
   const tabs = (
-    <div className="flex flex-wrap gap-2">
-      {[
-        { key: "banks", label: "Bank reviews", icon: Banknote },
-        { key: "kyc", label: "KYC reviews", icon: FileCheck2 },
-        { key: "payouts", label: "Payout queue", icon: BadgeIndianRupee },
-      ].map((item) => {
-        const Icon = item.icon;
-        const selected = activeTab === item.key;
-        return (
-          <button
-            className={cn(
-              "inline-flex items-center rounded-full px-3 py-1.5 text-sm font-semibold transition",
-              selected
-                ? "bg-primary text-primary-foreground"
-                : "bg-surface-muted text-muted hover:text-foreground",
-            )}
-            key={item.key}
-            type="button"
-            onClick={() => {
-              setActiveTab(item.key as WorkspaceTab);
-              setPage(1);
-            }}
-          >
-            <Icon className="mr-2 size-4" />
-            {item.label}
-          </button>
-        );
-      })}
-    </div>
+    <SegmentedControl
+      aria-label="Payout workspace"
+      options={[
+        {
+          value: "banks" as WorkspaceTab,
+          label: "Bank reviews",
+          icon: <Banknote className="size-4" />,
+        },
+        {
+          value: "kyc" as WorkspaceTab,
+          label: "KYC reviews",
+          icon: <FileCheck2 className="size-4" />,
+        },
+        {
+          value: "payouts" as WorkspaceTab,
+          label: "Payout queue",
+          icon: <BadgeIndianRupee className="size-4" />,
+        },
+      ]}
+      value={activeTab}
+      onChange={(value) => {
+        setActiveTab(value);
+        setPage(1);
+      }}
+    />
   );
 
   const stats = (
     <div className="grid gap-2 sm:grid-cols-3">
-      <div className="rounded-[0.9rem] border border-border bg-surface p-3">
-        <div className="text-xs font-medium text-muted">
-          Visible pending amount
-        </div>
-        <div className="mt-1 text-lg font-semibold text-foreground">
-          {formatPaise(payoutSummary?.pendingAmountPaise)}
-        </div>
-      </div>
-      <div className="rounded-[0.9rem] border border-border bg-surface p-3">
-        <div className="text-xs font-medium text-muted">
-          Visible paid amount
-        </div>
-        <div className="mt-1 text-lg font-semibold text-foreground">
-          {formatPaise(payoutSummary?.paidAmountPaise)}
-        </div>
-      </div>
-      <div className="rounded-[0.9rem] border border-border bg-surface p-3">
-        <div className="text-xs font-medium text-muted">Visible rows</div>
-        <div className="mt-1 text-lg font-semibold text-foreground">
-          {activeRows.length}
-        </div>
-      </div>
+      <SummaryMetricCard
+        hint="From rows currently loaded"
+        label="Visible pending amount"
+        value={formatPaise(payoutSummary?.pendingAmountPaise)}
+      />
+      <SummaryMetricCard
+        hint="From rows currently loaded"
+        label="Visible paid amount"
+        value={formatPaise(payoutSummary?.paidAmountPaise)}
+      />
+      <SummaryMetricCard
+        hint="In the active workspace tab"
+        label="Visible rows"
+        value={activeRows.length}
+      />
     </div>
   );
 
@@ -958,12 +949,17 @@ export function InfluencerPayoutsPage() {
     <PageContainer className="flex min-h-full flex-col !px-3 !py-3 sm:!px-4 lg:!px-6 xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PageContextHeader
         actionNode={pageChromeAction}
+        breadcrumbs={[
+          { label: "Overview", href: routePaths.release2Overview },
+          { label: "Influencer Payouts" },
+        ]}
         description="Review creator bank accounts and KYC, then approve and settle manual influencer payouts."
         layout="workspace"
         placement="body"
         statsNode={stats}
         tabsNode={tabs}
         title="Influencer Payouts"
+        titleMetaNode={<Badge tone="success">Phase 4 · Payout operations</Badge>}
       />
 
       {batchNotice ? (
@@ -1010,11 +1006,7 @@ export function InfluencerPayoutsPage() {
                 </div>
               ) : null
             }
-            rowActionsWidth={
-              canReviewInfluencers && bankRows.some((row) => hasAction(row, "VERIFY"))
-                ? 130
-                : 0
-            }
+            rowActionsWidth={canReviewInfluencers ? 130 : 0}
             rows={bankRows}
             search={search}
             searchPlaceholder="Search creator or account…"
@@ -1087,11 +1079,7 @@ export function InfluencerPayoutsPage() {
                 </div>
               ) : null
             }
-            rowActionsWidth={
-              canReviewInfluencers && kycRows.some((row) => hasAction(row, "APPROVE"))
-                ? 140
-                : 0
-            }
+            rowActionsWidth={canReviewInfluencers ? 140 : 0}
             rows={kycRows}
             search={search}
             searchPlaceholder="Search creator or document…"
@@ -1196,16 +1184,7 @@ export function InfluencerPayoutsPage() {
                 </div>
               ) : null
             }
-            rowActionsWidth={
-              canApprovePayouts &&
-              payoutRows.some((row) =>
-                ["APPROVE", "MARK_PAID", "RETRY", "HOLD", "MARK_FAILED", "CANCEL"].some(
-                  (action) => hasAction(row, action),
-                ),
-              )
-                ? 210
-                : 0
-            }
+            rowActionsWidth={canApprovePayouts ? 210 : 0}
             rows={payoutRows}
             search={search}
             searchPlaceholder="Search payout, batch or creator…"

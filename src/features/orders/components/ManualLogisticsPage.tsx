@@ -21,6 +21,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { Input } from '../../../components/ui/Input'
+import { LookupSelect } from '../../../components/ui/LookupSelect'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
 import { PageContainer } from '../../../components/layout/PageContainer'
 import {
@@ -41,6 +42,10 @@ import type { StatusTone } from '../../../types/status.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { formatMoney } from '../../../utils/formatMoney'
+import {
+  searchCustomerLookupOptions,
+  searchVendorLookupOptions,
+} from '../../lookups/adminLookups'
 import { orderService } from '../services/order.service'
 import { compactOrderRowActionLabel } from '../orderPresenters'
 import {
@@ -675,6 +680,7 @@ export function ManualLogisticsPage() {
   const [customerId, setCustomerId] = useState(
     () => searchParams.get('customerId') ?? '',
   )
+  const [customerLabel, setCustomerLabel] = useState('')
   const [dateFrom, setDateFrom] = useState(
     () => searchParams.get('dateFrom') ?? '',
   )
@@ -682,6 +688,7 @@ export function ManualLogisticsPage() {
   const [vendorId, setVendorId] = useState(
     () => searchParams.get('vendorId') ?? '',
   )
+  const [vendorLabel, setVendorLabel] = useState('')
   const [orderStatus, setOrderStatus] = useState<'' | AdminOrderStatus>(
     () => seededOrderStatuses[0] ?? '',
   )
@@ -782,9 +789,11 @@ export function ManualLogisticsPage() {
     setSearch('')
     setCity('')
     setCustomerId('')
+    setCustomerLabel('')
     setDateFrom('')
     setDateTo('')
     setVendorId('')
+    setVendorLabel('')
     setOrderStatus('')
     setPaymentStatus('')
     setPage(1)
@@ -855,10 +864,11 @@ export function ManualLogisticsPage() {
   if (customerId.trim()) {
     activeFilters.push({
       key: 'customerId',
-      label: `Customer: ${customerId.trim()}`,
+      label: `Customer: ${customerLabel || customerId.trim()}`,
       onRemove: () => {
         clearSeededLogisticsParams()
         setCustomerId('')
+        setCustomerLabel('')
         setPage(1)
       },
     })
@@ -867,10 +877,11 @@ export function ManualLogisticsPage() {
   if (vendorId.trim()) {
     activeFilters.push({
       key: 'vendorId',
-      label: `Vendor: ${vendorId.trim()}`,
+      label: `Vendor: ${vendorLabel || vendorId.trim()}`,
       onRemove: () => {
         clearSeededLogisticsParams()
         setVendorId('')
+        setVendorLabel('')
         setPage(1)
       },
     })
@@ -1285,30 +1296,34 @@ export function ManualLogisticsPage() {
           }
           secondaryFilters={
             <>
-              <label className="space-y-1">
-                <span className="text-sm font-medium text-foreground">Customer ID</span>
-                <Input
-                  placeholder="UUID"
-                  value={customerId}
-                  onChange={(event) => {
-                    clearSeededLogisticsParams()
-                    setCustomerId(event.target.value)
-                    resetToFirstPage()
-                  }}
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-sm font-medium text-foreground">Vendor ID</span>
-                <Input
-                  placeholder="UUID"
-                  value={vendorId}
-                  onChange={(event) => {
-                    clearSeededLogisticsParams()
-                    setVendorId(event.target.value)
-                    resetToFirstPage()
-                  }}
-                />
-              </label>
+              <LookupSelect
+                fetchOptions={searchCustomerLookupOptions}
+                label="Customer ID"
+                placeholder="Search customer"
+                queryKey={['lookup', 'customers', 'manual-logistics']}
+                selectedLabel={customerLabel}
+                value={customerId}
+                onChange={(value, option) => {
+                  clearSeededLogisticsParams()
+                  setCustomerId(value)
+                  setCustomerLabel(option?.label ?? '')
+                  resetToFirstPage()
+                }}
+              />
+              <LookupSelect
+                fetchOptions={searchVendorLookupOptions}
+                label="Vendor ID"
+                placeholder="Search vendor"
+                queryKey={['lookup', 'vendors', 'manual-logistics']}
+                selectedLabel={vendorLabel}
+                value={vendorId}
+                onChange={(value, option) => {
+                  clearSeededLogisticsParams()
+                  setVendorId(value)
+                  setVendorLabel(option?.label ?? '')
+                  resetToFirstPage()
+                }}
+              />
               <label className="space-y-1">
                 <span className="text-sm font-medium text-foreground">Payment status</span>
                 <select

@@ -43,6 +43,7 @@ export const routePaths = {
   release2Settings: "/app/release-2/settings",
   release2SettingDetail: "/app/release-2/settings/:settingKey",
   customerRetention: "/app/release-2/customer-retention",
+  commission: "/app/release-2/commission",
   audit: "/app/audit-logs",
   profile: "/app/profile",
 } as const;

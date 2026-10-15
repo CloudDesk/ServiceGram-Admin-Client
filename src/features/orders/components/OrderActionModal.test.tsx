@@ -204,6 +204,24 @@ describe('OrderActionModal', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
+  it('initiate refund: leaves amountPaise undefined for a full refund, and converts a typed rupee amount to paise', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderModal({ kind: 'INITIATE_REFUND' })
+
+    await user.type(screen.getByRole('textbox', { name: 'Reason*' }), 'Service not delivered')
+    await user.click(screen.getByRole('button', { name: 'Start refund' }))
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'Service not delivered', amountPaise: undefined }),
+    )
+
+    onSubmit.mockClear()
+    await user.type(screen.getByLabelText(/Refund amount/), '150')
+    await user.click(screen.getByRole('button', { name: 'Start refund' }))
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ amountPaise: 15000 }))
+  })
+
   it('close button is disabled while a submission is in flight', () => {
     render(
       <OrderActionModal action={{ kind: 'CANCEL' }} isSubmitting order={order()} onClose={vi.fn()} onSubmit={vi.fn()} />,

@@ -18,7 +18,16 @@ import { Card } from "../../../components/ui/Card";
 import { EmptyState } from "../../../components/ui/EmptyState";
 import { ErrorState } from "../../../components/ui/ErrorState";
 import { Input } from "../../../components/ui/Input";
+import { LookupSelect } from "../../../components/ui/LookupSelect";
+import { searchCustomerLookupOptions } from "../../lookups/adminLookups";
 import { PageContextHeader } from "../../../components/ui/PageHeader";
+import { CommissionRateFields } from "../../commission/components/CommissionRateFields";
+import {
+  parseMoneyToPaise,
+  parsePercentToBps,
+  textFromBps,
+  textFromPaise,
+} from "../../commission/utils/commissionFormatting";
 import { RecordMetricStrip } from "../../../components/ui/RecordPage";
 import {
   DynamicTable,
@@ -482,8 +491,13 @@ function RewardsPanel() {
   const queryClient = useQueryClient();
   const canWalletUpdate = useAuthStore((state) => state.can("wallet:update"));
   const canLoyaltyUpdate = useAuthStore((state) => state.can("loyalty:update"));
-  const [input, setInput] = useState("");
-  const [customerId, setCustomerId] = useState("");
+  const [searchParams] = useSearchParams();
+  const [customerId, setCustomerId] = useState(
+    () => searchParams.get("customerId") ?? "",
+  );
+  const [customerLabel, setCustomerLabel] = useState(
+    () => searchParams.get("customerName") ?? "",
+  );
   const [adjustment, setAdjustment] = useState<"wallet" | "loyalty" | null>(
     null,
   );
@@ -620,37 +634,24 @@ function RewardsPanel() {
   return (
     <div className="space-y-5">
       <Card className="p-4">
-        <form
-          className="flex flex-col gap-2 sm:flex-row"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (uuidPattern.test(input.trim())) setCustomerId(input.trim());
+        <LookupSelect
+          fetchOptions={searchCustomerLookupOptions}
+          label="Customer"
+          placeholder="Search name, mobile, or email"
+          queryKey={["lookup", "customers"]}
+          selectedLabel={customerLabel}
+          value={customerId}
+          onChange={(value, option) => {
+            setCustomerId(value);
+            setCustomerLabel(option?.label ?? "");
           }}
-        >
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-            <Input
-              className="pl-9"
-              placeholder="Customer UUID"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-            />
-          </div>
-          <Button disabled={!uuidPattern.test(input.trim())} type="submit">
-            Load ledgers
-          </Button>
-        </form>
-        {input && !uuidPattern.test(input.trim()) ? (
-          <p className="mt-2 text-xs text-danger">
-            Enter a valid customer UUID.
-          </p>
-        ) : null}
+        />
       </Card>
 
       {!customerId ? (
         <EmptyState
           title="Choose a customer"
-          description="Enter the customer UUID to inspect wallet and loyalty history without exposing balances in broad customer lists."
+          description="Search for a customer by name or phone to inspect wallet and loyalty history without exposing balances in broad customer lists."
         />
       ) : null}
 
@@ -894,6 +895,12 @@ function PromoForm({
     key: K,
     value: PromoCodeFormPayload[K],
   ) => setForm((current) => ({ ...current, [key]: value }));
+  const [discountPercentText, setDiscountPercentText] = useState(() =>
+    textFromBps(form.discountBps ?? null),
+  );
+  const [discountFixedText, setDiscountFixedText] = useState(() =>
+    textFromPaise(form.discountPaise ?? null),
+  );
   const valid =
     form.code.trim().length >= 3 &&
     form.displayName.trim().length >= 3 &&
@@ -947,45 +954,32 @@ function PromoForm({
               ))}
             </select>
           </label>
-          <label className="space-y-1.5">
-            <span className="text-xs font-semibold">Discount type *</span>
-            <select
-              className="form-input"
+          <div className="sm:col-span-2">
+            <CommissionRateFields
+              label="Discount *"
               disabled={Boolean(initial)}
-              value={form.discountType}
-              onChange={(event) =>
-                set(
-                  "discountType",
-                  event.target.value as PromoCode["discountType"],
-                )
-              }
-            >
-              <option value="PERCENTAGE">Percentage</option>
-              <option value="FIXED">Fixed amount</option>
-            </select>
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-xs font-semibold">
-              {form.discountType === "PERCENTAGE"
-                ? "Discount (basis points)"
-                : "Discount (paise)"}{" "}
-              *
-            </span>
-            <Input
-              min="1"
-              type="number"
-              value={
-                form.discountType === "PERCENTAGE"
-                  ? (form.discountBps ?? "")
-                  : (form.discountPaise ?? "")
-              }
-              onChange={(event) =>
-                form.discountType === "PERCENTAGE"
-                  ? set("discountBps", Number(event.target.value))
-                  : set("discountPaise", Number(event.target.value))
-              }
+              rateType={form.discountType}
+              onRateTypeChange={(value) => set("discountType", value)}
+              percentText={discountPercentText}
+              onPercentTextChange={(value) => {
+                setDiscountPercentText(value);
+                try {
+                  set("discountBps", parsePercentToBps(value, "Discount"));
+                } catch {
+                  // leave discountBps unchanged until the text is valid again
+                }
+              }}
+              fixedText={discountFixedText}
+              onFixedTextChange={(value) => {
+                setDiscountFixedText(value);
+                try {
+                  set("discountPaise", parseMoneyToPaise(value, "Discount"));
+                } catch {
+                  // leave discountPaise unchanged until the text is valid again
+                }
+              }}
             />
-          </label>
+          </div>
           <label className="space-y-1.5">
             <span className="text-xs font-semibold">
               Global redemption cap *
@@ -1567,7 +1561,13 @@ export function CustomerRetentionPage() {
               key={tab.id}
               role="tab"
               type="button"
-              onClick={() => setSearchParams({ tab: tab.id })}
+              onClick={() =>
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set("tab", tab.id);
+                  return next;
+                })
+              }
             >
               <Icon className="size-4" />
               {tab.label}

@@ -1,5 +1,7 @@
 import type { LookupOption } from '../../types/lookup.types'
+import { adminUserService } from '../admin-users/services/adminUser.service'
 import { customerService } from '../customers/services/customer.service'
+import { influencerService } from '../influencers/services/influencer.service'
 import { orderService } from '../orders/services/order.service'
 import { paymentService } from '../payments/services/payment.service'
 import { settingsService } from '../settings/services/settings.service'
@@ -126,6 +128,81 @@ export async function searchOrderLookupOptions(
       order.orderStatus,
     ]),
     value: order.orderId,
+  }))
+}
+
+export async function searchInfluencerLookupOptions(
+  search: string,
+): Promise<LookupOption[]> {
+  const response = await influencerService.getInfluencers({
+    limit: LOOKUP_PAGE_SIZE,
+    page: 1,
+    search: search || undefined,
+  })
+
+  return response.data.map((influencer) => ({
+    label: influencer.displayName,
+    meta: compactMeta([
+      influencer.publicInfluencerId,
+      influencer.customer.mobileNumber ?? influencer.customer.fullName,
+      influencer.status,
+    ]),
+    value: influencer.influencerProfileId,
+  }))
+}
+
+/** Resolves a customer's underlying auth user id, not their customerId. */
+export async function searchCustomerUserIdLookupOptions(
+  search: string,
+): Promise<LookupOption[]> {
+  const response = await customerService.getCustomerList({
+    limit: LOOKUP_PAGE_SIZE,
+    page: 1,
+    search: search || undefined,
+  })
+
+  return response.data.map((customer) => ({
+    label: customer.fullName,
+    meta: compactMeta([customer.mobileNumber ?? customer.email, customer.city]),
+    value: customer.userId,
+  }))
+}
+
+/** Resolves an admin's underlying auth user id, not their adminId. */
+export async function searchAdminUserIdLookupOptions(
+  search: string,
+): Promise<LookupOption[]> {
+  const response = await adminUserService.getAdminUsers({
+    limit: LOOKUP_PAGE_SIZE,
+    page: 1,
+    search: search || undefined,
+  })
+
+  return response.data.map((admin) => ({
+    label: admin.fullName,
+    meta: compactMeta([admin.email, admin.role?.roleName]),
+    value: admin.userId,
+  }))
+}
+
+/** Resolves an influencer's underlying auth user id, not their influencerProfileId. */
+export async function searchInfluencerUserIdLookupOptions(
+  search: string,
+): Promise<LookupOption[]> {
+  const response = await influencerService.getInfluencers({
+    limit: LOOKUP_PAGE_SIZE,
+    page: 1,
+    search: search || undefined,
+  })
+
+  return response.data.map((influencer) => ({
+    label: influencer.displayName,
+    meta: compactMeta([
+      influencer.publicInfluencerId,
+      influencer.customer.mobileNumber ?? influencer.customer.fullName,
+      influencer.status,
+    ]),
+    value: influencer.userId,
   }))
 }
 

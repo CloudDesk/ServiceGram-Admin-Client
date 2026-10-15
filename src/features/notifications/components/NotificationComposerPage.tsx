@@ -9,10 +9,17 @@ import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { ErrorState } from '../../../components/ui/ErrorState'
 import { Input } from '../../../components/ui/Input'
+import { LookupSelect } from '../../../components/ui/LookupSelect'
 import { routePaths } from '../../../config/routes'
 import { useAuthStore } from '../../../store/authStore'
 import { formatDate } from '../../../utils/formatDate'
 import { humanizeIdentifier } from '../../../utils/displayText'
+import {
+  searchAdminUserIdLookupOptions,
+  searchCategoryLookupOptions,
+  searchCustomerUserIdLookupOptions,
+  searchZoneLookupOptions,
+} from '../../lookups/adminLookups'
 import { notificationService } from '../services/notification.service'
 import type {
   NotificationAdminStatus,
@@ -29,6 +36,18 @@ import type {
   SendNotificationData,
   SendNotificationPayload,
 } from '../types/notification.types'
+
+/** Only these recipient types expose a searchable auth user id; vendors don't. */
+function recipientUserIdFetcherFor(recipientType: NotificationRecipientType) {
+  switch (recipientType) {
+    case 'CUSTOMER':
+      return searchCustomerUserIdLookupOptions
+    case 'ADMIN':
+      return searchAdminUserIdLookupOptions
+    default:
+      return null
+  }
+}
 
 const adminStatuses: NotificationAdminStatus[] = ['ACTIVE', 'DISABLED']
 const channels: NotificationChannel[] = ['PUSH', 'SMS', 'EMAIL']
@@ -264,6 +283,7 @@ export function NotificationComposerPage() {
   const initialTargetType = seededRecipientUserId ? 'USER' : seededTargetType
   const [adminStatus, setAdminStatus] = useState<'' | NotificationAdminStatus>('')
   const [categoryId, setCategoryId] = useState('')
+  const [categoryLabel, setCategoryLabel] = useState('')
   const [channel, setChannel] = useState<NotificationChannel>(() =>
     readSearchEnum(searchParams, 'channel', channels, 'PUSH'),
   )
@@ -276,6 +296,7 @@ export function NotificationComposerPage() {
     readSearchEnum(searchParams, 'recipientType', recipientTypes, 'CUSTOMER'),
   )
   const [recipientUserId, setRecipientUserId] = useState(seededRecipientUserId)
+  const [recipientUserLabel, setRecipientUserLabel] = useState('')
   const [segmentCity, setSegmentCity] = useState('')
   const [segmentLimit, setSegmentLimit] = useState('100')
   const [targetType, setTargetType] =
@@ -289,6 +310,8 @@ export function NotificationComposerPage() {
     useState<'' | NotificationVendorOnboardingStatus>('')
   const [vendorStatus, setVendorStatus] = useState<'' | NotificationVendorStatus>('')
   const [zoneId, setZoneId] = useState('')
+  const [zoneLabel, setZoneLabel] = useState('')
+  const recipientUserIdFetcher = recipientUserIdFetcherFor(recipientType)
 
   const canSendNotifications = can('notifications:send')
   const templatesQuery = useQuery({
@@ -497,14 +520,35 @@ export function NotificationComposerPage() {
             </label>
 
             {targetType === 'USER' ? (
-              <label className="space-y-1 md:col-span-2">
-                <span className="text-sm font-medium text-foreground">Recipient User ID</span>
-                <Input
-                  placeholder="UUID"
-                  value={recipientUserId}
-                  onChange={(event) => setRecipientUserId(event.target.value)}
-                />
-              </label>
+              <div className="space-y-1 md:col-span-2">
+                {recipientUserIdFetcher ? (
+                  <LookupSelect
+                    fetchOptions={recipientUserIdFetcher}
+                    label="Recipient User ID"
+                    placeholder={`Search ${recipientType.toLowerCase()}`}
+                    queryKey={['lookup', 'user-id', recipientType, 'notification-composer']}
+                    selectedLabel={recipientUserLabel}
+                    value={recipientUserId}
+                    onChange={(value, option) => {
+                      setRecipientUserId(value)
+                      setRecipientUserLabel(option?.label ?? '')
+                    }}
+                  />
+                ) : (
+                  <>
+                    <span className="text-sm font-medium text-foreground">Recipient User ID</span>
+                    <Input
+                      placeholder="UUID"
+                      value={recipientUserId}
+                      onChange={(event) => setRecipientUserId(event.target.value)}
+                    />
+                    <span className="block text-xs text-muted">
+                      No lookup for {recipientType.toLowerCase()} accounts - paste the
+                      auth user id directly.
+                    </span>
+                  </>
+                )}
+              </div>
             ) : (
               <>
                 <label className="space-y-1">
@@ -515,10 +559,18 @@ export function NotificationComposerPage() {
                     onChange={(event) => setSegmentCity(event.target.value)}
                   />
                 </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-foreground">Zone ID</span>
-                  <Input placeholder="UUID" value={zoneId} onChange={(event) => setZoneId(event.target.value)} />
-                </label>
+                <LookupSelect
+                  fetchOptions={searchZoneLookupOptions}
+                  label="Zone ID"
+                  placeholder="Search zone"
+                  queryKey={['lookup', 'zones', 'notification-composer']}
+                  selectedLabel={zoneLabel}
+                  value={zoneId}
+                  onChange={(value, option) => {
+                    setZoneId(value)
+                    setZoneLabel(option?.label ?? '')
+                  }}
+                />
                 <label className="space-y-1">
                   <span className="text-sm font-medium text-foreground">User Status</span>
                   <select
@@ -594,14 +646,18 @@ export function NotificationComposerPage() {
                         ))}
                       </select>
                     </label>
-                    <label className="space-y-1">
-                      <span className="text-sm font-medium text-foreground">Category ID</span>
-                      <Input
-                        placeholder="UUID"
-                        value={categoryId}
-                        onChange={(event) => setCategoryId(event.target.value)}
-                      />
-                    </label>
+                    <LookupSelect
+                      fetchOptions={searchCategoryLookupOptions}
+                      label="Category ID"
+                      placeholder="Search category"
+                      queryKey={['lookup', 'categories', 'notification-composer']}
+                      selectedLabel={categoryLabel}
+                      value={categoryId}
+                      onChange={(value, option) => {
+                        setCategoryId(value)
+                        setCategoryLabel(option?.label ?? '')
+                      }}
+                    />
                   </>
                 ) : null}
                 {recipientType === 'ADMIN' ? (
