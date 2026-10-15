@@ -175,7 +175,7 @@ describe('Release2SettingDetailPage preview before save', () => {
 
     expect(saveButton).toHaveAttribute('title', 'Change the value first')
 
-    await editValue('7500')
+    await editValue('75')
     expect(saveButton).toHaveAttribute('title', 'Run Check value first')
 
     await userEvent.click(screen.getByRole('button', { name: 'Check value' }))
@@ -249,7 +249,7 @@ describe('Release2SettingDetailPage mutation errors', () => {
       'release2-finance-settings:update',
     ])
 
-    await editValue('7500')
+    await editValue('75')
     await userEvent.click(screen.getByRole('button', { name: 'Check value' }))
     await screen.findByText(/Valid · will save/)
     await userEvent.type(screen.getByLabelText(/reason/i), 'Launch cohort change.')

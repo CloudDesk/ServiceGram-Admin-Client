@@ -5,6 +5,15 @@ import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
 import { Input } from '../../../components/ui/Input'
+import { LookupSelect } from '../../../components/ui/LookupSelect'
+import {
+  searchAdminUserIdLookupOptions,
+  searchCustomerUserIdLookupOptions,
+  searchInfluencerLookupOptions,
+  searchInfluencerUserIdLookupOptions,
+  searchVendorLookupOptions,
+  searchZoneLookupOptions,
+} from '../../lookups/adminLookups'
 import { humanizeCode } from '../release2Presenters'
 import { release2Service } from '../services/release2.service'
 import {
@@ -14,6 +23,20 @@ import {
   type FeatureFlagUserSegment,
 } from '../types/release2.types'
 import { Release2ErrorNotice } from './Release2Feedback'
+
+/** Only these app types expose a searchable auth user id; others need the raw uuid. */
+function userIdFetcherFor(appType: FeatureFlagAppType) {
+  switch (appType) {
+    case 'CUSTOMER':
+      return searchCustomerUserIdLookupOptions
+    case 'ADMIN':
+      return searchAdminUserIdLookupOptions
+    case 'INFLUENCER':
+      return searchInfluencerUserIdLookupOptions
+    default:
+      return null
+  }
+}
 
 const selectClass = 'form-select h-9 text-sm'
 
@@ -31,12 +54,17 @@ export function FeatureFlagEvaluatePanel({
 }: FeatureFlagEvaluatePanelProps) {
   const [appType, setAppType] = useState<FeatureFlagAppType>('CUSTOMER')
   const [userId, setUserId] = useState('')
+  const [userLabel, setUserLabel] = useState('')
   const [city, setCity] = useState('')
   const [zoneId, setZoneId] = useState('')
+  const [zoneLabel, setZoneLabel] = useState('')
   const [vendorId, setVendorId] = useState('')
+  const [vendorLabel, setVendorLabel] = useState('')
   const [influencerId, setInfluencerId] = useState('')
+  const [influencerLabel, setInfluencerLabel] = useState('')
   const [roleCodes, setRoleCodes] = useState('')
   const [userSegment, setUserSegment] = useState<FeatureFlagUserSegment | ''>('')
+  const userIdFetcher = userIdFetcherFor(appType)
 
   const evaluateMutation = useMutation({
     mutationFn: async () => {
@@ -122,47 +150,73 @@ export function FeatureFlagEvaluatePanel({
             />
           </label>
 
-          <label className="block space-y-1">
-            <span className="text-[0.7rem] font-medium text-muted">Zone id</span>
-            <Input
-              className="h-9 text-sm"
-              placeholder="uuid"
-              value={zoneId}
-              onChange={(event) => setZoneId(event.target.value)}
-            />
-          </label>
+          <LookupSelect
+            fetchOptions={searchZoneLookupOptions}
+            label="Zone id"
+            placeholder="Search zone"
+            queryKey={['lookup', 'zones', 'evaluate-panel']}
+            selectedLabel={zoneLabel}
+            value={zoneId}
+            onChange={(value, option) => {
+              setZoneId(value)
+              setZoneLabel(option?.label ?? '')
+            }}
+          />
 
-          <label className="block space-y-1">
-            <span className="text-[0.7rem] font-medium text-muted">User id</span>
-            <Input
-              className="h-9 text-sm"
-              placeholder="uuid"
+          {userIdFetcher ? (
+            <LookupSelect
+              fetchOptions={userIdFetcher}
+              label="User id"
+              placeholder={`Search ${appType.toLowerCase()}`}
+              queryKey={['lookup', 'user-id', appType, 'evaluate-panel']}
+              selectedLabel={userLabel}
               value={userId}
-              onChange={(event) => setUserId(event.target.value)}
+              onChange={(value, option) => {
+                setUserId(value)
+                setUserLabel(option?.label ?? '')
+              }}
             />
-          </label>
+          ) : (
+            <label className="block space-y-1">
+              <span className="text-[0.7rem] font-medium text-muted">User id</span>
+              <Input
+                className="h-9 text-sm"
+                placeholder="uuid"
+                value={userId}
+                onChange={(event) => setUserId(event.target.value)}
+              />
+              <span className="block text-[0.7rem] text-muted">
+                No lookup for {appType.toLowerCase()} accounts — paste the auth user
+                id directly.
+              </span>
+            </label>
+          )}
 
-          <label className="block space-y-1">
-            <span className="text-[0.7rem] font-medium text-muted">Vendor id</span>
-            <Input
-              className="h-9 text-sm"
-              placeholder="uuid"
-              value={vendorId}
-              onChange={(event) => setVendorId(event.target.value)}
-            />
-          </label>
+          <LookupSelect
+            fetchOptions={searchVendorLookupOptions}
+            label="Vendor id"
+            placeholder="Search vendor"
+            queryKey={['lookup', 'vendors', 'evaluate-panel']}
+            selectedLabel={vendorLabel}
+            value={vendorId}
+            onChange={(value, option) => {
+              setVendorId(value)
+              setVendorLabel(option?.label ?? '')
+            }}
+          />
 
-          <label className="block space-y-1">
-            <span className="text-[0.7rem] font-medium text-muted">
-              Influencer id
-            </span>
-            <Input
-              className="h-9 text-sm"
-              placeholder="uuid"
-              value={influencerId}
-              onChange={(event) => setInfluencerId(event.target.value)}
-            />
-          </label>
+          <LookupSelect
+            fetchOptions={searchInfluencerLookupOptions}
+            label="Influencer id"
+            placeholder="Search influencer"
+            queryKey={['lookup', 'influencers', 'evaluate-panel']}
+            selectedLabel={influencerLabel}
+            value={influencerId}
+            onChange={(value, option) => {
+              setInfluencerId(value)
+              setInfluencerLabel(option?.label ?? '')
+            }}
+          />
 
           <label className="block space-y-1">
             <span className="text-[0.7rem] font-medium text-muted">Role codes</span>

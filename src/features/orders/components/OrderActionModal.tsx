@@ -1,6 +1,7 @@
 import { type FormEvent, type ReactNode, useState } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { Modal } from '../../../components/ui/Modal'
+import { parseMoneyToPaise } from '../../commission/utils/commissionFormatting'
 import type {
   AdminOrderSummary,
   AdminOrderStatus,
@@ -403,7 +404,7 @@ function RefundFields({
 }: ActionFieldsProps<OrderActionSelection & { kind: 'INITIATE_REFUND' }>) {
   const [reason, setReason] = useState('')
   const [paymentId, setPaymentId] = useState('')
-  const [amountPaise, setAmountPaise] = useState('')
+  const [amountText, setAmountText] = useState('')
   const [reasonCode, setReasonCode] = useState<'' | RefundReasonCode>('')
   const [disputeState, setDisputeState] = useState<DisputeState>('UNKNOWN')
   const [formError, setFormError] = useState<string | null>(null)
@@ -417,10 +418,21 @@ function RefundFields({
       return
     }
 
+    // Blank means "full refund" — only parse when the admin typed a partial amount.
+    let amountPaise: number | undefined
+    if (amountText.trim()) {
+      try {
+        amountPaise = parseMoneyToPaise(amountText, 'Refund amount')
+      } catch (caughtError) {
+        setFormError(caughtError instanceof Error ? caughtError.message : 'Refund amount is invalid.')
+        return
+      }
+    }
+
     onSubmit({
       reason: reason.trim(),
       paymentId: paymentId.trim() || undefined,
-      amountPaise: amountPaise ? Number(amountPaise) : undefined,
+      amountPaise,
       reasonCode: reasonCode || undefined,
       hasDispute: disputeState === 'UNKNOWN' ? undefined : disputeState === 'YES',
     })
@@ -445,8 +457,8 @@ function RefundFields({
             <input className="form-input" value={paymentId} onChange={(event) => setPaymentId(event.target.value)} />
           </label>
           <label className="block space-y-2">
-            <span className="text-sm font-semibold text-foreground">Refund amount (paise)</span>
-            <input className="form-input" type="number" value={amountPaise} onChange={(event) => setAmountPaise(event.target.value)} />
+            <span className="text-sm font-semibold text-foreground">Refund amount (₹, blank = full)</span>
+            <input className="form-input" inputMode="decimal" value={amountText} onChange={(event) => setAmountText(event.target.value)} />
           </label>
           <label className="block space-y-2">
             <span className="text-sm font-semibold text-foreground">Reason category</span>

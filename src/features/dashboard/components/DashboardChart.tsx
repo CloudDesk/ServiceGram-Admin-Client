@@ -73,10 +73,22 @@ export function DashboardChart({
   }, [])
 
   useEffect(() => {
-    chartRef.current?.setOption(option, {
-      lazyUpdate: true,
-      notMerge: true,
-    })
+    const tooltip = option.tooltip
+
+    chartRef.current?.setOption(
+      {
+        ...option,
+        tooltip: Array.isArray(tooltip)
+          ? tooltip.map((entry) => ({ appendToBody: true, ...entry }))
+          : tooltip
+            ? { appendToBody: true, ...tooltip }
+            : tooltip,
+      },
+      {
+        lazyUpdate: true,
+        notMerge: true,
+      },
+    )
   }, [option])
 
   return (

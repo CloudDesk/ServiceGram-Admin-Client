@@ -5,6 +5,8 @@ import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { PageContainer } from "../../../components/layout/PageContainer";
 import { PageContextHeader } from "../../../components/ui/PageHeader";
+import { SegmentedControl } from "../../../components/ui/SegmentedControl";
+import { SummaryMetricCard } from "../../../components/ui/SummaryMetricCard";
 import { routePaths } from "../../../config/routes";
 import { useAuthStore } from "../../../store/authStore";
 import { cn } from "../../../utils/cn";
@@ -98,28 +100,6 @@ function statusTone(status: string) {
   }
   if (["ARCHIVED", "REJECTED"].includes(status)) return "danger" as const;
   return "neutral" as const;
-}
-
-function SummaryCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: number | string;
-  hint?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-border bg-surface px-4 py-3 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-        {label}
-      </p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-        {value}
-      </p>
-      {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
-    </div>
-  );
 }
 
 function EmptyPanel({ label }: { label: string }) {
@@ -270,23 +250,23 @@ export function InfluencerBonusesPage() {
       />
 
       <div className="grid gap-3 md:grid-cols-4">
-        <SummaryCard
+        <SummaryMetricCard
           hint="Across loaded rule filters"
           label="Rules"
           value={rulesQuery.data?.pagination.totalItems ?? 0}
         />
-        <SummaryCard
-          hint="Loaded page only"
+        <SummaryMetricCard
+          hint="From the rules currently loaded"
           label="Active rules"
           value={rules.filter((rule) => rule.status === "ACTIVE").length}
         />
-        <SummaryCard
-          hint="Loaded award page"
+        <SummaryMetricCard
+          hint="From the awards currently loaded"
           label="Pending review"
           value={pendingAwards}
         />
-        <SummaryCard
-          hint="Loaded award page"
+        <SummaryMetricCard
+          hint="From the awards currently loaded"
           label="Award liability"
           value={formatPaise(loadedLiability)}
         />
@@ -294,23 +274,15 @@ export function InfluencerBonusesPage() {
 
       <div className="rounded-2xl border border-border bg-surface p-3 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex rounded-xl bg-surface-muted p-1">
-            {(["rules", "awards"] as WorkspaceTab[]).map((tab) => (
-              <button
-                key={tab}
-                className={cn(
-                  "rounded-lg px-3 py-2 text-sm font-semibold transition",
-                  activeTab === tab
-                    ? "bg-surface text-foreground shadow-sm"
-                    : "text-muted hover:text-foreground",
-                )}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab === "rules" ? "Bonus rules" : "Award review"}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            aria-label="Bonus workspace"
+            options={[
+              { value: "rules", label: "Bonus rules" },
+              { value: "awards", label: "Award review" },
+            ]}
+            value={activeTab}
+            onChange={setActiveTab}
+          />
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             {activeTab === "rules" ? (
@@ -634,10 +606,10 @@ function AwardsPanel({
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <SummaryCard label="Metric" value={award.metricValue} />
-            <SummaryCard label="Rule version" value={award.ruleVersion} />
-            <SummaryCard label="Window start" value={formatDate(award.windowStart)} />
-            <SummaryCard label="Window end" value={formatDate(award.windowEnd)} />
+            <SummaryMetricCard label="Metric" value={award.metricValue} />
+            <SummaryMetricCard label="Rule version" value={award.ruleVersion} />
+            <SummaryMetricCard label="Window start" value={formatDate(award.windowStart)} />
+            <SummaryMetricCard label="Window end" value={formatDate(award.windowEnd)} />
           </div>
 
           <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 md:flex-row md:items-center md:justify-between">

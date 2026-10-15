@@ -60,6 +60,7 @@ import { Release2OverviewPage } from "../features/release2/components/Release2Ov
 import { Release2SettingDetailPage } from "../features/release2/components/Release2SettingDetailPage";
 import { Release2SettingsPage } from "../features/release2/components/Release2SettingsPage";
 import { CustomerRetentionPage } from "../features/customer-retention/components/CustomerRetentionPage";
+import { CommissionPage } from "../features/commission/components/CommissionPage";
 import { VendorOnboardingPage } from "../features/vendors/components/VendorOnboardingPage";
 import { VendorsPage } from "../features/vendors/components/VendorsPage";
 import { VendorDetailPage } from "../features/vendors/components/VendorDetailPage";
@@ -562,6 +563,17 @@ export const appRoutes: RouteObject[] = [
                   {
                     path: routePaths.customerRetention,
                     element: <CustomerRetentionPage />,
+                  },
+                ],
+              },
+              {
+                element: (
+                  <PermissionGuard permission={routePermissions.settings} />
+                ),
+                children: [
+                  {
+                    path: routePaths.commission,
+                    element: <CommissionPage />,
                   },
                 ],
               },

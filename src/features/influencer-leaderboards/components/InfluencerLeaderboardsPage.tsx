@@ -6,6 +6,8 @@ import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { PageContainer } from "../../../components/layout/PageContainer";
 import { PageContextHeader } from "../../../components/ui/PageHeader";
+import { SegmentedControl } from "../../../components/ui/SegmentedControl";
+import { SummaryMetricCard } from "../../../components/ui/SummaryMetricCard";
 import { routePaths } from "../../../config/routes";
 import { useAuthStore } from "../../../store/authStore";
 import { cn } from "../../../utils/cn";
@@ -22,6 +24,12 @@ import type {
 } from "../types/influencerLeaderboard.types";
 
 type WorkspaceTab = "leaderboards" | "reputation";
+
+// Rank, Influencer (flex), Category, Metric, Reputation, Status, Actions —
+// kept tight enough that the table fits most viewports without a horizontal
+// scroll; Actions stays reachable via `sticky right-0` even when it doesn't.
+const LEADERBOARD_GRID_COLS =
+  "grid grid-cols-[56px_minmax(190px,1fr)_108px_100px_108px_128px_100px]";
 
 const leaderboardCategories: InfluencerLeaderboardCategory[] = [
   "BOOKINGS_GENERATED",
@@ -121,28 +129,6 @@ function metricLabel(category: InfluencerLeaderboardCategory, value: number) {
     }).format(value);
   }
   return new Intl.NumberFormat("en-IN").format(value);
-}
-
-function SummaryCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: number | string;
-  hint?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-border bg-surface px-4 py-3 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-        {label}
-      </p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-        {value}
-      </p>
-      {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
-    </div>
-  );
 }
 
 function InfluencerLink({
@@ -358,22 +344,22 @@ export function InfluencerLeaderboardsPage() {
       />
 
       <div className="grid gap-3 md:grid-cols-4">
-        <SummaryCard
+        <SummaryMetricCard
           hint="Across loaded ranking filters"
           label="Leaderboard rows"
           value={leaderboardQuery.data?.pagination.totalItems ?? 0}
         />
-        <SummaryCard
+        <SummaryMetricCard
           hint="Visible and sample-qualified"
           label="Public rows"
           value={visibleLeaderboardCount}
         />
-        <SummaryCard
+        <SummaryMetricCard
           hint="Across loaded reputation filters"
           label="Reputation rows"
           value={reputationQuery.data?.pagination.totalItems ?? 0}
         />
-        <SummaryCard
+        <SummaryMetricCard
           hint="Needs admin attention"
           label="Review required"
           value={reviewRequiredCount}
@@ -382,23 +368,15 @@ export function InfluencerLeaderboardsPage() {
 
       <div className="rounded-2xl border border-border bg-surface p-3 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex rounded-xl bg-surface-muted p-1">
-            {(["leaderboards", "reputation"] as WorkspaceTab[]).map((tab) => (
-              <button
-                key={tab}
-                className={cn(
-                  "rounded-lg px-3 py-2 text-sm font-semibold transition",
-                  activeTab === tab
-                    ? "bg-surface text-foreground shadow-sm"
-                    : "text-muted hover:text-foreground",
-                )}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab === "leaderboards" ? "Monthly rankings" : "Reputation"}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            aria-label="Leaderboard workspace"
+            options={[
+              { value: "leaderboards", label: "Monthly rankings" },
+              { value: "reputation", label: "Reputation" },
+            ]}
+            value={activeTab}
+            onChange={setActiveTab}
+          />
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
@@ -594,19 +572,19 @@ function LeaderboardPanel({
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
-      <div className="grid min-w-[1120px] grid-cols-[80px_minmax(220px,1fr)_160px_140px_180px_180px_140px] gap-3 border-b border-border bg-surface-muted px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted">
+      <div className={cn(LEADERBOARD_GRID_COLS, "min-w-[880px] gap-3 border-b border-border bg-surface-muted px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted")}>
         <span>Rank</span>
         <span>Influencer</span>
         <span>Category</span>
         <span>Metric</span>
         <span>Reputation</span>
         <span>Status</span>
-        <span>Actions</span>
+        <span className="sticky right-0 bg-surface-muted px-1 text-right">Actions</span>
       </div>
       {rows.map((row) => (
         <div
           key={row.id}
-          className="grid min-w-[1120px] grid-cols-[80px_minmax(220px,1fr)_160px_140px_180px_180px_140px] gap-3 border-b border-border px-4 py-3 text-sm last:border-b-0"
+          className={cn(LEADERBOARD_GRID_COLS, "min-w-[880px] gap-3 border-b border-border px-4 py-3 text-sm last:border-b-0")}
         >
           <div>
             <p className="font-semibold text-foreground">#{row.rank}</p>
@@ -634,12 +612,14 @@ function LeaderboardPanel({
           <div>
             {row.reputation ? (
               <>
-                <Badge tone={gradeTone(row.reputation.grade)}>
-                  {humanize(row.reputation.grade)}
-                </Badge>
-                <p className="mt-1 text-xs text-muted">
-                  Score {row.reputation.score ?? "provisional"}
+                <p className="font-semibold text-foreground">
+                  {row.reputation.score ?? "Provisional"}
                 </p>
+                <div className="mt-1">
+                  <Badge tone={gradeTone(row.reputation.grade)}>
+                    {humanize(row.reputation.grade)}
+                  </Badge>
+                </div>
               </>
             ) : (
               <span className="text-muted">No score</span>
@@ -658,7 +638,7 @@ function LeaderboardPanel({
               </p>
             ) : null}
           </div>
-          <div>
+          <div className="sticky right-0 flex justify-end bg-surface pl-1">
             {canUpdate ? (
               <Button
                 disabled={!row.isVisible && !row.minSampleMet}
@@ -783,21 +763,21 @@ function ReputationPanel({
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <SummaryCard
+            <SummaryMetricCard
               label="Content"
               value={row.reputation.components?.contentQualityScore ?? "—"}
             />
-            <SummaryCard
+            <SummaryMetricCard
               hint="Basis points"
               label="Conversion"
               value={row.reputation.components?.bookingConversionBps ?? "—"}
             />
-            <SummaryCard
+            <SummaryMetricCard
               hint="Basis points"
               label="Engagement"
               value={row.reputation.components?.audienceEngagementBps ?? "—"}
             />
-            <SummaryCard
+            <SummaryMetricCard
               label="Vendor feedback"
               value={row.reputation.components?.vendorFeedbackScore ?? "—"}
             />

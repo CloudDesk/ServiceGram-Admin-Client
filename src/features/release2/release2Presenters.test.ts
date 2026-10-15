@@ -101,6 +101,11 @@ describe('value presentation', () => {
     expect(formatSettingValue(10000)).toBe('10,000')
   })
 
+  it('formats bps as a percentage and bytes as MB, instead of raw backend units', () => {
+    expect(formatSettingValue(1500, 'bps')).toBe('15%')
+    expect(formatSettingValue(25 * 1024 * 1024, 'bytes')).toBe('25 MB')
+  })
+
   it('formats booleans and empty values for a dense table', () => {
     expect(formatSettingValue(true)).toBe('On')
     expect(formatSettingValue(false)).toBe('Off')
@@ -108,11 +113,19 @@ describe('value presentation', () => {
   })
 
   it('builds a validation hint from backend metadata only', () => {
-    expect(validationHint({ min: 0, max: 10000, unit: 'bps' })).toBe(
-      'min 0 · max 10000 · bps',
+    expect(validationHint({ min: 1, max: 3650, unit: 'days' })).toBe(
+      'min 1 · max 3650 · days',
     )
     expect(validationHint({ enum: ['WEEKLY'] })).toBe('One of: WEEKLY')
     expect(validationHint({})).toBe('')
+  })
+
+  it('converts bps/paise/bytes bounds in the hint to the same friendly unit as the value', () => {
+    expect(validationHint({ min: 0, max: 10000, unit: 'bps' })).toBe('min 0% · max 100%')
+    expect(validationHint({ min: 0, max: 1000000, unit: 'paise' })).toBe('min ₹0 · max ₹10,000')
+    expect(validationHint({ min: 1024, max: 26214400, unit: 'bytes' })).toBe(
+      'min 0 MB · max 25 MB',
+    )
   })
 
   it('labels seeded setting groups and falls back to a humanised key', () => {

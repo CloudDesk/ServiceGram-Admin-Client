@@ -78,6 +78,11 @@ export interface PolicyRulesWorkspaceProps {
   onOpenCategory: (categoryId: string) => void
   onOpenZone: (zoneId: string) => void
   onOpenVendor: (vendorId: string) => void
+
+  /** Hides the Family filter — use when the host already locks rows to one family. */
+  hideFamilyFilter?: boolean
+  /** Hides the "Preview pricing" toolbar action — only meaningful for PRICING_RULE. */
+  hidePricingPreview?: boolean
 }
 
 export function PolicyRulesWorkspace({
@@ -113,6 +118,8 @@ export function PolicyRulesWorkspace({
   queueTabs,
   rows,
   search,
+  hideFamilyFilter = false,
+  hidePricingPreview = false,
 }: PolicyRulesWorkspaceProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const filtered = search.trim()
@@ -240,21 +247,23 @@ export function PolicyRulesWorkspace({
 
   const filters = (
     <div className="space-y-3">
-      <label className="block space-y-1">
-        <span className="text-xs font-semibold text-muted">Family</span>
-        <select
-          className={FILTER_CONTROL_CLASS_NAME}
-          value={policyFamily}
-          onChange={(event) => onPolicyFamilyChange(event.target.value)}
-        >
-          <option value="">All</option>
-          {POLICY_FAMILIES.map((option) => (
-            <option key={option} value={option}>
-              {humanizeCode(option)}
-            </option>
-          ))}
-        </select>
-      </label>
+      {hideFamilyFilter ? null : (
+        <label className="block space-y-1">
+          <span className="text-xs font-semibold text-muted">Family</span>
+          <select
+            className={FILTER_CONTROL_CLASS_NAME}
+            value={policyFamily}
+            onChange={(event) => onPolicyFamilyChange(event.target.value)}
+          >
+            <option value="">All</option>
+            {POLICY_FAMILIES.map((option) => (
+              <option key={option} value={option}>
+                {humanizeCode(option)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="block space-y-1">
         <span className="text-xs font-semibold text-muted">Status</span>
         <select
@@ -369,10 +378,12 @@ export function PolicyRulesWorkspace({
       showDensityControl={false}
       toolbarActions={
         <>
-          <Button size="sm" type="button" variant="secondary" onClick={onPreviewPricing}>
-            <Calculator className="size-4 sm:mr-2" />
-            <span className="hidden sm:inline">Preview pricing</span>
-          </Button>
+          {hidePricingPreview ? null : (
+            <Button size="sm" type="button" variant="secondary" onClick={onPreviewPricing}>
+              <Calculator className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">Preview pricing</span>
+            </Button>
+          )}
           <Button
             disabled={!canUpdateSettings}
             size="sm"

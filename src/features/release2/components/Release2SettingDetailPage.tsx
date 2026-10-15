@@ -29,6 +29,13 @@ import {
 import { release2Service } from '../services/release2.service'
 import type { Release2Setting } from '../types/release2.types'
 import {
+  friendlyUnitLabel,
+  isConvertibleUnit,
+  parseSettingValueText,
+  textFromSettingValue,
+  type ConvertibleSettingUnit,
+} from '../utils/settingValueFormatting'
+import {
   Release2ErrorNotice,
   Release2Notice,
   Release2PermissionPanel,
@@ -56,6 +63,57 @@ function parseEditorValue(setting: Release2Setting, raw: string): unknown {
   }
 
   return raw
+}
+
+/**
+ * Self-contained field for settings whose backend unit (bps/paise/bytes) is
+ * too raw to show directly — accepts friendly text (%, ₹, MB) and keeps the
+ * parent's `editorValue` in the raw unit the backend actually stores, same
+ * as every other field on the page. Keyed by setting+version at the call
+ * site so it remounts (and reinitializes its own text) on reload/save,
+ * instead of needing an effect to resync.
+ */
+function ConvertibleUnitValueField({
+  disabled,
+  hasError,
+  label,
+  rawValue,
+  unit,
+  onRawValueChange,
+}: {
+  disabled: boolean
+  hasError: boolean
+  label: string
+  rawValue: string
+  unit: ConvertibleSettingUnit
+  onRawValueChange: (value: string) => void
+}) {
+  const [text, setText] = useState(() =>
+    textFromSettingValue(rawValue ? Number(rawValue) : null, unit),
+  )
+  const [parseError, setParseError] = useState<string | null>(null)
+
+  return (
+    <div className="space-y-1.5">
+      <Input
+        disabled={disabled}
+        hasError={hasError || Boolean(parseError)}
+        inputMode="decimal"
+        value={text}
+        onChange={(event) => {
+          const next = event.target.value
+          setText(next)
+          try {
+            onRawValueChange(String(parseSettingValueText(next, unit, label)))
+            setParseError(null)
+          } catch (caughtError) {
+            setParseError(caughtError instanceof Error ? caughtError.message : 'Invalid value.')
+          }
+        }}
+      />
+      {parseError ? <span className="block text-xs text-danger">{parseError}</span> : null}
+    </div>
+  )
 }
 
 export function Release2SettingDetailPage() {
@@ -290,7 +348,12 @@ export function Release2SettingDetailPage() {
 
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold text-foreground">
-              New value {unit ? `(${unit})` : ''}
+              New value{' '}
+              {isConvertibleUnit(unit)
+                ? `(${friendlyUnitLabel(unit)})`
+                : unit
+                  ? `(${unit})`
+                  : ''}
             </span>
 
             {setting.valueType === 'boolean' ? (
@@ -322,6 +385,20 @@ export function Release2SettingDetailPage() {
                   </option>
                 ))}
               </select>
+            ) : isConvertibleUnit(unit) &&
+              (setting.valueType === 'integer' || setting.valueType === 'number') ? (
+              <ConvertibleUnitValueField
+                key={`${setting.settingKey}:${setting.version}`}
+                disabled={!setting.isEditable}
+                hasError={Boolean(valueFieldError)}
+                label={`New value (${friendlyUnitLabel(unit)})`}
+                rawValue={editorValue}
+                unit={unit}
+                onRawValueChange={(value) => {
+                  setEditorValue(value)
+                  previewMutation.reset()
+                }}
+              />
             ) : (
               <Input
                 disabled={!setting.isEditable}

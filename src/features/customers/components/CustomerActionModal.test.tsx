@@ -109,7 +109,7 @@ describe('CustomerActionModal', () => {
     expect(onSubmit).toHaveBeenCalledWith({ reason: 'Appeal reviewed and approved' })
   })
 
-  it('wallet credit: requires a reason and a positive whole-number amount', async () => {
+  it('wallet credit: requires a reason and a positive amount', async () => {
     const user = userEvent.setup()
     const { onSubmit } = renderModal({ kind: 'WALLET_CREDIT' })
 
@@ -117,18 +117,18 @@ describe('CustomerActionModal', () => {
     await user.click(screen.getByRole('button', { name: 'Apply credit' }))
 
     expect(
-      await screen.findByText('Wallet credit amount in paise must be a positive whole number.'),
+      await screen.findByText('Wallet credit amount must be a positive amount.'),
     ).toBeInTheDocument()
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
-  it('wallet credit: submits amount, currency, and an optional reference', async () => {
+  it('wallet credit: submits amount in rupees converted to paise, currency, and an optional reference', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn<(values: CustomerActionFormValues) => void>()
     renderModal({ kind: 'WALLET_CREDIT' }, onSubmit)
 
     await user.type(screen.getByLabelText(/Reason/), 'Goodwill credit for delayed order')
-    await user.type(screen.getByLabelText(/Amount \(paise\)/), '5000')
+    await user.type(screen.getByLabelText(/Amount \(₹\)/), '50')
     await user.type(screen.getByLabelText('Reference ID'), 'SUPPORT-991')
     await user.click(screen.getByRole('button', { name: 'Apply credit' }))
 

@@ -41,6 +41,7 @@ import {
   ListSelectionCheckbox,
   ListSelectionToolbar,
 } from '../../../components/ui/ListSelection'
+import { LookupSelect } from '../../../components/ui/LookupSelect'
 import { MultiSelectFilter } from '../../../components/ui/MultiSelectFilter'
 import { OverflowText } from '../../../components/ui/OverflowText'
 import { PageContextHeader } from '../../../components/ui/PageHeader'
@@ -61,6 +62,10 @@ import type { StatusTone } from '../../../types/status.types'
 import { cn } from '../../../utils/cn'
 import { formatDate } from '../../../utils/formatDate'
 import { humanizeIdentifier } from '../../../utils/displayText'
+import {
+  searchAdminUserIdLookupOptions,
+  searchCustomerUserIdLookupOptions,
+} from '../../lookups/adminLookups'
 import { notificationService } from '../services/notification.service'
 import type {
   NotificationChannel,
@@ -73,6 +78,18 @@ import type {
   NotificationTemplatesQueryParams,
   UpdateNotificationTemplatePayload,
 } from '../types/notification.types'
+
+/** Only resolvable for customer/admin recipients - vendors have no searchable user id. */
+function recipientUserIdFetcherFor(recipientType: NotificationRecipientType) {
+  switch (recipientType) {
+    case 'CUSTOMER':
+      return searchCustomerUserIdLookupOptions
+    case 'ADMIN':
+      return searchAdminUserIdLookupOptions
+    default:
+      return null
+  }
+}
 
 const DEFAULT_PAGE_SIZE = 10
 const NOTIFICATION_DEFAULT_COLUMN_WIDTH = 220
@@ -1364,6 +1381,12 @@ export function NotificationsPage() {
   const [recipientUserId, setRecipientUserId] = useState(
     () => searchParams.get('recipientUserId') ?? '',
   )
+  const [recipientUserLabel, setRecipientUserLabel] = useState('')
+  const [soleRecipientType] =
+    recipientTypesState.length === 1 ? recipientTypesState : [null]
+  const recipientUserIdFetcher = soleRecipientType
+    ? recipientUserIdFetcherFor(soleRecipientType)
+    : null
   const [selectedTemplate, setSelectedTemplate] = useState<NotificationTemplate | null>(null)
   const [templateActive, setTemplateActive] = useState<ActiveFilter>('')
   const [templateActionError, setTemplateActionError] = useState<string | null>(null)
@@ -1639,6 +1662,7 @@ export function NotificationsPage() {
     setQueueKey('all')
     setRecipientTypesState([])
     setRecipientUserId('')
+    setRecipientUserLabel('')
     setTemplateCodes([])
     setDateFrom('')
     setDateTo('')
@@ -1717,6 +1741,7 @@ export function NotificationsPage() {
 
     clearSeededNotificationParams()
     setRecipientUserId(nextRecipientUserId)
+    setRecipientUserLabel('')
     setPage(1)
   }
 
@@ -1979,18 +2004,43 @@ export function NotificationsPage() {
                       resetEventsPage()
                     }}
                   />
-                  <label className="space-y-1">
-                    <span className="text-xs font-semibold text-muted">Recipient user ID</span>
-                    <Input
-                      placeholder="UUID"
-                      value={recipientUserId}
-                      onChange={(event) => {
-                        clearSeededNotificationParams()
-                        setRecipientUserId(event.target.value)
-                        resetEventsPage()
-                      }}
-                    />
-                  </label>
+                  <div className="space-y-1">
+                    {recipientUserIdFetcher ? (
+                      <LookupSelect
+                        fetchOptions={recipientUserIdFetcher}
+                        label="Recipient user ID"
+                        placeholder={`Search ${soleRecipientType?.toLowerCase()}`}
+                        queryKey={['lookup', 'user-id', soleRecipientType, 'notifications-filter']}
+                        selectedLabel={recipientUserLabel}
+                        value={recipientUserId}
+                        onChange={(value, option) => {
+                          clearSeededNotificationParams()
+                          setRecipientUserId(value)
+                          setRecipientUserLabel(option?.label ?? '')
+                          resetEventsPage()
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <span className="text-xs font-semibold text-muted">Recipient user ID</span>
+                        <Input
+                          placeholder="UUID"
+                          value={recipientUserId}
+                          onChange={(event) => {
+                            clearSeededNotificationParams()
+                            setRecipientUserId(event.target.value)
+                            resetEventsPage()
+                          }}
+                        />
+                        {recipientTypesState.length > 1 ? (
+                          <span className="block text-[0.7rem] text-muted">
+                            Search is only available when a single recipient type is
+                            selected above.
+                          </span>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
                   <label className="space-y-1">
                     <span className="text-xs font-semibold text-muted">Date from</span>
                     <Input

@@ -43,6 +43,7 @@ import {
 } from "./ReelActionModal";
 import { ReelCommentsModerationQueue } from "./ReelCommentsModerationQueue";
 import { HashtagModerationQueue } from "./HashtagModerationQueue";
+import { settingsService } from "../../settings/services/settings.service";
 
 const REEL_LIST_STORAGE_KEY = "servicegram.reels.list.v1";
 const DEFAULT_PAGE_SIZE = 50;
@@ -149,7 +150,8 @@ export function ReelsPage() {
 
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [viewMode, setViewMode] = useState<ReelViewMode>("pending");
-  const [city, setCity] = useState("");
+  const [city, setCity] = useState(() => searchParams.get("city") ?? "");
+  const [zoneId, setZoneId] = useState(() => searchParams.get("zoneId") ?? "");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -163,9 +165,24 @@ export function ReelsPage() {
       limit,
       search: search.trim() || undefined,
       city: city.trim() || undefined,
+      zoneId: zoneId || undefined,
     }),
-    [city, limit, page, search],
+    [city, limit, page, search, zoneId],
   );
+
+  const zonesQuery = useQuery({
+    queryKey: ["settings", "zones", "reels-filter"],
+    queryFn: () =>
+      settingsService.getZones({ page: 1, limit: 100, isActive: true }),
+    staleTime: 1000 * 60 * 10,
+  });
+  const zoneOptions = useMemo(() => {
+    const normalizedCity = city.trim().toLowerCase();
+    return (zonesQuery.data?.data ?? []).filter(
+      (zone) =>
+        !normalizedCity || zone.city.trim().toLowerCase() === normalizedCity,
+    );
+  }, [city, zonesQuery.data]);
 
   const reelsQuery = useQuery({
     queryKey: ["reels", viewMode, query],
@@ -193,8 +210,9 @@ export function ReelsPage() {
       limit: 1,
       search: search.trim() || undefined,
       city: city.trim() || undefined,
+      zoneId: zoneId || undefined,
     }),
-    [city, search],
+    [city, search, zoneId],
   );
 
   /** Both queues are separate endpoints, so counts are fetched together. */
@@ -233,6 +251,8 @@ export function ReelsPage() {
       "categoryId",
       "moderationStatus",
       "uploadStatus",
+      "city",
+      "zoneId",
     ];
     if (!seededKeys.some((key) => searchParams.has(key))) return;
 
@@ -528,26 +548,58 @@ export function ReelsPage() {
 
       <DataList
         activeQueue={viewMode}
-        appliedFilterCount={city.trim() ? 1 : 0}
+        appliedFilterCount={(city.trim() ? 1 : 0) + (zoneId ? 1 : 0)}
         columns={columns}
         emptyHint="Try a different search term or switch queue."
         emptyMessage="No reels match these filters"
         errorMessage="Could not load reels."
         filters={
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-muted">
-              City
-            </span>
-            <input
-              className={filterControlClass}
-              placeholder="Any city"
-              value={city}
-              onChange={(event) => {
-                setCity(event.target.value);
-                setPage(1);
-              }}
-            />
-          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">
+                City
+              </span>
+              <input
+                className={filterControlClass}
+                placeholder="Any city"
+                value={city}
+                onChange={(event) => {
+                  setCity(event.target.value);
+                  setZoneId("");
+                  setPage(1);
+                }}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">
+                Zone
+              </span>
+              <select
+                aria-label="Filter reels by zone"
+                className={filterControlClass}
+                disabled={zonesQuery.isPending || zonesQuery.isError}
+                value={zoneId}
+                onChange={(event) => {
+                  const nextZoneId = event.target.value;
+                  const selectedZone = (zonesQuery.data?.data ?? []).find(
+                    (zone) => zone.zoneId === nextZoneId,
+                  );
+                  setZoneId(nextZoneId);
+                  if (selectedZone) setCity(selectedZone.city);
+                  setPage(1);
+                }}
+              >
+                <option value="">
+                  {zonesQuery.isError ? "Zones unavailable" : "Any zone"}
+                </option>
+                {zoneOptions.map((zone) => (
+                  <option key={zone.zoneId} value={zone.zoneId}>
+                    {zone.zoneName} · {zone.city}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         }
         getRowId={(reel) => reel.reelId}
         isError={reelsQuery.isError}

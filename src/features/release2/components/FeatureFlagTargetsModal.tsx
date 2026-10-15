@@ -3,7 +3,16 @@ import { Plus, Trash2, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { Input } from '../../../components/ui/Input'
+import { LookupSelect } from '../../../components/ui/LookupSelect'
 import { cn } from '../../../utils/cn'
+import {
+  searchAdminUserIdLookupOptions,
+  searchCustomerUserIdLookupOptions,
+  searchInfluencerLookupOptions,
+  searchInfluencerUserIdLookupOptions,
+  searchVendorLookupOptions,
+  searchZoneLookupOptions,
+} from '../../lookups/adminLookups'
 import { fieldErrorMap, targetSummary } from '../release2Presenters'
 import { release2Service } from '../services/release2.service'
 import {
@@ -21,7 +30,29 @@ import { ReasonField } from './Release2ReasonModal'
 
 const selectClass = 'form-select h-9 text-sm'
 
-function emptyTarget(): FeatureFlagTargetInput {
+/** Local-only state: carries the human-readable labels LookupSelect needs alongside each id. */
+interface TargetFormState extends FeatureFlagTargetInput {
+  zoneLabel?: string
+  vendorLabel?: string
+  influencerLabel?: string
+  subjectUserLabel?: string
+}
+
+/** Only these app types expose a searchable auth user id; others need the raw uuid. */
+function userIdFetcherFor(appType: FeatureFlagAppType) {
+  switch (appType) {
+    case 'CUSTOMER':
+      return searchCustomerUserIdLookupOptions
+    case 'ADMIN':
+      return searchAdminUserIdLookupOptions
+    case 'INFLUENCER':
+      return searchInfluencerUserIdLookupOptions
+    default:
+      return null
+  }
+}
+
+function emptyTarget(): TargetFormState {
   return {
     effect: 'ALLOW',
     priority: 100,
@@ -37,7 +68,7 @@ function emptyTarget(): FeatureFlagTargetInput {
   }
 }
 
-function toInput(target: FeatureFlagDetail['targets'][number]): FeatureFlagTargetInput {
+function toInput(target: FeatureFlagDetail['targets'][number]): TargetFormState {
   return {
     effect: target.effect,
     priority: target.priority,
@@ -53,8 +84,8 @@ function toInput(target: FeatureFlagDetail['targets'][number]): FeatureFlagTarge
   }
 }
 
-/** Blank text inputs must go to the API as null, not "". */
-function normalize(target: FeatureFlagTargetInput): FeatureFlagTargetInput {
+/** Blank text inputs must go to the API as null, not "". Also strips the UI-only *Label fields. */
+function normalize(target: TargetFormState): FeatureFlagTargetInput {
   const trim = (value: string | null | undefined) => value?.trim() || null
 
   return {
@@ -74,9 +105,9 @@ function normalize(target: FeatureFlagTargetInput): FeatureFlagTargetInput {
 
 interface TargetRowProps {
   index: number
-  target: FeatureFlagTargetInput
+  target: TargetFormState
   fieldErrors: Record<string, string>
-  onChange: (index: number, target: FeatureFlagTargetInput) => void
+  onChange: (index: number, target: TargetFormState) => void
   onRemove: (index: number) => void
 }
 
@@ -88,30 +119,74 @@ function TargetRow({
   target,
 }: TargetRowProps) {
   const errorFor = (field: string) => fieldErrors[`targets.${index}.${field}`]
-  const patch = (changes: Partial<FeatureFlagTargetInput>) =>
+  const patch = (changes: Partial<TargetFormState>) =>
     onChange(index, { ...target, ...changes })
 
-  const idField = (
+  const lookupField = (
     label: string,
-    field: 'zoneId' | 'vendorId' | 'influencerId' | 'subjectUserId',
-    apply: (value: string) => Partial<FeatureFlagTargetInput>,
-    hint?: string,
+    field: 'zoneId' | 'vendorId' | 'influencerId',
+    labelField: 'zoneLabel' | 'vendorLabel' | 'influencerLabel',
+    fetchOptions: Parameters<typeof LookupSelect>[0]['fetchOptions'],
+    searchLabel: string,
   ) => (
-    <label className="block space-y-1">
-      <span className="text-[0.7rem] font-medium text-muted">{label}</span>
-      <Input
-        className="h-9 text-sm"
-        hasError={Boolean(errorFor(field))}
-        placeholder="uuid"
+    <div className="space-y-1">
+      <LookupSelect
+        fetchOptions={fetchOptions}
+        label={label}
+        placeholder={`Search ${searchLabel}`}
+        queryKey={['lookup', field, 'target', index]}
+        selectedLabel={target[labelField]}
         value={target[field] ?? ''}
-        onChange={(event) => patch(apply(event.target.value))}
+        onChange={(value, option) =>
+          patch({ [field]: value, [labelField]: option?.label ?? '' })
+        }
       />
       {errorFor(field) ? (
         <span className="block text-[0.7rem] text-danger">{errorFor(field)}</span>
-      ) : hint ? (
-        <span className="block text-[0.7rem] text-muted">{hint}</span>
       ) : null}
-    </label>
+    </div>
+  )
+
+  const userIdFetcher = userIdFetcherFor(target.appType)
+
+  const userIdField = (
+    <div className="space-y-1">
+      {userIdFetcher ? (
+        <LookupSelect
+          fetchOptions={userIdFetcher}
+          label="User id"
+          placeholder={`Search ${target.appType.toLowerCase()}`}
+          queryKey={['lookup', 'user-id', target.appType, 'target', index]}
+          selectedLabel={target.subjectUserLabel}
+          value={target.subjectUserId ?? ''}
+          onChange={(value, option) =>
+            patch({ subjectUserId: value, subjectUserLabel: option?.label ?? '' })
+          }
+        />
+      ) : (
+        <label className="block space-y-1">
+          <span className="text-[0.7rem] font-medium text-muted">User id</span>
+          <Input
+            className="h-9 text-sm"
+            hasError={Boolean(errorFor('subjectUserId'))}
+            placeholder="uuid"
+            value={target.subjectUserId ?? ''}
+            onChange={(event) => patch({ subjectUserId: event.target.value })}
+          />
+        </label>
+      )}
+      {errorFor('subjectUserId') ? (
+        <span className="block text-[0.7rem] text-danger">
+          {errorFor('subjectUserId')}
+        </span>
+      ) : (
+        <span className="block text-[0.7rem] text-muted">
+          {userIdFetcher
+            ? "The account's User ID (see \"User ID\" on its detail page) - not the customer or vendor record ID."
+            : `No lookup for ${target.appType.toLowerCase()} accounts - paste the auth user id directly.`}
+        </span>
+      )}
+    </div>
   )
 
   return (
@@ -236,15 +311,22 @@ function TargetRow({
           </select>
         </label>
 
-        {idField('Zone id', 'zoneId', (value) => ({ zoneId: value }))}
-        {idField('Vendor id', 'vendorId', (value) => ({ vendorId: value }))}
-        {idField('Influencer id', 'influencerId', (value) => ({ influencerId: value }))}
-        {idField(
-          'User id',
-          'subjectUserId',
-          (value) => ({ subjectUserId: value }),
-          "The account's User ID (see \"User ID\" on its detail page) - not the customer or vendor record ID.",
+        {lookupField('Zone id', 'zoneId', 'zoneLabel', searchZoneLookupOptions, 'zone')}
+        {lookupField(
+          'Vendor id',
+          'vendorId',
+          'vendorLabel',
+          searchVendorLookupOptions,
+          'vendor',
         )}
+        {lookupField(
+          'Influencer id',
+          'influencerId',
+          'influencerLabel',
+          searchInfluencerLookupOptions,
+          'influencer',
+        )}
+        {userIdField}
       </div>
 
       {errorFor('appType') ? (
@@ -266,7 +348,7 @@ export function FeatureFlagTargetsModal({
   onClose,
   onSaved,
 }: FeatureFlagTargetsModalProps) {
-  const [targets, setTargets] = useState<FeatureFlagTargetInput[]>(() =>
+  const [targets, setTargets] = useState<TargetFormState[]>(() =>
     flag.targets.map(toInput),
   )
   const [reason, setReason] = useState('')
